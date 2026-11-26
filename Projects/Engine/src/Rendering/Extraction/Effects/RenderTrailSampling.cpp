@@ -36,8 +36,9 @@ TrailPoint& RingAt(TrailComponent& trail, int index)
 
 void RingPushBack(TrailComponent& trail, const TrailPoint& point)
 {
-    if (trail.pointBuffer.size() != static_cast<size_t>(trail.maxPoints))
+    if (trail.pointBuffer.size() != static_cast<size_t>(trail.maxPoints)) {
         ResetTrailSampleStorage(trail);
+    }
 
     if (trail.ringCount == trail.maxPoints) {
         trail.ringHead = (trail.ringHead + 1) % trail.maxPoints;
@@ -85,7 +86,7 @@ math::Vector3 ResolveTrailSamplePosition(Scene& scene, GameObject& owner, const 
             owner.transform.worldRotation * trail.attachOffset;
 }
 
-} /// @note namespace
+} // namespace
 
 void ClearTrailSamples(TrailComponent& trail)
 {
@@ -101,8 +102,8 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& worldPosition
 {
     RingExpireOld(trail, currentTime);
 
-    /// @note 瞬間移動の切断。sampleInterval の «待ち» より前に判定する ─ 跳んだフレームを
-    /// @note 待たせると、その 1 フレームのあいだ古い点と新しい点が 1 本の筋でつながる。
+    // 瞬間移動の切断。sampleInterval の «待ち» より前に判定する ─ 跳んだフレームを
+    // 待たせると、その 1 フレームのあいだ古い点と新しい点が 1 本の筋でつながる。
     if (trail.ringCount > 0
         && TrailIsDiscontinuous(trail, RingAt(trail, trail.ringCount - 1).position, worldPosition)) {
         ClearTrailSamples(trail);
@@ -110,8 +111,9 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& worldPosition
 
     const bool firstSample = trail.lastSampleTime < 0.0f;
     const bool timeReady = firstSample || currentTime - trail.lastSampleTime >= trail.sampleInterval;
-    if (!timeReady)
+    if (!timeReady) {
         return;
+    }
 
     const bool distanceReady =
         trail.ringCount == 0 ||
@@ -123,7 +125,7 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& worldPosition
     }
 }
 
-} /// @note namespace
+} // namespace
 
 const TrailPoint& ReadTrailPoint(const TrailComponent& trail, int logicalIndex)
 {
@@ -133,11 +135,15 @@ const TrailPoint& ReadTrailPoint(const TrailComponent& trail, int logicalIndex)
 
 void AdvanceTrailSamples(Scene& scene, GameObject& owner, TrailComponent& trail, float currentTime, uint64_t frameStamp)
 {
-    if (trail.lastExtractionFrame == frameStamp) return;
+    if (trail.lastExtractionFrame == frameStamp) {
+        return;
+    }
     trail.lastExtractionFrame = frameStamp;
     if (trail.enabled && trail.beamMode) {
         const auto transformPoint = [&owner, &trail](const math::Vector3& point) {
-            if (trail.beamWorldSpace) return point;
+            if (trail.beamWorldSpace) {
+                return point;
+            }
             const math::Vector3 scaled{
                 point.x * owner.transform.worldScale.x,
                 point.y * owner.transform.worldScale.y,
@@ -147,10 +153,11 @@ void AdvanceTrailSamples(Scene& scene, GameObject& owner, TrailComponent& trail,
         trail.ringHead = 0;
         trail.ringTail = 0;
         trail.ringCount = 0;
-        /// @note 折れ線が与えられていればそれを、無ければ従来どおり 2 端点を描く。
+        // 折れ線が与えられていればそれを、無ければ従来どおり 2 端点を描く。
         if (trail.beamPoints.size() >= 2) {
-            for (const math::Vector3& point : trail.beamPoints)
+            for (const math::Vector3& point : trail.beamPoints) {
                 RingPushBack(trail, { transformPoint(point), currentTime });
+            }
         } else {
             RingPushBack(trail, { transformPoint(trail.beamStart), currentTime });
             RingPushBack(trail, { transformPoint(trail.beamEnd), currentTime });
@@ -160,8 +167,9 @@ void AdvanceTrailSamples(Scene& scene, GameObject& owner, TrailComponent& trail,
         const math::Vector3 samplePosition = ResolveTrailSamplePosition(scene, owner, trail);
         UpdateTrailPoints(trail, samplePosition, currentTime);
     }
-    else
+    else {
         RingExpireOld(trail, currentTime);
+    }
 }
 
-} /// @note namespace fbzz::scene::trail_extraction_detail
+} // namespace fbzz::scene::trail_extraction_detail

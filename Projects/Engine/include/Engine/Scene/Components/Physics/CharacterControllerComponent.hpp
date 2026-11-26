@@ -36,9 +36,9 @@ enum class CharacterGroundingMode {
 };
 
 struct CharacterControllerComponent {
-    bool enabled = true;
+    bool enabled = true; ///< このコントローラーを歩行・接地状態の更新対象にする。
 
-    CharacterGroundingMode groundingMode = CharacterGroundingMode::Automatic;
+    CharacterGroundingMode groundingMode = CharacterGroundingMode::Automatic; ///< 自動の接地推定を使うか、外部から供給される接地を使うかを選ぶ。
 
     /// @name Inspector / Serializer 公開フィールド
     /// @{
@@ -46,22 +46,14 @@ struct CharacterControllerComponent {
     /// @note ApplyImpulse 直後は velocity.y がまだ物理ステップに反映されていない場合があるため、
     /// @note ジャンプ後この時間は着地判定を無視する。
     float jumpMinAirTime       = 0.2f;
-    /// @note 「落下中」とみなす velocity.y の閾値 (m/s)
-    float fallVelThreshold     = -0.5f;
-    /// @note 着地とみなす |velocity.y| の閾値 (m/s)。落下フェーズ後にこれ以下になったとき着地と判定する。
-    float groundVelThreshold   = 0.3f;
-    /// @note 崖落ちとみなす velocity.y の閾値 (m/s)。接地中にこれを下回ると空中扱いへ移行する。
-    float ledgeFallThreshold   = -1.0f;
-    /// @note 歩ける面の法線 Y 成分の最小値。急斜面・壁への接触を接地から除外する。
-    float minGroundNormalY     = 0.5f;
-    /// @note 物理固定ステップと描画フレームのズレで 1 フレーム接触が欠けても空中扱いにしない猶予時間 (秒)
-    float groundContactGrace   = 0.12f;
-    /// @note ジャンプ直後は床接触が残るため、その接触で即着地へ戻るのを防ぐ無視時間 (秒)
-    float jumpGroundIgnoreTime = 0.12f;
-    /// @note 接地中の微小な Y 速度をゼロへ寄せる閾値 (m/s)。着地後の細かい Jump/Fall 遷移を抑える。
-    float groundedVelSnap      = 0.35f;
-    /// @note 意図的ジャンプ状態の最大継続時間 (秒)。接触補正の微小速度を JumpUp と誤認しないための上限。
-    float intentionalJumpMaxTime = 1.0f;
+    float fallVelThreshold     = -0.5f; ///< 「落下中」とみなす velocity.y の閾値 (m/s)
+    float groundVelThreshold   = 0.3f; ///< 着地とみなす |velocity.y| の閾値 (m/s)。落下フェーズ後にこれ以下になったとき着地と判定する。
+    float ledgeFallThreshold   = -1.0f; ///< 崖落ちとみなす velocity.y の閾値 (m/s)。接地中にこれを下回ると空中扱いへ移行する。
+    float minGroundNormalY     = 0.5f; ///< 歩ける面の法線 Y 成分の最小値。急斜面・壁への接触を接地から除外する。
+    float groundContactGrace   = 0.12f; ///< 物理固定ステップと描画フレームのズレで 1 フレーム接触が欠けても空中扱いにしない猶予時間 (秒)
+    float jumpGroundIgnoreTime = 0.12f; ///< ジャンプ直後は床接触が残るため、その接触で即着地へ戻るのを防ぐ無視時間 (秒)
+    float groundedVelSnap      = 0.35f; ///< 接地中の微小な Y 速度をゼロへ寄せる閾値 (m/s)。着地後の細かい Jump/Fall 遷移を抑える。
+    float intentionalJumpMaxTime = 1.0f; ///< 意図的ジャンプ状態の最大継続時間 (秒)。接触補正の微小速度を JumpUp と誤認しないための上限。
     /// @}
 
     /// @name 読み取り専用状態 (Script から参照する)
@@ -70,15 +62,14 @@ struct CharacterControllerComponent {
     /// @note Animator の VerticalSpeed パラメーターへ渡す用途に計算済みの縦速度
     /// @note 接地中・意図的ジャンプでない上昇は 0 に丸められる
     float verticalSpeed     = 0.0f;
-    /// @note 最後に検出した歩行可能面の法線。坂に応じた姿勢制御など、接地方向を必要とする処理で参照する。
-    math::Vector3 groundNormal = math::Vector3::UP;
+    math::Vector3 groundNormal = math::Vector3::UP; ///< 最後に検出した歩行可能面の法線。坂に応じた姿勢制御など、接地方向を必要とする処理で参照する。
 
     const char* GetTypeName() const { return "Character Controller"; }
 
     void Reflect(IReflector& r)
     {
-        /// @note 保存キーは .scene 上のフィールド名 (jumpMinAirTime 等) に揃え、表示名は別に持つ。
-        /// @note 揃えないと Reflect を通る経路 (AI バス・汎用 Inspector等) だけ別キーを見てしまう。
+        // 保存キーは .scene 上のフィールド名 (jumpMinAirTime 等) に揃え、表示名は別に持つ。
+        // 揃えないと Reflect を通る経路 (AI バス・汎用 Inspector等) だけ別キーを見てしまう。
         r.BeginField("enabled", "Enabled");
         r.Field("enabled", enabled);
         r.EndField();
@@ -94,7 +85,7 @@ struct CharacterControllerComponent {
             groundingMode = static_cast<CharacterGroundingMode>(mode);
         }
 
-        /// @note 保存キー / 表示名 / 値 の 3 つ組。並べて書くと «キーだけ直し忘れる» が起きにくい。
+        // 保存キー / 表示名 / 値 の 3 つ組。並べて書くと «キーだけ直し忘れる» が起きにくい。
         const auto tuned = [&r](const char* key, const char* display, float& value) {
             r.BeginField(key, display);
             r.Field(display, value);
@@ -110,9 +101,9 @@ struct CharacterControllerComponent {
         tuned("groundedVelSnap",        "Grounded Vel Snap",        groundedVelSnap);
         tuned("intentionalJumpMaxTime", "Intentional Jump MaxTime", intentionalJumpMaxTime);
 
-        /// @note 接地は実行時の状態だが .scene に保存されていた。読む側が既定 true なので
-        /// @note 落としても実害は無いが、«保存されていたものが黙って消える» を避けて残す。
-        /// @note Inspector には出さない (触れる値ではない)。
+        // 接地は実行時の状態だが .scene に保存されていた。読む側が既定 true なので
+        // 落としても実害は無いが、«保存されていたものが黙って消える» を避けて残す。
+        // Inspector には出さない (触れる値ではない)。
         r.BeginField("isGrounded", "Is Grounded");
         r.SetFieldHidden(true);
         r.Field("isGrounded", isGrounded);
@@ -136,7 +127,9 @@ struct CharacterControllerComponent {
         }
 
         UpdateTimers(dt);
-        if (!rb) return;
+        if (!rb) {
+            return;
+        }
 
         const float vy = rb->GetVelocity().y;
         if (groundingMode == CharacterGroundingMode::ForcedGrounded) {
@@ -155,15 +148,19 @@ struct CharacterControllerComponent {
     /// @note PhysicsSystem または特殊な移動 Script から呼ぶ。法線が歩ける面なら接地として記録する。
     void RegisterGroundContact(const CollisionInfo& info)
     {
-        if (!enabled || groundingMode == CharacterGroundingMode::ForcedAirborne) return;
-        /// @note 縮退した接触法線は「どちらが上か」を持たない。接地とも壁とも判定できないので、
-        /// @note 猶予タイマーに任せてこのフレームは無視する。
-        if (info.contactNormal.LengthSq() < math::EPSILON * math::EPSILON) return;
+        if (!enabled || groundingMode == CharacterGroundingMode::ForcedAirborne) {
+            return;
+        }
+        // 縮退した接触法線は「どちらが上か」を持たない。接地とも壁とも判定できないので、
+        // 猶予タイマーに任せてこのフレームは無視する。
+        if (info.contactNormal.LengthSq() < math::EPSILON * math::EPSILON) {
+            return;
+        }
         const math::Vector3 contactNormal = info.contactNormal.Normalized();
         if (contactNormal.y < minGroundNormalY)
         {
-            /// @note 歩行不可面でも水平成分を次の入力ステップの壁制約へ引き継ぐ。単に捨てると
-            /// @note 入力が壁方向の速度を毎回再注入し、PhysicsSolver の法線インパルスと競合して振動する。
+            // 歩行不可面でも水平成分を次の入力ステップの壁制約へ引き継ぐ。単に捨てると
+            // 入力が壁方向の速度を毎回再注入し、PhysicsSolver の法線インパルスと競合して振動する。
             math::Vector3 blockingNormal = contactNormal;
             blockingNormal.y = 0.0f;
             if (blockingNormal.LengthSq() > math::EPSILON)
@@ -173,7 +170,9 @@ struct CharacterControllerComponent {
             }
             return;
         }
-        if (m_ignoreGroundTimer > 0.0f) return;
+        if (m_ignoreGroundTimer > 0.0f) {
+            return;
+        }
 
         m_hasGroundContact   = true;
         m_groundContactTimer = groundContactGrace;
@@ -191,7 +190,9 @@ struct CharacterControllerComponent {
     /// @note (順序を誤ると jumpGroundIgnoreTime タイマーがずれて着地判定が即発動する)。
     void Jump(physics::RigidBody* rb, const math::Vector3& impulse)
     {
-        if (!enabled) return;
+        if (!enabled) {
+            return;
+        }
 
         isGrounded           = false;
         m_wasFalling         = false;
@@ -202,9 +203,11 @@ struct CharacterControllerComponent {
         m_isIntentionalJump  = true;
         m_intentionalJumpTimer = 0.0f;
         groundNormal         = math::Vector3::UP;
-        /// @note ステート更新後にインパルスを適用する。逆順だと velocity.y が古い値のまま
-        /// @note m_ignoreGroundTimer セット前の Contact 判定に入る余地が生まれる。
-        if (rb) rb->ApplyImpulse(impulse);
+        // ステート更新後にインパルスを適用する。逆順だと velocity.y が古い値のまま
+        // m_ignoreGroundTimer セット前の Contact 判定に入る余地が生まれる。
+        if (rb) {
+            rb->ApplyImpulse(impulse);
+        }
     }
 
     /// @note 質量やインパルス単位を意識せず、目標の上向き速度 (m/s) でジャンプする。
@@ -251,7 +254,9 @@ struct CharacterControllerComponent {
     /// @note 水平移動の最小プリミティブ。Y 速度は重力・ジャンプ・物理解決へ残す。
     void SetHorizontalVelocity(physics::RigidBody* rb, const math::Vector3& velocity) const
     {
-        if (!enabled || !rb || rb->IsStatic()) return;
+        if (!enabled || !rb || rb->IsStatic()) {
+            return;
+        }
         math::Vector3 current = rb->GetVelocity();
         current.x = velocity.x;
         current.z = velocity.z;
@@ -260,7 +265,9 @@ struct CharacterControllerComponent {
 
     void AddHorizontalVelocity(physics::RigidBody* rb, const math::Vector3& velocity) const
     {
-        if (!enabled || !rb || rb->IsStatic()) return;
+        if (!enabled || !rb || rb->IsStatic()) {
+            return;
+        }
         math::Vector3 current = rb->GetVelocity();
         current.x += velocity.x;
         current.z += velocity.z;
@@ -276,13 +283,17 @@ struct CharacterControllerComponent {
               float acceleration = -1.0f,
               float deceleration = -1.0f) const
     {
-        if (!enabled || !rb || rb->IsStatic()) return;
+        if (!enabled || !rb || rb->IsStatic()) {
+            return;
+        }
 
         math::Vector3 constrainedVelocity = desiredVelocity;
-        if (isGrounded && m_groundContactTimer > 0.0f)
+        if (isGrounded && m_groundContactTimer > 0.0f) {
             RemoveVelocityIntoSurface(constrainedVelocity, groundNormal);
-        if (m_blockingContactTimer > 0.0f)
+        }
+        if (m_blockingContactTimer > 0.0f) {
             RemoveVelocityIntoSurface(constrainedVelocity, m_blockingContactNormal);
+        }
 
         math::Vector3 current = rb->GetVelocity();
         const float currentSpeed = std::sqrtf(current.x * current.x + current.z * current.z);
@@ -332,22 +343,26 @@ struct CharacterControllerComponent {
         for (float value : {jumpMinAirTime, fallVelThreshold, groundVelThreshold, ledgeFallThreshold,
             minGroundNormalY, groundContactGrace, jumpGroundIgnoreTime, groundedVelSnap, intentionalJumpMaxTime,
             verticalSpeed, m_jumpTimer, m_groundContactTimer, m_blockingContactTimer, m_ignoreGroundTimer, m_intentionalJumpTimer})
-            if (!std::isfinite(value)) return false;
+            if (!std::isfinite(value)) {
+                return false;
+            }
         for (const auto& value : {groundNormal, m_blockingContactNormal})
-            if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z) || !std::isfinite(value.LengthSq())) return false;
+            if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z) || !std::isfinite(value.LengthSq())) {
+                return false;
+            }
         return true;
     }
 
 private:
-    bool  m_wasFalling           = false;
-    bool  m_hasGroundContact     = false;
-    bool  m_isIntentionalJump    = false;
-    float m_jumpTimer            = 0.0f;
-    float m_groundContactTimer   = 0.0f;
-    float m_blockingContactTimer = 0.0f;
-    float m_ignoreGroundTimer    = 0.0f;
-    float m_intentionalJumpTimer = 0.0f;
-    math::Vector3 m_blockingContactNormal = math::Vector3::ZERO;
+    bool  m_wasFalling           = false; ///< 着地の変化を検出するために保持する前回更新の落下状態。
+    bool  m_hasGroundContact     = false; ///< 直近の更新で足元として有効な地面に接触していたか。
+    bool  m_isIntentionalJump    = false; ///< 移動や落下と区別して入力によるジャンプを処理している。
+    float m_jumpTimer            = 0.0f; ///< ジャンプの開始から接地を再評価するまでの経過時間（秒）。
+    float m_groundContactTimer   = 0.0f; ///< 直近の接地を有効とみなす猶予の残り時間（秒）。
+    float m_blockingContactTimer = 0.0f; ///< 移動を妨げる接触法線を有効とみなす猶予の残り時間（秒）。
+    float m_ignoreGroundTimer    = 0.0f; ///< ジャンプ直後などに地面の通知を無視する残り時間（秒）。
+    float m_intentionalJumpTimer = 0.0f; ///< 入力によるジャンプを検出してからの経過時間（秒）。
+    math::Vector3 m_blockingContactNormal = math::Vector3::ZERO; ///< 直近で移動を妨げた接触面のワールド法線。
 
     bool HasGroundContact() const
     {
@@ -357,11 +372,17 @@ private:
     void UpdateTimers(float dt)
     {
         m_groundContactTimer -= dt;
-        if (m_groundContactTimer < 0.0f) m_groundContactTimer = 0.0f;
+        if (m_groundContactTimer < 0.0f) {
+            m_groundContactTimer = 0.0f;
+        }
         m_blockingContactTimer -= dt;
-        if (m_blockingContactTimer < 0.0f) m_blockingContactTimer = 0.0f;
+        if (m_blockingContactTimer < 0.0f) {
+            m_blockingContactTimer = 0.0f;
+        }
         m_ignoreGroundTimer  -= dt;
-        if (m_ignoreGroundTimer  < 0.0f) m_ignoreGroundTimer  = 0.0f;
+        if (m_ignoreGroundTimer  < 0.0f) {
+            m_ignoreGroundTimer  = 0.0f;
+        }
     }
 
     /// @note 接地ステートマシン。接触タイマーと velocity.y を組み合わせて isGrounded を更新する。
@@ -394,8 +415,9 @@ private:
                 m_intentionalJumpTimer = 0.0f;
                 return;
             }
-            if (m_jumpTimer >= jumpMinAirTime && vy < fallVelThreshold)
+            if (m_jumpTimer >= jumpMinAirTime && vy < fallVelThreshold) {
                 m_wasFalling = true;
+            }
             if (m_wasFalling && std::fabsf(vy) < groundVelThreshold) {
                 isGrounded   = true;
                 m_wasFalling = false;
@@ -409,8 +431,12 @@ private:
     /// @note 接地中の微小な Y 速度をゼロへ寄せる。大きい降下速度は斜面追従のために残す。
     void StabilizeGroundedVelocity(physics::RigidBody* rb, float vy) const
     {
-        if (!isGrounded || !HasGroundContact()) return;
-        if (std::fabsf(vy) > groundedVelSnap) return;
+        if (!isGrounded || !HasGroundContact()) {
+            return;
+        }
+        if (std::fabsf(vy) > groundedVelSnap) {
+            return;
+        }
 
         math::Vector3 vel = rb->GetVelocity();
         vel.y = 0.0f;
@@ -420,7 +446,9 @@ private:
     /// @note 意図的ジャンプ状態の更新。接触補正の微小速度を JumpUp と誤認しないためのフラグ管理。
     void UpdateIntentionalJump(float vy, float dt)
     {
-        if (!m_isIntentionalJump) return;
+        if (!m_isIntentionalJump) {
+            return;
+        }
         m_intentionalJumpTimer += dt;
         if (isGrounded || vy < fallVelThreshold || m_intentionalJumpTimer >= intentionalJumpMaxTime) {
             m_isIntentionalJump    = false;
@@ -432,8 +460,12 @@ private:
     /// @note 接地中は 0。入力由来でない上昇も 0 に丸める。落下速度は Fall 判定へそのまま渡す。
     float ComputeVerticalSpeed(float vy) const
     {
-        if (isGrounded) return 0.0f;
-        if (vy > 0.0f && !m_isIntentionalJump) return 0.0f;
+        if (isGrounded) {
+            return 0.0f;
+        }
+        if (vy > 0.0f && !m_isIntentionalJump) {
+            return 0.0f;
+        }
         return vy;
     }
 
@@ -443,11 +475,14 @@ private:
     void RemoveVelocityIntoSurface(math::Vector3& velocity,
                                    const math::Vector3& surfaceNormal) const
     {
-        if (surfaceNormal.LengthSq() <= math::EPSILON) return;
+        if (surfaceNormal.LengthSq() <= math::EPSILON) {
+            return;
+        }
         const math::Vector3 normal = surfaceNormal.Normalized();
         const float intoSurface = math::Vector3::Dot(velocity, normal);
-        if (intoSurface < 0.0f)
+        if (intoSurface < 0.0f) {
             velocity -= normal * intoSurface;
+        }
     }
 
     /// @note 接地面に垂直な速度成分 (正負両方向) を除去する。
@@ -455,16 +490,24 @@ private:
     /// @note Landing 直後の再浮遊を防ぐ。
     void RemoveVelocityIntoGround(const math::Vector3& normal, GameObject* go) const
     {
-        if (!go) return;
+        if (!go) {
+            return;
+        }
         auto* rbc = go->GetComponent<RigidBodyComponent>();
-        if (!rbc || !rbc->enabled || !rbc->rigidBody) return;
+        if (!rbc || !rbc->enabled || !rbc->rigidBody) {
+            return;
+        }
 
         math::Vector3 vel = rbc->rigidBody->GetVelocity();
-        if (normal.LengthSq() <= math::EPSILON) return;
+        if (normal.LengthSq() <= math::EPSILON) {
+            return;
+        }
 
         const math::Vector3 n = normal.Normalized();
         const float dot = math::Vector3::Dot(vel, n);
-        if (std::fabsf(dot) < math::EPSILON) return;
+        if (std::fabsf(dot) < math::EPSILON) {
+            return;
+        }
 
         rbc->rigidBody->SetVelocity(vel - n * dot);
     }

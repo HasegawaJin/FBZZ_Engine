@@ -17,8 +17,9 @@ void TerrainComponent::InitDefaultSplat()
     const size_t slots = VertexCount() * static_cast<size_t>(TERRAIN_SPLAT_SLOTS);
     splatIndices.assign(slots, 0u);
     splatWeights.assign(slots, 0u);
-    for (size_t i = 0; i < slots; i += TERRAIN_SPLAT_SLOTS)
+    for (size_t i = 0; i < slots; i += TERRAIN_SPLAT_SLOTS) {
         splatWeights[i] = 255u;
+    }
     RequestSplatRebuild();
 }
 
@@ -30,7 +31,9 @@ bool TerrainComponent::HasValidSplat() const
 
 void TerrainComponent::EnsureSplat()
 {
-    if (!HasValidSplat()) InitDefaultSplat();
+    if (!HasValidSplat()) {
+        InitDefaultSplat();
+    }
 }
 
 void TerrainComponent::InitFlat(float height)
@@ -55,15 +58,20 @@ void TerrainComponent::Resize(int newColumns, int newRows)
     std::vector<float>        newHeight(newVerts, 0.0f);
     std::vector<std::uint8_t> newIndices(newVerts * TERRAIN_SPLAT_SLOTS, 0u);
     std::vector<std::uint8_t> newWeights(newVerts * TERRAIN_SPLAT_SLOTS, 0u);
-    for (size_t i = 0; i < newWeights.size(); i += TERRAIN_SPLAT_SLOTS)
+    for (size_t i = 0; i < newWeights.size(); i += TERRAIN_SPLAT_SLOTS) {
         newWeights[i] = 255u;
+    }
 
     for (int z = 0; z < copyRows; ++z) {
         for (int x = 0; x < copyCols; ++x) {
             const size_t src = static_cast<size_t>(z) * static_cast<size_t>(columns)    + static_cast<size_t>(x);
             const size_t dst = static_cast<size_t>(z) * static_cast<size_t>(newColumns) + static_cast<size_t>(x);
-            if (src < heightData.size()) newHeight[dst] = heightData[src];
-            if (!hadSplat) continue;
+            if (src < heightData.size()) {
+                newHeight[dst] = heightData[src];
+            }
+            if (!hadSplat) {
+                continue;
+            }
             for (int s = 0; s < TERRAIN_SPLAT_SLOTS; ++s) {
                 newIndices[dst * TERRAIN_SPLAT_SLOTS + s] = splatIndices[src * TERRAIN_SPLAT_SLOTS + s];
                 newWeights[dst * TERRAIN_SPLAT_SLOTS + s] = splatWeights[src * TERRAIN_SPLAT_SLOTS + s];
@@ -75,9 +83,10 @@ void TerrainComponent::Resize(int newColumns, int newRows)
     if (!holeData.empty() && newColumns > 1 && newRows > 1) {
         newHoles.assign(static_cast<size_t>(newColumns - 1) * static_cast<size_t>(newRows - 1), 0u);
         for (int cz = 0; cz < (std::min)(copyRows, newRows) - 1; ++cz)
-            for (int cx = 0; cx < (std::min)(copyCols, newColumns) - 1; ++cx)
+            for (int cx = 0; cx < (std::min)(copyCols, newColumns) - 1; ++cx) {
                 newHoles[static_cast<size_t>(cz) * static_cast<size_t>(newColumns - 1) + static_cast<size_t>(cx)] =
                     IsHoleCell(cx, cz) ? 1u : 0u;
+            }
     }
 
     columns      = newColumns;
@@ -103,7 +112,9 @@ math::Vector3 TerrainComponent::ComputeNormal(int x, int z) const
 /// @note 描画・コライダーと同じ分割 (lower: 00,01,10 / upper: 10,01,11) で補間する。
 float TerrainComponent::GetHeightAt(float localX, float localZ) const
 {
-    if (heightData.empty()) return 0.0f;
+    if (heightData.empty()) {
+        return 0.0f;
+    }
 
     const float gx = std::clamp(localX / cellSize, 0.0f, static_cast<float>(columns - 1));
     const float gz = std::clamp(localZ / cellSize, 0.0f, static_cast<float>(rows - 1));
@@ -123,8 +134,9 @@ float TerrainComponent::GetHeightAt(float localX, float localZ) const
     float h01 = h(x0,     z0 + 1);
     float h11 = h(x0 + 1, z0 + 1);
 
-    if (fx + fz <= 1.0f)
+    if (fx + fz <= 1.0f) {
         return h00 + fx * (h10 - h00) + fz * (h01 - h00);
+    }
 
     return h10 * (1.0f - fz)
          + h01 * (1.0f - fx)
@@ -134,7 +146,9 @@ float TerrainComponent::GetHeightAt(float localX, float localZ) const
 /// @note 隣接頂点の法線をバイリニア補間する。有限差分の局所ノイズも補間で滑らかになる。
 math::Vector3 TerrainComponent::GetNormalAt(float localX, float localZ) const
 {
-    if (heightData.empty()) return { 0.0f, 1.0f, 0.0f };
+    if (heightData.empty()) {
+        return { 0.0f, 1.0f, 0.0f };
+    }
 
     float gx = localX / cellSize;
     float gz = localZ / cellSize;
@@ -167,7 +181,9 @@ math::Vector3 TerrainComponent::GetNormalAt(float localX, float localZ) const
 
 float TerrainComponent::GetLayerWeightAtGrid(int x, int z, int layer) const
 {
-    if (!HasValidSplat() || x < 0 || z < 0 || x >= columns || z >= rows) return 0.0f;
+    if (!HasValidSplat() || x < 0 || z < 0 || x >= columns || z >= rows) {
+        return 0.0f;
+    }
     const size_t base = (static_cast<size_t>(z) * static_cast<size_t>(columns) + static_cast<size_t>(x))
                       * TERRAIN_SPLAT_SLOTS;
     return terrain_splat::WeightOf(&splatIndices[base], &splatWeights[base], layer);
@@ -175,8 +191,12 @@ float TerrainComponent::GetLayerWeightAtGrid(int x, int z, int layer) const
 
 bool TerrainComponent::SetLayerMaterial(int layer, std::string materialPath)
 {
-    if (layer < 0 || layer > LayerCount()) return false;
-    if (layer == LayerCount()) return AddLayer(std::move(materialPath)) >= 0;
+    if (layer < 0 || layer > LayerCount()) {
+        return false;
+    }
+    if (layer == LayerCount()) {
+        return AddLayer(std::move(materialPath)) >= 0;
+    }
     layerMaterials[static_cast<size_t>(layer)] = std::move(materialPath);
     RequestSplatRebuild();
     RequestMaterialRebuild();
@@ -185,7 +205,9 @@ bool TerrainComponent::SetLayerMaterial(int layer, std::string materialPath)
 
 int TerrainComponent::AddLayer(std::string materialPath)
 {
-    if (LayerCount() >= TERRAIN_MAX_LAYERS) return -1;
+    if (LayerCount() >= TERRAIN_MAX_LAYERS) {
+        return -1;
+    }
     layerMaterials.push_back(std::move(materialPath));
     RequestSplatRebuild();
     RequestMaterialRebuild();
@@ -194,13 +216,17 @@ int TerrainComponent::AddLayer(std::string materialPath)
 
 bool TerrainComponent::RemoveLayer(int layer)
 {
-    if (layer < 0 || layer >= LayerCount()) return false;
+    if (layer < 0 || layer >= LayerCount()) {
+        return false;
+    }
     std::vector<int> oldToNew(static_cast<size_t>(LayerCount()));
-    for (int i = 0; i < LayerCount(); ++i)
+    for (int i = 0; i < LayerCount(); ++i) {
         oldToNew[static_cast<size_t>(i)] = i < layer ? i : (i == layer ? -1 : i - 1);
+    }
     if (HasValidSplat()) {
-        for (size_t base = 0; base < splatIndices.size(); base += TERRAIN_SPLAT_SLOTS)
+        for (size_t base = 0; base < splatIndices.size(); base += TERRAIN_SPLAT_SLOTS) {
             terrain_splat::Remap(&splatIndices[base], &splatWeights[base], oldToNew);
+        }
     }
     layerMaterials.erase(layerMaterials.begin() + layer);
     RequestSplatRebuild();
@@ -211,23 +237,30 @@ bool TerrainComponent::RemoveLayer(int layer)
 bool TerrainComponent::MoveLayer(int from, int to)
 {
     const int count = LayerCount();
-    if (from < 0 || from >= count || to < 0 || to >= count) return false;
-    if (from == to) return true;
+    if (from < 0 || from >= count || to < 0 || to >= count) {
+        return false;
+    }
+    if (from == to) {
+        return true;
+    }
     std::vector<int> order(static_cast<size_t>(count));
     std::iota(order.begin(), order.end(), 0);
     order.erase(order.begin() + from);
     order.insert(order.begin() + to, from);
-    /// @note order[new] = old。スプラットは old → new の向きで引くので逆写像を作る。
+    // order[new] = old。スプラットは old → new の向きで引くので逆写像を作る。
     std::vector<int> oldToNew(static_cast<size_t>(count));
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
         oldToNew[static_cast<size_t>(order[static_cast<size_t>(i)])] = i;
+    }
     if (HasValidSplat()) {
-        for (size_t base = 0; base < splatIndices.size(); base += TERRAIN_SPLAT_SLOTS)
+        for (size_t base = 0; base < splatIndices.size(); base += TERRAIN_SPLAT_SLOTS) {
             terrain_splat::Remap(&splatIndices[base], &splatWeights[base], oldToNew);
+        }
     }
     std::vector<std::string> reordered(static_cast<size_t>(count));
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
         reordered[static_cast<size_t>(i)] = std::move(layerMaterials[static_cast<size_t>(order[static_cast<size_t>(i)])]);
+    }
     layerMaterials = std::move(reordered);
     RequestSplatRebuild();
     RequestMaterialRebuild();
@@ -236,16 +269,22 @@ bool TerrainComponent::MoveLayer(int from, int to)
 
 bool TerrainComponent::IsHoleCell(int cx, int cz) const
 {
-    if (holeData.empty() || cx < 0 || cz < 0 || cx >= columns - 1 || cz >= rows - 1) return false;
+    if (holeData.empty() || cx < 0 || cz < 0 || cx >= columns - 1 || cz >= rows - 1) {
+        return false;
+    }
     const size_t index = static_cast<size_t>(cz) * static_cast<size_t>(columns - 1) + static_cast<size_t>(cx);
     return index < holeData.size() && holeData[index] != 0;
 }
 
 bool TerrainComponent::SetHoleCell(int cx, int cz, bool hole)
 {
-    if (cx < 0 || cz < 0 || cx >= columns - 1 || cz >= rows - 1) return false;
+    if (cx < 0 || cz < 0 || cx >= columns - 1 || cz >= rows - 1) {
+        return false;
+    }
     if (holeData.size() != CellCount()) {
-        if (!hole && holeData.empty()) return true;
+        if (!hole && holeData.empty()) {
+            return true;
+        }
         holeData.assign(CellCount(), 0u);
     }
     holeData[static_cast<size_t>(cz) * static_cast<size_t>(columns - 1) + static_cast<size_t>(cx)] = hole ? 1u : 0u;
@@ -254,7 +293,9 @@ bool TerrainComponent::SetHoleCell(int cx, int cz, bool hole)
 
 bool TerrainComponent::IsHoleAtLocal(float localX, float localZ) const
 {
-    if (holeData.empty() || cellSize <= 0.0f || localX < 0.0f || localZ < 0.0f) return false;
+    if (holeData.empty() || cellSize <= 0.0f || localX < 0.0f || localZ < 0.0f) {
+        return false;
+    }
     const int cx = static_cast<int>(localX / cellSize);
     const int cz = static_cast<int>(localZ / cellSize);
     return IsHoleCell(cx, cz);
@@ -269,7 +310,9 @@ size_t TerrainComponent::CountHoles() const
 bool TerrainComponent::SetSurfaceGeometry(std::vector<math::Vector3> positions,
     std::vector<uint32_t> indices, std::string material)
 {
-    if (!IsValidTerrainSurfaceGeometry(positions, indices)) return false;
+    if (!IsValidTerrainSurfaceGeometry(positions, indices)) {
+        return false;
+    }
     surfacePositions = std::move(positions);
     surfaceIndices = std::move(indices);
     surfaceMaterial = std::move(material);
@@ -279,9 +322,12 @@ bool TerrainComponent::SetSurfaceGeometry(std::vector<math::Vector3> positions,
 
 bool TerrainComponent::SetHeightAtGrid(int x, int z, float worldHeight)
 {
-    if (columns <= 0 || rows <= 0) return false;
-    if (heightData.size() != VertexCount())
+    if (columns <= 0 || rows <= 0) {
+        return false;
+    }
+    if (heightData.size() != VertexCount()) {
         InitFlat();
+    }
 
     x = (std::clamp)(x, 0, columns - 1);
     z = (std::clamp)(z, 0, rows - 1);
@@ -294,7 +340,9 @@ bool TerrainComponent::SetHeightAtGrid(int x, int z, float worldHeight)
 
 bool TerrainComponent::PaintLayerAtGrid(int x, int z, int layer, float weight)
 {
-    if (columns <= 0 || rows <= 0 || layer < 0 || layer >= (std::max)(LayerCount(), 1)) return false;
+    if (columns <= 0 || rows <= 0 || layer < 0 || layer >= (std::max)(LayerCount(), 1)) {
+        return false;
+    }
     EnsureSplat();
 
     x = (std::clamp)(x, 0, columns - 1);
@@ -306,4 +354,4 @@ bool TerrainComponent::PaintLayerAtGrid(int x, int z, int layer, float weight)
     return true;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

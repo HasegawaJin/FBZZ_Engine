@@ -116,7 +116,9 @@ protected:
     asset::UIThemeAsset* Resolve(const std::string& path) const
     {
         auto* data = asset::DataAssetRegistry::Resolve(path);
-        if (!data || std::string(data->GetTypeName()) != asset::UIThemeAsset::TYPE_NAME) return nullptr;
+        if (!data || std::string(data->GetTypeName()) != asset::UIThemeAsset::TYPE_NAME) {
+            return nullptr;
+        }
         return static_cast<asset::UIThemeAsset*>(data);
     }
     void Create(const std::string& path, const asset::UIThemeStyle& style) const
@@ -320,7 +322,7 @@ TEST_F(UIThemeAssetTest, TextAndLayoutOverridesPreserveOnlyTheirSelectedLocalGro
 /// @brief Scene round trip keeps GUID theme assignment inline fallbacks and override flags.
 TEST_F(UIThemeAssetTest, SceneRoundTripKeepsGuidThemeAssignmentInlineFallbacksAndOverrideFlags)
 {
-    /// @note Scene load decodes GUIDs to project-relative paths; AssetManager must resolve those against the same temporary root as AssetDatabase.
+    // Scene load decodes GUIDs to project-relative paths; AssetManager must resolve those against the same temporary root as AssetDatabase.
     ThemeAssetRuntime runtime(m_temp.File("Assets").generic_string());
     Create(File(), Distinct());
     asset::AssetDatabase::Init(m_temp.File("Assets").generic_string());

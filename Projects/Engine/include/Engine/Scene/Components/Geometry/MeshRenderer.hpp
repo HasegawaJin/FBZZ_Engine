@@ -21,8 +21,7 @@ namespace fbzz::scene {
 struct MeshRenderer {
     renderer::Mesh* mesh = nullptr;
     bool enabled = true;
-    /// @note LODSystem 専用のランタイム可視性。enabled と分離してユーザー設定を保持する。
-    bool lodVisible = true;
+    bool lodVisible = true; ///< LODSystem 専用のランタイム可視性。enabled と分離してユーザー設定を保持する。
     /// @note LOD クロスフェード中のディザしきい値。LODSystem が毎フレーム書き、
     /// @note 描画パスが PerObjectCB へ転送する。0 = 遷移していない。
     float lodDither = 0.0f;
@@ -30,8 +29,7 @@ struct MeshRenderer {
     /// @note ShadowPass はシーンを光源視点でもう一度描くため、影に寄与しないオブジェクトを
     /// @note 外すだけで描画量が減る。既定 true で従来と同じ見た目を保つ。
     bool castShadows = true;
-    /// @note 不変な不透明メッシュだけを方向ライトの静的影ベイクに含める。
-    bool bakeStaticShadow = false;
+    bool bakeStaticShadow = false; ///< 不変な不透明メッシュだけを方向ライトの静的影ベイクに含める。
 
     /// @note "primitive:cube" / "primitive:sphere" / "models/foo.fbx:0"
     std::string meshPath;
@@ -47,8 +45,8 @@ struct MeshRenderer {
     /// @note Scene View / Game View は同じエンジンフレーム内で VelocityPass を 2 回実行する。
     /// @note 1 枚だと 1 回目の更新で「前フレーム」が上書きされ 2 回目の速度が必ず 0 になるため、
     /// @note エンジンフレームが変わったときだけ snapshot を prev へ送る。
-    math::Matrix4 prevWorldMatrix     = math::Matrix4::Identity(); ///< @note 今フレームが「前」として使う値
-    math::Matrix4 worldMatrixSnapshot = math::Matrix4::Identity(); ///< @note 次フレームの prevWorldMatrix
+    math::Matrix4 prevWorldMatrix     = math::Matrix4::Identity(); ///< 今フレームが「前」として使う値
+    math::Matrix4 worldMatrixSnapshot = math::Matrix4::Identity(); ///< 次フレームの prevWorldMatrix
     std::uint64_t prevWorldFrame      = (std::numeric_limits<std::uint64_t>::max)();
 
     const char* GetTypeName() const { return "Mesh Renderer"; }

@@ -32,7 +32,7 @@ inline constexpr uint32_t kDecodeRulesVersion = 2;
 [[nodiscard]] FBZZ_ENGINE_API std::string CacheFileName(const std::string& sourcePath);
 /// @brief 配布先の元画像の隣に品質キャッシュを生成する。対応外の拡張子・ネイティブ DDS は何もせず成功する。
 /// @note 出力先で世代を計算するため、開発 PC の絶対パスへ依存しない。
-/// @param settingsSourcePath 空でなければコピー元の画像パス。meta のコピー順に依存せず生成設定を取得する。
+/// @param[in] settingsSourcePath 空でなければコピー元の画像パス。meta のコピー順に依存せず生成設定を取得する。
 [[nodiscard]] FBZZ_ENGINE_API bool BakeDistributionTexture(const std::string& sourcePath, std::string& outError,
     const std::string& settingsSourcePath = {});
 
@@ -47,8 +47,8 @@ inline constexpr uint32_t kDecodeRulesVersion = 2;
 
 /// @brief 品質段 quality の表現だけをキャッシュから読む。
 /// @return キャッシュが無い・古い・壊れている・その段を持たないなら false。
-/// @param outBytesRead 実際にディスクから読んだバイト数 (null 可)。
+/// @param[out] outBytesRead 実際にディスクから読んだバイト数 (null 可)。
 [[nodiscard]] FBZZ_ENGINE_API bool ReadQuality(const std::string& cachePath, uint64_t sourceStamp, AssetQuality quality,
                                renderer::DecodedTextureRGBA8& out, uint64_t* outBytesRead = nullptr);
 
-} /// @note namespace fbzz::asset::texturecache
+} // namespace fbzz::asset::texturecache

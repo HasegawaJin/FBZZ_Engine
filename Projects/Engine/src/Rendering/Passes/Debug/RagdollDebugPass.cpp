@@ -38,22 +38,31 @@ bool RagdollDebugPass::IsEnabled(const RenderPassContext& ctx) const
 void RagdollDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 {
     const auto entities = ctx.scene.GetEntities<RagdollComponent>();
-    if (entities.empty()) return;
+    if (entities.empty()) {
+        return;
+    }
 
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : entities) {
         GameObject* object = ctx.scene.GetGameObject(id);
-        if (!object || !object->activeInHierarchy()) continue;
+        if (!object || !object->activeInHierarchy()) {
+            continue;
+        }
 
         const auto* ragdoll = object->GetComponent<RagdollComponent>();
-        if (!ragdoll || !ragdoll->runtime.rig || !ragdoll->runtime.rig->IsBuilt()) continue;
-        /// @note 止まっている間の剛体は «最後に倒れた形» の残骸なので描かない。
-        if (!ragdoll->IsActive()) continue;
+        if (!ragdoll || !ragdoll->runtime.rig || !ragdoll->runtime.rig->IsBuilt()) {
+            continue;
+        }
+        // 止まっている間の剛体は «最後に倒れた形» の残骸なので描かない。
+        if (!ragdoll->IsActive()) {
+            continue;
+        }
 
         m_lines.clear();
         ragdoll->runtime.rig->BuildDebugLines(m_lines);
-        for (const RagdollDebugLine& line : m_lines)
+        for (const RagdollDebugLine& line : m_lines) {
             renderer::DebugDraw::Line(ctx.renderer, line.from, line.to, ColorOf(line.kind));
+        }
     }
     renderer::DebugDraw::Flush();
 }

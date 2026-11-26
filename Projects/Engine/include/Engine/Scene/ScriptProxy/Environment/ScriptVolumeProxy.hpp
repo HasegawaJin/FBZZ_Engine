@@ -12,7 +12,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptVolumeProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 体積操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
 
@@ -37,4 +37,4 @@ struct ScriptVolumeProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetElapsed() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

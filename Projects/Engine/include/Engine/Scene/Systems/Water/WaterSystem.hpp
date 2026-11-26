@@ -28,7 +28,7 @@ struct Transform;
 class Scene;
 
 /// @brief 各水面の制御点とワールド姿勢から不変のスプライン形状を構築または再利用する。
-/// @param scene WaterComponent のスプラインスナップショットを準備する対象 Scene。
+/// @param[in,out] scene WaterComponent のスプラインスナップショットを準備する対象 Scene。
 FBZZ_ENGINE_API void PrepareWaterSplineSnapshots(Scene& scene);
 /// @brief 元のスプラインを更新した後、Zone の共有形状とメンバーの所有関係を準備する。
 FBZZ_ENGINE_API void PrepareWaterZoneSnapshots(Scene& scene);
@@ -41,8 +41,8 @@ FBZZ_ENGINE_API void EnsureWaterSimulationSurfaces(Scene& scene);
 /// @brief Zone メンバーの有効な共有所有者を返す。存在しない場合は自身の Water を返す。
 [[nodiscard]] FBZZ_ENGINE_API WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity);
 /// @brief ワールド空間の現在値を照会する前に、水面の不変なスプライン形状を構築または再利用する。
-/// @param water 共有ランタイムスナップショットを受け取る水面コンポーネント。
-/// @param transform スナップショットの検証や再構築に使う現在のワールド姿勢。
+/// @param[in,out] water 共有ランタイムスナップショットを受け取る水面コンポーネント。
+/// @param[in] transform スナップショットの検証や再構築に使う現在のワールド姿勢。
 /// @return 対応する矩形または有効な現在のスプラインスナップショットで true。
 [[nodiscard]] FBZZ_ENGINE_API bool PrepareWaterSplineSnapshot(WaterComponent& water, const Transform& transform);
 /// @brief 現在の水面形状を準備する前に、水面の制作時またはバインド先の制御点を解決する。
@@ -75,7 +75,7 @@ inline constexpr const char* kFlowDirection = "flowDirection";
 struct WaterWind {
     bool          active    = false;
     math::Vector3 direction = { 1.0f, 0.0f, 0.0f };
-    float         speed     = 0.0f; ///< @note 水面での流速 [m/s]
+    float         speed     = 0.0f; ///< 水面での流速 [m/s]
 };
 
 /// @note 旧 API との互換用に保持する基準風速 [m/s]。
@@ -100,7 +100,7 @@ FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::Mater
 [[nodiscard]] FBZZ_ENGINE_API math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform);
 
 /// @note ワールド座標に着水の波紋を 1 つ置く。大きさはメートルで決め、水面の広さに依らず揃える。
-/// @param strength [0,1]
+/// @param[in] strength [0,1]
 /// @note 輪の正本は water.ripples (ワールド座標)。描画パスはそれを読んで焼くだけなので、
 /// @note       ここで両方へ積む必要はない。
 FBZZ_ENGINE_API void EmitWaterRipple(WaterComponent& water, const Transform& transform,
@@ -123,7 +123,7 @@ FBZZ_ENGINE_API void ResolveWaterSurfaceFlows(WaterComponent& water, const Trans
 
 /// @note 水面の «その点の» 流速 [m/s] (ワールド、y は常に 0)。
 
-/// @param surfaceBaseY 水面 GameObject のワールド Y。流れは水面の高さでサンプルする。
+/// @param[in] surfaceBaseY 水面 GameObject のワールド Y。流れは水面の高さでサンプルする。
 /// @note Rectangle は .mat current、Spline は点ごとの authored flow を基流にし、明示 FlowField を足す。
 [[nodiscard]] FBZZ_ENGINE_API math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
                                                 const std::vector<ActiveFlowField>& fields,
@@ -159,16 +159,13 @@ private:
         struct Diagnostic {
             const asset::DataAsset* source;
             std::uint64_t settingsSignature;
-            /// @note 理由は静的な文字列リテラルを参照する。
-            std::string_view reason;
+            std::string_view reason; ///< 理由は静的な文字列リテラルを参照する。
         };
-        /// @note コンポーネントの再追加、参照変更、プリセット変更で試行と最後の正常値を破棄する。
-        std::string referencePath;
+        std::string referencePath; ///< コンポーネントの再追加、参照変更、プリセット変更で試行と最後の正常値を破棄する。
         WaterSeaPreset preset = WaterSeaPreset::AUTHORED;
         std::uint64_t componentLifetime = 0;
         std::optional<GenerationAttempt> attempt;
-        /// @note 水面ごとの振幅倍率や現在の材質を適用する前の生成結果。
-        std::optional<GeneratedWaves> lastGood;
+        std::optional<GeneratedWaves> lastGood; ///< 水面ごとの振幅倍率や現在の材質を適用する前の生成結果。
         std::optional<Diagnostic> diagnostic;
         bool seen = false;
     };
@@ -180,11 +177,9 @@ private:
         float wakeTimer = 0.0f;
         bool  seen      = false;
     };
-    /// @note 剛体ごとの «前のフレームで水中に居たか»。キーは EntityID (generation << 32 | index)。
-    std::unordered_map<uint64_t, BodyState> m_bodies;
+    std::unordered_map<uint64_t, BodyState> m_bodies; ///< 剛体ごとの «前のフレームで水中に居たか»。キーは EntityID (generation << 32 | index)。
     std::unordered_map<uint64_t, WaveAssetCache> m_waveAssets;
-    /// @note WaterSystem は Scene 切替後も生存するため、last-good の寿命を Scene に揃える。
-    std::uint64_t m_waveAssetSceneGeneration = 0;
+    std::uint64_t m_waveAssetSceneGeneration = 0; ///< WaterSystem は Scene 切替後も生存するため、last-good の寿命を Scene に揃える。
 };
 
 }

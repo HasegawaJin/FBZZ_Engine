@@ -21,7 +21,7 @@ class GameObject;
 class Script;
 
 struct ScriptJointProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 物理ジョイント操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note 相対位置と相対回転を固定する (溶接)。呼んだ瞬間の相対姿勢を保つ。
     FBZZ_ENGINE_API void ConnectFixed(GameObject* target) const;
@@ -75,4 +75,4 @@ struct ScriptJointProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetCurrentDistance() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

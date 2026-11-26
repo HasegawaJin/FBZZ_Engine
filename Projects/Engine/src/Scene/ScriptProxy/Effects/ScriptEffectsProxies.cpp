@@ -59,64 +59,84 @@ ReflectionProbeComponent* SelfReflectionProbe(const Script* script)
     return SelfComponent<ReflectionProbeComponent>(script);
 }
 
-} /// @note namespace
+} // namespace
 void ScriptParticleProxy::SetEmitRate(float rate) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.emitRate = rate;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.emitRate = rate;
+    }
 }
 
 
 void ScriptParticleProxy::SetEmitPosition(const math::Vector3& position) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.emitPosition = position;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.emitPosition = position;
+    }
 }
 
 
 void ScriptParticleProxy::SetEmitVelocity(const math::Vector3& velocity) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.emitVelocity = velocity;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.emitVelocity = velocity;
+    }
 }
 
 
 void ScriptParticleProxy::SetVelocitySpread(float spread) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.velocitySpread = (std::max)(spread, 0.0f);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.velocitySpread = (std::max)(spread, 0.0f);
+    }
 }
 
 
 void ScriptParticleProxy::SetEnabled(bool enabled) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.enabled = enabled;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.enabled = enabled;
+    }
 }
 
 
 void ScriptParticleProxy::Play(bool restart) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->Play(restart);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->Play(restart);
+    }
 }
 
 
 void ScriptParticleProxy::Stop(bool clear) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->Stop(clear);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->Stop(clear);
+    }
 }
 
 
 void ScriptParticleProxy::Burst(int count) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->Burst(count);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->Burst(count);
+    }
 }
 
 
 void ScriptParticleProxy::Clear() const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->ClearParticles();
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->ClearParticles();
+    }
 }
 
 
 void ScriptParticleProxy::SetGravity(const math::Vector3& gravity) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.SetGravityAcceleration(gravity);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.SetGravityAcceleration(gravity);
+    }
 }
 
 
@@ -140,7 +160,9 @@ void ScriptParticleProxy::SetSize(float start, float end) const
 
 void ScriptParticleProxy::SetLifetime(float seconds) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.lifetime = (std::max)(seconds, 0.01f);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.lifetime = (std::max)(seconds, 0.01f);
+    }
 }
 
 
@@ -169,7 +191,9 @@ void ScriptParticleProxy::SetPlayback(bool loop, float duration, bool clearOnSto
 
 void ScriptParticleProxy::SetShape(ParticleEmitterShape shape) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.shape = shape;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.shape = shape;
+    }
 }
 
 
@@ -215,7 +239,7 @@ void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex
         p->settings.meshShapeScale = (std::max)(scale, 0.0001f);
         p->settings.meshShapeFollowSkinnedAnimation = followSkinnedAnimation;
         p->settings.meshShapeNormalVelocity = normalVelocity;
-        /// @note パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
+        // パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
         p->runtime.loadedMeshShapePath.clear();
         p->runtime.loadedMeshShapeIndex = -2;
         p->runtime.meshShapeVertices.clear();
@@ -226,21 +250,26 @@ void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex
 
 void ScriptParticleProxy::SetMeshShapeNormalVelocity(float normalVelocity) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script))
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->settings.meshShapeNormalVelocity = normalVelocity;
+    }
 }
 
 
 void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.sortMode = sortMode;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.sortMode = sortMode;
+    }
 }
 
 
 void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        if (p->settings.simulationMode != simulationMode) p->runtime.gpuClearPending = true;
+        if (p->settings.simulationMode != simulationMode) {
+            p->runtime.gpuClearPending = true;
+        }
         p->settings.simulationMode = simulationMode;
     }
 }
@@ -250,8 +279,9 @@ void ScriptParticleProxy::SetSimulationSpace(ParticleSimulationSpace space) cons
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->settings.simulationSpace = space;
-        if (space == ParticleSimulationSpace::Local)
+        if (space == ParticleSimulationSpace::Local) {
             p->settings.simulationMode = ParticleSimulationMode::Cpu;
+        }
     }
 }
 
@@ -274,24 +304,27 @@ void ScriptParticleProxy::SetCollision(ParticleCollisionMode mode,
         p->settings.collisionResponse = response;
         p->settings.collisionRadius = (std::max)(radius, 0.0f);
         p->settings.collisionBounciness = (std::max)(0.0f, (std::min)(bounciness, 1.0f));
-        if (mode == ParticleCollisionMode::Physics)
+        if (mode == ParticleCollisionMode::Physics) {
             p->settings.simulationMode = ParticleSimulationMode::Cpu;
+        }
     }
 }
 
 
 int ScriptParticleProxy::GetCollisionCount() const
 {
-    if (const auto* p = SelfComponent<ParticleEmitter>(script))
+    if (const auto* p = SelfComponent<ParticleEmitter>(script)) {
         return p->runtime.collisionCountThisFrame;
+    }
     return 0;
 }
 
 
 void ScriptParticleProxy::SetRateOverDistance(float particlesPerMeter) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script))
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->settings.rateOverDistance = (std::max)(particlesPerMeter, 0.0f);
+    }
 }
 
 
@@ -321,9 +354,10 @@ void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
 
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
 {
-    /// @note 旧 API 名のまま。減衰は «流れへ寄る速さ» になったので flowCoupling を触る。
-    if (auto* p = SelfComponent<ParticleEmitter>(script))
+    // 旧 API 名のまま。減衰は «流れへ寄る速さ» になったので flowCoupling を触る。
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->settings.flowCoupling = (std::max)(damping, 0.0f);
+    }
 }
 
 
@@ -349,13 +383,17 @@ void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed)
 
 void ScriptParticleProxy::SetReceiveFlowFields(bool receive) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.receiveFlowFields = receive;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.receiveFlowFields = receive;
+    }
 }
 
 
 void ScriptParticleProxy::SetFlowFieldChannels(uint32_t channels) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.flowFieldChannels = channels;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->settings.flowFieldChannels = channels;
+    }
 }
 
 
@@ -425,10 +463,12 @@ ParticleSimulationMode ScriptParticleProxy::GetSimulationMode() const
 ParticleGpuFallbackReason ScriptParticleProxy::GetGpuFallbackReason() const
 {
     const auto* p = SelfComponent<ParticleEmitter>(script);
-    if (!p) return ParticleGpuFallbackReason::NotRequested;
-    /// @note ParticlePass と同じ引数で呼ぶ。runtime.material を渡さないと .mat 由来の 3 条件
-    /// @note (フリップブック補間・モーションベクター・自己影) が判定から抜け、
-    /// @note 実際は CPU で回っているのに「GPU で回る」と答えてしまう。
+    if (!p) {
+        return ParticleGpuFallbackReason::NotRequested;
+    }
+    // ParticlePass と同じ引数で呼ぶ。runtime.material を渡さないと .mat 由来の 3 条件
+    // (フリップブック補間・モーションベクター・自己影) が判定から抜け、
+    // 実際は CPU で回っているのに「GPU で回る」と答えてしまう。
     return GetParticleGpuFallbackReason(p->settings, &p->runtime.material);
 }
 
@@ -454,36 +494,49 @@ const char* ScriptParticleProxy::GetGpuFallbackDescription() const
 void ScriptVFXProxy::Play(bool restart) const
 {
     if (auto* vfx = SelfComponent<VFXComponent>(script)) {
-        if (restart) vfx->Restart();
-        else vfx->Resume();
+        if (restart) {
+            vfx->Restart();
+        }
+        else {
+            vfx->Resume();
+        }
     }
 }
 
 
 void ScriptVFXProxy::Pause() const
 {
-    if (auto* vfx = SelfComponent<VFXComponent>(script)) vfx->Pause();
+    if (auto* vfx = SelfComponent<VFXComponent>(script)) {
+        vfx->Pause();
+    }
 }
 
 
 void ScriptVFXProxy::Stop() const
 {
-    if (auto* vfx = SelfComponent<VFXComponent>(script)) vfx->Stop();
+    if (auto* vfx = SelfComponent<VFXComponent>(script)) {
+        vfx->Stop();
+    }
 }
 
 
 void ScriptVFXProxy::SetSpeed(float speed) const
 {
-    if (auto* vfx = SelfComponent<VFXComponent>(script))
+    if (auto* vfx = SelfComponent<VFXComponent>(script)) {
         vfx->speed = (std::max)(speed, 0.0f);
+    }
 }
 
 
 bool ScriptVFXProxy::Trigger(std::string_view name) const
 {
-    if (name.empty()) return false;
+    if (name.empty()) {
+        return false;
+    }
     auto* vfx = SelfComponent<VFXComponent>(script);
-    if (vfx == nullptr) return false;
+    if (vfx == nullptr) {
+        return false;
+    }
     vfx->Trigger(name);
     return true;
 }
@@ -506,8 +559,10 @@ float ScriptVFXProxy::GetTime() const
 float ScriptVFXProxy::GetDuration() const
 {
     const auto* vfx = SelfComponent<VFXComponent>(script);
-    if (vfx == nullptr) return 0.0f;
-    /// @note duration が 0 のときは配下から算出した実効尺が正。
+    if (vfx == nullptr) {
+        return 0.0f;
+    }
+    // duration が 0 のときは配下から算出した実効尺が正。
     return vfx->duration > 0.0f ? vfx->duration : vfx->resolvedDuration;
 }
 
@@ -524,8 +579,9 @@ void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
     if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->enabled = enabled;
         t->clearOnDisable = clearWhenDisabled;
-        if (!enabled && clearWhenDisabled)
+        if (!enabled && clearWhenDisabled) {
             Clear();
+        }
     }
 }
 
@@ -543,15 +599,17 @@ void ScriptTrailProxy::Clear() const
 
 void ScriptTrailProxy::SetDuration(float seconds) const
 {
-    if (auto* t = SelfComponent<TrailComponent>(script))
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->duration = (std::max)(seconds, 0.01f);
+    }
 }
 
 
 void ScriptTrailProxy::SetMaxPoints(int maxPoints) const
 {
-    if (auto* t = SelfComponent<TrailComponent>(script))
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->maxPoints = (std::max)(maxPoints, 2);
+    }
 }
 
 
@@ -575,8 +633,9 @@ void ScriptTrailProxy::SetWidth(float start, float end) const
 
 void ScriptTrailProxy::SetWidthEasing(TrailWidthEasing easing) const
 {
-    if (auto* t = SelfComponent<TrailComponent>(script))
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->widthEasing = easing;
+    }
 }
 
 
@@ -601,15 +660,17 @@ void ScriptTrailProxy::SetMaterial(std::string_view materialPath) const
 
 void ScriptTrailProxy::SetUVMode(TrailUVMode mode) const
 {
-    if (auto* t = SelfComponent<TrailComponent>(script))
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->uvMode = mode;
+    }
 }
 
 
 void ScriptTrailProxy::SetAlignment(TrailAlignment alignment) const
 {
-    if (auto* t = SelfComponent<TrailComponent>(script))
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->alignment = alignment;
+    }
 }
 
 
@@ -627,8 +688,9 @@ void ScriptTrailProxy::SetWorldUp() const
 
 void ScriptTrailProxy::SetSmoothSubdivisions(int subdivisions) const
 {
-    if (auto* t = SelfComponent<TrailComponent>(script))
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->smoothSubdivisions = (std::max)(subdivisions, 0);
+    }
 }
 
 
@@ -676,23 +738,26 @@ void ScriptMeshTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) cons
     if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->enabled = enabled;
         t->clearOnDisable = clearWhenDisabled;
-        if (!enabled && clearWhenDisabled)
+        if (!enabled && clearWhenDisabled) {
             Clear();
+        }
     }
 }
 
 
 void ScriptMeshTrailProxy::Clear() const
 {
-    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->clearRequested = true;
+    }
 }
 
 
 void ScriptMeshTrailProxy::SetDuration(float seconds) const
 {
-    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->duration = (std::max)(seconds, 0.01f);
+    }
 }
 
 
@@ -707,8 +772,9 @@ void ScriptMeshTrailProxy::SetSampling(float sampleInterval, float minVertexDist
 
 void ScriptMeshTrailProxy::SetMaxSamples(int maxSamples) const
 {
-    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->maxSamples = (std::max)(maxSamples, 1);
+    }
 }
 
 
@@ -723,26 +789,30 @@ void ScriptMeshTrailProxy::SetColor(const math::Vector4& start, const math::Vect
 
 void ScriptMeshTrailProxy::SetDoubleSided(bool doubleSided) const
 {
-    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->doubleSided = doubleSided;
+    }
 }
 
 
 void ScriptMeshTrailProxy::AddExcludedMeshIndex(int meshIndex) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
-        if (meshIndex < 0)
+        if (meshIndex < 0) {
             return;
-        if (std::find(t->excludedMeshIndices.begin(), t->excludedMeshIndices.end(), meshIndex) == t->excludedMeshIndices.end())
+        }
+        if (std::find(t->excludedMeshIndices.begin(), t->excludedMeshIndices.end(), meshIndex) == t->excludedMeshIndices.end()) {
             t->excludedMeshIndices.push_back(meshIndex);
+        }
     }
 }
 
 
 void ScriptMeshTrailProxy::ClearExcludedMeshIndices() const
 {
-    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->excludedMeshIndices.clear();
+    }
 }
 
 
@@ -779,41 +849,50 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
                                   float depth,
                                   float rollDegrees) const
 {
-    if (!script || !script->m_scene) return EntityRef{};
+    if (!script || !script->m_scene) {
+        return EntityRef{};
+    }
     Scene& scene = *script->m_scene;
 
-    /// @note 投影軸はデカールのローカル +Y。法線をそのまま +Y へ向けるので、床への着弾は
-    /// @note 無回転になる (BossShockwave / DecalScorch が置いている床デカールと同じ規約)。
+    // 投影軸はデカールのローカル +Y。法線をそのまま +Y へ向けるので、床への着弾は
+    // 無回転になる (BossShockwave / DecalScorch が置いている床デカールと同じ規約)。
     const math::Vector3 axis = normal.NormalizedOr(math::Vector3::UP);
 
-    /// @note ローカル +Z は投影 UV の V 軸。法線に直交していれば向きは何でもよいので、
-    /// @note 軸に平行になりにくい 2 本から選ぶ (真上 / 真横の面で基底が潰れるのを避ける)。
+    // ローカル +Z は投影 UV の V 軸。法線に直交していれば向きは何でもよいので、
+    // 軸に平行になりにくい 2 本から選ぶ (真上 / 真横の面で基底が潰れるのを避ける)。
     math::Vector3 forward = math::Vector3::Cross(axis, math::Vector3::RIGHT);
-    if (forward.LengthSq() < 1.0e-6f)
+    if (forward.LengthSq() < 1.0e-6f) {
         forward = math::Vector3::Cross(axis, math::Vector3::FORWARD);
+    }
     forward = forward.NormalizedOr(math::Vector3::FORWARD);
 
     math::Quaternion rotation =
         math::Quaternion::LookRotation(forward, axis).Normalized();
-    /// @note roll はローカル +Y (= 投影軸) まわり。右から掛けてローカル回転として足す。
+    // roll はローカル +Y (= 投影軸) まわり。右から掛けてローカル回転として足す。
     if (rollDegrees != 0.0f) {
         rotation = (rotation * math::Quaternion::FromAxisAngle(
                         math::Vector3::UP, rollDegrees * math::DEG2RAD)).Normalized();
     }
 
     GameObject* created = scene.TryCreateGameObject("Decal");
-    if (!created) return EntityRef{};
+    if (!created) {
+        return EntityRef{};
+    }
     created->SetRuntimeGenerated(true);
     const EntityID id = created->GetID();
     scene.AddComponent<DecalComponent>(id, DecalComponent{});
 
     GameObject* spawned = scene.GetGameObject(id);
-    if (!spawned) return EntityRef{};
+    if (!spawned) {
+        return EntityRef{};
+    }
     DecalComponent* decal = spawned->GetComponent<DecalComponent>();
-    if (!decal) return EntityRef{};
+    if (!decal) {
+        return EntityRef{};
+    }
 
     const float extent = (std::max)(size, 0.001f);
-    /// @note worldPosition だけでは動かない。PrePhysics が local から組み直すため position も書く。
+    // worldPosition だけでは動かない。PrePhysics が local から組み直すため position も書く。
     spawned->transform.position      = point;
     spawned->transform.worldPosition = point;
     spawned->transform.rotation      = rotation;
@@ -829,29 +908,39 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
 
 void ScriptDecalProxy::SetEnabled(bool enabled) const
 {
-    if (auto* d = SelfDecal(script)) d->enabled = enabled;
+    if (auto* d = SelfDecal(script)) {
+        d->enabled = enabled;
+    }
 }
 
 void ScriptDecalProxy::SetLifetime(float seconds) const
 {
-    if (auto* d = SelfDecal(script)) d->lifetime = seconds;
+    if (auto* d = SelfDecal(script)) {
+        d->lifetime = seconds;
+    }
 }
 
 void ScriptDecalProxy::SetFadeTime(float fadeTime) const
 {
-    if (auto* d = SelfDecal(script)) d->fadeTime = fadeTime;
+    if (auto* d = SelfDecal(script)) {
+        d->fadeTime = fadeTime;
+    }
 }
 
 void ScriptDecalProxy::SetFadeInTime(float seconds) const
 {
-    if (auto* d = SelfDecal(script)) d->fadeInTime = (std::max)(seconds, 0.0f);
+    if (auto* d = SelfDecal(script)) {
+        d->fadeInTime = (std::max)(seconds, 0.0f);
+    }
 }
 
 void ScriptDecalProxy::SetFlipbook(int frameCount, int framesPerRow,
                                    float frameRate, bool loop) const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     d->frameCount   = (std::max)(frameCount, 0);
     d->framesPerRow = std::clamp(framesPerRow, 1, (std::max)(d->frameCount, 1));
     d->frameRate    = (std::max)(frameRate, 0.0f);
@@ -860,57 +949,77 @@ void ScriptDecalProxy::SetFlipbook(int frameCount, int framesPerRow,
 
 void ScriptDecalProxy::SetSortOrder(int order) const
 {
-    if (auto* d = SelfDecal(script)) d->sortOrder = order;
+    if (auto* d = SelfDecal(script)) {
+        d->sortOrder = order;
+    }
 }
 
 void ScriptDecalProxy::ResetAge() const
 {
-    if (auto* d = SelfDecal(script)) d->age = 0.0f;
+    if (auto* d = SelfDecal(script)) {
+        d->age = 0.0f;
+    }
 }
 
 void ScriptDecalProxy::SetAlbedoColor(float r, float g, float b, float a) const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     d->albedoColor[0] = r; d->albedoColor[1] = g;
     d->albedoColor[2] = b; d->albedoColor[3] = a;
 }
 
 void ScriptDecalProxy::SetNormalStrength(float strength) const
 {
-    if (auto* d = SelfDecal(script)) d->normalStrength = strength;
+    if (auto* d = SelfDecal(script)) {
+        d->normalStrength = strength;
+    }
 }
 
 void ScriptDecalProxy::SetEmissiveColor(float r, float g, float b) const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     d->emissiveColor[0] = r; d->emissiveColor[1] = g; d->emissiveColor[2] = b;
 }
 
 void ScriptDecalProxy::SetEmissiveScale(float scale) const
 {
-    if (auto* d = SelfDecal(script)) d->emissiveScale = scale;
+    if (auto* d = SelfDecal(script)) {
+        d->emissiveScale = scale;
+    }
 }
 
 void ScriptDecalProxy::SetAlbedoTexture(std::string_view path) const
 {
-    if (auto* d = SelfDecal(script)) d->albedoTexPath = std::string(path);
+    if (auto* d = SelfDecal(script)) {
+        d->albedoTexPath = std::string(path);
+    }
 }
 
 void ScriptDecalProxy::SetNormalTexture(std::string_view path) const
 {
-    if (auto* d = SelfDecal(script)) d->normalTexPath = std::string(path);
+    if (auto* d = SelfDecal(script)) {
+        d->normalTexPath = std::string(path);
+    }
 }
 
 void ScriptDecalProxy::SetEmissiveTexture(std::string_view path) const
 {
-    if (auto* d = SelfDecal(script)) d->emissiveTexPath = std::string(path);
+    if (auto* d = SelfDecal(script)) {
+        d->emissiveTexPath = std::string(path);
+    }
 }
 
 void ScriptDecalProxy::SetOpacity(float opacity) const
 {
-    if (auto* d = SelfDecal(script)) d->opacity = std::clamp(opacity, 0.0f, 1.0f);
+    if (auto* d = SelfDecal(script)) {
+        d->opacity = std::clamp(opacity, 0.0f, 1.0f);
+    }
 }
 
 bool ScriptDecalProxy::IsEnabled() const
@@ -946,39 +1055,51 @@ float ScriptDecalProxy::GetAge() const
 float ScriptDecalProxy::GetEffectiveOpacity() const
 {
     const auto* d = SelfDecal(script);
-    if (!d) return 0.0f;
-    /// @note DecalPass のライフタイムフェードと同じ式。片方だけ変えると
-    /// @note 「見た目は消えているのに Script は 1.0 を読む」というズレになる。
+    if (!d) {
+        return 0.0f;
+    }
+    // DecalPass のライフタイムフェードと同じ式。片方だけ変えると
+    // 「見た目は消えているのに Script は 1.0 を読む」というズレになる。
     float fade = 1.0f;
-    if (d->lifetime >= 0.0f && d->fadeTime > 0.0f)
+    if (d->lifetime >= 0.0f && d->fadeTime > 0.0f) {
         fade = (std::min)(1.0f, (d->lifetime - d->age) / d->fadeTime);
-    if (d->fadeInTime > 0.0f)
+    }
+    if (d->fadeInTime > 0.0f) {
         fade = (std::min)(fade, d->age / d->fadeInTime);
+    }
     return std::clamp(fade, 0.0f, 1.0f) * std::clamp(d->opacity, 0.0f, 1.0f);
 }
 
 void ScriptDecalProxy::SetAngleFade(float strength, float limitDegrees) const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     d->angleFadeStrength = std::clamp(strength, 0.0f, 1.0f);
     d->angleFadeDegrees  = std::clamp(limitDegrees, 0.0f, 89.0f);
 }
 
 void ScriptDecalProxy::SetReceiverLayerMask(uint32_t mask) const
 {
-    if (auto* d = SelfDecal(script)) d->receiverLayerMask = mask;
+    if (auto* d = SelfDecal(script)) {
+        d->receiverLayerMask = mask;
+    }
 }
 
 void ScriptDecalProxy::SetMaterial(std::string_view materialPath) const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     std::string next(materialPath);
-    if (d->materialPath == next) return;
+    if (d->materialPath == next) {
+        return;
+    }
     d->materialPath = std::move(next);
-    /// @note 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
-    /// @note 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
+    // 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
+    // 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
     d->materialParamOverrides.clear();
     d->materialTextureOverrides.clear();
 }
@@ -986,19 +1107,25 @@ void ScriptDecalProxy::SetMaterial(std::string_view materialPath) const
 
 void ScriptDecalProxy::SetMaterialFloat(std::string_view param, float value) const
 {
-    if (auto* d = SelfDecal(script)) AssignDecalMaterialOverride(*d, param, &value, 1);
+    if (auto* d = SelfDecal(script)) {
+        AssignDecalMaterialOverride(*d, param, &value, 1);
+    }
 }
 
 void ScriptDecalProxy::SetMaterialVector2(std::string_view param, float x, float y) const
 {
     const float values[2] = { x, y };
-    if (auto* d = SelfDecal(script)) AssignDecalMaterialOverride(*d, param, values, 2);
+    if (auto* d = SelfDecal(script)) {
+        AssignDecalMaterialOverride(*d, param, values, 2);
+    }
 }
 
 void ScriptDecalProxy::SetMaterialVector4(std::string_view param, const math::Vector4& value) const
 {
     const float values[4] = { value.x, value.y, value.z, value.w };
-    if (auto* d = SelfDecal(script)) AssignDecalMaterialOverride(*d, param, values, 4);
+    if (auto* d = SelfDecal(script)) {
+        AssignDecalMaterialOverride(*d, param, values, 4);
+    }
 }
 
 void ScriptDecalProxy::SetMaterialColor(std::string_view param, const math::Vector4& color) const
@@ -1008,14 +1135,17 @@ void ScriptDecalProxy::SetMaterialColor(std::string_view param, const math::Vect
 
 void ScriptDecalProxy::SetMaterialTexture(std::string_view slot, std::string_view texturePath) const
 {
-    if (auto* d = SelfDecal(script))
+    if (auto* d = SelfDecal(script)) {
         d->materialTextureOverrides[std::string(slot)].assign(texturePath.data(), texturePath.size());
+    }
 }
 
 void ScriptDecalProxy::ClearMaterialOverride(std::string_view param) const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     const std::string key(param);
     d->materialParamOverrides.erase(key);
     d->materialTextureOverrides.erase(key);
@@ -1024,7 +1154,9 @@ void ScriptDecalProxy::ClearMaterialOverride(std::string_view param) const
 void ScriptDecalProxy::ClearMaterialOverrides() const
 {
     auto* d = SelfDecal(script);
-    if (!d) return;
+    if (!d) {
+        return;
+    }
     d->materialParamOverrides.clear();
     d->materialTextureOverrides.clear();
 }
@@ -1033,37 +1165,51 @@ void ScriptDecalProxy::ClearMaterialOverrides() const
 
 void ScriptVolumeProxy::SetEnabled(bool enabled) const
 {
-    if (auto* v = SelfVolume(script)) v->enabled = enabled;
+    if (auto* v = SelfVolume(script)) {
+        v->enabled = enabled;
+    }
 }
 
 void ScriptVolumeProxy::SetGravity(const math::Vector3& gravity) const
 {
-    if (auto* v = SelfVolume(script)) v->gravity = gravity;
+    if (auto* v = SelfVolume(script)) {
+        v->gravity = gravity;
+    }
 }
 
 void ScriptVolumeProxy::SetSwirlStrength(float strength) const
 {
-    if (auto* v = SelfVolume(script)) v->swirlStrength = strength;
+    if (auto* v = SelfVolume(script)) {
+        v->swirlStrength = strength;
+    }
 }
 
 void ScriptVolumeProxy::SetExplosionImpulse(float impulse) const
 {
-    if (auto* v = SelfVolume(script)) v->explosionImpulse = impulse;
+    if (auto* v = SelfVolume(script)) {
+        v->explosionImpulse = impulse;
+    }
 }
 
 void ScriptVolumeProxy::SetTimeScale(float scale) const
 {
-    if (auto* v = SelfVolume(script)) v->timeScale = scale;
+    if (auto* v = SelfVolume(script)) {
+        v->timeScale = scale;
+    }
 }
 
 void ScriptVolumeProxy::SetDuration(float seconds) const
 {
-    if (auto* v = SelfVolume(script)) v->duration = seconds;
+    if (auto* v = SelfVolume(script)) {
+        v->duration = seconds;
+    }
 }
 
 void ScriptVolumeProxy::ResetElapsed() const
 {
-    if (auto* v = SelfVolume(script)) v->elapsed = 0.0f;
+    if (auto* v = SelfVolume(script)) {
+        v->elapsed = 0.0f;
+    }
 }
 
 bool ScriptVolumeProxy::IsEnabled() const
@@ -1094,32 +1240,44 @@ float ScriptVolumeProxy::GetElapsed() const
 
 void ScriptReflectionProbeProxy::SetEnabled(bool enabled) const
 {
-    if (auto* rp = SelfReflectionProbe(script)) rp->enabled = enabled;
+    if (auto* rp = SelfReflectionProbe(script)) {
+        rp->enabled = enabled;
+    }
 }
 
 void ScriptReflectionProbeProxy::SetIntensity(float intensity) const
 {
-    if (auto* rp = SelfReflectionProbe(script)) rp->intensity = intensity;
+    if (auto* rp = SelfReflectionProbe(script)) {
+        rp->intensity = intensity;
+    }
 }
 
 void ScriptReflectionProbeProxy::SetInfluenceRadius(float radius) const
 {
-    if (auto* rp = SelfReflectionProbe(script)) rp->influenceRadius = radius;
+    if (auto* rp = SelfReflectionProbe(script)) {
+        rp->influenceRadius = radius;
+    }
 }
 
 void ScriptReflectionProbeProxy::SetBoxInfluence(bool useBox) const
 {
-    if (auto* rp = SelfReflectionProbe(script)) rp->boxInfluence = useBox;
+    if (auto* rp = SelfReflectionProbe(script)) {
+        rp->boxInfluence = useBox;
+    }
 }
 
 void ScriptReflectionProbeProxy::SetBoxExtents(const math::Vector3& halfExtents) const
 {
-    if (auto* rp = SelfReflectionProbe(script)) rp->boxExtents = halfExtents;
+    if (auto* rp = SelfReflectionProbe(script)) {
+        rp->boxExtents = halfExtents;
+    }
 }
 
 void ScriptReflectionProbeProxy::SetCubemap(std::string_view path) const
 {
-    if (auto* rp = SelfReflectionProbe(script)) rp->cubemapPath = std::string(path);
+    if (auto* rp = SelfReflectionProbe(script)) {
+        rp->cubemapPath = std::string(path);
+    }
 }
 
 bool ScriptReflectionProbeProxy::IsEnabled() const
@@ -1141,4 +1299,4 @@ float ScriptReflectionProbeProxy::GetInfluenceRadius() const
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

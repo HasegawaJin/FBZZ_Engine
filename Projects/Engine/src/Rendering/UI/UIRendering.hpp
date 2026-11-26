@@ -68,5 +68,5 @@ void SubmitSolidQuad(const CanvasDrawContext& draw, const math::Vector2& positio
 void DrawTextElement(const CanvasDrawContext& draw, const UIText& text,
     const ui_runtime_detail::UITransform2D& transform, float groupOpacity, const asset::UIThemeStyle* theme);
 
-} /// @note namespace ui_render_detail
-} /// @note namespace fbzz::scene
+} // namespace ui_render_detail
+} // namespace fbzz::scene

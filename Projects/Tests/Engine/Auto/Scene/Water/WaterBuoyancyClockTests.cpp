@@ -126,7 +126,7 @@ TEST_F(WaterBuoyancyClockTest, EndsOneAndFourBuoyancySubstepsAtThePublishedScene
         world.SetSubsteps(substeps);
         scene::PhysicsSystem system;
         SystemContext context{source, world, nullptr, nullptr, STEP, STEP, true, true};
-        /// @note Scheduler catch-up currently reuses Time::time. Preserve that policy while preventing future wave samples.
+        // スケジューラの追いつき更新は Time::time を再利用する。現在より先の波をサンプリングしないことを確かめる。
         for (int repeat = 0; repeat < repeats; ++repeat) system.Update(context);
         const auto actual = source.GetComponent<scene::RigidBodyComponent>(shipId)->rigidBody->GetVelocity();
         maximumError = (std::max)(maximumError, (actual - expected).Length());

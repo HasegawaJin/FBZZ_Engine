@@ -67,7 +67,9 @@ bool CustomPostMaterialCache::WarnOnce(const std::string& path)
 CustomMaterialBinding* CustomPostMaterialCache::Resolve(renderer::ResourceManager& resources,
                                              const std::string& path)
 {
-    if (path.empty()) return nullptr;
+    if (path.empty()) {
+        return nullptr;
+    }
 
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     const auto authoringSnapshot = assetHandle.IsValid()
@@ -79,9 +81,9 @@ CustomMaterialBinding* CustomPostMaterialCache::Resolve(renderer::ResourceManage
                           path.c_str());
         return nullptr;
     }
-    /// @note 用途を検査するのは、メッシュ用の .mat が頂点入力を前提にしたシェーダーを指す
-    /// @note ため。カスタムパスは頂点バッファを持たない SV_VertexID 描画なので、割り当てると
-    /// @note 入力レイアウト不一致で何も出ないか画面が塗り潰され、絵からは原因が読めない。
+    // 用途を検査するのは、メッシュ用の .mat が頂点入力を前提にしたシェーダーを指す
+    // ため。カスタムパスは頂点バッファを持たない SV_VertexID 描画なので、割り当てると
+    // 入力レイアウト不一致で何も出ないか画面が塗り潰され、絵からは原因が読めない。
     if (authoring->renderPath != asset::RenderPath::PostProcess) {
         if (WarnOnce(path))
             FBZZ_LOG_WARN("Custom pass material '%s' is not declared for post process "
@@ -97,8 +99,9 @@ CustomMaterialBinding* CustomPostMaterialCache::Resolve(renderer::ResourceManage
     }
 
     CustomMaterialBinding& binding = m_materials[path];
-    if (binding.resolvedFrame == resources.FrameStamp())
+    if (binding.resolvedFrame == resources.FrameStamp()) {
         return binding.resolved ? &binding : nullptr;
+    }
     binding.resolvedFrame = resources.FrameStamp();
     binding.resolved            = false;
 
@@ -112,11 +115,12 @@ CustomMaterialBinding* CustomPostMaterialCache::Resolve(renderer::ResourceManage
         return nullptr;
     }
 
-    /// @note 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
-    /// @note ポインタで持つと解決時の中身と食い違う瞬間ができる。
+    // 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
+    // ポインタで持つと解決時の中身と食い違う瞬間ができる。
     binding.descriptor = {};
-    if (auto* shader = resources.Get(material.shader))
+    if (auto* shader = resources.Get(material.shader)) {
         binding.descriptor = shader->GetDescriptor();
+    }
 
     material.paramData.assign(binding.descriptor.cbufferSize, 0u);
     if (binding.descriptor.IsValid()) {
@@ -152,11 +156,12 @@ void BindCustomPostMaterial(renderer::RenderCustomPostInput& input, const Custom
     input.paramsBuffer = binding.material.paramsBuffer;
     input.parameters = binding.material.paramData;
     input.blendMode = binding.blendMode;
-    for (size_t textureSlot = 0; textureSlot < input.textures.size() && textureSlot < binding.material.textures.size(); ++textureSlot)
+    for (size_t textureSlot = 0; textureSlot < input.textures.size() && textureSlot < binding.material.textures.size(); ++textureSlot) {
         input.textures[textureSlot] = binding.material.textures[textureSlot];
+    }
 }
 
-} /// @note namespace
+} // namespace
 
 void ExtractRenderCustomPost(RenderPassContext& context, renderer::RenderScene& output)
 {
@@ -165,7 +170,9 @@ void ExtractRenderCustomPost(RenderPassContext& context, renderer::RenderScene& 
     inputs.resize(effects.size());
     for (size_t effectIndex = 0; effectIndex < effects.size(); ++effectIndex) {
         const auto& effect = effects[effectIndex];
-        if (!effect.enabled) continue;
+        if (!effect.enabled) {
+            continue;
+        }
         auto& input = inputs[effectIndex];
         input.blendMode = effect.blendMode;
         if (auto* binding = s_materials.Resolve(context.resources, effect.materialPath)) {
@@ -181,4 +188,4 @@ void ReleaseCustomPassMaterialCache()
     s_materials.Clear();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

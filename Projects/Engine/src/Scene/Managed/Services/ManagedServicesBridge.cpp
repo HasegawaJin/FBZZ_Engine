@@ -59,19 +59,25 @@ private:
 
 bool Parse(const ManagedBridgeRequest& request, ManagedServiceArguments& arguments)
 {
-    if (!request.input || request.inputBytes < 24 || request.inputBytes > 1048576 || request.flags > 1) return false;
+    if (!request.input || request.inputBytes < 24 || request.inputBytes > 1048576 || request.flags > 1) {
+        return false;
+    }
     const std::string_view bytes(request.input, request.inputBytes);
     size_t offset = 0;
     uint32_t floats = 0, strings = 0;
     const auto floatCapacity = request.op == ManagedBridgeOp::SERVICE_RAGDOLL && request.index == APPLY_RAGDOLL_DRIVE_PROFILE
         ? 1 + RAGDOLL_DRIVE_PROFILE_MAX_BODIES * RAGDOLL_DRIVE_PROFILE_ENTRY_FLOATS : 128;
     if (!ReadManagedValue(bytes, offset, arguments.relatedId) || !ReadManagedValue(bytes, offset, arguments.integer)
-        || !ReadManagedValue(bytes, offset, floats) || !ReadManagedValue(bytes, offset, strings) || floats > floatCapacity || strings > 128) return false;
+        || !ReadManagedValue(bytes, offset, floats) || !ReadManagedValue(bytes, offset, strings) || floats > floatCapacity || strings > 128) {
+        return false;
+    }
     arguments.values.resize(floats);
     for (float& value : arguments.values) if (!ReadManagedValue(bytes, offset, value) || !std::isfinite(value)) return false;
     for (uint32_t index = 0; index < strings; ++index) {
         uint32_t length = 0;
-        if (!ReadManagedValue(bytes, offset, length) || length > bytes.size() - offset) return false;
+        if (!ReadManagedValue(bytes, offset, length) || length > bytes.size() - offset) {
+            return false;
+        }
         arguments.text.emplace_back(bytes.substr(offset, length)); offset += length;
     }
     return offset == bytes.size();
@@ -100,9 +106,13 @@ void ManagedServicesBridge::CancelCursorOwner(uint64_t ownerId) { m_impl->runtim
 bool ManagedServicesBridge::CursorOwner(const ManagedBridgeRequest& request, uint64_t& ownerId)
 {
     ManagedServiceArguments arguments;
-    if (!Parse(request, arguments)) return false;
+    if (!Parse(request, arguments)) {
+        return false;
+    }
     if (request.index == 0) { ownerId = std::bit_cast<uint64_t>(arguments.integer); return ownerId != 0; }
-    if (request.index > 3 || arguments.text.size() != 1) return false;
+    if (request.index > 3 || arguments.text.size() != 1) {
+        return false;
+    }
     const auto& text = arguments.text[0];
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), ownerId);
     return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && ownerId != 0;
@@ -135,82 +145,116 @@ void ManagedServicesBridge::RetireGeneration(uint64_t generation)
 ManagedBridgeStatus ManagedServicesBridge::Run(Scene& scene, Script& caller, GameObject& target, GameObject* related,
     const ManagedBridgeRequest& request, ManagedServiceResult& result, bool fixedUpdate, bool collisionCallback)
 {
-    if (!target.IsValid() || target.GetScene() != &scene || (related && (!related->IsValid() || related->GetScene() != &scene)))
+    if (!target.IsValid() || target.GetScene() != &scene || (related && (!related->IsValid() || related->GetScene() != &scene))) {
         return ManagedBridgeStatus::NOT_FOUND;
+    }
     const bool store = request.op == ManagedBridgeOp::SERVICE_SAVE || request.op == ManagedBridgeOp::SERVICE_CONFIG;
     if (request.op == ManagedBridgeOp::SERVICE_ASSETS && request.index >= 12 && request.index <= 14) {
-        if (related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return m_impl->assetServices.Run(scene, caller, target, request, 0, {}, {}, result);
     }
     if (request.op == ManagedBridgeOp::SERVICE_MATERIAL && request.index >= 33 && request.index <= 35) {
-        if (related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return m_impl->materialTransfers.Run(scene, target, m_impl->view, request, result);
     }
     if (store && request.index >= 23 && request.index <= 25) {
-        if (related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return m_impl->storeTransfers.Run(scene, target, request, result);
     }
     ManagedServiceArguments arguments;
-    if (!Parse(request, arguments)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Parse(request, arguments)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const auto& p = arguments.values;
     const auto& t = arguments.text;
     const int64_t integer = arguments.integer;
     if (request.op >= ManagedBridgeOp::SERVICE_LINE && request.op <= ManagedBridgeOp::SERVICE_INSTANCES) {
-        if ((arguments.relatedId != 0) != (related != nullptr)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if ((arguments.relatedId != 0) != (related != nullptr)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         if (request.op == ManagedBridgeOp::SERVICE_RAGDOLL && request.index >= 40 && request.index <= 43) {
-            if (related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (related) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             return m_impl->componentTransfers.Run(scene, target, request, integer, p, t, result, fixedUpdate);
         }
         if ((request.op == ManagedBridgeOp::SERVICE_LINE && request.index >= 50 && request.index <= 53)
             || (request.op == ManagedBridgeOp::SERVICE_MESH && request.index >= 50 && request.index <= 54)) {
-            if (related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (related) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             return m_impl->renderTransfers.Run(scene, target, m_impl->view, request, integer, p, t, result);
         }
-        if (request.op <= ManagedBridgeOp::SERVICE_SKINNED_MESH || request.op==ManagedBridgeOp::SERVICE_INSTANCES)
+        if (request.op <= ManagedBridgeOp::SERVICE_SKINNED_MESH || request.op==ManagedBridgeOp::SERVICE_INSTANCES) {
             return RunRenderComponentServices(scene, m_impl->view, target, related, request, integer, p, t, result);
+        }
         return RunComponentServices(scene, m_impl->view, target, related, request, integer, p, t, result, fixedUpdate);
     }
     if (request.op == ManagedBridgeOp::SERVICE_ASSETS || (request.op == ManagedBridgeOp::SERVICE_MATERIAL && request.index == 42)) {
-        if (related || arguments.relatedId) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (related || arguments.relatedId) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return m_impl->assetServices.Run(scene, caller, target, request, integer, p, t, result);
     }
     if (request.op == ManagedBridgeOp::SERVICE_JOINT && request.index == 19) {
-        if (related || arguments.relatedId) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (related || arguments.relatedId) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return m_impl->jointTransfers.Begin(scene, target, request, integer, p, t, result, fixedUpdate);
     }
     if (request.op == ManagedBridgeOp::SERVICE_JOINT) {
-        if (integer) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (integer) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return RunManagedJointService(scene, m_impl->view, target, related, request, p, t, result, fixedUpdate);
     }
     if (request.op == ManagedBridgeOp::SERVICE_RENDER) {
-        if (related || arguments.relatedId || caller.scene.Self() != &target) return ManagedBridgeStatus::INVALID_SCOPE;
+        if (related || arguments.relatedId || caller.scene.Self() != &target) {
+            return ManagedBridgeStatus::INVALID_SCOPE;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return RunManagedRenderService(m_impl->view, request, integer, p, t, result);
     }
     if (request.op == ManagedBridgeOp::SERVICE_DISPLAY) {
-        if (related || arguments.relatedId || caller.scene.Self() != &target) return ManagedBridgeStatus::INVALID_SCOPE;
+        if (related || arguments.relatedId || caller.scene.Self() != &target) {
+            return ManagedBridgeStatus::INVALID_SCOPE;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return RunManagedDisplayService(scene, m_impl->view, request, integer, p, t, result);
     }
     if (request.op == ManagedBridgeOp::SERVICE_MATERIAL && (request.index == 30 || request.index == 32)) {
-        if (arguments.relatedId || related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (arguments.relatedId || related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return m_impl->materialTransfers.Open(scene, target, m_impl->view, request, integer, p, t, result);
     }
     if (store && (request.index == 22 || request.index == 26)) {
-        if (arguments.relatedId || related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (arguments.relatedId || related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return m_impl->storeTransfers.Begin(scene, target, request, integer, p, t, result);
     }
     if (request.op >= ManagedBridgeOp::SERVICE_MATERIAL && request.op <= ManagedBridgeOp::SERVICE_CONFIG) {
-        if (arguments.relatedId || related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (arguments.relatedId || related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return RunManagedAuthoringService(scene, m_impl->view, target, request, integer, p, t, result);
     }
     if (request.op >= ManagedBridgeOp::SERVICE_CURSOR && request.op <= ManagedBridgeOp::SERVICE_SCENE) {
-        if (arguments.relatedId || related) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (arguments.relatedId || related) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         if (request.op == ManagedBridgeOp::SERVICE_PARTICLE && request.index >= 13) {
             const ProxyBindingScope binding(m_impl->view, scene, target);
             return RunParticleServices(m_impl->view, target, request, integer, p, t, result);
@@ -218,11 +262,13 @@ ManagedBridgeStatus ManagedServicesBridge::Run(Scene& scene, Script& caller, Gam
         return m_impl->runtimeServices.Run(scene, caller, target, request, integer, p, t, result);
     }
     if (request.op >= ManagedBridgeOp::SERVICE_TERRAIN && request.op <= ManagedBridgeOp::SERVICE_SEQUENCE) {
-        if ((arguments.relatedId != 0) != (related != nullptr)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if ((arguments.relatedId != 0) != (related != nullptr)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const ProxyBindingScope binding(m_impl->view, scene, target);
         return RunWorldFamilyServices(scene, m_impl->view, target, related, request, integer, p, t, result, fixedUpdate);
     }
-    /// @note 所有者サービスも予約除去中の row を proxy 経由で読まない。global/2D 操作は row を要求しない。
+    // 所有者サービスも予約除去中の row を proxy 経由で読まない。global/2D 操作は row を要求しない。
     uint32_t componentKind = 0;
     switch (request.op) {
     case ManagedBridgeOp::SERVICE_ANIMATOR: componentKind = 5; break;
@@ -232,16 +278,22 @@ ManagedBridgeStatus ManagedServicesBridge::Run(Scene& scene, Script& caller, Gam
     case ManagedBridgeOp::COLLIDER_READ:
     case ManagedBridgeOp::COLLIDER_WRITE:
     case ManagedBridgeOp::COLLIDER_COMMAND:
-        if (integer > 0 && integer < 32) componentKind = static_cast<uint32_t>(integer);
+        if (integer > 0 && integer < 32) {
+            componentKind = static_cast<uint32_t>(integer);
+        }
         break;
     case ManagedBridgeOp::PHYSICS_BODY_READ_ROTATION:
     case ManagedBridgeOp::PHYSICS_BODY_WRITE_ROTATION: componentKind = 1; break;
     case ManagedBridgeOp::SERVICE_AUDIO:
         if (request.index <= 10 || request.index == 12 || (request.index >= 14 && request.index <= 19)
-            || (request.index >= 23 && request.index <= 25) || (request.index >= 35 && request.index <= 38)) componentKind = 6;
+            || (request.index >= 23 && request.index <= 25) || (request.index >= 35 && request.index <= 38)) {
+            componentKind = 6;
+        }
         break;
     case ManagedBridgeOp::SERVICE_UI:
-        if (request.index <= 5 || request.index == 10 || request.index == 17) componentKind = 13;
+        if (request.index <= 5 || request.index == 10 || request.index == 17) {
+            componentKind = 13;
+        }
         else if (request.index == 6 || request.index == 12 || request.index == 13 || request.index == 18
             || (request.index >= 24 && request.index <= 27)) componentKind = 12;
         else if (request.index == 7 || request.index == 14 || request.index == 15 || request.index == 19
@@ -256,39 +308,57 @@ ManagedBridgeStatus ManagedServicesBridge::Run(Scene& scene, Script& caller, Gam
         else if (request.index >= 76 && request.index <= 79) componentKind = 14;
         else if (request.index >= 65 && request.index <= 73) {
             if (ManagedObjectControls::IsPendingComponentRemoval(target, 11)
-                || ManagedObjectControls::IsPendingComponentRemoval(target, 12)) return ManagedBridgeStatus::NOT_FOUND;
+                || ManagedObjectControls::IsPendingComponentRemoval(target, 12)) {
+                return ManagedBridgeStatus::NOT_FOUND;
+            }
         } else if (request.index >= 52 && request.index <= 54) {
             for (uint32_t kind : {13U, 20U, 21U, 23U})
-                if (ManagedObjectControls::IsPendingComponentRemoval(target, kind)) return ManagedBridgeStatus::NOT_FOUND;
+                if (ManagedObjectControls::IsPendingComponentRemoval(target, kind)) {
+                    return ManagedBridgeStatus::NOT_FOUND;
+                }
         } else if (request.index == 11 || request.index == 21 || request.index == 75) {
             size_t depth = 0;
             for (GameObject* current = &target; current && depth < scene.EntitySlotCount(); current = current->GetParent(), ++depth)
                 if (current->GetComponent<UICanvas>()) {
-                    if (ManagedObjectControls::IsPendingComponentRemoval(*current, 14)) return ManagedBridgeStatus::NOT_FOUND;
+                    if (ManagedObjectControls::IsPendingComponentRemoval(*current, 14)) {
+                        return ManagedBridgeStatus::NOT_FOUND;
+                    }
                     break;
                 }
         }
         break;
     default: break;
     }
-    if (componentKind && ManagedObjectControls::IsPendingComponentRemoval(target, componentKind)) return ManagedBridgeStatus::NOT_FOUND;
+    if (componentKind && ManagedObjectControls::IsPendingComponentRemoval(target, componentKind)) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     ManagedServiceResult output;
     if (request.op == ManagedBridgeOp::COLLIDER_READ || request.op == ManagedBridgeOp::COLLIDER_WRITE) {
         const bool writing = request.op == ManagedBridgeOp::COLLIDER_WRITE;
-        if (request.flags != (writing ? 0u : 1u) || integer < 0 || integer > UINT32_MAX || arguments.relatedId)
+        if (request.flags != (writing ? 0u : 1u) || integer < 0 || integer > UINT32_MAX || arguments.relatedId) {
             return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const auto status = m_impl->physics.RunCollider(target, static_cast<uint32_t>(integer), request.index, writing, p, t, output, fixedUpdate);
-        if (status != ManagedBridgeStatus::OK) return status;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
     } else if (request.op == ManagedBridgeOp::COLLIDER_COMMAND) {
-        if (request.flags || integer < 0 || integer > UINT32_MAX || arguments.relatedId) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (request.flags || integer < 0 || integer > UINT32_MAX || arguments.relatedId) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const auto status = m_impl->physics.RunColliderCommand(target, static_cast<uint32_t>(integer), request.index, p, t, output, fixedUpdate);
-        if (status != ManagedBridgeStatus::OK) return status;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
     } else if (request.op == ManagedBridgeOp::PHYSICS_BODY_READ_ROTATION || request.op == ManagedBridgeOp::PHYSICS_BODY_WRITE_ROTATION) {
         const bool writing = request.op == ManagedBridgeOp::PHYSICS_BODY_WRITE_ROTATION;
-        if (request.flags != (writing ? 0u : 1u) || request.index || integer || arguments.relatedId || !t.empty())
+        if (request.flags != (writing ? 0u : 1u) || request.index || integer || arguments.relatedId || !t.empty()) {
             return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const auto status = m_impl->physics.RunRotation(target, writing, p, output, fixedUpdate);
-        if (status != ManagedBridgeStatus::OK) return status;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
     } else {
         const ProxyBindingScope binding(m_impl->view, scene, target);
         ManagedBridgeStatus status;
@@ -314,10 +384,14 @@ ManagedBridgeStatus ManagedServicesBridge::Run(Scene& scene, Script& caller, Gam
             break;
         default: return ManagedBridgeStatus::UNSUPPORTED;
         }
-        if (status != ManagedBridgeStatus::OK) return status;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
     }
     for (float value : output.values) if (!std::isfinite(value)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (output.object && (!output.object->IsValid() || output.object->GetScene() != &scene)) return ManagedBridgeStatus::NOT_FOUND;
+    if (output.object && (!output.object->IsValid() || output.object->GetScene() != &scene)) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     result = std::move(output);
     return ManagedBridgeStatus::OK;
 }

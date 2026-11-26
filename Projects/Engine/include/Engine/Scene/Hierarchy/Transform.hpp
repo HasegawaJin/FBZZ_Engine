@@ -17,17 +17,17 @@ struct Transform {
     /// @name ローカル空間
     /// @note スクリプト・エディタから直接変更する。
     /// @{
-    math::Vector3    position = math::Vector3::ZERO;           ///< @note ローカル座標 (旧 localPosition)
-    math::Quaternion rotation = math::Quaternion::Identity();  ///< @note ローカル回転 (旧 localRotation)
-    math::Vector3    scale    = math::Vector3::ONE;            ///< @note ローカルスケール (旧 localScale)
+    math::Vector3 position = math::Vector3::ZERO; ///< 親の原点を基準とした位置 [m]。ルートではワールド位置。
+    math::Quaternion rotation = math::Quaternion::Identity(); ///< 親の向きを基準とした回転。ルートではワールド回転。
+    math::Vector3 scale = math::Vector3::ONE; ///< 親の各ローカル軸を基準とした倍率。
     /// @}
 
     /// @name ワールド空間
     /// @note TransformSystem/PhysicsSystem が毎フレーム更新する。直接変更しない。
     /// @{
-    math::Vector3    worldPosition = math::Vector3::ZERO;          ///< @note ワールド座標 (旧 position)
-    math::Quaternion worldRotation = math::Quaternion::Identity(); ///< @note ワールド回転 (旧 rotation)
-    math::Vector3    worldScale    = math::Vector3::ONE;
+    math::Vector3 worldPosition = math::Vector3::ZERO; ///< 階層のローカル変換を合成したワールド位置 [m]。
+    math::Quaternion worldRotation = math::Quaternion::Identity(); ///< 階層のローカル回転を合成したワールド回転。
+    math::Vector3 worldScale = math::Vector3::ONE; ///< 階層の各軸のスケールを合成した倍率。
     /// @}
 
     /// @name worldRotation から算出
@@ -38,17 +38,17 @@ struct Transform {
     FBZZ_ENGINE_API math::Vector3 Right()   const;
     /// @}
 
-    __declspec(property(get=Forward)) math::Vector3 forward;
-    __declspec(property(get=Up))      math::Vector3 up;
-    __declspec(property(get=Right))   math::Vector3 right;
+    __declspec(property(get=Forward)) math::Vector3 forward; ///< ローカル前方をワールド回転で写した方向。
+    __declspec(property(get=Up)) math::Vector3 up; ///< ローカル上方をワールド回転で写した方向。
+    __declspec(property(get=Right)) math::Vector3 right; ///< ローカル右方をワールド回転で写した方向。
 
     FBZZ_ENGINE_API void Translate(const math::Vector3& delta, bool worldSpace = false);
     FBZZ_ENGINE_API void Rotate(const math::Vector3& eulerDegrees, bool worldSpace = false);
     FBZZ_ENGINE_API void LookAt(const math::Vector3& worldTarget);
 
-    /// @brief worldPosition + worldRotation + scale から TRS 行列を生成する。
+    /// @brief 確定したワールド位置・回転・スケールから TRS 行列を作る。
     FBZZ_ENGINE_API math::Matrix4 GetWorldMatrix() const;
 
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

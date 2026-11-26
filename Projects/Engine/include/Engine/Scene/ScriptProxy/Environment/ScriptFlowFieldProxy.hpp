@@ -23,7 +23,7 @@ enum class ScriptFlowFieldType : uint8_t {
 };
 
 struct ScriptFlowFieldProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 流れ場操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetType(ScriptFlowFieldType type) const;
@@ -45,4 +45,4 @@ struct ScriptFlowFieldProxy {
     [[nodiscard]] FBZZ_ENGINE_API uint32_t GetChannels() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

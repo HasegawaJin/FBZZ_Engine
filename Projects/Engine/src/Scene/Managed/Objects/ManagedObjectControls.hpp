@@ -30,5 +30,5 @@ public:
     FBZZ_ENGINE_API static ManagedBridgeStatus Query(Scene& scene, GameObject* root, uint32_t scope, std::string_view name,
         std::string_view tag, std::string_view part, bool includeInactive, std::vector<GameObject*>& results);
 };
-} /// @note namespace managed_detail
-} /// @note namespace fbzz::scene
+} // namespace managed_detail
+} // namespace fbzz::scene

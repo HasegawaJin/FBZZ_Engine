@@ -54,14 +54,20 @@ bool ResolveSelectedRegion(RenderPassContext& ctx, SampleRegion& out)
     for (EntityID id : ctx.scene.GetEntities<FlowField>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         const FlowField* component = ctx.scene.GetComponent<FlowField>(id);
-        if (go == nullptr || component == nullptr || !go->activeInHierarchy()) continue;
-        if (!IsSelectedForDebug(*go, ctx)) continue;
+        if (go == nullptr || component == nullptr || !go->activeInHierarchy()) {
+            continue;
+        }
+        if (!IsSelectedForDebug(*go, ctx)) {
+            continue;
+        }
 
         for (const FlowFieldSettings& settings : component->forces) {
-            if (!settings.enabled) continue;
+            if (!settings.enabled) {
+                continue;
+            }
             float half = kGlobalFieldHalfExtent;
             if (settings.fieldType == FlowFieldType::Baked) {
-                /// @note 回転した箱も覆えるよう、最長の半辺を 3 軸に使う。
+                // 回転した箱も覆えるよう、最長の半辺を 3 軸に使う。
                 half = (std::max)({ std::abs(settings.vectorFieldExtents.x),
                                     std::abs(settings.vectorFieldExtents.y),
                                     std::abs(settings.vectorFieldExtents.z) });
@@ -81,7 +87,9 @@ bool ResolveSelectedRegion(RenderPassContext& ctx, SampleRegion& out)
             }
         }
     }
-    if (!found) return false;
+    if (!found) {
+        return false;
+    }
     out.center      = (minP + maxP) * 0.5f;
     out.halfExtents = (maxP - minP) * 0.5f;
     out.snapToGrid  = false;
@@ -116,7 +124,9 @@ bool FlowSampleDebugPass::IsEnabled(const RenderPassContext& ctx) const
 void FlowSampleDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 {
     const std::vector<ActiveFlowField>& fields = *ctx.scene.FlowFrame().fields;
-    if (fields.empty()) return;
+    if (fields.empty()) {
+        return;
+    }
 
     SampleRegion region;
     if (!ResolveSelectedRegion(ctx, region)) {
@@ -142,7 +152,7 @@ void FlowSampleDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
         region.center.x - spacing * static_cast<float>(nx - 1) * 0.5f,
         region.center.y - spacing * static_cast<float>(ny - 1) * 0.5f,
         region.center.z - spacing * static_cast<float>(nz - 1) * 0.5f };
-    /// @note カメラ追従の格子はワールドの目へ揃える。揃えないとカメラを動かすたびに標本点が滑り、流れが揺れて見える。
+    // カメラ追従の格子はワールドの目へ揃える。揃えないとカメラを動かすたびに標本点が滑り、流れが揺れて見える。
     if (region.snapToGrid) {
         origin = { std::floor(origin.x / spacing) * spacing,
                    std::floor(origin.y / spacing) * spacing,
@@ -159,16 +169,20 @@ void FlowSampleDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
                                           origin.y + spacing * static_cast<float>(iy),
                                           origin.z + spacing * static_cast<float>(iz) };
                 bool covered = false;
-                /// @note channels は全ビット。特定のエミッターだけが受ける場も «ここに流れがある» として描く。
+                // channels は全ビット。特定のエミッターだけが受ける場も «ここに流れがある» として描く。
                 const math::Vector3 v = SampleFlow(p, fields, 0xFFFFFFFFu, Time::time, &covered);
-                if (!covered) continue;
+                if (!covered) {
+                    continue;
+                }
                 m_positions.push_back(p);
                 m_velocities.push_back(v);
                 maxSpeed = (std::max)(maxSpeed, v.Length());
             }
         }
     }
-    if (m_positions.empty()) return;
+    if (m_positions.empty()) {
+        return;
+    }
 
     constexpr math::Vector4 kStillColor = { 0.6f, 0.6f, 0.65f, 0.8f };
     const float maxLength = spacing * 0.85f;
@@ -178,7 +192,7 @@ void FlowSampleDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
         const math::Vector3& v = m_velocities[i];
         const float speed = v.Length();
         if (speed < kStillSpeed || maxSpeed < kStillSpeed) {
-            /// @note 覆われているが流速 0 の点。«場の外» と区別するため小さな十字を置く。
+            // 覆われているが流速 0 の点。«場の外» と区別するため小さな十字を置く。
             const float s = spacing * 0.05f;
             renderer::DebugDraw::Line(ctx.renderer, p - math::Vector3{ s, 0, 0 }, p + math::Vector3{ s, 0, 0 }, kStillColor);
             renderer::DebugDraw::Line(ctx.renderer, p - math::Vector3{ 0, 0, s }, p + math::Vector3{ 0, 0, s }, kStillColor);
@@ -186,7 +200,7 @@ void FlowSampleDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
         }
         const float length = maxLength * (speed / maxSpeed);
         const math::Vector3 dir = v * (1.0f / speed);
-        /// @note 矢印は標本点を中心に置く。始点に置くと格子の片側へ偏って場の中心がずれて見える。
+        // 矢印は標本点を中心に置く。始点に置くと格子の片側へ偏って場の中心がずれて見える。
         const math::Vector3 from = p - dir * (length * 0.5f);
         const math::Vector3 to   = p + dir * (length * 0.5f);
         const float head = (std::max)(length * 0.3f, spacing * 0.06f);

@@ -28,7 +28,9 @@ std::string ReadAnimationTraceEnv(const char* name)
 {
 #ifdef _MSC_VER
     char* raw = nullptr; size_t length = 0;
-    if (_dupenv_s(&raw, &length, name) != 0 || !raw) return {};
+    if (_dupenv_s(&raw, &length, name) != 0 || !raw) {
+        return {};
+    }
     const std::unique_ptr<char, decltype(&std::free)> value(raw, &std::free);
     return value.get();
 #else
@@ -38,8 +40,12 @@ std::string ReadAnimationTraceEnv(const char* name)
 uint32_t ReadAnimationTraceCount(const char* name, uint32_t fallback, uint32_t maximum)
 {
     const auto text = ReadAnimationTraceEnv(name);
-    if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos) return fallback;
-    if (text.size() > 9) return fallback;
+    if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos) {
+        return fallback;
+    }
+    if (text.size() > 9) {
+        return fallback;
+    }
     const auto value = std::strtoul(text.c_str(), nullptr, 10);
     return value <= maximum ? static_cast<uint32_t>(value) : fallback;
 }
@@ -85,7 +91,9 @@ void WriteAnimationCpuCapture(AnimationWorkCapture& capture)
     for (uint32_t index = 0; index < capture.cpuCount; ++index) {
         const auto& row = capture.cpu[index];
         text << row.resourceFrame << ',' << row.sceneGeneration << ',' << row.resourceEpoch;
-        for (uint64_t elapsed : row.nanoseconds) text << ',' << elapsed;
+        for (uint64_t elapsed : row.nanoseconds) {
+            text << ',' << elapsed;
+        }
         text << ',' << row.animators << ',' << row.boneMatrices << ',' << row.cbUpdates << ',' << row.cbApiBytes
              << ',' << row.legacyPoses << ',' << row.bakedCpuPoses << ',' << row.bakedGpuPoses
              << ',' << row.poseCacheHits << ',' << row.poseCacheMisses << ',' << row.cbBulkPackets << ',' << row.wallBeginIntervalNs;
@@ -107,7 +115,7 @@ void WriteAnimationCpuCapture(AnimationWorkCapture& capture)
             text << ','; if (row.paletteApiCountersAvailable) text << value;
         }
         text << ','; if (row.poseCountersAvailable) text << row.heldCurrentPaletteUpdates;
-        /// @note CPU 側の計測であり、GPU 転送バイト数やベイク・キャッシュ再生で評価されたボーン数は含めない。
+        // CPU 側の計測であり、GPU 転送バイト数やベイク・キャッシュ再生で評価されたボーン数は含めない。
         text << ",0,,0,\n";
     }
     if (!util::FileSystem::WriteTextAtomic(capture.path + ".cpu.csv", text.str()))
@@ -118,7 +126,9 @@ void WriteAnimationCpuCapture(AnimationWorkCapture& capture)
              << "\nclock=steady_clock_nanoseconds\ncbBytes=ResourceManager_Update_arguments_not_GPU_submitted_bytes\n";
     uint32_t sourceIdentityIncompleteRows = 0;
     for (uint32_t index = 0; index < capture.cpuCount; ++index)
-        if (!capture.cpu[index].HasCompleteSourceIdentity()) ++sourceIdentityIncompleteRows;
+        if (!capture.cpu[index].HasCompleteSourceIdentity()) {
+            ++sourceIdentityIncompleteRows;
+        }
     metadata << "poseObservationSchema=1\nsourceIdentityIncompleteRows=" << sourceIdentityIncompleteRows
              << "\nposeRefreshEntered=refresh_path_entry_not_successful_clip_evaluation"
                 "\nlegacyEvaluatedBoneWrites=valid_direct_legacy_FK_palette_writes_not_loaded_skeleton_count"
@@ -169,7 +179,9 @@ uint64_t Mix(uint64_t value)
 bool Next(const Source& previous,const Source& current)
 {
     if(previous.resourceFrame==UINT64_MAX || previous.timeFrame==UINT64_MAX
-        || previous.resourceFrame+1!=current.resourceFrame || previous.timeFrame+1!=current.timeFrame)return false;
+        || previous.resourceFrame+1!=current.resourceFrame || previous.timeFrame+1!=current.timeFrame) {
+        return false;
+    }
     auto adjusted=previous;adjusted.resourceFrame=current.resourceFrame;adjusted.timeFrame=current.timeFrame;
     return adjusted==current;
 }
@@ -180,7 +192,9 @@ uint64_t HashKey(const Key& key)
 }
 float InitialCredit(const Key& key,float interval)
 {
-    if(key.componentLifetime==0 || !std::isfinite(interval) || interval<=math::EPSILON || interval>1.0f)return 0;
+    if(key.componentLifetime==0 || !std::isfinite(interval) || interval<=math::EPSILON || interval>1.0f) {
+        return 0;
+    }
     const float value=interval*(static_cast<float>(HashKey(key)&UINT64_C(65535))/65536.0f);
     return (std::min)(value,std::nextafter(interval,0.0f));
 }
@@ -192,21 +206,29 @@ bool CreditDue(bool normalDue,float elapsed,float interval,float credit)
 }
 Ledger::Ledger(uint32_t capacity)
 {
-    if(!capacity || capacity>CAPACITY)return;
+    if(!capacity || capacity>CAPACITY) {
+        return;
+    }
     uint32_t slots=1;while(slots<capacity*2)slots*=2;
     auto entries=std::unique_ptr<Entry[]>(new(std::nothrow)Entry[capacity]);
     auto table=std::unique_ptr<uint32_t[]>(new(std::nothrow)uint32_t[slots]{});
-    if(!entries || !table)return;
+    if(!entries || !table) {
+        return;
+    }
     m_entries=std::move(entries);m_slots=std::move(table);m_capacity=capacity;m_slotCount=slots;
 }
 Ledger::~Ledger()=default;
 uint32_t Ledger::Find(const Key& key) const
 {
-    if(!m_slotCount || !key.componentLifetime)return NO_ENTRY;
+    if(!m_slotCount || !key.componentLifetime) {
+        return NO_ENTRY;
+    }
     uint32_t slot=static_cast<uint32_t>(HashKey(key))&(m_slotCount-1);
     for(uint32_t probe=0;probe<m_slotCount;++probe,slot=(slot+1)&(m_slotCount-1)) {
         const uint32_t stored=m_slots[slot];if(!stored)return NO_ENTRY;
-        if(m_entries[stored-1].key==key)return stored-1;
+        if(m_entries[stored-1].key==key) {
+            return stored-1;
+        }
     }
     return NO_ENTRY;
 }
@@ -217,7 +239,9 @@ Ticket Ledger::Prepare(const Key& key,const Source& source,float interval,bool e
     Lease lease(m_owned);if(!lease.claimed){m_rejectionEpoch.fetch_add(1,std::memory_order_acq_rel);return ticket;}
     uint32_t index=Find(key);
     if(index==NO_ENTRY) {
-        if(!eligible)return ticket;
+        if(!eligible) {
+            return ticket;
+        }
         if(m_count>=m_capacity){ticket.capacityRejected=true;return ticket;}
         index=m_count++;auto& entry=m_entries[index];entry.key=key;entry.source=source;entry.interval=interval;
         uint32_t slot=static_cast<uint32_t>(HashKey(key))&(m_slotCount-1);
@@ -225,7 +249,9 @@ Ticket Ledger::Prepare(const Key& key,const Source& source,float interval,bool e
     } else {
         auto& entry=m_entries[index];
         if(!eligible || interval!=entry.interval || !Next(entry.source,source)
-            || entry.rejectionEpoch!=m_rejectionEpoch.load(std::memory_order_acquire))entry.credit=0;
+            || entry.rejectionEpoch!=m_rejectionEpoch.load(std::memory_order_acquire)) {
+            entry.credit=0;
+        }
         entry.source=source;entry.interval=interval;
     }
     auto& entry=m_entries[index];
@@ -239,14 +265,22 @@ bool Ledger::Complete(const Ticket& ticket,const RefreshOutcome& outcome,bool co
 {
     seededCredit=0;if(!ticket.tracked)return false;
     Lease lease(m_owned);if(!lease.claimed){m_rejectionEpoch.fetch_add(1,std::memory_order_acq_rel);return false;}
-    if(ticket.index>=m_count)return false;
+    if(ticket.index>=m_count) {
+        return false;
+    }
     auto& entry=m_entries[ticket.index];
-    if(!(entry.key==ticket.key) || entry.version!=ticket.version)return false;
+    if(!(entry.key==ticket.key) || entry.version!=ticket.version) {
+        return false;
+    }
     if(!coherentEligible || !ticket.eligible || ticket.rejectionEpoch!=m_rejectionEpoch.load(std::memory_order_acquire)) {
         entry.credit=0;return false;
     }
-    if(outcome.refreshEntered)entry.credit=0;
-    if(!outcome.refreshEntered || !outcome.successfulLegacy || entry.issued)return false;
+    if(outcome.refreshEntered) {
+        entry.credit=0;
+    }
+    if(!outcome.refreshEntered || !outcome.successfulLegacy || entry.issued) {
+        return false;
+    }
     entry.issued=true;entry.credit=seededCredit=InitialCredit(entry.key,ticket.interval);return true;
 }
 void Ledger::Cancel(const Key& key)
@@ -254,7 +288,9 @@ void Ledger::Cancel(const Key& key)
     Lease lease(m_owned);if(!lease.claimed){m_rejectionEpoch.fetch_add(1,std::memory_order_acq_rel);return;}
     const uint32_t index=Find(key);if(index==NO_ENTRY)return;
     auto& entry=m_entries[index];entry.credit=0;
-    if(entry.version!=UINT64_MAX)++entry.version;else entry.issued=true;
+    if(entry.version!=UINT64_MAX) {
+        ++entry.version;
+    } else entry.issued=true;
 }
 }
 namespace {
@@ -291,7 +327,9 @@ void CompleteAnimationPhaseDistribution(const animation_phase_detail::Ticket& ti
     const animation_phase_detail::RefreshOutcome& outcome,bool coherentEligible)
 {
     auto& state=Phase();if(!state.ledger)return;float credit=0;
-    if(!state.ledger->Complete(ticket,outcome,coherentEligible,credit))return;
+    if(!state.ledger->Complete(ticket,outcome,coherentEligible,credit)) {
+        return;
+    }
     state.seeds.fetch_add(1,std::memory_order_relaxed);
     if(!state.seedLogged.test_and_set(std::memory_order_relaxed))
         FBZZ_LOG_INFO("AnimationPhaseDistributionSeed applied=1 resourceFrame=%llu timeFrame=%llu sceneGeneration=%llu entityIndex=%u entityGeneration=%u componentLifetime=%llu interval=%.9g credit=%.9g firstCycleOnly=1 source=successfulSafeLegacyPose",
@@ -301,7 +339,9 @@ void CompleteAnimationPhaseDistribution(const animation_phase_detail::Ticket& ti
 void CountAnimationPhaseCreditDue()
 {
     auto& state=Phase();state.creditDues.fetch_add(1,std::memory_order_relaxed);
-    if(CurrentAnimationWorkRow())state.sampledCreditDues.fetch_add(1,std::memory_order_relaxed);
+    if(CurrentAnimationWorkRow()) {
+        state.sampledCreditDues.fetch_add(1,std::memory_order_relaxed);
+    }
 }
 std::string AnimationPhaseDistributionConditions()
 {
@@ -321,11 +361,14 @@ void AssignAnimationSkinningPassOrdinal(AnimationSkinningCpuRow& row)
 {
     auto& capture=Capture();
     std::lock_guard lock(capture.mutex);
-    /// @note 上限付きの診断状態は整数の識別情報だけを保持し、シーン・資源・バッファの寿命を延ばさない。
+    // 上限付きの診断状態は整数の識別情報だけを保持し、シーン・資源・バッファの寿命を延ばさない。
     for(auto& state:capture.skinningOrdinals) {
-        if(state.resourceInstanceId!=0 && state.resourceInstanceId!=row.resourceInstanceId)continue;
-        if(state.resourceInstanceId!=row.resourceInstanceId || state.resourceEpoch!=row.resourceEpoch || state.resourceFrame!=row.resourceFrame)
+        if(state.resourceInstanceId!=0 && state.resourceInstanceId!=row.resourceInstanceId) {
+            continue;
+        }
+        if(state.resourceInstanceId!=row.resourceInstanceId || state.resourceEpoch!=row.resourceEpoch || state.resourceFrame!=row.resourceFrame) {
             state={row.resourceInstanceId,row.resourceEpoch,row.resourceFrame,0};
+        }
         row.passOrdinalWithinResourceFrame=++state.ordinal;
         return;
     }
@@ -340,9 +383,13 @@ void CaptureAnimationSkinningCpuWork(const AnimationSkinningCpuRow& row)
         const auto& cpu=capture.cpu[index];
         if(cpu.MatchesCompleteSource(row.resourceFrame,row.sceneGeneration,row.resourceEpoch)){found=true;break;}
     }
-    if(!found || capture.skinCount>=capture.skin.size())return;
+    if(!found || capture.skinCount>=capture.skin.size()) {
+        return;
+    }
     capture.skin[capture.skinCount++]=row;
-    if(capture.cpuCount!=capture.samples || row.resourceFrame!=capture.cpu[capture.cpuCount-1].resourceFrame)return;
+    if(capture.cpuCount!=capture.samples || row.resourceFrame!=capture.cpu[capture.cpuCount-1].resourceFrame) {
+        return;
+    }
     std::ostringstream text;
     text<<"resourceFrame,sceneGeneration,resourceEpoch,totalNs,profilerBeginViewSyncNs,boneReplayCpuSubmitNs,vertexSkinningCpuSubmitNs"
           ",resourceInstanceId,passOrdinalWithinResourceFrame,renderersVisited,renderersEligible,alreadyCurrentReuse,requestedDispatches,requestedVertexCount"
@@ -364,9 +411,13 @@ void CaptureAnimationSkinningCpuWork(const AnimationSkinningCpuRow& row)
           ",activeNativeScriptEntries,activeManagedScriptEntries,activeReflectionProbes,activeReflectionSceneProbes,activeLightProbeVolumes,activeLightProbeBakeConsumers,activeInstancedComponents"
           ",demandObservedRenderers,provisionalColorExcludedRenderers,conservativeNonColorRequiredRenderers,provisionalNoKnownConsumerRenderers"
           ",legacyEnteredRenderers,renderersWithOutputRequests,nativePublishedRenderers";
-    for(const char* name:skinning_demand_detail::REASON_NAMES)text<<",demandReason_"<<name;
+    for(const char* name:skinning_demand_detail::REASON_NAMES) {
+        text<<",demandReason_"<<name;
+    }
     text<<",demandClassifierVersion";
-    for(const char* name:skinning_demand_detail::INPUT_NAMES)text<<",inputRenderers_"<<name;
+    for(const char* name:skinning_demand_detail::INPUT_NAMES) {
+        text<<",inputRenderers_"<<name;
+    }
     text<<",sourceObservedSlots,sourceBasePathSlots,sourceMorphPathSlots,sourceDiffersFromBaseSlots"
           ",sourceLookupNonNullBasePathSlots,sourceLookupNonNullMorphPathSlots,sourceLookupNullSlots,sourceNativeVersionZeroSlots,boneBakeQueuedReplayRows\n";
     for(uint32_t index=0;index<capture.skinCount;++index){const auto& entry=capture.skin[index];
@@ -392,9 +443,13 @@ void CaptureAnimationSkinningCpuWork(const AnimationSkinningCpuRow& row)
             <<','<<entry.activeNativeScriptEntries<<','<<entry.activeManagedScriptEntries<<','<<entry.activeReflectionProbes<<','<<entry.activeReflectionSceneProbes<<','<<entry.activeLightProbeVolumes<<','<<entry.activeLightProbeBakeConsumers<<','<<entry.activeInstancedComponents
             <<','<<entry.demandObservedRenderers<<','<<entry.provisionalColorExcludedRenderers<<','<<entry.conservativeNonColorRequiredRenderers<<','<<entry.provisionalNoKnownConsumerRenderers
             <<','<<entry.legacyEnteredRenderers<<','<<entry.renderersWithOutputRequests<<','<<entry.nativePublishedRenderers;
-        for(uint64_t count:entry.outputDemandReasonRenderers)text<<','<<count;
+        for(uint64_t count:entry.outputDemandReasonRenderers) {
+            text<<','<<count;
+        }
         text<<','<<entry.demandClassifierVersion;
-        for(uint64_t count:entry.inputObservedRenderers)text<<','<<count;
+        for(uint64_t count:entry.inputObservedRenderers) {
+            text<<','<<count;
+        }
         text<<','<<entry.sourceObservedSlots<<','<<entry.sourceBasePathSlots<<','<<entry.sourceMorphPathSlots<<','<<entry.sourceDiffersFromBaseSlots
             <<','<<entry.sourceLookupNonNullBasePathSlots<<','<<entry.sourceLookupNonNullMorphPathSlots<<','<<entry.sourceLookupNullSlots
             <<','<<entry.sourceNativeVersionZeroSlots<<','<<entry.boneBakeQueuedReplayRows<<'\n';}
@@ -441,7 +496,9 @@ struct ActorCapture {
         uint32_t slot=static_cast<uint32_t>(hash)&(HASH_CAPACITY-1);
         for(uint32_t probe=0;probe<HASH_CAPACITY;++probe,slot=(slot+1)&(HASH_CAPACITY-1)) {
             const uint32_t entry=slots[slot];
-            if(entry && SameActorLifetime(histories[entry-1].key,k))return entry-1;
+            if(entry && SameActorLifetime(histories[entry-1].key,k)) {
+                return entry-1;
+            }
             if(!entry) {
                 uint32_t index=0;
                 if(!ClaimBoundedSlot(historyCount,HISTORY_CAPACITY,index)) { ++historyOverflow; return NO_HISTORY; }
@@ -459,7 +516,9 @@ struct ActorCaptureConfig {
     std::string path=ReadAnimationTraceEnv("FBZZ_ANIMATION_ACTOR_TRACE_OUTPUT");
     uint32_t warmup=0,samples=0;
     ActorCaptureConfig() {
-        if(path.empty())return;
+        if(path.empty()) {
+            return;
+        }
         warmup=ReadAnimationTraceCount("FBZZ_ANIMATION_ACTOR_TRACE_WARMUP",120,100000);
         samples=ReadAnimationTraceCount("FBZZ_ANIMATION_ACTOR_TRACE_SAMPLES",120,animation_actor_detail::FRAME_CAPACITY);
     }
@@ -536,17 +595,23 @@ bool AnimationActorTraceRequested() { const auto& c=ActorConfig(); return !c.pat
 animation_actor_detail::ActorRow* CurrentAnimationActorRow() { return s_animationActorRow; }
 AnimationActorScope::AnimationActorScope(animation_actor_detail::ActorRow* row)
 {
-    if(!row && !s_animationActorRow)return;
+    if(!row && !s_animationActorRow) {
+        return;
+    }
     m_previous=s_animationActorRow; s_animationActorRow=row; m_active=true;
 }
 AnimationActorScope::~AnimationActorScope() { if(m_active)s_animationActorRow=m_previous; }
 AnimationActorFrame::AnimationActorFrame(bool simulating,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance)
 {
-    if(!simulating || !AnimationActorTraceRequested())return;
+    if(!simulating || !AnimationActorTraceRequested()) {
+        return;
+    }
     auto& c=ActorCaptureStorage(); ActorCaptureLease lease(c);
     if(!lease.acquired) { c.rejectedOverlapFrames.fetch_add(1); return; }
     const auto& config=ActorConfig();
-    if(c.written || c.sampleCount>=config.samples)return;
+    if(c.written || c.sampleCount>=config.samples) {
+        return;
+    }
     if(c.frameOpen) { ++c.duplicateFrames; c.CutHistory(); return; }
     c.path=config.path; c.warmup=config.warmup; c.samples=config.samples;
     if(c.lastFrame==frame && c.lastScene==generation && c.lastEpoch==epoch && c.lastInstance==instance) {
@@ -566,9 +631,13 @@ void AnimationActorFrame::CountExcluded(uint32_t reason) { if(m_capture && reaso
 animation_actor_detail::ActorRow* AnimationActorFrame::BeginActor(uint32_t index,uint32_t generation,uint64_t lifetime,float dt,float localScale)
 {
     using namespace animation_actor_detail;
-    if(!m_capture)return nullptr;
+    if(!m_capture) {
+        return nullptr;
+    }
     auto& c=*m_capture; ++c.current.observedActors;
-    if(c.sampled)++c.sampledObservedActors; else ++c.warmObservedActors;
+    if(c.sampled) {
+        ++c.sampledObservedActors;
+    } else ++c.warmObservedActors;
     uint32_t slot=0;
     if(!ClaimBoundedSlot(c.pendingCount,HISTORY_CAPACITY,slot)) { ++c.pendingOverflow; return nullptr; }
     c.pendingHighWater=(std::max)(c.pendingHighWater,c.pendingCount);
@@ -581,19 +650,31 @@ animation_actor_detail::ActorRow* AnimationActorFrame::BeginActor(uint32_t index
 }
 void AnimationActorFrame::FinishActor(animation_actor_detail::ActorRow* row,Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance)
 {
-    if(!m_capture || !row)return;
+    if(!m_capture || !row) {
+        return;
+    }
     auto& r=*row; r.afterRunObserved=true;
-    if(frame!=r.resourceFrame || generation!=r.key.sceneGeneration || epoch!=r.key.resourceEpoch || instance!=r.key.resourceInstance)return;
+    if(frame!=r.resourceFrame || generation!=r.key.sceneGeneration || epoch!=r.key.resourceEpoch || instance!=r.key.resourceInstance) {
+        return;
+    }
     const EntityID entity{r.key.entityIndex,r.key.entityGeneration};
-    if(!r.key.componentLifetime || scene.GetComponentLifetime<AnimatorComponent>(entity)!=r.key.componentLifetime)return;
+    if(!r.key.componentLifetime || scene.GetComponentLifetime<AnimatorComponent>(entity)!=r.key.componentLifetime) {
+        return;
+    }
     const auto* current=scene.GetComponent<AnimatorComponent>(entity);
-    if(!current)return;
+    if(!current) {
+        return;
+    }
     r.afterRunIdentityValid=true; r.elapsedAfterRun=current->poseUpdateElapsed;
-    if(r.actualDecisionAvailable && r.actualRefresh!=current->poseEvaluatedThisFrame)r.afterRunIdentityValid=false;
+    if(r.actualDecisionAvailable && r.actualRefresh!=current->poseEvaluatedThisFrame) {
+        r.afterRunIdentityValid=false;
+    }
 }
 void AnimationActorFrame::FinalizeSource(Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance)
 {
-    if(!m_capture)return;
+    if(!m_capture) {
+        return;
+    }
     auto& c=*m_capture; auto& f=c.current;
     const bool finalizedBefore=f.sourceFinalized;
     const bool matching=f.resourceFrame==frame && f.sceneGeneration==generation && f.resourceEpoch==epoch && f.resourceInstance==instance
@@ -610,11 +691,15 @@ void AnimationActorFrame::FinalizeSource(Scene& scene,uint64_t frame,uint64_t ge
 AnimationActorFrame::~AnimationActorFrame()
 {
     using namespace animation_actor_detail;
-    if(!m_capture)return;
+    if(!m_capture) {
+        return;
+    }
     auto& c=*m_capture; auto& f=c.current;
     if(c.rejectedOverlapFrames.load()!=c.overlapAtBegin) {
         f.sourceComplete=false;
-        for(uint32_t index=0;index<c.pendingCount;++index)c.pending[index].sourceComplete=false;
+        for(uint32_t index=0;index<c.pendingCount;++index) {
+            c.pending[index].sourceComplete=false;
+        }
     }
     f.pendingActors=c.pendingCount;
     for(uint32_t index=0;index<c.pendingCount;++index) {
@@ -629,16 +714,28 @@ AnimationActorFrame::~AnimationActorFrame()
     }
     for(uint32_t index=0;index<c.pendingCount;++index) {
         auto& r=c.pending[index];
-        if(r.historyIndex!=NO_HISTORY)c.histories[r.historyIndex].history.Observe(r);
-        if(r.Complete())++f.completeActors;
+        if(r.historyIndex!=NO_HISTORY) {
+            c.histories[r.historyIndex].history.Observe(r);
+        }
+        if(r.Complete()) {
+            ++f.completeActors;
+        }
         else { ++c.incompleteActors; if(!r.afterRunObserved || !r.afterRunIdentityValid)++f.missingAfterRun; if(!r.frameEndIdentityValid)++f.missingAtFrameEnd; }
-        if(r.duplicateActor)++f.duplicateActors;
+        if(r.duplicateActor) {
+            ++f.duplicateActors;
+        }
         if(r.Complete() && r.actualDecisionAvailable) { if(r.actualRefresh)++f.refreshActors; else ++f.heldActors; }
-        if(r.Complete() && r.lodDecisionAvailable && r.dueArgument)++f.dueActors;
-        if(r.Complete() && r.actualRefresh && r.forceReasonsAvailable && r.forceReasons)++f.forcedRefreshActors;
+        if(r.Complete() && r.lodDecisionAvailable && r.dueArgument) {
+            ++f.dueActors;
+        }
+        if(r.Complete() && r.actualRefresh && r.forceReasonsAvailable && r.forceReasons) {
+            ++f.forcedRefreshActors;
+        }
         if(r.cpuSameDesiredPotentialAvailable) { ++f.sameDesiredAvailable; if(r.cpuSameDesiredPotential)++f.sameDesiredActors; }
         if(r.consecutiveHeldAtLeast2Available) { ++f.consecutiveHeldAvailable; if(r.consecutiveHeldAtLeast2)++f.consecutiveHeldActors; }
-        if(r.consecutiveHeldAtLeast2 && r.cpuSameDesiredPotential)++f.heldSameDesiredActors;
+        if(r.consecutiveHeldAtLeast2 && r.cpuSameDesiredPotential) {
+            ++f.heldSameDesiredActors;
+        }
         f.compareArgumentBytes+=r.compareArgumentBytes;
         if(c.sampled) {
             uint32_t slot=0;
@@ -648,10 +745,16 @@ AnimationActorFrame::~AnimationActorFrame()
     }
     c.actorHighWater=(std::max)(c.actorHighWater,c.actorCount);
     uint64_t accounted=f.observedActors; for(uint64_t excluded:f.excludedActors)accounted+=excluded;
-    if(!f.sourceComplete || f.completeActors!=f.observedActors || accounted!=f.animatorEntityPopulation)++c.incompleteFrames;
-    if(c.sampled)c.frames[c.sampleCount++]=f; else ++c.warmed;
+    if(!f.sourceComplete || f.completeActors!=f.observedActors || accounted!=f.animatorEntityPopulation) {
+        ++c.incompleteFrames;
+    }
+    if(c.sampled) {
+        c.frames[c.sampleCount++]=f;
+    } else ++c.warmed;
     c.frameOpen=false;
-    if(c.sampleCount==c.samples && !c.written)WriteActorCapture(c);
+    if(c.sampleCount==c.samples && !c.written) {
+        WriteActorCapture(c);
+    }
     ReleaseCapture(c.owned);
 }
 
@@ -662,12 +765,16 @@ void CountAnimationCompatibilityUpdate(uint64_t bytes)
 AnimationWorkFrame::AnimationWorkFrame(bool simulating, uint64_t frame, uint64_t generation, uint64_t epoch)
 {
     auto& capture = Capture();
-    if (!simulating || capture.path.empty() || capture.samples == 0) return;
+    if (!simulating || capture.path.empty() || capture.samples == 0) {
+        return;
+    }
     std::lock_guard lock(capture.mutex);
-    if (capture.cpuCount >= capture.samples) return;
+    if (capture.cpuCount >= capture.samples) {
+        return;
+    }
     if (capture.lastStartedFrame == frame) { ++capture.duplicateCpuFrames; return; }
     capture.lastStartedFrame = frame;
-    /// @note 連続する別々のアニメーション更新開始間の実時間を測り、スコープの累計や固定ステップ時間は使わない。
+    // 連続する別々のアニメーション更新開始間の実時間を測り、スコープの累計や固定ステップ時間は使わない。
     const uint64_t beginNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     const uint64_t intervalNs = capture.lastBeginNs && capture.lastBeginGeneration == generation && capture.lastBeginEpoch == epoch ? beginNs-capture.lastBeginNs : 0;
     capture.lastBeginNs = beginNs; capture.lastBeginGeneration = generation; capture.lastBeginEpoch = epoch;
@@ -679,37 +786,55 @@ AnimationWorkFrame::AnimationWorkFrame(bool simulating, uint64_t frame, uint64_t
 }
 AnimationWorkFrame::~AnimationWorkFrame()
 {
-    if (!m_active) return;
+    if (!m_active) {
+        return;
+    }
     s_animationWorkRow = m_previous;
     auto& capture = Capture(); std::lock_guard lock(capture.mutex);
-    if (capture.cpuCount < capture.samples) capture.cpu[capture.cpuCount++] = m_row;
-    if (capture.cpuCount == capture.samples && !capture.cpuWritten) WriteAnimationCpuCapture(capture);
+    if (capture.cpuCount < capture.samples) {
+        capture.cpu[capture.cpuCount++] = m_row;
+    }
+    if (capture.cpuCount == capture.samples && !capture.cpuWritten) {
+        WriteAnimationCpuCapture(capture);
+    }
 }
 void AnimationWorkFrame::FinalizeSource(uint64_t frame, uint64_t generation, uint64_t epoch)
 {
-    if (m_active) m_row.FinalizeSource(frame, generation, epoch);
+    if (m_active) {
+        m_row.FinalizeSource(frame, generation, epoch);
+    }
 }
 /// @note PerformanceProfiler とゲームビューの絞り込みを経由せず、レンダラーの完了済みタイムスタンプを読む。
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/timing 完了済みキューのタイムスタンプをそのキューの周波数で換算する。
 void CaptureAnimationGpuWork(const renderer::GpuProfilerSnapshot& snapshot)
 {
     auto& capture = Capture();
-    if (capture.path.empty() || !snapshot.supported || !snapshot.available) return;
+    if (capture.path.empty() || !snapshot.supported || !snapshot.available) {
+        return;
+    }
     std::lock_guard lock(capture.mutex);
-    if (capture.gpuWritten || capture.cpuCount == 0) return;
+    if (capture.gpuWritten || capture.cpuCount == 0) {
+        return;
+    }
     for (const auto& pass : snapshot.passes) {
         uint32_t part = 0;
-        if (pass.name == "BakedBoneReplay") part = 1;
+        if (pass.name == "BakedBoneReplay") {
+            part = 1;
+        }
         else if (pass.name == "VertexSkinningCompute") part = 2;
         else if (pass.name != "AnimationSkinningCompute") continue;
-        if (!pass.available || !std::isfinite(pass.gpuMs) || pass.gpuMs < 0.0) continue;
+        if (!pass.available || !std::isfinite(pass.gpuMs) || pass.gpuMs < 0.0) {
+            continue;
+        }
         const auto& source = pass.metadata;
         bool cpuFrameFound = false;
         for (uint32_t index = 0; index < capture.cpuCount; ++index) {
             const auto& cpu = capture.cpu[index];
             if (cpu.MatchesCompleteSource(source.applicationFrameSerial, source.sceneGeneration, source.resourceEpoch)) { cpuFrameFound = true; break; }
         }
-        if (!cpuFrameFound) continue;
+        if (!cpuFrameFound) {
+            continue;
+        }
         bool duplicate = false;
         for (uint32_t index = 0; index < capture.gpuCount; ++index) {
             const auto& row = capture.gpu[index];
@@ -717,11 +842,17 @@ void CaptureAnimationGpuWork(const renderer::GpuProfilerSnapshot& snapshot)
                 && row.resourceFrame == source.applicationFrameSerial && row.sourceScene == source.sceneGeneration
                 && row.viewId == source.viewId && row.part == part) { duplicate = true; break; }
         }
-        if (duplicate || capture.gpuCount >= capture.samples * 3) continue;
+        if (duplicate || capture.gpuCount >= capture.samples * 3) {
+            continue;
+        }
         capture.gpu[capture.gpuCount++] = {source.applicationFrameSerial, pass.physicalFrameSerial, pass.deviceEpoch,
             source.sceneGeneration, source.resourceEpoch, source.viewId, pass.gpuMs, snapshot.complete, snapshot.droppedPassCount, part};
-        if (part == 2) ++capture.vertexGpuFrames;
+        if (part == 2) {
+            ++capture.vertexGpuFrames;
+        }
     }
-    if (capture.vertexGpuFrames == capture.samples) WriteAnimationGpuCapture(capture);
+    if (capture.vertexGpuFrames == capture.samples) {
+        WriteAnimationGpuCapture(capture);
+    }
 }
 }

@@ -20,11 +20,10 @@ class GameObject;
 struct EntityID;
 struct ScriptComponent;
 
+/// @brief 所有スレッドで採取した値から、保存の残りを行う関数。
 struct PreparedSceneSave {
-    /// @note 所有スレッドで取得済みの値から TOML を作る。編集中の Scene を再び参照する必要はない。
-    std::function<std::string()> formatScene;
-    /// @note 保存対象に外部地形や材質がある場合だけ設定される。書き込み直前に元ファイルの変更を確認する。
-    std::function<bool()> writeAssets;
+    std::function<std::string()> formatScene; ///< 採取済みの値だけでシーンの TOML を作る関数。採取に失敗した場合は空。
+    std::function<bool()> writeAssets; ///< 外部地形・材質を書き込む関数。対象がある場合に設定され、書き込む直前に元ファイルの変更を照合する。
 };
 
 /// @brief ScriptComponent を Script 実体ごと複製する (Duplicate / Copy&Paste / Prefab 展開用)。
@@ -48,15 +47,18 @@ FBZZ_ENGINE_API void FinalizePassiveCopiedScripts(Scene& scene, std::span<const 
 class SceneSerializer {
 public:
     /// @brief Scene を `.fbzz` ファイルに保存する。
-    /// @note 設計書と異なり Scene& を取る。GetComponent が const 未対応のため。
+    /// @param[in,out] scene 保存する Scene。Script の保存値を採取して保存用キャッシュに反映する。
+    /// @param[in] path シーンファイルの保存先。地形や材質の相対参照もこの場所を基準にする。
+    /// @return 保存先に書き込めた場合は true。
     FBZZ_ENGINE_API static bool Save(Scene& scene, const std::string& path);
 
     /// @brief Scene を TOML テキストへ直列化する。失敗時は空文字。
-    /// @param scenePath 地形と材質の参照を解決する基準。省略すると地形をテキストに含め、外部アセットへの書き込みを省く。
+    /// @param[in] scenePath 地形と材質の参照を解決する基準。省略すると地形をテキストに含め、外部アセットへの書き込みを省く。
     /// @note パスを省略してもスクリプトの保存コールバックを呼び、採取した値を保存用キャッシュへ反映する。変更検出には CaptureSaveComparison を使う。
     /// @note Script 設定の保存失敗時は空文字を返し、全 Script の以前の保存データを保持する。読み込み側の LoadDataFromText と対。
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath = {});
-    /// @note 保存失敗の型・フィールド等を diagnostic に返す。成功時は空にする。
+    /// @brief 保存診断を受け取りながら Scene を TOML テキストへ直列化する。
+    /// @param[out] diagnostic 失敗した型・フィールドなどの診断。成功時は空。
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic);
     /// @note 複製用のテキストを採取する間は保存コールバックを呼ばず、編集元のスクリプトの保存用キャッシュを更新しない。
     FBZZ_ENGINE_API static std::string CapturePassiveClone(Scene& scene, std::string& diagnostic);
@@ -73,6 +75,9 @@ public:
     FBZZ_ENGINE_API static std::string CapturePassiveSubtree(Scene& scene, EntityID root);
 
     /// @brief 所有スレッドで保存値と Script callback を確定する。失敗時は formatScene が空。
+    /// @param[in,out] scene 保存値を採取して Script の保存用キャッシュを更新する対象。
+    /// @param[in] scenePath アセットへの相対参照を解決する基準となる保存先。
+    /// @param[out] diagnostic 採取に失敗した場合の診断。成功時は空。
     /// @note 返した関数は Scene を参照せず、同じプロジェクトが開いている間にそれぞれ一度だけ実行する。
     FBZZ_ENGINE_API static PreparedSceneSave PrepareSave(
         Scene& scene, const std::string& scenePath, std::string& diagnostic);
@@ -81,10 +86,14 @@ public:
     FBZZ_ENGINE_API static std::string CaptureSaveComparison(Scene& scene, const std::string& scenePath);
 
     /// @brief `.fbzz` ファイルから Scene を復元する。
-    /// @param resources nullptr ならデータだけ復元する。詳細は LoadData を参照。
+    /// @param[in] path 復元する `.fbzz` ファイルのパス。相対アセット参照の解決にも使う。
+    /// @param[in,out] resources nullptr ならデータだけ復元する。詳細は LoadData を参照。
+    /// @return 復元した Scene の所有権。読み込みや復元に失敗した場合は nullptr。
     FBZZ_ENGINE_API static std::unique_ptr<Scene> Load(const std::string& path,
                                        renderer::ResourceManager* resources);
 
+    /// @brief 読み込みの待機中に呼び出し側の処理を進めながら Scene を復元する。
+    /// @param[in] pump ファイル読み込みと TOML 解析を待つ間に呼び出す関数。null なら待機中の処理を省く。
     /// @note Scene と資源の復元は呼び出しスレッドで行う。pump からそれらの所有処理へ再入しないこと。
     FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadWithProgress(const std::string& path,
         renderer::ResourceManager* resources, void (*pump)());
@@ -97,7 +106,9 @@ public:
 
     /// @brief TOML テキストから直接復元する。
     /// @return パース失敗または容量超過なら nullptr。
-    /// @param sourcePath このテキストの出所 (`.scene`/`.prefab`/`.vfx` のパス)。パースエラー表示に加え、TerrainComponent の terrainAssetPath など「シーンからの相対パス」を解決する基準になる。空だと相対参照が解けない。
+    /// @param[in] tomlText 復元するシーン全体またはプレファブの TOML テキスト。
+    /// @param[in,out] resources 復元時に描画資源の参照先となる管理器。null ならデータだけ復元する。
+    /// @param[in] sourcePath このテキストの出所 (`.scene`/`.prefab`/`.vfx` のパス)。パースエラー表示に加え、TerrainComponent の terrainAssetPath など「シーンからの相対パス」を解決する基準になる。空だと相対参照が解けない。
     /// @note プレファブ展開のように断片を一度きり読む呼び出しでも、Load へ渡すためだけの一時ファイルが要らない。
     FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadFromText(const std::string& tomlText,
                                                renderer::ResourceManager* resources,
@@ -139,6 +150,10 @@ public:
                             renderer::ResourceManager& resources);
 
     /// @brief 既存 Scene に tomlText の GameObject を追記する (既存 GO は破棄しない)。
+    /// @param[in,out] scene 新規個体を追加し、保存 ID を追加先の Scene 内 ID へ対応付ける対象。
+    /// @param[in] tomlText 追記する `gameobjects` 配列を含む TOML テキスト。
+    /// @param[in,out] resources 追加する個体の描画資源を解決する管理器。null ならデータだけ追記する。
+    /// @param[out] outRoots 追加に成功した階層のルートの Scene 内 ID。
     /// @return 容量不足なら false。既存 Scene は変更せず outRoots を空にする。
     /// @note Script::OnUpdate 内の Instantiate でシーン全体を再構築すると呼び出し元 Script が解放され use-after-free になる。AppendObjects は破棄せず追記のみ行う。
     FBZZ_ENGINE_API static bool AppendObjects(Scene& scene, const std::string& tomlText,
@@ -153,4 +168,4 @@ public:
     }
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

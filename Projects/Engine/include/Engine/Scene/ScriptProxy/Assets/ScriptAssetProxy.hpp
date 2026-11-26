@@ -19,14 +19,13 @@ class Script;
 struct ScriptAssetProxy {
     /// @note 要求台帳と AssetStreamer は、このプロキシを持つ Script より先に構築して長く生存させる。
     FBZZ_ENGINE_API explicit ScriptAssetProxy(Script* owner = nullptr);
-    Script* script = nullptr;
+    Script* script = nullptr; ///< アセット操作で実行スコープを照合する、非所有の Script 参照。
     FBZZ_ENGINE_API ~ScriptAssetProxy();
 
-    /// @brief 無効な要求 ID。
-    static constexpr std::uint64_t kInvalid = 0;
+    static constexpr std::uint64_t kInvalid = 0; ///< 無効な要求 ID。
 
     /// @brief テクスチャ・モデル (.fbx / .fzasset)・マテリアル (.mat) を拡張子で見分けて要求する。
-    /// @param prefetch true なら先読み扱い (予算超過中は後回しにされる)。
+    /// @param[in] prefetch true なら先読み扱い (予算超過中は後回しにされる)。
     /// @return 要求 ID。種類が分からない・受け付けられない (予算超過など) なら kInvalid。
     FBZZ_ENGINE_API std::uint64_t Request(std::string_view path, bool prefetch = false) const;
     [[nodiscard]] FBZZ_ENGINE_API bool IsReady(std::uint64_t request) const;
@@ -45,4 +44,4 @@ struct ScriptAssetProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetScenePrefetchProgress(std::string_view sceneName) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

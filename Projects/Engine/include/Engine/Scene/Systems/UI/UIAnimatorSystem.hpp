@@ -21,4 +21,4 @@ public:
     FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

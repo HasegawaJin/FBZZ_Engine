@@ -72,11 +72,13 @@ bool LoadSynthAssetFromFile(std::string_view path, SynthAsset& outAsset)
         return false;
     }
 
-    /// @note パラメーターは今後増えるため、欠損キーは既定のままにする。書いていない項目を
-    /// @note エラーにすると、既存の .synth が engine 更新のたびに読めなくなる。
+    // パラメーターは今後増えるため、欠損キーは既定のままにする。書いていない項目を
+    // エラーにすると、既存の .synth が engine 更新のたびに読めなくなる。
     const toml::table& root = parsed.table();
     const toml::table* table = root["synth"].as_table();
-    if (!table) table = &root;
+    if (!table) {
+        table = &root;
+    }
 
     SynthAsset asset;
     audio::SynthSpec& spec = asset.spec;
@@ -120,16 +122,19 @@ bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset)
     const std::string pathString(path);
     const audio::SynthSpec& spec = asset.spec;
 
-    /// @note 全項目を書くと「何も触っていないのに 20 行」になり、git の差分から
-    /// @note 「どこを調整したか」が読めなくなるため、既定値と同じ項目は書かない (FbxMetaSerializer と同方針)。
+    // 全項目を書くと「何も触っていないのに 20 行」になり、git の差分から
+    // 「どこを調整したか」が読めなくなるため、既定値と同じ項目は書かない (FbxMetaSerializer と同方針)。
     const audio::SynthSpec defaults;
     toml::table table;
     const auto writeFloat = [&table](const char* key, float value, float defaultValue) {
-        if (value != defaultValue) table.insert(key, static_cast<double>(value));
+        if (value != defaultValue) {
+            table.insert(key, static_cast<double>(value));
+        }
     };
 
-    if (spec.wave != defaults.wave)
+    if (spec.wave != defaults.wave) {
         table.insert("wave", std::string(audio::WaveToString(spec.wave)));
+    }
 
     writeFloat("attack",         spec.attack,         defaults.attack);
     writeFloat("sustain",        spec.sustain,        defaults.sustain);
@@ -150,9 +155,15 @@ bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset)
     writeFloat("arpeggioMod",    spec.arpeggioMod,    defaults.arpeggioMod);
     writeFloat("amplitude",      spec.amplitude,      defaults.amplitude);
 
-    if (spec.seed != 0)       table.insert("seed",       static_cast<int64_t>(spec.seed));
-    if (spec.sampleRate != 0) table.insert("sampleRate", static_cast<int64_t>(spec.sampleRate));
-    if (!asset.presetName.empty()) table.insert("preset", asset.presetName);
+    if (spec.seed != 0) {
+        table.insert("seed",       static_cast<int64_t>(spec.seed));
+    }
+    if (spec.sampleRate != 0) {
+        table.insert("sampleRate", static_cast<int64_t>(spec.sampleRate));
+    }
+    if (!asset.presetName.empty()) {
+        table.insert("preset", asset.presetName);
+    }
 
     toml::table root;
     root.insert("synth", std::move(table));
@@ -171,4 +182,4 @@ bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset)
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

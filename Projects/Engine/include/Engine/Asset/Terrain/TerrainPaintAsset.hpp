@@ -57,4 +57,4 @@ public:
         return EXTENSIONS;
     }
 };
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

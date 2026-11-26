@@ -51,8 +51,9 @@ math::Vector3 ArbitraryPerpendicular(const math::Vector3& axis)
         std::abs(axis.x), std::abs(axis.y), std::abs(axis.z)
     };
     math::Vector3 basis = math::Vector3::RIGHT;
-    if (absoluteAxis.y <= absoluteAxis.x && absoluteAxis.y <= absoluteAxis.z)
+    if (absoluteAxis.y <= absoluteAxis.x && absoluteAxis.y <= absoluteAxis.z) {
         basis = math::Vector3::UP;
+    }
     else if (absoluteAxis.z <= absoluteAxis.x && absoluteAxis.z <= absoluteAxis.y)
         basis = math::Vector3::FORWARD;
     return math::Vector3::Cross(basis, axis).NormalizedOr(math::Vector3::UP);
@@ -64,9 +65,12 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
     const math::Vector3 t = to.NormalizedOr(math::Vector3::FORWARD);
     const float d = math::Vector3::Dot(f, t);
 
-    if (d >= 1.0f - math::EPSILON) return math::Quaternion::Identity();
-    if (d <= -1.0f + math::EPSILON)
+    if (d >= 1.0f - math::EPSILON) {
+        return math::Quaternion::Identity();
+    }
+    if (d <= -1.0f + math::EPSILON) {
         return math::Quaternion::FromAxisAngle(ArbitraryPerpendicular(f), math::PI);
+    }
 
     const math::Vector3 axis = math::Vector3::Cross(f, t);
     return math::Quaternion{ axis.x, axis.y, axis.z, 1.0f + d }.Normalized();
@@ -74,12 +78,16 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
 
 int FindNode(const asset::Skeleton& skeleton, const std::string& boneName)
 {
-    if (boneName.empty()) return -1;
-    if (const auto exact = skeleton.nodeMap.find(boneName); exact != skeleton.nodeMap.end())
+    if (boneName.empty()) {
+        return -1;
+    }
+    if (const auto exact = skeleton.nodeMap.find(boneName); exact != skeleton.nodeMap.end()) {
         return exact->second;
+    }
     for (std::size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (bone_pose_detail::CanonicalBoneName(skeleton.nodes[i].name) == boneName)
+        if (bone_pose_detail::CanonicalBoneName(skeleton.nodes[i].name) == boneName) {
             return static_cast<int>(i);
+        }
     }
     return -1;
 }
@@ -87,10 +95,12 @@ int FindNode(const asset::Skeleton& skeleton, const std::string& boneName)
 void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& resources)
 {
     SkinningCB cb{};
-    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
+    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i) {
         cb.boneMatrices[i] = math::Matrix4::Identity();
-    for (std::size_t i = 0; i < animator.boneMatrices.size(); ++i)
+    }
+    for (std::size_t i = 0; i < animator.boneMatrices.size(); ++i) {
         cb.boneMatrices[i] = animator.boneMatrices[i];
+    }
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
@@ -99,8 +109,7 @@ struct FkSnapshot {
     math::Vector3    position = math::Vector3::ZERO;
     math::Quaternion rotation = math::Quaternion::Identity();
     math::Vector3    scale    = math::Vector3::ONE;
-    /// @note チェーン内の親から見たローカル姿勢。親の揺れ結果へ乗せ直すために使う。
-    math::Vector3    localOffset   = math::Vector3::ZERO;
+    math::Vector3    localOffset   = math::Vector3::ZERO; ///< チェーン内の親から見たローカル姿勢。親の揺れ結果へ乗せ直すために使う。
     math::Quaternion localRotation = math::Quaternion::Identity();
 };
 
@@ -121,7 +130,9 @@ void BuildChain(SpringBoneChain& chain,
     chain.builtSkeleton = &skeleton;
 
     const int rootNode = FindNode(skeleton, chain.rootBoneName);
-    if (rootNode < 0) return;
+    if (rootNode < 0) {
+        return;
+    }
 
     struct Pending { int node; int parentState; int depth; };
     std::vector<Pending> queue;
@@ -129,10 +140,12 @@ void BuildChain(SpringBoneChain& chain,
 
     for (std::size_t head = 0; head < queue.size(); ++head) {
         const Pending current = queue[head];
-        if (current.node < 0 || current.node >= static_cast<int>(skeleton.nodes.size()))
+        if (current.node < 0 || current.node >= static_cast<int>(skeleton.nodes.size())) {
             continue;
-        if (current.node >= static_cast<int>(smr.nodeEntities.size()))
+        }
+        if (current.node >= static_cast<int>(smr.nodeEntities.size())) {
             continue;
+        }
 
         SpringBoneNodeState state{};
         state.nodeIndex   = current.node;
@@ -142,10 +155,13 @@ void BuildChain(SpringBoneChain& chain,
 
         const bool depthReached =
             chain.maxDepth > 0 && current.depth + 1 >= chain.maxDepth;
-        if (depthReached) continue;
+        if (depthReached) {
+            continue;
+        }
 
-        for (int child : skeleton.nodes[static_cast<std::size_t>(current.node)].children)
+        for (int child : skeleton.nodes[static_cast<std::size_t>(current.node)].children) {
             queue.push_back({ child, stateIndex, current.depth + 1 });
+        }
     }
 }
 
@@ -157,7 +173,9 @@ void InitializeChainRestAxes(SpringBoneChain& chain,
     const std::size_t count = chain.nodes.size();
     for (std::size_t i = 0; i < count; ++i) {
         SpringBoneNodeState& node = chain.nodes[i];
-        if (node.boneLength > 0.0f) continue;
+        if (node.boneLength > 0.0f) {
+            continue;
+        }
 
         int firstChildState = -1;
         for (std::size_t j = i + 1; j < count; ++j) {
@@ -171,7 +189,7 @@ void InitializeChainRestAxes(SpringBoneChain& chain,
         if (firstChildState >= 0) {
             worldTail = fk[static_cast<std::size_t>(firstChildState)].position;
         } else {
-            /// @note 葉: 親からこのボーンへ向かう向きをそのまま延長する。親が居なければ真下。
+            // 葉: 親からこのボーンへ向かう向きをそのまま延長する。親が居なければ真下。
             const math::Vector3 inherited = node.parentState >= 0
                 ? (fk[i].position - fk[static_cast<std::size_t>(node.parentState)].position)
                 : math::Vector3::ZERO;
@@ -198,7 +216,9 @@ void ResetChainToRest(SpringBoneChain& chain, const std::vector<FkSnapshot>& fk)
 {
     for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
         SpringBoneNodeState& node = chain.nodes[i];
-        if (node.boneLength <= 0.0f) continue;
+        if (node.boneLength <= 0.0f) {
+            continue;
+        }
         const math::Vector3 tail =
             fk[i].position + (fk[i].rotation * node.boneAxis) * node.boneLength;
         node.currentTail = tail;
@@ -213,7 +233,9 @@ math::Vector3 ClosestPointOnSegment(const math::Vector3& a,
 {
     const math::Vector3 ab = b - a;
     const float lengthSq = ab.LengthSq();
-    if (lengthSq <= math::EPSILON) return a;
+    if (lengthSq <= math::EPSILON) {
+        return a;
+    }
     const float t = math::Clamp01(math::Vector3::Dot(p - a, ab) / lengthSq);
     return a + ab * t;
 }
@@ -230,7 +252,9 @@ math::Vector3 ResolveCollisions(const math::Vector3& tail,
         const math::Vector3 delta = result - closest;
         const float combined = collider.radius + tailRadius;
         const float distanceSq = delta.LengthSq();
-        if (distanceSq >= combined * combined || distanceSq <= math::EPSILON) continue;
+        if (distanceSq >= combined * combined || distanceSq <= math::EPSILON) {
+            continue;
+        }
         const float distance = std::sqrt(distanceSq);
         result = closest + (delta / distance) * combined;
     }
@@ -244,11 +268,14 @@ math::Vector3 ClampToCone(const math::Vector3& direction,
     const float cosine =
         math::Clamp(math::Vector3::Dot(direction, restDirection), -1.0f, 1.0f);
     const float angle = std::acos(cosine);
-    if (angle <= maxAngleRadians) return direction;
+    if (angle <= maxAngleRadians) {
+        return direction;
+    }
 
     math::Vector3 axis = math::Vector3::Cross(restDirection, direction);
-    if (axis.LengthSq() <= math::EPSILON * math::EPSILON)
+    if (axis.LengthSq() <= math::EPSILON * math::EPSILON) {
         axis = ArbitraryPerpendicular(restDirection);
+    }
     return (math::Quaternion::FromAxisAngle(axis.NormalizedOr(math::Vector3::UP),
                                             maxAngleRadians) * restDirection)
         .NormalizedOr(restDirection);
@@ -274,7 +301,7 @@ void StepChain(SpringBoneChain& chain,
             continue;
         }
 
-        /// @note 根は FK のワールド姿勢、子は親の揺れ結果を基準にする。
+        // 根は FK のワールド姿勢、子は親の揺れ結果を基準にする。
         math::Vector3    position;
         math::Quaternion restRotation;
         if (node.parentState >= 0) {
@@ -290,7 +317,7 @@ void StepChain(SpringBoneChain& chain,
         const math::Vector3 restDirection =
             (restRotation * node.boneAxis).NormalizedOr(math::Vector3{ 0.0f, -1.0f, 0.0f });
 
-        /// @note dt=0 で慣性を進めるとポーズ中も髪が流れるため、親姿勢への追従だけを行う。
+        // dt=0 で慣性を進めるとポーズ中も髪が流れるため、親姿勢への追従だけを行う。
         const math::Vector3 inertia = dt > 0.0f
             ? (node.currentTail - node.prevTail) * (1.0f - damping)
             : math::Vector3::ZERO;
@@ -300,13 +327,15 @@ void StepChain(SpringBoneChain& chain,
 
         math::Vector3 nextTail = node.currentTail + inertia + external;
 
-        /// @note 方向ベクトルの加算では長い骨ほど戻りが鈍くなるため、先端を静止位置へ寄せる。
+        // 方向ベクトルの加算では長い骨ほど戻りが鈍くなるため、先端を静止位置へ寄せる。
         const math::Vector3 restTail = position + restDirection * node.boneLength;
         nextTail = math::Vector3::Lerp(nextTail, restTail,
                                        math::Clamp01(stiffness * dt / kSubStep));
 
         math::Vector3 direction = (nextTail - position).NormalizedOr(restDirection);
-        if (maxAngle > 0.0f) direction = ClampToCone(direction, restDirection, maxAngle);
+        if (maxAngle > 0.0f) {
+            direction = ClampToCone(direction, restDirection, maxAngle);
+        }
         nextTail = position + direction * node.boneLength;
 
         nextTail = ResolveCollisions(nextTail, std::max(chain.radius, 0.0f), colliders);
@@ -334,15 +363,19 @@ ComponentAccess SpringBoneSystem::GetAccess() const
 
 OrderingHints SpringBoneSystem::GetOrder() const
 {
-    /// @note IK が骨を動かした「後」の姿勢が揺れの静止姿勢になる。逆順だと IK が揺れを打ち消す。
+    // IK が骨を動かした「後」の姿勢が揺れの静止姿勢になる。逆順だと IK が揺れを打ち消す。
     return OrderingHints{}.After<IKSystem>();
 }
 
 void SpringBoneSystem::Update(SystemContext& ctx)
 {
-    /// @note Pause は確定済みの骨姿勢と Verlet 履歴を保持し、再開時だけ更新する。
-    if (ctx.playing && !ctx.simulating) return;
-    if (!ctx.resources) return;
+    // Pause は確定済みの骨姿勢と Verlet 履歴を保持し、再開時だけ更新する。
+    if (ctx.playing && !ctx.simulating) {
+        return;
+    }
+    if (!ctx.resources) {
+        return;
+    }
     FBZZ_PROFILE_SCOPE("SpringBoneSystem");
 
     Scene& scene = ctx.scene;
@@ -356,19 +389,29 @@ void SpringBoneSystem::Update(SystemContext& ctx)
 
     for (EntityID id : entities) {
         GameObject* go = scene.GetGameObject(id);
-        if (!go || !go->activeInHierarchy()) continue;
+        if (!go || !go->activeInHierarchy()) {
+            continue;
+        }
 
         auto* spring = go->GetComponent<SpringBoneComponent>();
-        if (!spring) continue;
+        if (!spring) {
+            continue;
+        }
         ++spring->runtimeUpdateCount;
         spring->runtimeSimulatedBoneCount  = 0;
         spring->runtimeActiveColliderCount = 0;
-        if (!spring->enabled) continue;
-        if (!ctx.playing && !spring->simulateInEditor) continue;
+        if (!spring->enabled) {
+            continue;
+        }
+        if (!ctx.playing && !spring->simulateInEditor) {
+            continue;
+        }
 
         auto* animator = go->GetComponent<AnimatorComponent>();
         auto* smr      = bone_pose_detail::FindSkinnedMeshRenderer(*go);
-        if (!animator || !smr || !smr->model || !smr->model->skeleton) continue;
+        if (!animator || !smr || !smr->model || !smr->model->skeleton) {
+            continue;
+        }
 
         const asset::Skeleton& skeleton = *smr->model->skeleton;
         const math::Matrix4 ownerInv =
@@ -384,19 +427,23 @@ void SpringBoneSystem::Update(SystemContext& ctx)
 
         colliders.clear();
         for (const SpringBoneCollider& collider : spring->colliders) {
-            if (!collider.enabled || collider.radius <= 0.0f) continue;
+            if (!collider.enabled || collider.radius <= 0.0f) {
+                continue;
+            }
             math::Vector3    basePosition = go->transform.worldPosition;
             math::Quaternion baseRotation = go->transform.worldRotation;
             math::Vector3    baseScale    = go->transform.worldScale;
             if (!collider.boneName.empty()) {
                 const int node = FindNode(skeleton, collider.boneName);
                 GameObject* bone = bone_pose_detail::BoneObject(scene, *smr, node);
-                if (!bone) continue;
+                if (!bone) {
+                    continue;
+                }
                 basePosition = bone->transform.worldPosition;
                 baseRotation = bone->transform.worldRotation;
                 baseScale    = bone->transform.worldScale;
             }
-            /// @note 半径にはスケールの最大成分を掛ける。非一様スケールの正確な楕円体は扱わない。
+            // 半径にはスケールの最大成分を掛ける。非一様スケールの正確な楕円体は扱わない。
             const float scaleFactor =
                 std::max({ std::abs(baseScale.x), std::abs(baseScale.y), std::abs(baseScale.z) });
 
@@ -423,12 +470,17 @@ void SpringBoneSystem::Update(SystemContext& ctx)
 
         bool anyChainSolved = false;
         for (SpringBoneChain& chain : spring->chains) {
-            if (!chain.enabled || chain.rootBoneName.empty()) continue;
-            if (chain.builtSkeleton != &skeleton || chain.nodes.empty())
+            if (!chain.enabled || chain.rootBoneName.empty()) {
+                continue;
+            }
+            if (chain.builtSkeleton != &skeleton || chain.nodes.empty()) {
                 BuildChain(chain, skeleton, *smr);
-            if (chain.nodes.empty()) continue;
+            }
+            if (chain.nodes.empty()) {
+                continue;
+            }
 
-            /// @note FK 姿勢の凍結。以降 Transform は読まず、このスナップショットだけを入力にする。
+            // FK 姿勢の凍結。以降 Transform は読まず、このスナップショットだけを入力にする。
             fk.assign(chain.nodes.size(), FkSnapshot{});
             bool resolved = true;
             for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
@@ -438,11 +490,15 @@ void SpringBoneSystem::Update(SystemContext& ctx)
                 fk[i].rotation = bone->transform.worldRotation;
                 fk[i].scale    = bone->transform.worldScale;
             }
-            if (!resolved) continue;
+            if (!resolved) {
+                continue;
+            }
 
             for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
                 const int parentState = chain.nodes[i].parentState;
-                if (parentState < 0) continue;
+                if (parentState < 0) {
+                    continue;
+                }
                 const std::size_t parent = static_cast<std::size_t>(parentState);
                 const math::Quaternion parentInverse = fk[parent].rotation.Inverse();
                 fk[i].localOffset   = parentInverse * (fk[i].position - fk[parent].position);
@@ -450,21 +506,28 @@ void SpringBoneSystem::Update(SystemContext& ctx)
             }
 
             InitializeChainRestAxes(chain, fk);
-            if (forceRest) ResetChainToRest(chain, fk);
+            if (forceRest) {
+                ResetChainToRest(chain, fk);
+            }
 
-            for (int step = 0; step < subSteps; ++step)
+            for (int step = 0; step < subSteps; ++step) {
                 StepChain(chain, fk, colliders, stepDt);
+            }
             if (subSteps == 0) {
-                /// @note 編集時の dt=0 評価でも親の姿勢変化へは追従させる。
+                // 編集時の dt=0 評価でも親の姿勢変化へは追従させる。
                 StepChain(chain, fk, colliders, 0.0f);
             }
 
             const float chainWeight = math::Clamp01(chain.weight);
-            if (chainWeight <= 0.0f) continue;
+            if (chainWeight <= 0.0f) {
+                continue;
+            }
 
             for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
                 const SpringBoneNodeState& node = chain.nodes[i];
-                if (node.nodeIndex < 0) continue;
+                if (node.nodeIndex < 0) {
+                    continue;
+                }
                 const math::Vector3 position =
                     math::Vector3::Lerp(fk[i].position, node.simPosition, chainWeight);
                 const math::Quaternion rotation =
@@ -476,8 +539,9 @@ void SpringBoneSystem::Update(SystemContext& ctx)
             anyChainSolved = true;
         }
 
-        if (anyChainSolved && animator->skinningBuffer.IsValid())
+        if (anyChainSolved && animator->skinningBuffer.IsValid()) {
             UploadBoneMatrices(*animator, resources);
+        }
     }
 }
 

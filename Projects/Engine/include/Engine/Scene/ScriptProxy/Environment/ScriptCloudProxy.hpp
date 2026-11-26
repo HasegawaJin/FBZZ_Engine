@@ -13,7 +13,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptCloudProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 雲操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetLayer(float bottomHeight, float thickness) const;
@@ -24,4 +24,4 @@ struct ScriptCloudProxy {
     FBZZ_ENGINE_API void SetQuality(int stepCount, float maxDistance) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

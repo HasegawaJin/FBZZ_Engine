@@ -39,20 +39,36 @@ physics::RigidBody* ObjectRigidBody(GameObject* go)
 
 GameObject* FindGameObjectByCollider(Scene* scene, const physics::Collider* collider)
 {
-    if (!scene || !collider) return nullptr;
+    if (!scene || !collider) {
+        return nullptr;
+    }
 
     auto matches = [collider](const ColliderComponent* component) {
         return component && component->collider.get() == collider;
     };
 
     for (auto& go : scene->GameObjects()) {
-        if (matches(go.GetComponent<AabbColliderComponent>())) return &go;
-        if (matches(go.GetComponent<BoxColliderComponent>())) return &go;
-        if (matches(go.GetComponent<SphereColliderComponent>())) return &go;
-        if (matches(go.GetComponent<CapsuleColliderComponent>())) return &go;
-        if (matches(go.GetComponent<CylinderColliderComponent>())) return &go;
-        if (matches(go.GetComponent<MeshColliderComponent>())) return &go;
-        if (matches(go.GetComponent<ConvexHullColliderComponent>())) return &go;
+        if (matches(go.GetComponent<AabbColliderComponent>())) {
+            return &go;
+        }
+        if (matches(go.GetComponent<BoxColliderComponent>())) {
+            return &go;
+        }
+        if (matches(go.GetComponent<SphereColliderComponent>())) {
+            return &go;
+        }
+        if (matches(go.GetComponent<CapsuleColliderComponent>())) {
+            return &go;
+        }
+        if (matches(go.GetComponent<CylinderColliderComponent>())) {
+            return &go;
+        }
+        if (matches(go.GetComponent<MeshColliderComponent>())) {
+            return &go;
+        }
+        if (matches(go.GetComponent<ConvexHullColliderComponent>())) {
+            return &go;
+        }
     }
     return nullptr;
 }
@@ -73,15 +89,33 @@ RaycastHit ToScriptHit(Scene* scene, const physics::World::RaycastHit& worldHit)
 
 ColliderComponent* SelfAnyCollider(const Script* script)
 {
-    if (!script) return nullptr;
-    if (auto* c = script->GetComponent<BoxColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<AabbColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<SphereColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<CapsuleColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<CylinderColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<MeshColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<ConvexHullColliderComponent>()) return c;
-    if (auto* c = script->GetComponent<TerrainColliderComponent>()) return c;
+    if (!script) {
+        return nullptr;
+    }
+    if (auto* c = script->GetComponent<BoxColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<AabbColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<SphereColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<CapsuleColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<CylinderColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<MeshColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<ConvexHullColliderComponent>()) {
+        return c;
+    }
+    if (auto* c = script->GetComponent<TerrainColliderComponent>()) {
+        return c;
+    }
     return nullptr;
 }
 
@@ -91,22 +125,28 @@ CharacterControllerComponent* SelfCharacter(const Script* script)
     return SelfComponent<CharacterControllerComponent>(script);
 }
 
-} /// @note namespace
+} // namespace
 void ScriptPhysicsProxy::AddForce(const math::Vector3& v) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->ApplyForce(v);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->ApplyForce(v);
+    }
 }
 
 
 void ScriptPhysicsProxy::AddImpulse(const math::Vector3& v) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->ApplyImpulse(v);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->ApplyImpulse(v);
+    }
 }
 
 
 void ScriptPhysicsProxy::AddForceAtPoint(const math::Vector3& force, const math::Vector3& worldPoint) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->ApplyForceAtPoint(force, worldPoint);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->ApplyForceAtPoint(force, worldPoint);
+    }
 }
 
 
@@ -124,14 +164,18 @@ bool ScriptPhysicsProxy::HasRigidBody(GameObject* go) const
 
 float ScriptPhysicsProxy::GetMass() const
 {
-    if (auto* rb = SelfRigidBody(script)) return rb->GetMass();
+    if (auto* rb = SelfRigidBody(script)) {
+        return rb->GetMass();
+    }
     return 0.0f;
 }
 
 
 void ScriptPhysicsProxy::SetMass(float mass) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->SetMass(mass);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->SetMass(mass);
+    }
 }
 
 
@@ -160,31 +204,41 @@ bool ScriptPhysicsProxy::IsSleeping() const
 
 float ScriptPhysicsProxy::GetGravityScale() const
 {
-    if (auto* rb = SelfRigidBody(script)) return rb->m_gravityScale;
+    if (auto* rb = SelfRigidBody(script)) {
+        return rb->m_gravityScale;
+    }
     return 1.0f;
 }
 
 
 void ScriptPhysicsProxy::SetGravityScale(float scale) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->m_gravityScale = scale;
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->m_gravityScale = scale;
+    }
 }
 
 
 void ScriptPhysicsProxy::SetLocalTimeScale(float scale) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->m_timeScale = std::clamp(scale, 0.0f, 8.0f);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->m_timeScale = std::clamp(scale, 0.0f, 8.0f);
+    }
 }
 
 
 void ScriptPhysicsProxy::SetFlowCoupling(float coupling) const
 {
     auto* component = SelfComponent<RigidBodyComponent>(script);
-    if (!component) return;
-    /// @note 正本はコンポーネント側 (PhysicsSystem が毎フレーム剛体へ押し込むため、剛体だけに書くと
-    /// @note 次の固定ステップで巻き戻る)。剛体にも写さないと効果が 1 ステップ遅れて出る。
+    if (!component) {
+        return;
+    }
+    // 正本はコンポーネント側 (PhysicsSystem が毎フレーム剛体へ押し込むため、剛体だけに書くと
+    // 次の固定ステップで巻き戻る)。剛体にも写さないと効果が 1 ステップ遅れて出る。
     component->flowCoupling = coupling;
-    if (component->rigidBody) component->rigidBody->SetFlowCoupling(coupling);
+    if (component->rigidBody) {
+        component->rigidBody->SetFlowCoupling(coupling);
+    }
 }
 
 
@@ -197,99 +251,128 @@ float ScriptPhysicsProxy::GetFlowCoupling() const
 
 math::Vector3 ScriptPhysicsProxy::GetWorldGravity() const
 {
-    if (!Script::s_physicsWorld) return { 0.0f, -9.81f, 0.0f };
+    if (!Script::s_physicsWorld) {
+        return { 0.0f, -9.81f, 0.0f };
+    }
     return Script::s_physicsWorld->GetGravity();
 }
 
 
 bool ScriptPhysicsProxy::LayersCollide(int a, int b) const
 {
-    /// @note World が無い (編集中) ときは «ぶつかる» を返す。無いことを «切れている» と
-    /// @note 読ませると、Play していない間だけ組み立てが安全側へ倒れて、
-    /// @note エディタで見ている当たりと Play 中の当たりが別物になる。
-    if (!Script::s_physicsWorld) return true;
+    // World が無い (編集中) ときは «ぶつかる» を返す。無いことを «切れている» と
+    // 読ませると、Play していない間だけ組み立てが安全側へ倒れて、
+    // エディタで見ている当たりと Play 中の当たりが別物になる。
+    if (!Script::s_physicsWorld) {
+        return true;
+    }
     return Script::s_physicsWorld->LayersCollide(a, b);
 }
 
 
 void ScriptPhysicsProxy::SetVelocity(const math::Vector3& v) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->SetVelocity(v);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->SetVelocity(v);
+    }
 }
 
 
 math::Vector3 ScriptPhysicsProxy::GetVelocity() const
 {
-    if (auto* rb = SelfRigidBody(script)) return rb->GetVelocity();
+    if (auto* rb = SelfRigidBody(script)) {
+        return rb->GetVelocity();
+    }
     return math::Vector3::ZERO;
 }
 
 
 void ScriptPhysicsProxy::SetVelocity(GameObject* go, const math::Vector3& v) const
 {
-    if (auto* rb = ObjectRigidBody(go)) rb->SetVelocity(v);
+    if (auto* rb = ObjectRigidBody(go)) {
+        rb->SetVelocity(v);
+    }
 }
 
 
 math::Vector3 ScriptPhysicsProxy::GetVelocity(GameObject* go) const
 {
-    if (auto* rb = ObjectRigidBody(go)) return rb->GetVelocity();
+    if (auto* rb = ObjectRigidBody(go)) {
+        return rb->GetVelocity();
+    }
     return math::Vector3::ZERO;
 }
 
 
 void ScriptPhysicsProxy::AddImpulse(GameObject* go, const math::Vector3& v) const
 {
-    if (auto* rb = ObjectRigidBody(go)) rb->ApplyImpulse(v);
+    if (auto* rb = ObjectRigidBody(go)) {
+        rb->ApplyImpulse(v);
+    }
 }
 
 
 float ScriptPhysicsProxy::GetMass(GameObject* go) const
 {
-    if (auto* rb = ObjectRigidBody(go)) return rb->GetMass();
+    if (auto* rb = ObjectRigidBody(go)) {
+        return rb->GetMass();
+    }
     return 0.0f;
 }
 
 
 void ScriptPhysicsProxy::SetAngularVelocity(const math::Vector3& v) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->SetAngularVelocity(v);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->SetAngularVelocity(v);
+    }
 }
 
 
 math::Vector3 ScriptPhysicsProxy::GetAngularVelocity() const
 {
-    if (auto* rb = SelfRigidBody(script)) return rb->GetAngularVelocity();
+    if (auto* rb = SelfRigidBody(script)) {
+        return rb->GetAngularVelocity();
+    }
     return math::Vector3::ZERO;
 }
 
 
 void ScriptPhysicsProxy::AddTorque(const math::Vector3& v) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->ApplyTorque(v);
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->ApplyTorque(v);
+    }
 }
 
 
 void ScriptPhysicsProxy::SetFreezePosition(bool x, bool y, bool z) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->SetFreezePosition({ x, y, z });
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->SetFreezePosition({ x, y, z });
+    }
 }
 
 
 void ScriptPhysicsProxy::SetFreezeRotation(bool x, bool y, bool z) const
 {
-    if (auto* rb = SelfRigidBody(script)) rb->SetFreezeRotation({ x, y, z });
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->SetFreezeRotation({ x, y, z });
+    }
 }
 
 
 bool ScriptPhysicsProxy::Raycast(const math::Vector3& origin, const math::Vector3& dir, float dist, RaycastHit& hit) const
 {
     hit = {};
-    if (!script || !Script::s_physicsWorld) return false;
+    if (!script || !Script::s_physicsWorld) {
+        return false;
+    }
 
     physics::World::RaycastHit worldHit{};
-    if (!Script::s_physicsWorld->Raycast(origin, dir, dist, worldHit))
+    if (!Script::s_physicsWorld->Raycast(origin, dir, dist, worldHit)) {
         return false;
+    }
 
     hit = ToScriptHit(script->m_scene, worldHit);
     return true;
@@ -299,12 +382,15 @@ bool ScriptPhysicsProxy::Raycast(const math::Vector3& origin, const math::Vector
 std::vector<RaycastHit> ScriptPhysicsProxy::RaycastAll(const math::Vector3& origin, const math::Vector3& dir, float dist) const
 {
     std::vector<RaycastHit> hits;
-    if (!script || !Script::s_physicsWorld) return hits;
+    if (!script || !Script::s_physicsWorld) {
+        return hits;
+    }
 
     const auto worldHits = Script::s_physicsWorld->RaycastAll(origin, dir, dist);
     hits.reserve(worldHits.size());
-    for (const auto& worldHit : worldHits)
+    for (const auto& worldHit : worldHits) {
         hits.push_back(ToScriptHit(script->m_scene, worldHit));
+    }
     return hits;
 }
 
@@ -312,11 +398,14 @@ std::vector<RaycastHit> ScriptPhysicsProxy::RaycastAll(const math::Vector3& orig
 bool ScriptPhysicsProxy::SphereCast(const math::Vector3& center, float radius, const math::Vector3& dir, float dist, RaycastHit& hit) const
 {
     hit = {};
-    if (!script || !Script::s_physicsWorld) return false;
+    if (!script || !Script::s_physicsWorld) {
+        return false;
+    }
 
     physics::World::RaycastHit worldHit{};
-    if (!Script::s_physicsWorld->SphereCast(center, radius, dir, dist, worldHit))
+    if (!Script::s_physicsWorld->SphereCast(center, radius, dir, dist, worldHit)) {
         return false;
+    }
 
     hit = ToScriptHit(script->m_scene, worldHit);
     return true;
@@ -326,14 +415,17 @@ bool ScriptPhysicsProxy::SphereCast(const math::Vector3& center, float radius, c
 std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& center, float radius) const
 {
     std::vector<GameObject*> result;
-    if (!script || !Script::s_physicsWorld) return result;
+    if (!script || !Script::s_physicsWorld) {
+        return result;
+    }
 
     const auto overlaps = Script::s_physicsWorld->OverlapSphere(center, radius);
     result.reserve(overlaps.size());
     for (const auto* inst : overlaps) {
         auto* go = inst ? FindGameObjectByCollider(script->m_scene, inst->collider) : nullptr;
-        if (go && std::find(result.begin(), result.end(), go) == result.end())
+        if (go && std::find(result.begin(), result.end(), go) == result.end()) {
             result.push_back(go);
+        }
     }
     return result;
 }
@@ -341,19 +433,25 @@ std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& 
 
 void ScriptColliderProxy::SetEnabled(bool enabled) const
 {
-    if (auto* c = SelfAnyCollider(script)) c->SetEnabled(enabled);
+    if (auto* c = SelfAnyCollider(script)) {
+        c->SetEnabled(enabled);
+    }
 }
 
 
 void ScriptColliderProxy::SetTrigger(bool trigger) const
 {
-    if (auto* c = SelfAnyCollider(script)) c->SetTrigger(trigger);
+    if (auto* c = SelfAnyCollider(script)) {
+        c->SetTrigger(trigger);
+    }
 }
 
 
 void ScriptColliderProxy::SetCenter(const math::Vector3& center) const
 {
-    if (auto* c = SelfAnyCollider(script)) c->SetCenter(center);
+    if (auto* c = SelfAnyCollider(script)) {
+        c->SetCenter(center);
+    }
 }
 
 
@@ -388,7 +486,9 @@ bool ScriptColliderProxy::TryGetPrimitiveWorldBounds(GameObject* object,
     math::Vector3& outMin, math::Vector3& outMax)
 {
     physics::AABB bounds;
-    if (!object || !TryGetPrimitiveColliderBounds(*object, bounds)) return false;
+    if (!object || !TryGetPrimitiveColliderBounds(*object, bounds)) {
+        return false;
+    }
     outMin = bounds.min;
     outMax = bounds.max;
     return true;
@@ -397,51 +497,73 @@ bool ScriptColliderProxy::TryGetPrimitiveWorldBounds(GameObject* object,
 
 void ScriptColliderProxy::SetBoxSize(const math::Vector3& size) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* c = script->m_gameObject->GetComponent<BoxColliderComponent>()) c->SetSize(size);
-    if (auto* c = script->m_gameObject->GetComponent<AabbColliderComponent>()) c->SetSize(size);
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* c = script->m_gameObject->GetComponent<BoxColliderComponent>()) {
+        c->SetSize(size);
+    }
+    if (auto* c = script->m_gameObject->GetComponent<AabbColliderComponent>()) {
+        c->SetSize(size);
+    }
 }
 
 
 void ScriptColliderProxy::SetSphereRadius(float radius) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* c = script->m_gameObject->GetComponent<SphereColliderComponent>()) c->SetRadius(radius);
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* c = script->m_gameObject->GetComponent<SphereColliderComponent>()) {
+        c->SetRadius(radius);
+    }
 }
 
 
 void ScriptColliderProxy::SetCapsule(float radius, float halfHeight) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* c = script->m_gameObject->GetComponent<CapsuleColliderComponent>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* c = script->m_gameObject->GetComponent<CapsuleColliderComponent>()) {
         c->SetCapsule(radius, halfHeight);
+    }
 }
 
 
 void ScriptColliderProxy::SetCylinder(float radius, float halfHeight) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* c = script->m_gameObject->GetComponent<CylinderColliderComponent>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* c = script->m_gameObject->GetComponent<CylinderColliderComponent>()) {
         c->SetCylinder(radius, halfHeight);
+    }
 }
 
 
 void ScriptColliderProxy::SetMesh(std::string_view meshPath, int meshIndex) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* c = script->m_gameObject->GetComponent<MeshColliderComponent>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* c = script->m_gameObject->GetComponent<MeshColliderComponent>()) {
         c->SetMesh(std::string(meshPath), meshIndex);
-    if (auto* c = script->m_gameObject->GetComponent<ConvexHullColliderComponent>())
+    }
+    if (auto* c = script->m_gameObject->GetComponent<ConvexHullColliderComponent>()) {
         c->SetMesh(std::string(meshPath), meshIndex);
+    }
 }
 
 
 void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFriction) const
 {
     auto* c = SelfAnyCollider(script);
-    if (!c) return;
-    /// @note 共有アセット参照を外してから書く。残したままだと次のフレームで
-    /// @note ResolvePhysicsMaterial() に上書きされ、書いた値が消える。
+    if (!c) {
+        return;
+    }
+    // 共有アセット参照を外してから書く。残したままだと次のフレームで
+    // ResolvePhysicsMaterial() に上書きされ、書いた値が消える。
     c->physicsMaterialPath.clear();
     c->material.staticFriction = staticFriction;
     c->material.dynamicFriction = dynamicFriction;
@@ -451,7 +573,9 @@ void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFrictio
 void ScriptColliderProxy::SetRestitution(float restitution) const
 {
     auto* c = SelfAnyCollider(script);
-    if (!c) return;
+    if (!c) {
+        return;
+    }
     c->physicsMaterialPath.clear();
     c->material.restitution = restitution;
 }
@@ -460,7 +584,9 @@ void ScriptColliderProxy::SetRestitution(float restitution) const
 void ScriptColliderProxy::SetDensity(float density) const
 {
     auto* c = SelfAnyCollider(script);
-    if (!c) return;
+    if (!c) {
+        return;
+    }
     c->physicsMaterialPath.clear();
     c->material.density = density;
 }
@@ -468,8 +594,9 @@ void ScriptColliderProxy::SetDensity(float density) const
 
 void ScriptColliderProxy::SetPhysicsMaterial(std::string_view assetPath) const
 {
-    if (auto* c = SelfAnyCollider(script))
+    if (auto* c = SelfAnyCollider(script)) {
         c->SetPhysicsMaterialPath(std::string(assetPath));
+    }
 }
 
 
@@ -511,8 +638,10 @@ float ScriptColliderProxy::GetDensity() const
 bool ScriptColliderProxy::ApplyPhysicsMaterialPreset(std::string_view presetName) const
 {
     auto* c = SelfAnyCollider(script);
-    if (!c) return false;
-    /// @note string_view は終端 NUL を保証しないため、C API へ渡す前に string 化する。
+    if (!c) {
+        return false;
+    }
+    // string_view は終端 NUL を保証しないため、C API へ渡す前に string 化する。
     const std::string name(presetName);
     const auto* preset = physics::PhysicsMaterial::FindPreset(name.c_str());
     if (!preset) {
@@ -527,8 +656,10 @@ bool ScriptColliderProxy::ApplyPhysicsMaterialPreset(std::string_view presetName
 void ScriptCharacterProxy::Tick(float dt) const
 {
     auto* cc = SelfCharacter(script);
-    if (!cc) return;
-    /// @note RigidBody は SelfRigidBody() が script→Component→rigidBody と辿る。
+    if (!cc) {
+        return;
+    }
+    // RigidBody は SelfRigidBody() が script→Component→rigidBody と辿る。
     cc->Tick(SelfRigidBody(script), dt);
 }
 
@@ -536,7 +667,9 @@ void ScriptCharacterProxy::Tick(float dt) const
 void ScriptCharacterProxy::Jump(const math::Vector3& impulse) const
 {
     auto* cc = SelfCharacter(script);
-    if (!cc) return;
+    if (!cc) {
+        return;
+    }
     cc->Jump(SelfRigidBody(script), impulse);
 }
 
@@ -544,21 +677,27 @@ void ScriptCharacterProxy::Jump(const math::Vector3& impulse) const
 void ScriptCharacterProxy::JumpAtVelocity(float verticalSpeed) const
 {
     auto* cc = SelfCharacter(script);
-    if (cc) cc->JumpAtVelocity(SelfRigidBody(script), verticalSpeed);
+    if (cc) {
+        cc->JumpAtVelocity(SelfRigidBody(script), verticalSpeed);
+    }
 }
 
 
 void ScriptCharacterProxy::SetHorizontalVelocity(const math::Vector3& velocity) const
 {
     auto* cc = SelfCharacter(script);
-    if (cc) cc->SetHorizontalVelocity(SelfRigidBody(script), velocity);
+    if (cc) {
+        cc->SetHorizontalVelocity(SelfRigidBody(script), velocity);
+    }
 }
 
 
 void ScriptCharacterProxy::AddHorizontalVelocity(const math::Vector3& velocity) const
 {
     auto* cc = SelfCharacter(script);
-    if (cc) cc->AddHorizontalVelocity(SelfRigidBody(script), velocity);
+    if (cc) {
+        cc->AddHorizontalVelocity(SelfRigidBody(script), velocity);
+    }
 }
 
 
@@ -568,7 +707,9 @@ void ScriptCharacterProxy::Move(const math::Vector3& desiredVelocity,
                                 float deceleration) const
 {
     auto* cc = SelfCharacter(script);
-    if (cc) cc->Move(SelfRigidBody(script), desiredVelocity, dt, acceleration, deceleration);
+    if (cc) {
+        cc->Move(SelfRigidBody(script), desiredVelocity, dt, acceleration, deceleration);
+    }
 }
 
 
@@ -588,7 +729,9 @@ math::Vector3 ScriptCharacterProxy::GetHorizontalVelocity() const
 
 void ScriptCharacterProxy::RegisterGroundContact(const CollisionInfo& info) const
 {
-    if (auto* cc = SelfCharacter(script)) cc->RegisterGroundContact(info);
+    if (auto* cc = SelfCharacter(script)) {
+        cc->RegisterGroundContact(info);
+    }
 }
 
 
@@ -615,25 +758,33 @@ math::Vector3 ScriptCharacterProxy::GetGroundNormal() const
 
 void ScriptCharacterProxy::ForceGrounded(const math::Vector3& normal) const
 {
-    if (auto* cc = SelfCharacter(script)) cc->ForceGrounded(normal);
+    if (auto* cc = SelfCharacter(script)) {
+        cc->ForceGrounded(normal);
+    }
 }
 
 
 void ScriptCharacterProxy::ForceAirborne() const
 {
-    if (auto* cc = SelfCharacter(script)) cc->ForceAirborne();
+    if (auto* cc = SelfCharacter(script)) {
+        cc->ForceAirborne();
+    }
 }
 
 
 void ScriptCharacterProxy::UseAutomaticGrounding() const
 {
-    if (auto* cc = SelfCharacter(script)) cc->UseAutomaticGrounding();
+    if (auto* cc = SelfCharacter(script)) {
+        cc->UseAutomaticGrounding();
+    }
 }
 
 
 void ScriptCharacterProxy::SetEnabled(bool enabled) const
 {
-    if (auto* cc = SelfCharacter(script)) cc->enabled = enabled;
+    if (auto* cc = SelfCharacter(script)) {
+        cc->enabled = enabled;
+    }
 }
 
 
@@ -645,4 +796,4 @@ bool ScriptCharacterProxy::IsEnabled() const
 
 /// @brief ScriptMeshProxy
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -38,4 +38,4 @@ FBZZ_ENGINE_API void ClearIKTargetReference(IKChain& chain);
 /// @brief Pole 接続を null にし、旧名前・EntityID からの再接続を抑止する。
 FBZZ_ENGINE_API void ClearIKPoleReference(IKChain& chain);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

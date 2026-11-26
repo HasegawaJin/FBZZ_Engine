@@ -21,21 +21,21 @@ namespace fbzz::tests {
 TEST(ParticleMaterialPathTest, RecognisesTextureExtensions)
 {
     EXPECT_TRUE(asset::IsParticleTexturePath("Assets/Textures/Particles/flame.png"));
-    /// @note 大小は問わない
+    // 大小は問わない
     EXPECT_TRUE(asset::IsParticleTexturePath("flame.TGA"));
     EXPECT_TRUE(asset::IsParticleTexturePath("a/b/c.dds"));
     EXPECT_TRUE(asset::IsParticleTexturePath("x.jpeg"));
 
     EXPECT_FALSE(asset::IsParticleTexturePath("Assets/Materials/Particles/Flame_Additive.mat"));
     EXPECT_FALSE(asset::IsParticleTexturePath(""));
-    /// @note ディレクトリ名にドットがあっても拡張子と取り違えないこと。
+    // ディレクトリ名にドットがあっても拡張子と取り違えないこと。
     EXPECT_FALSE(asset::IsParticleTexturePath("Assets/v1.2/Flame"));
 }
 
 /// @brief Wraps a texture into a deterministic material name.
 TEST(ParticleMaterialPathTest, WrapsATextureIntoADeterministicMaterialName)
 {
-    /// @note 区切りを落として各語の頭を大文字にする。同梱の 25 枚と同じ名前へ落ちるのが狙い。
+    // 区切りを落として各語の頭を大文字にする。同梱の 25 枚と同じ名前へ落ちるのが狙い。
     EXPECT_EQ(asset::ParticleMaterialPathForTexture("Assets/Textures/flame_03.png",
                                                     scene::ParticleBlendMode::Additive),
               "Assets/Materials/Particles/Flame03_Additive.mat");
@@ -50,7 +50,7 @@ TEST(ParticleMaterialPathTest, WrapsATextureIntoADeterministicMaterialName)
 /// @brief The same texture always maps to the same material.
 TEST(ParticleMaterialPathTest, TheSameTextureAlwaysMapsToTheSameMaterial)
 {
-    /// @note 呼ぶたびに別名になると、同じ素材の .mat が二重に増える。
+    // 呼ぶたびに別名になると、同じ素材の .mat が二重に増える。
     const std::string first =
         asset::ParticleMaterialPathForTexture("Assets/Textures/Particles/Glow_Soft.png",
                                               scene::ParticleBlendMode::Additive);
@@ -65,7 +65,7 @@ TEST(ParticleMaterialPathTest, TheSameTextureAlwaysMapsToTheSameMaterial)
 TEST(ParticleMaterialPathTest, ReturnsNothingWhenThereIsNoUsableName)
 {
     EXPECT_TRUE(asset::ParticleMaterialPathForTexture("", scene::ParticleBlendMode::Additive).empty());
-    /// @note 記号だけの名前は素材名にならない。空を返して呼び出し側を «既定へ落とす» 側へ倒す。
+    // 記号だけの名前は素材名にならない。空を返して呼び出し側を «既定へ落とす» 側へ倒す。
     EXPECT_TRUE(asset::ParticleMaterialPathForTexture("___.png",
                                                       scene::ParticleBlendMode::Additive).empty());
 }

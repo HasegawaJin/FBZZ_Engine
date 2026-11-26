@@ -30,13 +30,15 @@ bool IsTemplatePlaceholder(const std::filesystem::path& path)
 std::filesystem::path ResolvePathUnderRoot(const std::filesystem::path& filePath,
                                            const std::filesystem::path& root)
 {
-    if (!filePath.is_absolute())
+    if (!filePath.is_absolute()) {
         return util::FileSystem::MakeAbsolute(root / filePath);
+    }
 
-    if (util::FileSystem::Exists(filePath))
+    if (util::FileSystem::Exists(filePath)) {
         return filePath;
+    }
 
-    /// @note 移動後プロジェクトの .fbzz_proj に絶対パスが残っていても、末尾成分を root 配下へ寄せて復旧する。
+    // 移動後プロジェクトの .fbzz_proj に絶対パスが残っていても、末尾成分を root 配下へ寄せて復旧する。
     std::filesystem::path suffix;
     std::filesystem::path p = filePath;
     while (p.has_relative_path()) {
@@ -44,8 +46,9 @@ std::filesystem::path ResolvePathUnderRoot(const std::filesystem::path& filePath
         suffix = suffix.empty() ? component : (component / suffix);
         p = p.parent_path();
         const auto candidate = util::FileSystem::MakeAbsolute(root / suffix);
-        if (util::FileSystem::Exists(candidate))
+        if (util::FileSystem::Exists(candidate)) {
             return candidate;
+        }
     }
     return util::FileSystem::MakeAbsolute(root / filePath);
 }

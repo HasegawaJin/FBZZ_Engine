@@ -43,37 +43,33 @@ enum class DepthTest { Always, Never, Less, LessEqual, Equal, Greater, GreaterEq
 /// @note GameObject ごとの MaterialComponent に見た目の値を複製せず、同一ファイルを参照する
 /// @note 全オブジェクトへ編集結果を即時反映する。
 struct MaterialAssetAuthoring {
-    std::string shaderPath;
-    renderer::BlendMode blendMode = renderer::BlendMode::OPAQUE_BLEND;
-    bool doubleSided  = false;
-    bool depthWrite   = true;
-    DepthTest depthTest = DepthTest::LessEqual;
+    std::string shaderPath; ///< この材質で読み込むシェーダーへのアセット参照。
+    renderer::BlendMode blendMode = renderer::BlendMode::OPAQUE_BLEND; ///< 描画結果を既存のターゲット色へ合成するブレンド方式。
+    bool doubleSided  = false; ///< 背面カリングを外して両側の面を描画するか。
+    bool depthWrite   = true; ///< 深度テストを通った画素の深度をバッファへ書くか。
+    DepthTest depthTest = DepthTest::LessEqual; ///< 画素の深度とバッファの深度の比較方式。
     /// @brief 深度バイアス (定数項 / 傾き項)。正で手前へ寄せ、同一平面に重なった面の Z-fighting を片側勝ちにする。
     /// @see renderer::PipelineStateDesc::depthBias
-    int32_t depthBias      = 0;
-    float   depthBiasSlope = 0.0f;
-    int32_t renderQueue = renderer::RenderQueue::GEOMETRY;
-    RenderPath renderPath = RenderPath::Auto;
-    MeshType   meshType   = MeshType::Any;
+    int32_t depthBias      = 0; ///< 面に加える固定の深度補正。深度の量子化単位に基づく。
+    float   depthBiasSlope = 0.0f; ///< 深度の傾きに比例して加えるバイアスの倍率。
+    int32_t renderQueue = renderer::RenderQueue::GEOMETRY; ///< 同じ描画経路内でこの材質の提出順を決める番号。
+    RenderPath renderPath = RenderPath::Auto; ///< この材質を提出する描画経路。
+    MeshType   meshType   = MeshType::Any; ///< この材質が要求する静的・スキンドなどのメッシュ入力型。
 
-    /// @note slot 名 → assets/ 相対パス（元画像 .png/.dds 等を直参照。インポート設定は隣の .meta が担う）
-    std::unordered_map<std::string, std::string> textures;
+    std::unordered_map<std::string, std::string> textures; ///< slot 名 → assets/ 相対パス（元画像 .png/.dds 等を直参照。インポート設定は隣の .meta が担う）
 
     /// @note シェーダー変数名 → float 要素列。float / float2 / float3 / float4 を同じ形式で保存する。
     /// @note 保存時に ShaderDescriptor のバイトオフセットへ依存させず、ロード後に現在のシェーダーへ名前で束縛する。
-    std::unordered_map<std::string, std::vector<float>> params;
-    /// @note int/uint/bool は float を経由せず保持する。同名キーは params と排他的に書き込む。
-    std::unordered_map<std::string, std::vector<int64_t>> integerParams;
+    std::unordered_map<std::string, std::vector<float>> params; ///< シェーダー変数の名前から浮動小数点パラメーターの成分列を引く。
+    std::unordered_map<std::string, std::vector<int64_t>> integerParams; ///< int/uint/bool は float を経由せず保持する。同名キーは params と排他的に書き込む。
 
-    /// @note シェーダーコンパイル時 define 一覧（例: "USE_NORMAL_MAP", "USE_AO"）
-    std::vector<std::string> keywords;
+    std::vector<std::string> keywords; ///< シェーダーコンパイル時 define 一覧（例: "USE_NORMAL_MAP", "USE_AO"）
 
     /// @note [particle] テーブル。render_path = "particle" のときだけ意味を持つ。
     /// @note パーティクルの見た目 (ブレンド以外) の正本。詳細と «なぜ [params] ではないか» は
     /// @note ParticleMaterialSettings.hpp を参照。
-    ParticleMaterialSettings particle;
-    /// @note [dielectric] は alpha 被覆と独立。未記載の旧材質は光透過を持たない。
-    renderer::SolidDielectricSettings dielectric;
+    ParticleMaterialSettings particle; ///< パーティクル描画時に使うフリップブックと照明などの設定。
+    renderer::SolidDielectricSettings dielectric; ///< [dielectric] は alpha 被覆と独立。未記載の旧材質は光透過を持たない。
     [[nodiscard]] FBZZ_ENGINE_API bool operator==(const MaterialAssetAuthoring& other) const;
 };
 
@@ -109,7 +105,7 @@ private:
     {
         return m_authoring.Commit(edit);
     }
-    AuthoringState m_authoring;
+    AuthoringState m_authoring; ///< 公開済みの材質制作値と版管理を所有する状態。
     friend AuthoringEdit;
 };
 
@@ -126,4 +122,4 @@ private:
 /// @note 生成器やエディターの所有する下書きは、ストアへ公開せず既存の TOML 表現を使う。
 [[nodiscard]] FBZZ_ENGINE_API bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

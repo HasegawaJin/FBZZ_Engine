@@ -47,12 +47,14 @@ bool LoadFrame(const std::filesystem::path& path, DirectX::ScratchImage& rgba,
     DirectX::ScratchImage loaded;
     const std::wstring widePath = path.wstring();
     HRESULT hr = E_FAIL;
-    if (HasExtension(path, L".dds"))
+    if (HasExtension(path, L".dds")) {
         hr = DirectX::LoadFromDDSFile(widePath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, loaded);
+    }
     else if (HasExtension(path, L".tga"))
         hr = DirectX::LoadFromTGAFile(widePath.c_str(), nullptr, loaded);
-    else
+    else {
         hr = DirectX::LoadFromWICFile(widePath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, loaded);
+    }
     if (FAILED(hr) || loaded.GetImageCount() == 0) {
         outError = "画像を読み込めません: " + path.string();
         return false;
@@ -72,17 +74,25 @@ bool LoadFrame(const std::filesystem::path& path, DirectX::ScratchImage& rgba,
 
 FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& settings)
 {
-    if (settings.framePaths.empty()) return Fail("入力フレームがありません");
-    if (settings.outputPath.empty()) return Fail("Atlasの出力先がありません");
+    if (settings.framePaths.empty()) {
+        return Fail("入力フレームがありません");
+    }
+    if (settings.outputPath.empty()) {
+        return Fail("Atlasの出力先がありません");
+    }
 
     const std::filesystem::path outputPath(settings.outputPath);
-    if (!HasExtension(outputPath, L".png"))
+    if (!HasExtension(outputPath, L".png")) {
         return Fail("Atlasの出力形式はPNGにしてください: " + settings.outputPath);
+    }
 
     std::error_code fileError;
-    if (std::filesystem::exists(outputPath, fileError) && !settings.overwrite)
+    if (std::filesystem::exists(outputPath, fileError) && !settings.overwrite) {
         return Fail("出力先が既に存在します: " + settings.outputPath);
-    if (fileError) return Fail("出力先を確認できません: " + fileError.message());
+    }
+    if (fileError) {
+        return Fail("出力先を確認できません: " + fileError.message());
+    }
 
     const int frameCount = static_cast<int>((std::min)(
         settings.framePaths.size(), static_cast<std::size_t>((std::numeric_limits<int>::max)())));
@@ -92,10 +102,13 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
 
     DirectX::ScratchImage firstFrame;
     std::string loadError;
-    if (!LoadFrame(settings.framePaths.front(), firstFrame, loadError)) return Fail(loadError);
+    if (!LoadFrame(settings.framePaths.front(), firstFrame, loadError)) {
+        return Fail(loadError);
+    }
     const DirectX::Image* firstImage = firstFrame.GetImage(0, 0, 0);
-    if (firstImage == nullptr || firstImage->width == 0 || firstImage->height == 0)
+    if (firstImage == nullptr || firstImage->width == 0 || firstImage->height == 0) {
         return Fail("先頭フレームの寸法が無効です");
+    }
     const std::size_t frameWidth = firstImage->width;
     const std::size_t frameHeight = firstImage->height;
 
@@ -111,7 +124,9 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
     DirectX::ScratchImage atlas;
     HRESULT hr = atlas.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM,
                                     atlasWidth, atlasHeight, 1, 1);
-    if (FAILED(hr)) return Fail("Atlasの出力バッファを確保できません");
+    if (FAILED(hr)) {
+        return Fail("Atlasの出力バッファを確保できません");
+    }
 
     const DirectX::Image* atlasImage = atlas.GetImage(0, 0, 0);
     std::memset(atlasImage->pixels, 0, atlasImage->slicePitch);
@@ -120,8 +135,9 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
         const DirectX::Image* source = firstImage;
         if (frameIndex > 0) {
             if (!LoadFrame(settings.framePaths[static_cast<std::size_t>(frameIndex)],
-                           current, loadError))
+                           current, loadError)) {
                 return Fail(loadError);
+            }
             source = current.GetImage(0, 0, 0);
         }
         if (source == nullptr || source->width != frameWidth
@@ -145,14 +161,16 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
     if (!detail::SavePngRgba8(outputPath, static_cast<std::uint32_t>(atlasWidth),
                               static_cast<std::uint32_t>(atlasHeight),
                               { atlasImage->pixels, atlasImage->slicePitch }, saveError,
-                              atlasImage->rowPitch))
+                              atlasImage->rowPitch)) {
         return Fail(saveError);
-    /// @note Mip なし。Atlas の Mip 生成は隣接フレームを混ぜて境界を汚す。
+    }
+    // Mip なし。Atlas の Mip 生成は隣接フレームを混ぜて境界を汚す。
     const TextureImportSettings colorDefaults = DefaultSettingsForType(TextureType::Color);
     if (settings.generateTextureMeta
         && !detail::SaveTextureMeta(outputPath, TextureType::Color, colorDefaults.compression,
-                                    colorDefaults.alphaMode, false, saveError))
+                                    colorDefaults.alphaMode, false, saveError)) {
         return Fail("Atlasは生成しましたが.metaを書き出せません: " + saveError);
+    }
 
     FlipbookAtlasBakeResult result;
     result.success = true;

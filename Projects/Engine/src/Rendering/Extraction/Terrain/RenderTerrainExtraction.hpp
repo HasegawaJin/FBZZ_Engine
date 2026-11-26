@@ -87,4 +87,4 @@ void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainComponent& t
 [[nodiscard]] uint64_t TerrainShadowBakeGeometryHash(const TerrainComponent& terrain,
     const std::vector<renderer::RenderTerrainPatch>& patches);
 
-} /// @note namespace fbzz::scene::terrain_extraction_detail
+} // namespace fbzz::scene::terrain_extraction_detail

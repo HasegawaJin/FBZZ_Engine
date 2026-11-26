@@ -14,8 +14,12 @@ public:
     /// @note ボタンやホイールだけのパケットは座標差へのフォールバックを妨げない。
     void Add(int x, int y)
     {
-        if (x == 0 && y == 0) return;
-        if (!m_delta) m_delta.emplace();
+        if (x == 0 && y == 0) {
+            return;
+        }
+        if (!m_delta) {
+            m_delta.emplace();
+        }
         *m_delta += math::Vector2{static_cast<float>(x), static_cast<float>(y)};
     }
 
@@ -32,4 +36,4 @@ private:
 /// @pre メインスレッドで Win32 の相対移動パケットを受信したときに呼ぶ。
 void HandleRelativeMouseMotion(int x, int y);
 
-} /// @note namespace fbzz::core::cursor_detail
+} // namespace fbzz::core::cursor_detail

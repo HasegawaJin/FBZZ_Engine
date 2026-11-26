@@ -69,14 +69,17 @@ SynthSpec Sanitize(const SynthSpec& in)
     s.repeatRate      = Clamp(s.repeatRate, 0.0f, 200.0f);
     s.arpeggioMod     = Clamp(s.arpeggioMod, 0.0f, 8.0f);
     s.amplitude       = Clamp(s.amplitude, 0.0f, 1.0f);
-    if (s.sampleRate < 8000 || s.sampleRate > 192000) s.sampleRate = kDefaultSampleRate;
+    if (s.sampleRate < 8000 || s.sampleRate > 192000) {
+        s.sampleRate = kDefaultSampleRate;
+    }
     return s;
 }
 
 float EnvelopeAt(const SynthSpec& spec, float t)
 {
-    if (t < spec.attack)
+    if (t < spec.attack) {
         return spec.attack > 0.0f ? t / spec.attack : 1.0f;
+    }
 
     const float sustainEnd = spec.attack + spec.sustain;
     if (t < sustainEnd) {
@@ -125,9 +128,11 @@ uint64_t HashBytes(uint64_t hash, const void* data, size_t bytes)
 
 uint64_t HashFloat(uint64_t hash, float value)
 {
-    /// @note -0.0f と +0.0f はビット列が違うが合成結果は同じため、生ビットでなく正規化してから
-    ///       畳み込み、別クリップとして二重生成されるのを防ぐ。
-    if (value == 0.0f) value = 0.0f;
+    // -0.0f と +0.0f はビット列が違うが合成結果は同じため、生ビットでなく正規化してから
+    //       畳み込み、別クリップとして二重生成されるのを防ぐ。
+    if (value == 0.0f) {
+        value = 0.0f;
+    }
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     return HashBytes(hash, &bits, sizeof(bits));
@@ -144,12 +149,16 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
 {
     const SynthSpec spec = Sanitize(in);
     const float duration = spec.attack + spec.sustain + spec.decay;
-    if (duration <= 0.0f || spec.amplitude <= 0.0f) return {};
+    if (duration <= 0.0f || spec.amplitude <= 0.0f) {
+        return {};
+    }
 
     const uint32_t sampleRate  = spec.sampleRate;
     const float    invRate     = 1.0f / static_cast<float>(sampleRate);
     const size_t   sampleCount = static_cast<size_t>(duration * static_cast<float>(sampleRate));
-    if (sampleCount == 0) return {};
+    if (sampleCount == 0) {
+        return {};
+    }
 
     outFmt.sampleRate    = sampleRate;
     outFmt.channels      = 1;
@@ -157,7 +166,9 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
 
     Rng   rng(spec.seed);
     float noise[kNoiseTableSize];
-    for (float& n : noise) n = rng.Signed();
+    for (float& n : noise) {
+        n = rng.Signed();
+    }
 
     const float nyquist      = static_cast<float>(sampleRate) * 0.5f - 1.0f;
     const float minFrequency = spec.minFrequency > 0.0f ? spec.minFrequency : 1.0f;
@@ -166,8 +177,8 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
     const float crushLevels  = spec.bitCrush > 0.0f
         ? std::exp2(16.0f - spec.bitCrush * 12.0f) : 0.0f;
 
-    /// @note 係数計算は exp() を含み、掃引していない間は毎サンプル同じ値になるため、
-    ///       掃引の有無で分けループの外で 1 回だけ求める。
+    // 係数計算は exp() を含み、掃引していない間は毎サンプル同じ値になるため、
+    //       掃引の有無で分けループの外で 1 回だけ求める。
     const bool  sweepsLowPass = spec.lowPassSweep != 0.0f;
     const float staticLowPass = FilterCoefficient(spec.lowPassCutoff, sampleRate);
     const float highPassCoeff = spec.highPassCutoff > 0.0f
@@ -195,22 +206,25 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
         const float tSegment = t - segmentStart;
 
         float frequency = baseFrequency * std::exp2(spec.slide * tSegment);
-        if (spec.vibratoDepth > 0.0f && spec.vibratoRate > 0.0f)
+        if (spec.vibratoDepth > 0.0f && spec.vibratoRate > 0.0f) {
             frequency *= 1.0f + spec.vibratoDepth * std::sin(kTwoPi * spec.vibratoRate * t);
+        }
         frequency = Clamp(frequency, minFrequency, nyquist);
 
         phase += frequency * invRate;
         if (phase >= 1.0f) {
             phase -= std::floor(phase);
             if (spec.wave == SynthWave::Noise)
-                for (float& n : noise) n = rng.Signed();
+                for (float& n : noise) {
+                    n = rng.Signed();
+                }
         }
 
         const float duty = Clamp(spec.dutyCycle + spec.dutySweep * tSegment, 0.01f, 0.99f);
         float value = Oscillate(spec.wave, phase, duty, noise);
 
-        /// @note 係数は cutoff=1 でも 1 に達しないため、係数側で判定すると既定の「無加工」
-        ///       設定でも高域が削れる。正規化値側で判定する。
+        // 係数は cutoff=1 でも 1 に達しないため、係数側で判定すると既定の「無加工」
+        //       設定でも高域が削れる。正規化値側で判定する。
         const float lowPassNorm = sweepsLowPass
             ? Clamp(spec.lowPassCutoff + spec.lowPassSweep * t, 0.0f, 1.0f)
             : spec.lowPassCutoff;
@@ -225,21 +239,23 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
             value -= highPassState;
         }
 
-        if (crushLevels > 0.0f)
+        if (crushLevels > 0.0f) {
             value = std::round(value * crushLevels) / crushLevels;
+        }
 
         value *= EnvelopeAt(spec, t) * spec.amplitude;
 
-        /// @note attack / decay が 0 のときの発音端クリックを潰す。
+        // attack / decay が 0 のときの発音端クリックを潰す。
         if (guardSamples > 0) {
-            if (i < guardSamples)
+            if (i < guardSamples) {
                 value *= static_cast<float>(i) / static_cast<float>(guardSamples);
+            }
             else if (i + guardSamples >= sampleCount)
                 value *= static_cast<float>(sampleCount - i) / static_cast<float>(guardSamples);
         }
 
-        /// @note WAV の 16bit PCM はリトルエンディアン。バイトで書くことで、
-        ///       アラインメントもエンディアンも環境任せにしない。
+        // WAV の 16bit PCM はリトルエンディアン。バイトで書くことで、
+        //       アラインメントもエンディアンも環境任せにしない。
         const auto sample = static_cast<int16_t>(Clamp(value, -1.0f, 1.0f) * 32767.0f);
         pcm[i * 2]     = static_cast<uint8_t>(static_cast<uint16_t>(sample) & 0xFFu);
         pcm[i * 2 + 1] = static_cast<uint8_t>((static_cast<uint16_t>(sample) >> 8) & 0xFFu);
@@ -308,15 +324,17 @@ SynthSpec MakePreset(SynthPreset preset, uint32_t seed)
 SynthSpec Mutate(const SynthSpec& base, float amount, uint32_t seed)
 {
     const float scale = Clamp(amount, 0.0f, 1.0f);
-    if (scale <= 0.0f) return base;
+    if (scale <= 0.0f) {
+        return base;
+    }
 
     Rng rng(seed);
     const auto jitter = [&](float value, float lo, float hi) {
         return Clamp(value * (1.0f + rng.Signed() * scale), lo, hi);
     };
-    /// @note 0 のままにしておきたいパラメーター (無効化されている機能) は乗算では動かない。
-    ///       掛け算だけだと Mutate が「一度でも 0 にした項目を永久に殺す」挙動になるため、
-    ///       中心が 0 の項目は加算で揺らす。
+    // 0 のままにしておきたいパラメーター (無効化されている機能) は乗算では動かない。
+    //       掛け算だけだと Mutate が「一度でも 0 にした項目を永久に殺す」挙動になるため、
+    //       中心が 0 の項目は加算で揺らす。
     const auto offset = [&](float value, float span, float lo, float hi) {
         return Clamp(value + rng.Signed() * scale * span, lo, hi);
     };
@@ -366,7 +384,9 @@ SynthSpec Randomize(uint32_t seed)
 
 std::vector<uint8_t> EncodeWav(const void* pcmData, size_t bytes, const WaveFormat& fmt)
 {
-    if (!pcmData || bytes == 0 || fmt.channels == 0 || fmt.sampleRate == 0) return {};
+    if (!pcmData || bytes == 0 || fmt.channels == 0 || fmt.sampleRate == 0) {
+        return {};
+    }
 
     const uint16_t blockAlign  = static_cast<uint16_t>(fmt.channels * fmt.bitsPerSample / 8);
     const uint32_t byteRate    = fmt.sampleRate * blockAlign;
@@ -388,7 +408,7 @@ std::vector<uint8_t> EncodeWav(const void* pcmData, size_t bytes, const WaveForm
     push("WAVE", 4);
     push("fmt ", 4);
     pushU32(16);
-    /// @note WAVE_FORMAT_PCM
+    // WAVE_FORMAT_PCM
     pushU16(1);
     pushU16(fmt.channels);
     pushU32(fmt.sampleRate);
@@ -413,8 +433,9 @@ uint64_t HashSpec(const SynthSpec& spec)
                            spec.dutyCycle, spec.dutySweep,
                            spec.lowPassCutoff, spec.lowPassSweep,
                            spec.highPassCutoff, spec.bitCrush,
-                           spec.repeatRate, spec.arpeggioMod, spec.amplitude })
+                           spec.repeatRate, spec.arpeggioMod, spec.amplitude }) {
         h = HashFloat(h, v);
+    }
     h = HashBytes(h, &spec.seed, sizeof(spec.seed));
     h = HashBytes(h, &spec.sampleRate, sizeof(spec.sampleRate));
     return h;
@@ -427,7 +448,9 @@ SynthAnalysis Analyze(const SynthSpec& spec)
     WaveFormat fmt{};
     const std::vector<uint8_t> pcm = Render(spec, fmt);
     const size_t count = pcm.size() / 2;
-    if (count == 0 || fmt.sampleRate == 0) return analysis;
+    if (count == 0 || fmt.sampleRate == 0) {
+        return analysis;
+    }
 
     analysis.sampleRate      = fmt.sampleRate;
     analysis.sampleCount     = static_cast<uint32_t>(count);
@@ -454,12 +477,16 @@ SynthAnalysis Analyze(const SynthSpec& spec)
             analysis.peakAmplitude = magnitude;
             peakIndex = i;
         }
-        if (magnitude >= 0.999f) ++clipped;
+        if (magnitude >= 0.999f) {
+            ++clipped;
+        }
         energy += static_cast<double>(value) * value;
         if (i > 0) {
             const float delta = value - previous;
             diffEnergy += static_cast<double>(delta) * delta;
-            if ((value >= 0.0f) != (previous >= 0.0f)) ++crossings;
+            if ((value >= 0.0f) != (previous >= 0.0f)) {
+                ++crossings;
+            }
         }
         previous = value;
     }
@@ -470,9 +497,9 @@ SynthAnalysis Analyze(const SynthSpec& spec)
         static_cast<float>(peakIndex) / static_cast<float>(fmt.sampleRate);
     analysis.zeroCrossingHz = static_cast<float>(crossings) / analysis.durationSeconds;
 
-    /// @note パワー加重の実効周波数: f = fs/(2π) * sqrt(Σ(Δx)² / Σx²)。
-    ///       必要なのは「明るいか暗いか」の 1 スカラーだけで、一次差分のエネルギー比がそのまま
-    ///       二乗平均周波数になるため FFT は使わず、窓関数もビン幅選択も不要で O(N) で済む。
+    // パワー加重の実効周波数: f = fs/(2π) * sqrt(Σ(Δx)² / Σx²)。
+    //       必要なのは「明るいか暗いか」の 1 スカラーだけで、一次差分のエネルギー比がそのまま
+    //       二乗平均周波数になるため FFT は使わず、窓関数もビン幅選択も不要で O(N) で済む。
     if (energy > 0.0) {
         analysis.brightnessHz = static_cast<float>(
             static_cast<double>(fmt.sampleRate) / static_cast<double>(kTwoPi)
@@ -489,9 +516,13 @@ const char* WaveToString(SynthWave wave)
 
 SynthWave WaveFromString(const char* name, SynthWave fallback)
 {
-    if (!name) return fallback;
+    if (!name) {
+        return fallback;
+    }
     for (size_t i = 0; i < std::size(kWaveNames); ++i)
-        if (std::strcmp(name, kWaveNames[i]) == 0) return static_cast<SynthWave>(i);
+        if (std::strcmp(name, kWaveNames[i]) == 0) {
+            return static_cast<SynthWave>(i);
+        }
     return fallback;
 }
 
@@ -503,9 +534,13 @@ const char* PresetToString(SynthPreset preset)
 
 SynthPreset PresetFromString(const char* name, SynthPreset fallback)
 {
-    if (!name) return fallback;
+    if (!name) {
+        return fallback;
+    }
     for (size_t i = 0; i < std::size(kPresetNames); ++i)
-        if (std::strcmp(name, kPresetNames[i]) == 0) return static_cast<SynthPreset>(i);
+        if (std::strcmp(name, kPresetNames[i]) == 0) {
+            return static_cast<SynthPreset>(i);
+        }
     return fallback;
 }
 

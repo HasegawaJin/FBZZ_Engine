@@ -173,7 +173,7 @@ TEST_F(ManagedAiPoseTransferTest, RejectsLateInvalidQuaternionForeignSceneAndLiv
     Begin(); Add(&first, {5, 0, 0}); Add(nullptr, {}, {}, 999, m_scene.GetRenderSceneGeneration() + 1); Prepare();
     EXPECT_EQ(Run(), scene::ManagedBridgeStatus::SCENE_MISMATCH); ExpectUnpublished();
     auto& body = second.AddComponent<scene::RigidBodyComponent>();
-    /// @note An enabled native body is protected before any transform math; no physics world or simulation is required.
+    // An enabled native body is protected before any transform math; no physics world or simulation is required.
     body.rigidBody = std::make_unique<physics::RigidBody>();
     Begin(); Add(&first, {5, 0, 0}); Add(&second, {6, 0, 0}); Prepare();
     EXPECT_EQ(Run(), scene::ManagedBridgeStatus::PHYSICS_BODY); ExpectUnpublished();
@@ -266,7 +266,7 @@ TEST_F(ManagedAiPoseTransferTest, StaticPoseDrivenBodyKeepsAiAuthorityAndConfirm
     EXPECT_NEAR(hit.distance, 2.5f, 1.0e-4f);
     Begin(); Add(&object, {6, 7, 8}); Prepare();
     ASSERT_EQ(Run(), scene::ManagedBridgeStatus::OK);
-    /// @note Late AI publication does not mutate the already confirmed Physics query state.
+    // Late AI publication does not mutate the already confirmed Physics query state.
     ASSERT_TRUE(world.Raycast({3, 4, 8}, {0, 0, -1}, 10, hit));
     system.Update(context);
     EXPECT_FALSE(world.Raycast({3, 4, 8}, {0, 0, -1}, 10, hit));
@@ -697,7 +697,7 @@ TEST_F(ManagedAiPoseTransferTest, SharedTopologyMatchesSequentialSetWorldPoseBit
         rows.push_back({&target, {value, -value * 0.3f, value * 0.7f},
             {value * 0.13f, -value * 0.07f, value * 0.19f, 1.75f}});
     }
-    /// @note Interleaved duplicates retain their intermediate arithmetic and final-row authority.
+    // Interleaved duplicates retain their intermediate arithmetic and final-row authority.
     rows.push_back({rows[0].object, {7, 8, 9}, {0.2f, -0.3f, 0.1f, 2.1f}});
     rows.push_back({rows[31].object, {-7, 3, 4}, {-0.1f, 0.2f, 0.3f, 1.9f}});
     ancestor.transform.worldPosition.x = std::numeric_limits<float>::quiet_NaN();
@@ -717,7 +717,9 @@ TEST_F(ManagedAiPoseTransferTest, SharedTopologyMatchesSequentialSetWorldPoseBit
         scene::SetWorldPose(transform, &parentTransform, row.position, row.rotation.Normalized(), transform.worldScale);
         transform.scale = localScale;
         for (auto* node : nodes) {
-            if (node != row.object && !node->IsDescendantOf(*row.object)) continue;
+            if (node != row.object && !node->IsDescendantOf(*row.object)) {
+                continue;
+            }
             const auto* nodeParent = node->GetParent();
             scene::UpdateWorldTransform(expected[node->GetID().index],
                 nodeParent ? &expected[nodeParent->GetID().index] : nullptr);

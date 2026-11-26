@@ -31,9 +31,9 @@ struct LightComponent {
     /// @note Point の 10〜30 に対し 100〜200 が目安になる (タイプを変えたら数値も入れ直す)。
     /// @note 既定 3.0 は空由来 IBL 環境光 (albedo×1.5 相当) を明確に上回る Directional 基準値。
     float         intensity = 3.0f;
-    float         range     = 10.0f;    ///< @note Directional 以外。Area では打ち切り距離のみ
-    float         innerCone = 15.0f;    ///< @note Spot のみ (degrees)
-    float         outerCone = 30.0f;    ///< @note Spot のみ (degrees)
+    float         range     = 10.0f; ///< Directional 以外。Area では打ち切り距離のみ
+    float         innerCone = 15.0f; ///< Spot のみ (degrees)
+    float         outerCone = 30.0f; ///< Spot のみ (degrees)
     bool          enabled   = true;
 
     /// @name 発光体の大きさ
@@ -44,8 +44,7 @@ struct LightComponent {
     /// @note Point / Spot : 影のにじみ幅とハイライトの広がりだけに効く (形状は点のまま)
     /// @note 現実の光源は必ず大きさを持ち、それが半影の幅とハイライトの大きさを決める。
     float         sourceRadius = 0.0f;
-    /// @note Tube の長さ [m]。両端に半球が付くカプセルとして扱う。
-    float         sourceLength = 1.0f;
+    float         sourceLength = 1.0f; ///< Tube の長さ [m]。両端に半球が付くカプセルとして扱う。
     /// @}
 
     /// @name 面光源 (Type::Area)
@@ -55,8 +54,7 @@ struct LightComponent {
     /// @note GPU へ渡す直前で行う。
     float         areaWidth  = 1.0f;    ///< @note [m]
     float         areaHeight = 1.0f;    ///< @note [m]
-    /// @note 面の裏側を照らさない。板の裏に光が回り込むのを防ぐ。
-    bool          areaTwoSided = false;
+    bool          areaTwoSided = false; ///< 面の裏側を照らさない。板の裏に光が回り込むのを防ぐ。
     /// @}
 
     /// @name 影
@@ -66,14 +64,13 @@ struct LightComponent {
     /// @note キューブ 6 面で 6 枚 (上限は ShadowSettings::maxShadowedPointLights)。割り当ては
     /// @note カメラに近い順で、あふれたライトは黙って影を落とさなくなる。sourceRadius は
     /// @note 深度ではなく半影の広さとして効く。
-    bool  castShadows    = true;  ///< @note false のとき影を無効化 (shadowStrength=0 と等価)
+    bool  castShadows    = true; ///< false のとき影を無効化 (shadowStrength=0 と等価)
     ShadowMode shadowMode = ShadowMode::REALTIME;
-    /// @note ワールド空間の光線方向。ゼロの場合は Sequence またはライトの初期姿勢から解決する。
-    math::Vector3 shadowBakeDayDirection{};
+    math::Vector3 shadowBakeDayDirection{}; ///< ワールド空間の光線方向。ゼロの場合は Sequence またはライトの初期姿勢から解決する。
     math::Vector3 shadowBakeEveningDirection{};
-    float shadowBias     = 1.0f;  ///< @note 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
-    float shadowStrength = 1.0f;  ///< @note 影の濃さ: 0=影なし, 1=完全な影
-    float shadowDistance = 0.0f;  ///< @note Directional の影の最大カメラ前方距離 [m]。0 は描画設定の距離を使う。
+    float shadowBias     = 1.0f; ///< 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
+    float shadowStrength = 1.0f; ///< 影の濃さ: 0=影なし, 1=完全な影
+    float shadowDistance = 0.0f; ///< Directional の影の最大カメラ前方距離 [m]。0 は描画設定の距離を使う。
     /// @note Directional 以外の透視投影 near 面 [m]。
     /// @note near が小さいほど深度分解能が near 側へ寄り遠い側でアクネが出る。大きくすると
     /// @note 手前の caster が near で切り取られ影が抜ける。壁・天井埋め込みだと既定では
@@ -112,13 +109,10 @@ struct LightComponent {
     /// @note 上へ振ると白飛びの閾値を越えた瞬間から Bloom が別物になり、オーサリングした
     /// @note intensity がピークを表さなくなるため、減る側だけを作る。
     float    flickerAmplitude = 0.0f;
-    float    flickerFrequency = 6.0f;   ///< @note [Hz]。Curve では 1 周の速さ
-    /// @note Sine / Curve の上へ混ぜるノイズの量 [0, 1]。1 で完全にノイズ。
-    float    flickerNoise     = 0.0f;
-    /// @note 位相オフセット [0, 1)。同じ設定のライトを並べたときに揃って光らないようずらす。
-    float    flickerPhase     = 0.0f;
-    /// @note ノイズ列の種。同じ seed と同じ位相なら、いつ何回走らせても同じ揺れになる。
-    std::uint32_t flickerSeed = 0;
+    float    flickerFrequency = 6.0f; ///< [Hz]。Curve では 1 周の速さ
+    float    flickerNoise     = 0.0f; ///< Sine / Curve の上へ混ぜるノイズの量 [0, 1]。1 で完全にノイズ。
+    float    flickerPhase     = 0.0f; ///< 位相オフセット [0, 1)。同じ設定のライトを並べたときに揃って光らないようずらす。
+    std::uint32_t flickerSeed = 0; ///< ノイズ列の種。同じ seed と同じ位相なら、いつ何回走らせても同じ揺れになる。
     /// @note Curve モードの波形。横軸は 1 周期の正規化時間、縦軸は倍率 [0, 1] 想定。
     ParticleCurve flickerCurve{
         {{ {0.0f, 1.0f}, {0.5f, 0.25f}, {1.0f, 1.0f}, {1.0f, 1.0f},
@@ -140,8 +134,12 @@ struct LightComponent {
     {
         int typeValue = static_cast<int>(type);
         r.Field("type", typeValue);
-        if (typeValue < 0) typeValue = 0;
-        if (typeValue > 5) typeValue = 5;
+        if (typeValue < 0) {
+            typeValue = 0;
+        }
+        if (typeValue > 5) {
+            typeValue = 5;
+        }
         type = static_cast<Type>(typeValue);
         r.Field("enabled", enabled);
         r.ColorField("color", color);
@@ -177,8 +175,12 @@ struct LightComponent {
         {
             int mode = static_cast<int>(flickerMode);
             r.Field("flickerMode", mode);
-            if (mode < 0) mode = 0;
-            if (mode > 3) mode = 3;
+            if (mode < 0) {
+                mode = 0;
+            }
+            if (mode > 3) {
+                mode = 3;
+            }
             flickerMode = static_cast<FlickerMode>(mode);
         }
         r.Field("flickerAmplitude", flickerAmplitude);
@@ -186,7 +188,7 @@ struct LightComponent {
         r.Field("flickerNoise",     flickerNoise);
         r.Field("flickerPhase",     flickerPhase);
         {
-            /// @note IReflector は uint32_t 非対応のため int 経由で往復させる。
+            // IReflector は uint32_t 非対応のため int 経由で往復させる。
             int seed = static_cast<int>(flickerSeed);
             r.Field("flickerSeed", seed);
             flickerSeed = static_cast<std::uint32_t>(seed < 0 ? 0 : seed);

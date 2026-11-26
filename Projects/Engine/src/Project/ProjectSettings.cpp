@@ -22,8 +22,8 @@ std::vector<audio::BusDesc> AudioSettings::BuildBusLayout() const
 {
     std::vector<audio::BusDesc> layout =
         buses.empty() ? audio::DefaultBusLayout() : buses;
-    /// @note Master の音量はここで masterVolume に一本化する。設定 UI は Master を «全体音量» として
-    /// @note 1 本のスライダーで見せるため、バス側にも書けると、どちらが効くか読めなくなる。
+    // Master の音量はここで masterVolume に一本化する。設定 UI は Master を «全体音量» として
+    // 1 本のスライダーで見せるため、バス側にも書けると、どちらが効くか読めなくなる。
     for (audio::BusDesc& desc : layout) {
         if (desc.name == audio::kMasterBusName) {
             desc.volume = masterVolume;
@@ -46,7 +46,9 @@ toml::array Vec3ToArr(const math::Vector3& v)
 
 math::Vector3 ArrToVec3(const toml::array* arr, const math::Vector3& def)
 {
-    if (!arr || arr->size() < 3) return def;
+    if (!arr || arr->size() < 3) {
+        return def;
+    }
     return {
         (float)(*arr)[0].value_or((double)def.x),
         (float)(*arr)[1].value_or((double)def.y),
@@ -56,46 +58,53 @@ math::Vector3 ArrToVec3(const toml::array* arr, const math::Vector3& def)
 
 bool ReadBool(const toml::table& table, const char* key, bool fallback)
 {
-    if (auto value = table[key].value<bool>())
+    if (auto value = table[key].value<bool>()) {
         return *value;
+    }
     return fallback;
 }
 
 bool ReadRayRequest(const toml::table& table, const char* key)
 {
-    /// @note TOML の整数を bool へ変換して RT 要求を有効化しない。旧設定の ReadBool は維持する。
+    // TOML の整数を bool へ変換して RT 要求を有効化しない。旧設定の ReadBool は維持する。
     const auto* value = table[key].as_boolean();
     return value && value->get();
 }
 
 float ReadFloat(const toml::table& table, const char* key, float fallback)
 {
-    if (auto value = table[key].value<double>())
+    if (auto value = table[key].value<double>()) {
         return static_cast<float>(*value);
-    if (auto value = table[key].value<int64_t>())
+    }
+    if (auto value = table[key].value<int64_t>()) {
         return static_cast<float>(*value);
+    }
     return fallback;
 }
 
 renderer::RenderingPipeline RenderingPipelineFromString(std::string_view value,
                                                         renderer::RenderingPipeline fallback)
 {
-    /// @note 手編集された旧表記も受け付け、既存の ProjectSettings.toml を壊さず移行する。
-    if (value == "forward" || value == "Forward")
+    // 手編集された旧表記も受け付け、既存の ProjectSettings.toml を壊さず移行する。
+    if (value == "forward" || value == "Forward") {
         return renderer::RenderingPipeline::Forward;
-    if (value == "deferred" || value == "Deferred")
+    }
+    if (value == "deferred" || value == "Deferred") {
         return renderer::RenderingPipeline::Deferred;
-    if (value == "forward_plus" || value == "forward+" || value == "Forward+")
+    }
+    if (value == "forward_plus" || value == "forward+" || value == "Forward+") {
         return renderer::RenderingPipeline::ForwardPlus;
-    if (value == "deferred_plus" || value == "deferred+" || value == "Deferred+")
+    }
+    if (value == "deferred_plus" || value == "deferred+" || value == "Deferred+") {
         return renderer::RenderingPipeline::DeferredPlus;
+    }
     return fallback;
 }
 
 const char* RenderingPipelineToString(renderer::RenderingPipeline pipeline)
 {
     switch (pipeline) {
-    /// @note 保存値も Editor の表示名に揃える。Load 側は旧 lowercase / underscore 表記も受け付ける。
+    // 保存値も Editor の表示名に揃える。Load 側は旧 lowercase / underscore 表記も受け付ける。
     case renderer::RenderingPipeline::Forward:      return "Forward";
     case renderer::RenderingPipeline::Deferred:     return "Deferred";
     case renderer::RenderingPipeline::ForwardPlus:  return "Forward+";
@@ -106,8 +115,12 @@ const char* RenderingPipelineToString(renderer::RenderingPipeline pipeline)
 
 renderer::RenderMode RenderModeFromString(std::string_view value)
 {
-    if (value == "Hybrid") return renderer::RenderMode::HYBRID;
-    if (value == "PathTracing") return renderer::RenderMode::PATH_TRACING;
+    if (value == "Hybrid") {
+        return renderer::RenderMode::HYBRID;
+    }
+    if (value == "PathTracing") {
+        return renderer::RenderMode::PATH_TRACING;
+    }
     return renderer::RenderMode::RASTER;
 }
 
@@ -120,22 +133,28 @@ const char* RenderModeToString(renderer::RenderMode mode)
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void CursorAppearance::Apply(const std::string& projectRoot) const
 {
-    /// @note 先に全部畳む。前のプロジェクト / 前の Play で読んだ絵が «設定を空にしても
-    /// @note 残り続ける» のを防ぐ。
+    // 先に全部畳む。前のプロジェクト / 前の Play で読んだ絵が «設定を空にしても
+    // 残り続ける» のを防ぐ。
     core::Cursor::ClearShapeImages();
-    if (!hardwareCursor) return;
+    if (!hardwareCursor) {
+        return;
+    }
 
     const std::filesystem::path root(projectRoot);
     for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
         const ShapeImage& entry = shapes[i];
-        if (entry.path.empty()) continue;
+        if (entry.path.empty()) {
+            continue;
+        }
 
         std::filesystem::path full(entry.path);
-        if (full.is_relative() && !root.empty()) full = root / full;
+        if (full.is_relative() && !root.empty()) {
+            full = root / full;
+        }
         core::Cursor::SetShapeImage(static_cast<core::CursorShape>(i),
                                     full.string().c_str(), entry.hotspotX, entry.hotspotY);
     }
@@ -164,29 +183,31 @@ bool ProjectSettings::Load(const std::string& path)
 {
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
-        /// @note Load 失敗時に既存設定を代入で破棄すると、呼び出し側が保持していた設定や UI 参照まで巻き戻る。
-        /// @note 失敗は bool で伝え、現在の設定はそのまま残す。
+        // Load 失敗時に既存設定を代入で破棄すると、呼び出し側が保持していた設定や UI 参照まで巻き戻る。
+        // 失敗は bool で伝え、現在の設定はそのまま残す。
         FBZZ_LOG_WARN("ProjectSettings: read failed: %s", path.c_str());
         return false;
     }
 
-    if (!LoadFromToml(text)) return false;
+    if (!LoadFromToml(text)) {
+        return false;
+    }
 
-    /// @name 入力バインド
-    /// @note ProjectSettings.toml と同じディレクトリの Input.inputactions を読む。別ファイルなのは、
-    /// @note バインド定義の配列が深く混ぜると読みにくいのと、プレイヤーが実行時に書き換える対象で
-    /// @note 開発者向け設定とは更新頻度も責務も違うため。
-    /// @note 読めなくても Load 全体は失敗させない。入力ファイルは無くて当然 (既定バインドで動く) で、
-    /// @note ここで false を返すとプロジェクト設定自体が読めなかった扱いになる。
+    // 入力バインド
+    // ProjectSettings.toml と同じディレクトリの Input.inputactions を読む。別ファイルなのは、
+    // バインド定義の配列が深く混ぜると読みにくいのと、プレイヤーが実行時に書き換える対象で
+    // 開発者向け設定とは更新頻度も責務も違うため。
+    // 読めなくても Load 全体は失敗させない。入力ファイルは無くて当然 (既定バインドで動く) で、
+    // ここで false を返すとプロジェクト設定自体が読めなかった扱いになる。
     {
         const std::filesystem::path settingsPath = util::FileSystem::PathFromUtf8(path);
         const std::filesystem::path inputPath =
             settingsPath.has_parent_path()
                 ? settingsPath.parent_path() / "Input.inputactions"
                 : std::filesystem::path("Input.inputactions");
-        /// @note 既定バインドは Move/Look/Jump/Attack/Dodge/Interact/Pause のみで、メニューが使う
-        /// @note Submit/Cancel が無い。このファイルが配布物から抜けると «UI だけ反応しない» のに
-        /// @note 記録が残らないため、無いことを名指しで警告する。
+        // 既定バインドは Move/Look/Jump/Attack/Dodge/Interact/Pause のみで、メニューが使う
+        // Submit/Cancel が無い。このファイルが配布物から抜けると «UI だけ反応しない» のに
+        // 記録が残らないため、無いことを名指しで警告する。
         std::error_code ec;
         if (!std::filesystem::exists(inputPath, ec)) {
             FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
@@ -225,11 +246,11 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
             FBZZ_LOG_WARN("ProjectSettings: render.pipelineAsset must be a string: %s", path.c_str());
             return false;
         }
-        /// @note GUID は後続の AssetManager 初期化後に解決できる。欠落とみなして除外せず、未解決の参照を保持する。
+        // GUID は後続の AssetManager 初期化後に解決できる。欠落とみなして除外せず、未解決の参照を保持する。
         pipelineAsset = token->get();
     }
     renderPipelineAssetPath = std::move(pipelineAsset);
-    /// @note 新しいキーがない旧設定は Raster。別プロジェクトの RT 要求を引き継がない。
+    // 新しいキーがない旧設定は Raster。別プロジェクトの RT 要求を引き継がない。
     render.modeRequest = {};
     render.hybridQuality = hybridQuality;
 
@@ -245,14 +266,16 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
     if (auto* tagArr = tbl["tags"]["list"].as_array()) {
         game.tags.clear();
         for (auto& elem : *tagArr)
-            if (auto v = elem.value<std::string>())
+            if (auto v = elem.value<std::string>()) {
                 game.tags.push_back(*v);
+            }
     }
 
     if (auto* layArr = tbl["layers"]["names"].as_array()) {
         for (int i = 0; i < 32 && i < (int)layArr->size(); ++i)
-            if (auto v = (*layArr)[i].value<std::string>())
+            if (auto v = (*layArr)[i].value<std::string>()) {
                 game.layerNames[i] = *v;
+            }
     }
 
     if (auto* physicsTbl = tbl["physics"].as_table()) {
@@ -260,29 +283,41 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
         physics.substeps = (int)(*physicsTbl)["substeps"].value_or((int64_t)physics.substeps);
         physics.gravity = ArrToVec3((*physicsTbl)["gravity"].as_array(), physics.gravity);
 
-        /// @note 衝突行列は «ぶつからない組» だけを書く。32x32 = 1024 個の true を並べても
-            /// @note 読めないうえ、レイヤーを 1 つ足すたびに差分が全面になる。
+        // 衝突行列は «ぶつからない組» だけを書く。32x32 = 1024 個の true を並べても
+            // 読めないうえ、レイヤーを 1 つ足すたびに差分が全面になる。
         physics.collisionMatrix = LayerCollisionMatrix{};
         if (auto* ignoreArr = (*physicsTbl)["ignoreCollisions"].as_array()) {
             for (const auto& entry : *ignoreArr) {
                 const auto* pair = entry.as_array();
-                if (!pair || pair->size() < 2) continue;
+                if (!pair || pair->size() < 2) {
+                    continue;
+                }
                 const auto a = (*pair)[0].value<int64_t>();
                 const auto b = (*pair)[1].value<int64_t>();
-                if (!a || !b) continue;
+                if (!a || !b) {
+                    continue;
+                }
                 physics.collisionMatrix.Set(static_cast<int>(*a), static_cast<int>(*b), false);
             }
         }
     }
 
-    if (physics.hz < 1)        physics.hz = 1;
-    if (physics.hz > 1000)     physics.hz = 1000;
-    if (physics.substeps < 1)  physics.substeps = 1;
-    if (physics.substeps > 32) physics.substeps = 32;
+    if (physics.hz < 1) {
+        physics.hz = 1;
+    }
+    if (physics.hz > 1000) {
+        physics.hz = 1000;
+    }
+    if (physics.substeps < 1) {
+        physics.substeps = 1;
+    }
+    if (physics.substeps > 32) {
+        physics.substeps = 32;
+    }
 
-    /// @note [render] はシーンをまたいでも変わらない構成 (パイプライン・シャドウ品質・デバッグ表示・
-    /// @note パーティクル予算) だけを持つ。Bloom/SSR 等の «ルック» は場所ごとに変わるため
-    /// @note PostProcessVolume + PostProcessProfile (.fzdata) の所有。旧 bloom = … 等のキーは無視される。
+    // [render] はシーンをまたいでも変わらない構成 (パイプライン・シャドウ品質・デバッグ表示・
+    // パーティクル予算) だけを持つ。Bloom/SSR 等の «ルック» は場所ごとに変わるため
+    // PostProcessVolume + PostProcessProfile (.fzdata) の所有。旧 bloom = … 等のキーは無視される。
     if (auto* renderTbl = tbl["render"].as_table()) {
         render.modeRequest.mode = RenderModeFromString(
             (*renderTbl)["mode"].value_or(std::string("Raster")));
@@ -301,7 +336,7 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
             render.viewMode = static_cast<renderer::ViewMode>(vm);
         }
 
-        /// @name シャドウ
+        // シャドウ
         render.shadowEnabled = (*renderTbl)["shadow"].value_or(render.shadowEnabled);
         render.shadow.mapResolution = static_cast<uint32_t>(
             (*renderTbl)["shadowResolution"].value_or(static_cast<int64_t>(render.shadow.mapResolution)));
@@ -334,7 +369,7 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
         render.clustered.forceAllLights = ReadBool(
             *renderTbl, "clusteredForceAllLights", render.clustered.forceAllLights);
 
-        /// @name デバッグ表示
+        // デバッグ表示
         render.showColliders        = (*renderTbl)["showColliders"].value_or(render.showColliders);
         render.showUIRects          = (*renderTbl)["showUIRects"].value_or(render.showUIRects);
         render.showDecalBounds      = (*renderTbl)["showDecalBounds"].value_or(render.showDecalBounds);
@@ -346,33 +381,40 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
                 ? renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
                 : renderer::RenderGraphSchedulePolicy::RegistrationOrder;
 
-        /// @name RenderGraph のパス上書き
+        // RenderGraph のパス上書き
         render.passOverrides.clear();
         if (auto* overrideArray = (*renderTbl)["passOverride"].as_array()) {
             for (const auto& node : *overrideArray) {
                 const auto* overrideTbl = node.as_table();
-                if (!overrideTbl) continue;
+                if (!overrideTbl) {
+                    continue;
+                }
                 renderer::RenderPassOverride entry;
                 entry.name = (*overrideTbl)["name"].value_or(std::string{});
-                if (entry.name.empty()) continue;
+                if (entry.name.empty()) {
+                    continue;
+                }
                 entry.enabled      = (*overrideTbl)["enabled"].value_or(true);
                 entry.allowCulling = (*overrideTbl)["allowCulling"].value_or(true);
                 if (auto* readArray = (*overrideTbl)["extraReads"].as_array()) {
                     for (const auto& read : *readArray) {
-                        if (auto value = read.value<std::string>(); value && !value->empty())
+                        if (auto value = read.value<std::string>(); value && !value->empty()) {
                             entry.extraReads.push_back(*value);
+                        }
                     }
                 }
-                /// @note 既定に戻された行は読み捨てる。表に «何も変えていない» 行を残さない。
-                if (!entry.IsDefault()) render.passOverrides.push_back(std::move(entry));
+                // 既定に戻された行は読み捨てる。表に «何も変えていない» 行を残さない。
+                if (!entry.IsDefault()) {
+                    render.passOverrides.push_back(std::move(entry));
+                }
             }
         }
 
-        /// @name パーティクル予算
+        // パーティクル予算
         render.particleBudget        = (int)(*renderTbl)["particleBudget"].value_or((int64_t)render.particleBudget);
         render.particleBudgetEnabled = (*renderTbl)["particleBudgetEnabled"].value_or(render.particleBudgetEnabled);
 
-        /// @name 選択アウトライン
+        // 選択アウトライン
         render.outlineWidth = (float)(*renderTbl)["outlineWidth"].value_or((double)render.outlineWidth);
         if (auto* outlineColorArr = (*renderTbl)["outlineColor"].as_array(); outlineColorArr && outlineColorArr->size() >= 4) {
             render.outlineColor[0] = (float)(*outlineColorArr)[0].value_or((double)render.outlineColor[0]);
@@ -390,16 +432,22 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
                                            .value_or((double)audio.masterVolume));
         audio.voiceLimit = (int)(*audioTbl)["voiceLimit"]
                                .value_or((int64_t)audio.voiceLimit);
-        if (audio.voiceLimit < 4) audio.voiceLimit = 4;
+        if (audio.voiceLimit < 4) {
+            audio.voiceLimit = 4;
+        }
 
         std::vector<audio::BusDesc> buses;
         if (auto* busArray = (*audioTbl)["bus"].as_array()) {
             for (const auto& node : *busArray) {
                 const auto* busTbl = node.as_table();
-                if (!busTbl) continue;
+                if (!busTbl) {
+                    continue;
+                }
                 audio::BusDesc desc;
                 desc.name = (*busTbl)["name"].value_or(std::string{});
-                if (desc.name.empty()) continue;
+                if (desc.name.empty()) {
+                    continue;
+                }
                 desc.parent        = (*busTbl)["parent"].value_or(std::string{});
                 desc.volume        = unitRange((*busTbl)["volume"].value_or(1.0));
                 desc.lowPassCutoff = unitRange((*busTbl)["lowPassCutoff"].value_or(1.0));
@@ -409,14 +457,18 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
         }
 
         if (buses.empty()) {
-            /// @note 旧形式 (bgmVolume / seVolume の 2 スライダー) からの移行。既定構成へ写すのは、
-            /// @note 旧設定を捨てると更新しただけで音量が 1.0 へ戻るため。
+            // 旧形式 (bgmVolume / seVolume の 2 スライダー) からの移行。既定構成へ写すのは、
+            // 旧設定を捨てると更新しただけで音量が 1.0 へ戻るため。
             buses = audio::DefaultBusLayout();
             const float bgm = unitRange((*audioTbl)["bgmVolume"].value_or(1.0));
             const float se  = unitRange((*audioTbl)["seVolume"].value_or(1.0));
             for (audio::BusDesc& desc : buses) {
-                if (desc.name == "BGM") desc.volume = bgm;
-                if (desc.name == "SE")  desc.volume = se;
+                if (desc.name == "BGM") {
+                    desc.volume = bgm;
+                }
+                if (desc.name == "SE") {
+                    desc.volume = se;
+                }
             }
         }
         audio.buses = std::move(buses);
@@ -425,16 +477,22 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
     if (auto* screenTbl = tbl["screen"].as_table()) {
         screen.width  = (int)(*screenTbl)["width"].value_or((int64_t)screen.width);
         screen.height = (int)(*screenTbl)["height"].value_or((int64_t)screen.height);
-        if (screen.width  < 1) screen.width  = 1;
-        if (screen.height < 1) screen.height = 1;
+        if (screen.width  < 1) {
+            screen.width  = 1;
+        }
+        if (screen.height < 1) {
+            screen.height = 1;
+        }
     }
 
     if (auto* appTbl = tbl["app"].as_table()) {
         app.targetFps = (int)(*appTbl)["targetFps"].value_or((int64_t)app.targetFps);
-        if (app.targetFps < 0) app.targetFps = 0;
+        if (app.targetFps < 0) {
+            app.targetFps = 0;
+        }
         if (auto backend = (*appTbl)["renderer"].value<std::string>()) {
-            /// @note 終了済みトークンを黙って DX12 へ倒すと、利用者は設定が効いていると
-                /// @note 誤解したまま動いてしまう。倒すこと自体は変えず、名指しで伝える。
+            // 終了済みトークンを黙って DX12 へ倒すと、利用者は設定が効いていると
+                // 誤解したまま動いてしまう。倒すこと自体は変えず、名指しで伝える。
             if (renderer::IsRetiredBackendToken(*backend)) {
                 FBZZ_LOG_WARN("ProjectSettings: renderer=\"%s\" は v1.0 でサポートを終了しました。"
                               "DirectX 12 で起動します (Docs/design/dx11-removal.md)",
@@ -449,20 +507,26 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
         window.width      = (int)(*windowTbl)["width"].value_or((int64_t)window.width);
         window.height     = (int)(*windowTbl)["height"].value_or((int64_t)window.height);
         window.fullscreen = (*windowTbl)["fullscreen"].value_or(window.fullscreen);
-        if (window.width  < 1) window.width  = 1;
-        if (window.height < 1) window.height = 1;
+        if (window.width  < 1) {
+            window.width  = 1;
+        }
+        if (window.height < 1) {
+            window.height = 1;
+        }
     }
 
-    /// @note 旧 [cursor] の lock_mode / visible は読まない。拘束と表示はスクリプトが持つ
-    /// @note ランタイム状態になり、設定ファイルは «絵» だけを持つ (CursorAppearance を参照)。
-    /// @note 古いファイルに残っていてもここで黙って捨てられ、次の Save で消える。
+    // 旧 [cursor] の lock_mode / visible は読まない。拘束と表示はスクリプトが持つ
+    // ランタイム状態になり、設定ファイルは «絵» だけを持つ (CursorAppearance を参照)。
+    // 古いファイルに残っていてもここで黙って捨てられ、次の Save で消える。
     if (auto* cursorTbl = tbl["cursor"].as_table()) {
         cursor.hardwareCursor = (*cursorTbl)["hardware"].value_or(cursor.hardwareCursor);
         if (auto* shapesTbl = (*cursorTbl)["shapes"].as_table()) {
             for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
                 const auto shape = static_cast<core::CursorShape>(i);
                 auto* shapeTbl = (*shapesTbl)[core::ToString(shape)].as_table();
-                if (!shapeTbl) continue;
+                if (!shapeTbl) {
+                    continue;
+                }
                 auto& entry = cursor.shapes[i];
                 entry.path = (*shapeTbl)["image"].value_or(entry.path);
                 if (auto* hotspot = (*shapeTbl)["hotspot"].as_array();
@@ -474,8 +538,9 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
         }
     }
 
-    if (auto* uiTbl = tbl["ui"].as_table())
+    if (auto* uiTbl = tbl["ui"].as_table()) {
         ui.defaultFontPath = (*uiTbl)["default_font"].value_or(ui.defaultFontPath);
+    }
 
 
     return true;
@@ -498,12 +563,14 @@ std::string ProjectSettings::ToToml() const
 std::string ProjectSettings::ToToml(bool explicitDefaults) const
 {
     toml::array tagArr;
-    for (const auto& t : game.tags)
+    for (const auto& t : game.tags) {
         tagArr.push_back(t);
+    }
 
     toml::array layArr;
-    for (const auto& n : game.layerNames)
+    for (const auto& n : game.layerNames) {
         layArr.push_back(n);
+    }
 
     toml::table tagTbl;
     tagTbl.insert("list", std::move(tagArr));
@@ -516,18 +583,22 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
     physicsTbl.insert("substeps", (int64_t)physics.substeps);
     physicsTbl.insert("gravity",  Vec3ToArr(physics.gravity));
 
-    /// @note 対称行列なので下三角 (a <= b) だけ書く。両方書くと、手で片方を消したときに
-    /// @note «消したのに効いている» が起きる。
+    // 対称行列なので下三角 (a <= b) だけ書く。両方書くと、手で片方を消したときに
+    // «消したのに効いている» が起きる。
     toml::array ignoreArr;
     for (int a = 0; a < 32; ++a)
         for (int b = a; b < 32; ++b) {
-            if (physics.collisionMatrix.CanCollide(a, b)) continue;
+            if (physics.collisionMatrix.CanCollide(a, b)) {
+                continue;
+            }
             toml::array pair;
             pair.push_back((int64_t)a);
             pair.push_back((int64_t)b);
             ignoreArr.push_back(std::move(pair));
         }
-    if (explicitDefaults || !ignoreArr.empty()) physicsTbl.insert("ignoreCollisions", std::move(ignoreArr));
+    if (explicitDefaults || !ignoreArr.empty()) {
+        physicsTbl.insert("ignoreCollisions", std::move(ignoreArr));
+    }
 
     toml::array outlineColorArr;
     outlineColorArr.push_back((double)render.outlineColor[0]);
@@ -535,8 +606,8 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
     outlineColorArr.push_back((double)render.outlineColor[2]);
     outlineColorArr.push_back((double)render.outlineColor[3]);
 
-    /// @note [render] の保存対象は Load と対になる「プロジェクト全体で固定の構成」のみ。
-    /// @note ルック (ポストプロセス / 高度グラフィクス) は PostProcessProfile (.fzdata) が保存する。
+    // [render] の保存対象は Load と対になる「プロジェクト全体で固定の構成」のみ。
+    // ルック (ポストプロセス / 高度グラフィクス) は PostProcessProfile (.fzdata) が保存する。
     toml::table renderTbl;
     renderTbl.insert("pipeline", RenderingPipelineToString(render.pipeline));
     renderTbl.insert("mode", RenderModeToString(render.modeRequest.mode));
@@ -548,11 +619,12 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
     toml::table hybridQuality;
     asset::RenderPipelineAssetCodec::SaveHybridQuality(render.hybridQuality, hybridQuality);
     renderTbl.insert("hybrid", std::move(hybridQuality));
-    if (explicitDefaults || !renderPipelineAssetPath.empty())
+    if (explicitDefaults || !renderPipelineAssetPath.empty()) {
         renderTbl.insert("pipelineAsset", asset::EncodeGuidRef(renderPipelineAssetPath));
+    }
     renderTbl.insert("viewMode", static_cast<int>(render.viewMode));
 
-    /// @name Shadow 品質
+    // Shadow 品質
     renderTbl.insert("shadow",            render.shadowEnabled);
     renderTbl.insert("shadowResolution",  (int64_t)render.shadow.mapResolution);
     renderTbl.insert("shadowPcfRadius",   (int64_t)render.shadow.pcfRadius);
@@ -573,39 +645,49 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
     renderTbl.insert("clusteredDebugHeatmap",   render.clustered.debugHeatmap);
     renderTbl.insert("clusteredForceAllLights", render.clustered.forceAllLights);
 
-    /// @name デバッグ表示
+    // デバッグ表示
     renderTbl.insert("showColliders",        render.showColliders);
     renderTbl.insert("showUIRects",          render.showUIRects);
     renderTbl.insert("showDecalBounds",      render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled",    render.passViewerEnabled);
-    if (explicitDefaults || render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes)
+    if (explicitDefaults || render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes) {
         renderTbl.insert("schedulePolicy", render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
             ? "MinimizeLifetimes" : "RegistrationOrder");
+    }
     {
         toml::array overrideArray;
         for (const renderer::RenderPassOverride& entry : render.passOverrides) {
-            if (entry.IsDefault()) continue;
+            if (entry.IsDefault()) {
+                continue;
+            }
             toml::table overrideTbl;
             overrideTbl.insert("name", entry.name);
-            if (explicitDefaults || !entry.enabled) overrideTbl.insert("enabled", entry.enabled);
-            if (explicitDefaults || !entry.allowCulling) overrideTbl.insert("allowCulling", entry.allowCulling);
+            if (explicitDefaults || !entry.enabled) {
+                overrideTbl.insert("enabled", entry.enabled);
+            }
+            if (explicitDefaults || !entry.allowCulling) {
+                overrideTbl.insert("allowCulling", entry.allowCulling);
+            }
             if (explicitDefaults || !entry.extraReads.empty()) {
                 toml::array readArray;
-                for (const std::string& read : entry.extraReads)
+                for (const std::string& read : entry.extraReads) {
                     readArray.push_back(read);
+                }
                 overrideTbl.insert("extraReads", std::move(readArray));
             }
             overrideArray.push_back(std::move(overrideTbl));
         }
-        if (explicitDefaults || !overrideArray.empty()) renderTbl.insert("passOverride", std::move(overrideArray));
+        if (explicitDefaults || !overrideArray.empty()) {
+            renderTbl.insert("passOverride", std::move(overrideArray));
+        }
     }
 
-    /// @name パーティクル予算
+    // パーティクル予算
     renderTbl.insert("particleBudget",        (int64_t)render.particleBudget);
     renderTbl.insert("particleBudgetEnabled", render.particleBudgetEnabled);
 
-    /// @name 選択アウトライン
+    // 選択アウトライン
     renderTbl.insert("outlineWidth", (double)render.outlineWidth);
     renderTbl.insert("outlineColor", std::move(outlineColorArr));
 
@@ -617,11 +699,16 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
         for (const audio::BusDesc& desc : audio.buses) {
             toml::table busTbl;
             busTbl.insert("name", desc.name);
-            if (explicitDefaults || !desc.parent.empty()) busTbl.insert("parent", desc.parent);
+            if (explicitDefaults || !desc.parent.empty()) {
+                busTbl.insert("parent", desc.parent);
+            }
             busTbl.insert("volume", (double)desc.volume);
-            if (explicitDefaults || desc.lowPassCutoff < 1.0f)
+            if (explicitDefaults || desc.lowPassCutoff < 1.0f) {
                 busTbl.insert("lowPassCutoff", (double)desc.lowPassCutoff);
-            if (explicitDefaults || desc.reverb) busTbl.insert("reverb", desc.reverb);
+            }
+            if (explicitDefaults || desc.reverb) {
+                busTbl.insert("reverb", desc.reverb);
+            }
             busArray.push_back(std::move(busTbl));
         }
         audioTbl.insert("bus", std::move(busArray));
@@ -651,19 +738,23 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
     toml::table cursorTbl;
     cursorTbl.insert("hardware", cursor.hardwareCursor);
     {
-        /// @note 画像を割り当てていない種類は書き出さない。全種類を空文字で並べても
-    /// @note «設定してあるのはどれか» が読めなくなるだけで、既定へ倒す判断は Load 側が持つ。
+        // 画像を割り当てていない種類は書き出さない。全種類を空文字で並べても
+    // «設定してあるのはどれか» が読めなくなるだけで、既定へ倒す判断は Load 側が持つ。
         toml::table shapesTbl;
         for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
             const auto& entry = cursor.shapes[i];
-            if (!explicitDefaults && entry.path.empty()) continue;
+            if (!explicitDefaults && entry.path.empty()) {
+                continue;
+            }
             toml::table shapeTbl;
             shapeTbl.insert("image", entry.path);
             shapeTbl.insert("hotspot", toml::array{ entry.hotspotX, entry.hotspotY });
             shapesTbl.insert(core::ToString(static_cast<core::CursorShape>(i)),
                              std::move(shapeTbl));
         }
-        if (explicitDefaults || !shapesTbl.empty()) cursorTbl.insert("shapes", std::move(shapesTbl));
+        if (explicitDefaults || !shapesTbl.empty()) {
+            cursorTbl.insert("shapes", std::move(shapesTbl));
+        }
     }
 
     toml::table uiTbl;
@@ -690,4 +781,4 @@ std::string ProjectSettings::ToToml(bool explicitDefaults) const
     return ss.str();
 }
 
-} /// @note namespace fbzz
+} // namespace fbzz

@@ -50,8 +50,8 @@ TEST_F(SpriteReferenceTest, RoundTripsThroughMakeAndParse)
 /// @brief Keeps the path intact when the string is not a sprite reference.
 TEST_F(SpriteReferenceTest, KeepsThePathIntactWhenTheStringIsNotASpriteReference)
 {
-    /// @note «Sprite 参照ではない» と答えるときも、入力のパスはそのまま返す。
-    ///       ここで空にすると、ただのテクスチャ参照が全部壊れる。
+    // «Sprite 参照ではない» と答えるときも、入力のパスはそのまま返す。
+    // ここで空にすると、ただのテクスチャ参照が全部壊れる。
     std::string texturePath;
     std::string token;
 
@@ -83,7 +83,7 @@ TEST_F(SpriteReferenceTest, RejectsAMarkerWithNothingBeforeIt)
 /// @brief Accepts a token that contains colons.
 TEST_F(SpriteReferenceTest, AcceptsATokenThatContainsColons)
 {
-    /// @note ID は UUID、名前は人が付ける。区切りの後ろは最後まで丸ごとトークンとして扱う。
+    // ID は UUID、名前は人が付ける。区切りの後ろは最後まで丸ごとトークンとして扱う。
     std::string texturePath;
     std::string token;
     ASSERT_TRUE(asset::ParseSpriteReference("Assets/A.png::sprite::a:b:c", texturePath, token));
@@ -119,8 +119,8 @@ TEST_F(SpriteReferenceTest, FindsASpriteById)
 /// @brief Finds a sprite by name.
 TEST_F(SpriteReferenceTest, FindsASpriteByName)
 {
-    /// @note ID は UUID なので人も AI も手では書けない。名前でも引けないと、
-    ///       手で書いた参照が «エラーにならずアトラス全面» に化ける。
+    // ID は UUID なので人も AI も手では書けない。名前でも引けないと、
+    // 手で書いた参照が «エラーにならずアトラス全面» に化ける。
     asset::TextureImportSettings settings;
     settings.sprites.push_back(MakeRect("836d2b4d", "Key_W"));
 
@@ -133,7 +133,7 @@ TEST_F(SpriteReferenceTest, FindsASpriteByName)
 /// @brief Prefers the ID when a name collides with another ID.
 TEST_F(SpriteReferenceTest, PrefersTheIdWhenANameCollidesWithAnotherId)
 {
-    /// @note ID を先に見る契約。名前が偶然ほかの ID と一致しても、ID の方を返す。
+    // ID を先に見る契約。名前が偶然ほかの ID と一致しても、ID の方を返す。
     asset::TextureImportSettings settings;
     settings.sprites.push_back(MakeRect("alpha", "beta"));
     settings.sprites.push_back(MakeRect("beta", "gamma"));
@@ -156,7 +156,7 @@ TEST_F(SpriteReferenceTest, FindsNothingForAnUnknownToken)
 /// @brief Finds nothing for an empty token.
 TEST_F(SpriteReferenceTest, FindsNothingForAnEmptyToken)
 {
-    /// @note 空の id / name を持つ矩形に «空トークン» が当たると、無関係な 1 枚を返してしまう。
+    // 空の id / name を持つ矩形に «空トークン» が当たると、無関係な 1 枚を返してしまう。
     asset::TextureImportSettings settings;
     settings.sprites.push_back(MakeRect("", ""));
 
@@ -192,7 +192,7 @@ TEST_F(SpriteReferenceTest, GuessingIgnoresCase)
 /// @brief Default settings match the guessed type.
 TEST_F(SpriteReferenceTest, DefaultSettingsMatchTheGuessedType)
 {
-    /// @note 法線マップを sRGB で読むと明るさが変わる。既定値がここで決まる。
+    // 法線マップを sRGB で読むと明るさが変わる。既定値がここで決まる。
     const asset::TextureImportSettings normal =
         asset::DefaultSettingsForType(asset::TextureType::Normal);
     const asset::TextureImportSettings color =

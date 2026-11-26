@@ -23,13 +23,12 @@ class Scene;
 class GameObject;
 
 struct VFXComponent {
-    bool  enabled     = true;
-    bool  playOnAwake = true;
-    bool  loop        = false;
-    float speed       = 1.0f;
+    bool  enabled     = true; ///< この VFX インスタンスの再生と配下の効果の更新を有効にする。
+    bool  playOnAwake = true; ///< 初回の設定反映時に再生を自動で開始する。
+    bool  loop        = false; ///< 再生区間を終えたら配下のエフェクトを頭出しして繰り返す。
+    float speed       = 1.0f; ///< 実際の経過時間に掛けるこの VFX の再生速度倍率。
 
-    /// @note 全体の尺 [秒]。0 以下なら配下から自動算出する (全要素の終了時刻の最大値)。
-    float duration = 0.0f;
+    float duration = 0.0f; ///< 全体の尺 [秒]。0 以下なら配下から自動算出する (全要素の終了時刻の最大値)。
 
     /// @note 再生し終えたら GameObject を片付ける。
     /// @note プール由来 (pooled) ならプールへ返し、そうでなければ Destroy する。
@@ -38,24 +37,19 @@ struct VFXComponent {
     /// @name ランタイム (Reflect しない = シーン/プレハブへ保存されない)
     /// @{
 
-    bool  playing     = false;
-    bool  initialized = false;
-    float time        = 0.0f;
-    /// @note duration が 0 以下のときに配下から算出した実効尺。
-    float resolvedDuration = 0.0f;
-    /// @note 配下にループする要素があり、時間では終わらない。autoDestroy は効かない。
-    bool endless = false;
-    bool  restartRequested = false;
-    /// @note Trigger() で積まれ、次の更新で同名の VFXElement を開始させる。
-    std::vector<std::string> pendingTriggers;
-    /// @note エディタのスクラブ用。0 以上なら time をこの値へ固定して評価する。
-    float editorScrubTime = -1.0f;
+    bool  playing     = false; ///< この VFX が現在時刻を進めて再生中か。
+    bool  initialized = false; ///< このインスタンスの最初の状態を子のエフェクトへ反映済み。
+    float time        = 0.0f; ///< ルート VFX の再生位置（秒）。配下の生存窓の基準時刻。
+    float resolvedDuration = 0.0f; ///< duration が 0 以下のときに配下から算出した実効尺。
+    bool endless = false; ///< 配下にループする要素があり、時間では終わらない。autoDestroy は効かない。
+    bool  restartRequested = false; ///< 次の更新でルート時刻と配下の再生状態を先頭に戻す。
+    std::vector<std::string> pendingTriggers; ///< Trigger() で積まれ、次の更新で同名の VFXElement を開始させる。
+    float editorScrubTime = -1.0f; ///< エディタのスクラブ用。0 以上なら time をこの値へ固定して評価する。
     /// @note 上の値が書かれたフレーム。
     /// @note 鮮度判定用。書き込みが途絶えたら通常再生へ戻す (スクラブパネルを閉じても VFX が
     /// @note 固定されたままにならないよう、ParticleEmitter の editorTimeScaleFrame と同じ考え方)。
     std::uint64_t editorScrubFrame = 0;
-    /// @note 入れ子 VFX の再帰ガード。ルートは 0、子ルートは親 + 1。
-    int nestingDepth = 0;
+    int nestingDepth = 0; ///< 入れ子 VFX の再帰ガード。ルートは 0、子ルートは親 + 1。
 
     const char* GetTypeName() const { return "VFX"; }
 

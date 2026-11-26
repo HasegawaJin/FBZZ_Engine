@@ -21,14 +21,14 @@ class Script;
 enum class ScriptRagdollProfile { Mech, Humanoid };
 
 struct ScriptRagdollProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< ラグドール操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note 今の姿勢を捕獲して落とし始める。RagdollComponent が無ければ追加する。
 
-    /// @param holdSeconds  0 より大きければその秒数で自動的にブレンドアウトへ入る。
-    /// @param maxWeight    Hold 中の適用率 [0,1]。1 で完全に物理、0.4 なら
+    /// @param[in] holdSeconds  0 より大きければその秒数で自動的にブレンドアウトへ入る。
+    /// @param[in] maxWeight    Hold 中の適用率 [0,1]。1 で完全に物理、0.4 なら
     /// @note «再生中のクリップの上に押された分だけ乗る» (よろめき)。
-    /// @param gravityScale この起動での重力倍率。よろめきは 0 に近い値にしないと、
+    /// @param[in] gravityScale この起動での重力倍率。よろめきは 0 に近い値にしないと、
     /// @note 押された動きではなく «崩れ落ちて戻る» 動きになる。
     FBZZ_ENGINE_API void Begin(float holdSeconds = 0.0f,
                float maxWeight = 1.0f,
@@ -38,7 +38,7 @@ struct ScriptRagdollProxy {
     /// @note 各関節のサーボは毎フレームのアニメーション姿勢を目標に取り直して引き戻される。
     /// @note 押されていない間は目標と一致するので絵はクリップそのまま ── 適用率は 1 でよい。
 
-    /// @param holdSeconds 0 より大きければその秒数で自動的にブレンドアウトへ入る。
+    /// @param[in] holdSeconds 0 より大きければその秒数で自動的にブレンドアウトへ入る。
     /// @note 0 なら End() を呼ぶまで、あるいは支え切れずに崩れるまで続く。
     FBZZ_ENGINE_API void BeginActive(float holdSeconds = 0.0f) const;
     /// @note アニメーションへ戻し始める。blendOut 秒かけて FK ポーズへ寄る。
@@ -49,7 +49,7 @@ struct ScriptRagdollProxy {
     /// @note 1 回で全部渡す設計: 1 本ずつ足すと根が変わるたびリグを組み直すことになる。
     /// @note 走行中に呼んでも、組み直した剛体はその時の姿勢で捕獲されるため、既に垂れている
     /// @note 部分木が跳ね上がることはない。
-    /// @param maxDepth 各根から何段まで剛体にするか。0 で葉まで。
+    /// @param[in] maxDepth 各根から何段まで剛体にするか。0 で葉まで。
     FBZZ_ENGINE_API void SetRoots(const std::vector<std::string>& rootBoneNames, int maxDepth = 0) const;
     /// @note 今 落とす対象になっている根の数。0 なら骨格の根から (＝全身)。
     [[nodiscard]] FBZZ_ENGINE_API int GetRootCount() const;
@@ -103,14 +103,14 @@ struct ScriptRagdollProxy {
 
     /// @note サーボの効き方。**どれもプロファイルが与えた値への «倍率»** で、1 が既定。
 
-    /// @param stiffness トルク上限と剛性に掛かる倍率。下げるほど早く力負けする。
-    /// @param falloff   根から 1 関節下がるごとの倍率 [0,1]。下げるほど末端が流れる。
-    /// @param damping   サーボの減衰に掛かる倍率。下げるほど押された後に揺れ戻る。
+    /// @param[in] stiffness トルク上限と剛性に掛かる倍率。下げるほど早く力負けする。
+    /// @param[in] falloff   根から 1 関節下がるごとの倍率 [0,1]。下げるほど末端が流れる。
+    /// @param[in] damping   サーボの減衰に掛かる倍率。下げるほど押された後に揺れ戻る。
     FBZZ_ENGINE_API void SetMuscle(float stiffness, float falloff, float damping) const;
     /// @note 押された瞬間の力み具合。
 
-    /// @param impactSlack     衝撃で抜けるサーボ出力の割合 [0,1]。0 で «押されても硬い»。
-    /// @param recoverySeconds 抜けた力みが戻るまでの秒数 ＝ こらえ直す時間。
+    /// @param[in] impactSlack     衝撃で抜けるサーボ出力の割合 [0,1]。0 で «押されても硬い»。
+    /// @param[in] recoverySeconds 抜けた力みが戻るまでの秒数 ＝ こらえ直す時間。
     FBZZ_ENGINE_API void SetRecovery(float impactSlack, float recoverySeconds) const;
     /// @note 姿勢差がこの距離 [m] を超えたら脱力へ落ちる。0 は自動脱力のみ無効化する。
     FBZZ_ENGINE_API void SetCollapse(float distance) const;
@@ -127,4 +127,4 @@ struct ScriptRagdollProxy {
     [[nodiscard]] FBZZ_ENGINE_API bool IsEnabled() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

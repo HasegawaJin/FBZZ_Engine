@@ -21,7 +21,7 @@ ImU32 ToImGuiColor(uint32_t argb)
     return IM_COL32(r, g, b, a);
 }
 
-} /// @note namespace
+} // namespace
 
 void ProfilerViewer::Draw(bool* open)
 {
@@ -55,9 +55,15 @@ void ProfilerViewer::Draw(bool* open)
     ImGui::Text("Frame: %llu", static_cast<unsigned long long>(Profiler::GetLastFrameIndex()));
     ImGui::Text("Samples: %zu", records.size());
     const auto& frame = Profiler::GetSnapshot();
-    if (frame.available) ImGui::Text("Main thread frame elapsed: %.3f ms", frame.cpuFrameElapsedMs);
-    else ImGui::TextDisabled("Main thread frame elapsed unavailable.");
-    if (frame.wallFrameIntervalAvailable) ImGui::Text("Measured frame interval: %.3f ms", frame.wallFrameIntervalMs);
+    if (frame.available) {
+        ImGui::Text("Main thread frame elapsed: %.3f ms", frame.cpuFrameElapsedMs);
+    }
+    else {
+        ImGui::TextDisabled("Main thread frame elapsed unavailable.");
+    }
+    if (frame.wallFrameIntervalAvailable) {
+        ImGui::Text("Measured frame interval: %.3f ms", frame.wallFrameIntervalMs);
+    }
     ImGui::Text("Inclusive sample sum (overlapping): %.3f ms", totalMs);
     ImGui::TextDisabled("Frame elapsed includes waits. Inclusive samples include children and may overlap.");
     ImGui::Separator();
@@ -94,4 +100,4 @@ void ProfilerViewer::Draw(bool* open)
     ImGui::End();
 }
 
-} /// @note namespace fbzz::profiler
+} // namespace fbzz::profiler

@@ -11,9 +11,13 @@ DoubleBufferedMesh::~DoubleBufferedMesh() { Reset(); }
 DoubleBufferedMesh::DoubleBufferedMesh(DoubleBufferedMesh&& other) noexcept { *this = std::move(other); }
 DoubleBufferedMesh& DoubleBufferedMesh::operator=(DoubleBufferedMesh&& other) noexcept
 {
-    if (this == &other) return *this;
+    if (this == &other) {
+        return *this;
+    }
     Reset();
-    for (size_t index = 0; index < 2; ++index) slots[index] = std::move(other.slots[index]);
+    for (size_t index = 0; index < 2; ++index) {
+        slots[index] = std::move(other.slots[index]);
+    }
     signature = std::exchange(other.signature, 0);
     current = std::exchange(other.current, 0);
     geometryInputs = std::move(other.geometryInputs);
@@ -24,7 +28,9 @@ DoubleBufferedMesh& DoubleBufferedMesh::operator=(DoubleBufferedMesh&& other) no
 void DoubleBufferedMesh::Reset()
 {
     for (auto& mesh : slots) {
-        if (!mesh) continue;
+        if (!mesh) {
+            continue;
+        }
         renderer::ReleaseOwnedResource(mesh->vertexBuffer);
         renderer::ReleaseOwnedResource(mesh->indexBuffer);
         mesh.reset();
@@ -35,4 +41,4 @@ void DoubleBufferedMesh::Reset()
     geometryInputs.clear();
     candidateInputs.clear();
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

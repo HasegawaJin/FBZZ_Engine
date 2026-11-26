@@ -15,11 +15,11 @@ namespace fbzz::asset {
 /// @note .synth の内容。AudioManager が読み込み時に PCM へ合成するため、
 /// @note 参照側からは .wav などの録音素材と区別せずに clipPath で扱える。
 struct SynthAsset {
-    audio::SynthSpec spec;
+    audio::SynthSpec spec; ///< PCM を合成する波形・包絡・フィルターなどの設定。
 
     /// @note 由来プリセット名 (空 = 手動編集)。合成結果には影響せず、
     /// @note 「どこから作ったか」を Editor で示すためだけに保持する。
-    std::string presetName;
+    std::string presetName; ///< 値の初期化に使ったシンセ音色プリセットの名前。
 
     const char* GetTypeName() const { return "Synth Clip"; }
 
@@ -32,4 +32,4 @@ struct SynthAsset {
 /// @note .synth を TOML へ保存する。既定値と同じ項目は書き出さない。
 [[nodiscard]] FBZZ_ENGINE_API bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

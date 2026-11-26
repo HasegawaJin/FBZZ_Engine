@@ -34,8 +34,9 @@ void NormalizeTomlFloats(toml::node& node)
     }
 
     if (auto* array = node.as_array()) {
-        for (auto& child : *array)
+        for (auto& child : *array) {
             NormalizeTomlFloats(child);
+        }
     }
 }
 

@@ -75,7 +75,9 @@ namespace {
 /// @note 要求フィルターは実際の収録に先行し、スコープは収録中のフィルターで絞り込む。
 bool CollectFrameGeometryDiagnostics()
 {
-    if (!profiler::Profiler::IsEnabled()) return false;
+    if (!profiler::Profiler::IsEnabled()) {
+        return false;
+    }
     const auto filter = profiler::Profiler::GetRequestedCaptureFilter();
     return filter.scope == "RenderSystem::FrameGeometry"
         && (filter.category.empty() || filter.category == "Rendering");
@@ -88,7 +90,9 @@ bool CanShareFrameGeometry(Scene& scene)
     std::optional<profiler::ProfileScope> scriptProfile;
     if (diagnostics) scriptProfile.emplace(
         profiler::ProfilerMarker("RenderSystem::FrameGeometry::ScriptGuard", "Rendering"));
-    if (!scene.GetEntities<ScriptComponent>().empty()) return false;
+    if (!scene.GetEntities<ScriptComponent>().empty()) {
+        return false;
+    }
     scriptProfile.reset();
     std::optional<profiler::ProfileScope> canvasProfile;
     if (diagnostics) canvasProfile.emplace(
@@ -133,9 +137,11 @@ ViewShadowPreparation PrepareViewShadows(Scene& scene, renderer::IRenderer& rend
             return object && object->activeInHierarchy() && skin && skin->enabled && skin->lodVisible
                 && skin->gpuSkinnedThisFrame && skin->model && skin->skinnedBufferModel == skin->model;
         });
-        if (hasWarmSkinning) skinningReadAhead = renderer::TryStartOwnedSkinningReadAhead(renderer);
+        if (hasWarmSkinning) {
+            skinningReadAhead = renderer::TryStartOwnedSkinningReadAhead(renderer);
+        }
     }
-    /// @note 行列は影無効でもネイティブ・材質・粒子・体積光へ公開するため、パスの設定で省略しない。
+    // 行列は影無効でもネイティブ・材質・粒子・体積光へ公開するため、パスの設定で省略しない。
     auto& shadowBounds = result.bounds;
     shadowBounds = shadow_preparation_detail::ResolveSceneBounds(scene, cullingMask);
     if (!shadowBounds.valid) {
@@ -150,13 +156,16 @@ ViewShadowPreparation PrepareViewShadows(Scene& scene, renderer::IRenderer& rend
     auto& shadows = result.shadows;
     shadows = renderer::PrepareShadows(camera, rs, shadowBounds, lightDir,
         lighting.dirShadowDistance, lighting.dirShadowBias, requestFarCache);
-    /// @note 遅延ディスクリプターをスキニング側が参照し得るため、GPU 資源を操作する前に先行処理を完了させる。
-    if (skinningReadAhead) renderer::FinishOwnedSkinningReadAhead(renderer);
+    // 遅延ディスクリプターをスキニング側が参照し得るため、GPU 資源を操作する前に先行処理を完了させる。
+    if (skinningReadAhead) {
+        renderer::FinishOwnedSkinningReadAhead(renderer);
+    }
     auto& shadowAtlas = viewTargets.staticShadowAtlas;
     auto& shadowCaches = viewTargets.shadowCascadeCaches;
     if (requestFarCache) {
-        if (shadowAtlas.Ensure(resources, rs.shadow.mapResolution, rs.shadow.mapResolution, 0))
+        if (shadowAtlas.Ensure(resources, rs.shadow.mapResolution, rs.shadow.mapResolution, 0)) {
             shadowCaches = {};
+        }
         if (resources.Get(resources.GetDepthTexture(shadowAtlas.Handle())) && resources.Get(shared.depthCopyShader)) {
             const renderer::FarShadowCacheKey key{scene.GetRenderSceneGeneration(), scene.GetHierarchyRevision(),
                 shadowBounds.terrainRevision, (static_cast<uint64_t>(cachedLight.generation) << 32u) | cachedLight.index,
@@ -164,8 +173,9 @@ ViewShadowPreparation PrepareViewShadows(Scene& scene, renderer::IRenderer& rend
             for (int index = std::min(2, shadows.count - 1); index < shadows.count; ++index) {
                 result.staticMask |= 1u << index;
                 if (renderer::PrepareShadowCascadeCache(shadowCaches[index], shadows, camera, lightDir, key,
-                        Time::frameCount, index))
+                        Time::frameCount, index)) {
                     result.reuseMask |= 1u << index;
+                }
             }
         } else {
             shadowAtlas.Release(resources);
@@ -186,11 +196,13 @@ void ForEachActiveRenderScript(Scene& scene, Callback&& callback)
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !go || !go->activeInHierarchy())
+        if (!sc || !go || !go->activeInHierarchy()) {
             continue;
+        }
         for (auto& entry : sc->scripts) {
-            if (!entry.script || !entry.script->enabled)
+            if (!entry.script || !entry.script->enabled) {
                 continue;
+            }
             entry.script->SetContext(&scene, go);
             callback(*entry.script);
         }
@@ -205,7 +217,7 @@ void PrepareViewEnvironment(RenderPassContext& passCtx, renderer::RenderViewReso
     auto& passHandles = passCtx.handles;
     const auto& rs = passCtx.settings;
     auto& environmentResources = *passCtx.environmentResources;
-    /// @note グラフの外で空を捕捉し、同じビューの照明が使う IBL を用意する。
+    // グラフの外で空を捕捉し、同じビューの照明が使う IBL を用意する。
     const auto environmentProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::EnvironmentSetup", "Rendering"));
     const auto environmentTimeline = profiler::frame_timeline::Begin(profiler::frame_timeline::Event::ENVIRONMENT);
@@ -213,7 +225,7 @@ void PrepareViewEnvironment(RenderPassContext& passCtx, renderer::RenderViewReso
     bool reflectionProbeSelected = false;
     float reflectionProbeIntensity = 1.0f;
     int dynamicIblMipCount = 0;
-    /// @note Unlit の消灯済み skyDimmer を共有キューブへ焼くと、別の Lit ビューも黒い照明を読む。
+    // Unlit の消灯済み skyDimmer を共有キューブへ焼くと、別の Lit ビューも黒い照明を読む。
     /// @see Assets/Shaders/Material/Sky/Skydome.hlsl PSMain の skyDimmer。
     if (!rs.IsUnlit() && activeIblSource == IblSource::DynamicSky) {
         ExecuteSkyCapturePass(passCtx, Script::IsInPlayMode());
@@ -230,7 +242,7 @@ void PrepareViewEnvironment(RenderPassContext& passCtx, renderer::RenderViewReso
         }
     }
 
-    /// @note 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
+    // 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
     const auto reflectionProbeProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::ReflectionProbeCapture", "Rendering"));
     material_demand_detail::CompleteBindings(passCtx);
@@ -266,16 +278,20 @@ void PrepareViewEnvironment(RenderPassContext& passCtx, renderer::RenderViewReso
             const LightProbeVolumeSelection gi = ExecuteLightProbeBakePass(passCtx, agData);
             const LightProbeVolumeSelection::Entry* slots[2] = { &gi.inner, &gi.outer };
             for (int slot = 0; slot < 2; ++slot) {
-                if (!slots[slot]->volume) continue;
+                if (!slots[slot]->volume) {
+                    continue;
+                }
                 FillLightProbeVolumeConstants(*slots[slot]->owner, *slots[slot]->volume, agData.probeVolumes[slot]);
                 passHandles.lightProbeSH[slot] = slots[slot]->volume->runtimeVolume;
                 passHandles.lightProbeVisibility[slot] = slots[slot]->volume->runtimeVisibility;
-                if (const auto* visibility = resources.Get(passHandles.lightProbeVisibility[slot]))
+                if (const auto* visibility = resources.Get(passHandles.lightProbeVisibility[slot])) {
                     agData.probeVisibilityIndices[slot] = visibility->GetBindlessIndex();
+                }
             }
-            /// @note 鏡面遮蔽の強度はビューにつき 1 つなので、内側のライトプローブを採用する。
-            if (gi.inner.volume)
+            // 鏡面遮蔽の強度はビューにつき 1 つなので、内側のライトプローブを採用する。
+            if (gi.inner.volume) {
                 agData.probeSpecularOcclusion = std::clamp(gi.inner.volume->specularOcclusion, 0.0f, 1.0f);
+            }
         });
     profiler::Profiler::EndScope(advancedConstantsProfile);
     profiler::Profiler::EndScope(environmentProfile);
@@ -301,13 +317,15 @@ renderer::ViewPipelineExtensions MakeViewPipelineExtensions(
     };
     extensions.userPasses = [&](UserRenderPassInjectionPoint injectionPoint) {
         for (const auto& desc : scene.GetUserRenderPasses()) {
-            if (desc.injectionPoint != injectionPoint)
+            if (desc.injectionPoint != injectionPoint) {
                 continue;
+            }
             assert(!desc.name.empty() && "UserRenderPassDesc.name is required");
             auto execute = desc.execute;
             pipeline.AddRawPass(desc.name, desc.accesses, [&passCtx, execute]() {
-                if (execute)
+                if (execute) {
                     execute(passCtx);
+                }
             }, desc.allowCulling);
         }
     };
@@ -358,8 +376,9 @@ void ValidateReferencePoseBuffers(Scene& scene, renderer::ResourceManager& resou
     FBZZ_PROFILE_SCOPE("RenderSystem::SkinningResourceValidation");
     for (EntityID id : scene.GetEntities<SkinnedMeshRenderer>()) {
         const auto* smr = scene.GetComponent<SkinnedMeshRenderer>(id);
-        if (smr && smr->model && !resources.Get(smr->model->referencePoseCB))
+        if (smr && smr->model && !resources.Get(smr->model->referencePoseCB)) {
             smr->model->referencePoseCB = {};
+        }
     }
 }
 
@@ -369,20 +388,25 @@ void PrepareReferencePoseBuffers(Scene& scene, renderer::ResourceManager& resour
     FBZZ_PROFILE_SCOPE("RenderSystem::ReferencePoseBuffers");
     struct ReferencePoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
 
-    /// @note シェーダー読込後に候補を取り直し、資源確保をまたいで Component 配列を借用しない。
+    // シェーダー読込後に候補を取り直し、資源確保をまたいで Component 配列を借用しない。
     detail::RenderCandidateLease candidateLease;
     auto& candidates = candidateLease.Entities();
     scene.CopyRendererEntities(candidates, Scene::RendererEntitySet::SKINNED);
     const auto sceneGeneration = scene.GetRenderSceneGeneration();
     for (EntityID id : candidates) {
-        if (scene.GetRenderSceneGeneration() != sceneGeneration) break;
+        if (scene.GetRenderSceneGeneration() != sceneGeneration) {
+            break;
+        }
         const auto* smr = scene.GetComponent<SkinnedMeshRenderer>(id);
-        if (!smr || !smr->model || !smr->model->skeleton || smr->model->referencePoseCB.IsValid())
+        if (!smr || !smr->model || !smr->model->skeleton || smr->model->referencePoseCB.IsValid()) {
             continue;
+        }
 
         const auto* model = smr->model;
         const auto& refPose = model->skeleton->referencePose;
-        if (refPose.empty()) continue;
+        if (refPose.empty()) {
+            continue;
+        }
 
         ReferencePoseData palette{};
         std::fill(std::begin(palette.bones), std::end(palette.bones), math::Matrix4::Identity());
@@ -391,14 +415,16 @@ void PrepareReferencePoseBuffers(Scene& scene, renderer::ResourceManager& resour
         const auto assetGeneration = asset::AssetManager::GetAssetGeneration();
         const auto resourceVersion = resources.GetResetVersion();
         const auto buffer = resources.CreateConstantBuffer(sizeof(palette));
-        if (!buffer.IsValid() || resources.GetResetVersion() != resourceVersion) continue;
+        if (!buffer.IsValid() || resources.GetResetVersion() != resourceVersion) {
+            continue;
+        }
 
-        /// @note 確保中の再入でモデルが変わったり、別のパレットが先に公開されたりする。
+        // 確保中の再入でモデルが変わったり、別のパレットが先に公開されたりする。
         auto* current = scene.GetComponent<SkinnedMeshRenderer>(id);
         if (scene.GetRenderSceneGeneration() == sceneGeneration
             && asset::AssetManager::GetAssetGeneration() == assetGeneration
             && current && current->model == model && !current->model->referencePoseCB.IsValid()) {
-            /// @note 転送中に描画へ再入しても同じモデルの確保を繰り返さないよう、先にハンドルを公開する。
+            // 転送中に描画へ再入しても同じモデルの確保を繰り返さないよう、先にハンドルを公開する。
             current->model->referencePoseCB = buffer;
             resources.Update(buffer, &palette, sizeof(palette));
         } else {
@@ -414,23 +440,27 @@ void PrepareCustomPostProcessing(renderer::ResourceManager& resources,
 {
     const profiler::ProfileScope profile(profiler::ProfilerMarker("RenderSystem::CustomPostProcessSetup", "Rendering"));
     passHandles.customPostProcessShaders.resize(effects.size());
-    /// @note 同じ段の効果は RenderGraph の登録順に実行されるため、設定内の順番を保つ。
+    // 同じ段の効果は RenderGraph の登録順に実行されるため、設定内の順番を保つ。
     options.customPostProcessIndices.reserve(effects.size());
     for (uint32_t i = 0; i < static_cast<uint32_t>(effects.size()); ++i) {
         const auto& custom = effects[i];
-        if (!custom.enabled) continue;
-        /// @note 材質経由のシェーダーとテクスチャは、パスの実行時に解決する。
-        if (!custom.shaderPath.empty())
-            passHandles.customPostProcessShaders[i] = resources.LoadShader(custom.shaderPath);
-        if (!passHandles.customPostProcessShaders[i].IsValid() && custom.materialPath.empty())
+        if (!custom.enabled) {
             continue;
+        }
+        // 材質経由のシェーダーとテクスチャは、パスの実行時に解決する。
+        if (!custom.shaderPath.empty()) {
+            passHandles.customPostProcessShaders[i] = resources.LoadShader(custom.shaderPath);
+        }
+        if (!passHandles.customPostProcessShaders[i].IsValid() && custom.materialPath.empty()) {
+            continue;
+        }
         switch (custom.stage) {
         case renderer::CustomPassStage::AfterOpaque: options.customAfterOpaqueIndices.push_back(i); break;
         case renderer::CustomPassStage::SceneHDR:    options.customSceneHdrIndices.push_back(i);    break;
         case renderer::CustomPassStage::PostProcess: options.customPostProcessIndices.push_back(i); break;
         }
     }
-    /// @note マスクの読み取りパスがない場合、RenderGraph はマスク生成を省く。
+    // マスクの読み取りパスがない場合、RenderGraph はマスク生成を省く。
     {
         static size_t sAfterOpaque = SIZE_MAX;
         static size_t sSceneHdr    = SIZE_MAX;
@@ -466,10 +496,11 @@ void PublishDebugSnapshot(const RenderPipeline& pipeline, const RenderPassContex
     dbgSnap.width           = viewTargets.width;
     dbgSnap.height          = viewTargets.height;
     dbgSnap.planDescription = pipeline.LastPlanDescription();
-    for (const auto& profile : pipeline.LastReport().profiles)
+    for (const auto& profile : pipeline.LastReport().profiles) {
         dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
+    }
 
-    /// @note 遅延値は出自を保持し、別ビュー・旧 Plan・再生成前の資源へ帰属させない。
+    // 遅延値は出自を保持し、別ビュー・旧 Plan・再生成前の資源へ帰属させない。
     dbgSnap.gpuCurrentView = graphExecuted ? pipeline.LastGpuProfilerView() : renderer::GpuProfilerViewMetadata{};
     dbgSnap.gpuProfiler = passCtx.renderer.GpuProfGetSnapshot();
     std::erase_if(dbgSnap.gpuProfiler.passes, [&](const auto& gp) {
@@ -479,8 +510,9 @@ void PublishDebugSnapshot(const RenderPipeline& pipeline, const RenderPassContex
             || !renderer::IsGpuProfilerViewCompatible(gp.metadata, dbgSnap.gpuCurrentView, 8u);
     });
     dbgSnap.gpuProfiler.available = dbgSnap.gpuProfiler.available && !dbgSnap.gpuProfiler.passes.empty();
-    for (const auto& gp : dbgSnap.gpuProfiler.passes)
+    for (const auto& gp : dbgSnap.gpuProfiler.passes) {
         dbgSnap.gpuPassTimings.push_back({ gp.name, gp.gpuMs });
+    }
 
     dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;
     dbgSnap.renderStats.frustumCulled   = passCtx.statsFrustumCulled;
@@ -537,7 +569,7 @@ void RenderSystem(Scene& scene,
     profiler::frame_timeline::ContextScope timelineViewContext(timelineContext);
     profiler::frame_timeline::Scope timelineView(profiler::frame_timeline::Event::VIEW);
     std::optional<profiler::frame_timeline::Scope> postTimeline;
-    /// @note 後続のローカル変数の破棄まで計測するため、実行時の計測と Cleanup を先に宣言する。
+    // 後続のローカル変数の破棄まで計測するため、実行時の計測と Cleanup を先に宣言する。
     cpu_trace::ViewScope cpuTrace(resources.GetInstanceId(), resources.GetResetVersion(), resources.FrameStamp(),
         scene.GetRenderSceneGeneration(), outputRT.id, outputRT.gen);
 
@@ -545,7 +577,7 @@ void RenderSystem(Scene& scene,
     const auto viewSettingsProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::ResolveViewSettings", "Rendering"));
 
-    /// @note 呼び出し側で指定しなければ、Standalone でもシーンのメインカメラの設定を使う。
+    // 呼び出し側で指定しなければ、Standalone でもシーンのメインカメラの設定を使う。
     const CameraCullingSettings resolvedCulling =
         cullingSettings ? *cullingSettings : ResolveGameCullingSettings(scene);
     const auto viewSettings = render_view_detail::ResolveViewSettings(scene, inputCamera, settings);
@@ -556,7 +588,7 @@ void RenderSystem(Scene& scene,
 
     const bool experimentalRayTracingEnabled = core::DeveloperMode::IsEnabled();
 
-    /// @note UI の通知は Script 後に確定する。描画資源の初期化失敗でも CPU 入力を止めない。
+    // UI の通知は Script 後に確定する。描画資源の初期化失敗でも CPU 入力を止めない。
     if (uiOptions && uiOptions->enabled && uiOptions->context
         && uiOptions->targetView == UIRenderTargetView::GameViewport) {
         const auto* target = resources.Get(outputRT);
@@ -606,7 +638,7 @@ void RenderSystem(Scene& scene,
     auto& clusterCB = shared.clusterCB;
     auto& clusterLinearCB = shared.clusterLinearCB;
 
-    /// @note ライト収集とシャドウ範囲計算はシーン全体を走査するため、独立して計測する。
+    // ライト収集とシャドウ範囲計算はシーン全体を走査するため、独立して計測する。
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::LightingSetup", "Rendering"));
 
@@ -671,7 +703,7 @@ void RenderSystem(Scene& scene,
         viewTargets.selectionMask.IsValid() && shared.selectionMaskPso.IsValid() &&
         shared.selectionOutlineShader.IsValid();
 
-    /// @note 要求のないビューでは全画面クリアを省き、無効化の理由を診断に残す。
+    // 要求のないビューでは全画面クリアを省き、無効化の理由を診断に残す。
     const char* objectMaskOffReason = nullptr;
     const bool objectMaskEnabled = [&]() {
         if (!viewTargets.objectMask.IsValid())      { objectMaskOffReason = "objectMaskRT 未作成"; return false; }
@@ -681,7 +713,9 @@ void RenderSystem(Scene& scene,
             return false;
         }
         for (const renderer::RenderObjectMaskRequest& request : rs.objectMaskRequests)
-            if (renderer::IsObjectMaskRequestLive(request, Time::frameCount)) return true;
+            if (renderer::IsObjectMaskRequestLive(request, Time::frameCount)) {
+                return true;
+            }
         objectMaskOffReason = rs.objectMaskRequests.empty()
             ? "申告が 1 件も届いていない (RenderSettings の実体違い)"
             : "申告はあるが全部フレーム落ち (提出が描画より後)";
@@ -692,7 +726,7 @@ void RenderSystem(Scene& scene,
         const char* reason = objectMaskEnabled ? "(有効)" : objectMaskOffReason;
         if (reason && reason != sLastReason) {
             sLastReason = reason;
-            /// @note 設定のコピー元を比較して、マスクの要求先と描画時の参照先を照合する。
+            // 設定のコピー元を比較して、マスクの要求先と描画時の参照先を照合する。
             const void* readFrom = static_cast<const void*>(settings);
             const void* active   = static_cast<const void*>(
                 core::Application::Get().GetActiveRenderSettings());
@@ -702,7 +736,7 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    /// @note 描画設定を受け取った場合に限り、無効な設定の診断を変化時に記録する。
+    // 描画設定を受け取った場合に限り、無効な設定の診断を変化時に記録する。
     if (settings != nullptr) {
         static std::string sLastInertReport;
         std::string report;
@@ -724,17 +758,19 @@ void RenderSystem(Scene& scene,
     PrepareCustomPostProcessing(resources, rs.postProcess.customEffects, passHandles, pipelineOptions);
 
     PrepareReferencePoseBuffers(scene, resources);
-    /// @note LoadTexture が IBL テクスチャをキャッシュするため、ビューごとの参照解決で再読込しない。
+    // LoadTexture が IBL テクスチャをキャッシュするため、ビューごとの参照解決で再読込しない。
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ResolveIblTextures");
-        if (!rs.ibl.irradiancePath.empty())
+        if (!rs.ibl.irradiancePath.empty()) {
             passHandles.iblIrradiance = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, rs.ibl.irradiancePath);
-        if (!rs.ibl.prefilterPath.empty())
+        }
+        if (!rs.ibl.prefilterPath.empty()) {
             passHandles.iblPrefilter = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, rs.ibl.prefilterPath);
+        }
     }
     const auto passContextProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::PassContextSetup", "Rendering"));
-    /// @note Reversed-Z の遠平面は z 行から直接抽出できる。通常 Z では w 行との差で遠距離の精度が落ちる。
+    // Reversed-Z の遠平面は z 行から直接抽出できる。通常 Z では w 行との差で遠距離の精度が落ちる。
     /// @see Docs/design/view-culling.md
     const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetGpuViewProjection());
     const math::Frustum lightFrustum  = math::Frustum::FromViewProjection(lightVP);
@@ -744,7 +780,7 @@ void RenderSystem(Scene& scene,
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles
     };
-    /// @note パッチ選択の借用期間中は値渡しの所有者が生存し、所有者がなければビュー内で選択する。
+    // パッチ選択の借用期間中は値渡しの所有者が生存し、所有者がなければビュー内で選択する。
     renderer::SurfacePatchSelectionCacheOwner localSurfacePatchPlans;
     const auto surfacePatchLease = (surfacePatchPlans ? *surfacePatchPlans : localSurfacePatchPlans).Borrow(
         {resources.GetInstanceId(), resources.GetResetVersion(), scene.GetRenderSceneGeneration(),
@@ -758,10 +794,11 @@ void RenderSystem(Scene& scene,
     passCtx.smallObjectScreenHeight = resolvedCulling.smallObjectScreenHeight;
     for (int i = 0; i < kCullLayerCount; ++i) {
         passCtx.cullLayerDistances[i] = resolvedCulling.layerCullDistances[i];
-        if (resolvedCulling.layerCullDistances[i] > 0.0f)
+        if (resolvedCulling.layerCullDistances[i] > 0.0f) {
             passCtx.hasLayerCullDistances = true;
+        }
     }
-    /// @note 極小オブジェクト判定の射影スケール 1 / tan(fovY / 2) をビュー単位で求める。
+    // 極小オブジェクト判定の射影スケール 1 / tan(fovY / 2) をビュー単位で求める。
     passCtx.cullProjScaleY    = camera.GetProjectionMatrix().m[1][1];
     passCtx.cullOrthographic  =
         camera.m_projection == renderer::ProjectionMode::Orthographic;
@@ -774,18 +811,19 @@ void RenderSystem(Scene& scene,
     passCtx.staticShadowCache.atlas = shadowAtlas.Handle();
     passCtx.staticShadowCache.cascadeMask = staticShadowCascadeMask;
     passCtx.staticShadowCache.reuseMask = reuseShadowCascadeMask;
-    for (int index = 0; index < cascadeCount; ++index)
+    for (int index = 0; index < cascadeCount; ++index) {
         passCtx.staticShadowCache.contentKeys[index] = shadowCaches[index].contentKey;
+    }
     passCtx.outputWidth             = nativeW;
     passCtx.outputHeight            = nativeH;
     passCtx.chainOutputRT           = (needsUpscale && upscaleSrcRT.IsValid()) ? upscaleSrcRT : outputRT;
-    /// @note 8 フレーム周期の Halton(2, 3) を ±0.5 ピクセルに写し、無効時はジッターを適用しない。
+    // 8 フレーム周期の Halton(2, 3) を ±0.5 ピクセルに写し、無効時はジッターを適用しない。
     if (rs.IsTaaActive() && viewTargets.width > 0u && viewTargets.height > 0u) {
         constexpr uint32_t kTaaJitterPeriod = 8u;
         const uint32_t sampleIndex = viewTargets.taaFrameIndex % kTaaJitterPeriod + 1u;
         const float offsetPxX = HaltonRadicalInverse(sampleIndex, 2u) - 0.5f;
         const float offsetPxY = HaltonRadicalInverse(sampleIndex, 3u) - 0.5f;
-        /// @note ピクセル → NDC。NDC の Y は上向きなので符号を反転する。
+        // ピクセル → NDC。NDC の Y は上向きなので符号を反転する。
         passCtx.taaJitterNdcX =  2.0f * offsetPxX / static_cast<float>(viewTargets.width);
         passCtx.taaJitterNdcY = -2.0f * offsetPxY / static_cast<float>(viewTargets.height);
         ++viewTargets.taaFrameIndex;
@@ -795,7 +833,7 @@ void RenderSystem(Scene& scene,
     }
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.objectMaskEnabled      = objectMaskEnabled;
-    /// @note UI と 3D で選択マスクを共有し、UI の座標は出力先の実寸でクリップ空間へ変換する。
+    // UI と 3D で選択マスクを共有し、UI の座標は出力先の実寸でクリップ空間へ変換する。
     if (selectionOutlineEnabled && uiOptions && uiOptions->enabled && uiOptions->context) {
         passCtx.appendUISelectionMask = [&]() {
             const float uiWidth = uiOptions->viewportWidth > 0.0f
@@ -821,14 +859,14 @@ void RenderSystem(Scene& scene,
     passCtx.ssaoEnabled             = ssaoEnabled;
     passCtx.gbufferDepthReady       = screenSpaceReady;
 
-    /// @note 前方描画用の AO スロットを GTAO と SSAO で共有する。
-    /// @note 遅延描画でも半透明などの前方描画には画面空間の遮蔽が必要。
+    // 前方描画用の AO スロットを GTAO と SSAO で共有する。
+    // 遅延描画でも半透明などの前方描画には画面空間の遮蔽が必要。
     float screenAoStrength = 0.0f;
     float screenContactShadowStrength = 0.0f;
 
     if (screenSpaceReady && rs.IsGtaoActive() && gtaoBlur.IsValid()) {
         passCtx.screenAoTexture = gtaoBlur;
-        /// @note GTAO の出力は gtaoIntensity を織り込み済み。ここで再度掛けると二重になる。
+        // GTAO の出力は gtaoIntensity を織り込み済み。ここで再度掛けると二重になる。
         screenAoStrength = 1.0f;
     } else if (ssaoEnabled) {
         passCtx.screenAoTexture = viewTargets.ssaoBlur;
@@ -836,11 +874,11 @@ void RenderSystem(Scene& scene,
     }
     if (screenSpaceReady && rs.contactShadow.enabled && contactShadowResult.IsValid()) {
         passCtx.screenContactShadowTexture = contactShadowResult;
-        /// @note 強度はマスク生成 CS 側で織り込み済み。ここは「適用するか」だけを決める。
+        // 強度はマスク生成 CS 側で織り込み済み。ここは「適用するか」だけを決める。
         screenContactShadowStrength = 1.0f;
     }
 
-    /// @note 点・スポットライト数に上限があるレガシー経路は、資源確保失敗やプレビュー時に使う。
+    // 点・スポットライト数に上限があるレガシー経路は、資源確保失敗やプレビュー時に使う。
     const bool punctualBufferReady =
         passHandles.punctualLightBuffer.IsValid() && clusterCB.IsValid();
     const bool canCullClusters = renderPlan.clusteredLighting;
@@ -856,7 +894,7 @@ void RenderSystem(Scene& scene,
     passCtx.rayLights = std::move(lighting.rayLights);
     passCtx.rayLightsComplete = lighting.rayLightsComplete;
     passCtx.clusterLightMode  = clusterMode;
-    /// @note 霧のフレーム間状態は描画中のビューが持つ (SceneView / GameView で混ざらないように)。
+    // 霧のフレーム間状態は描画中のビューが持つ (SceneView / GameView で混ざらないように)。
     passCtx.froxelFogState    = &viewTargets.froxelState;
     passCtx.clusterDebugHeatmap = clusteredEnabled && rs.clustered.debugHeatmap;
 
@@ -867,7 +905,7 @@ void RenderSystem(Scene& scene,
                              passCtx.punctualLights.size() * sizeof(PunctualLightGPU));
         }
 
-        /// @note log(viewZ) を線形変換して近面を 0、クラスタ遠面を GridZ に写し、手前の深度を細かく分割する。
+        // log(viewZ) を線形変換して近面を 0、クラスタ遠面を GridZ に写し、手前の深度を細かく分割する。
         const float nearZ = (std::max)(camera.m_near, 0.01f);
         const float farZ  = (std::max)((std::min)(camera.m_far, rs.clustered.maxDistance), nearZ * 2.0f);
         const float logRatio = std::log(farZ / nearZ);
@@ -886,10 +924,11 @@ void RenderSystem(Scene& scene,
         }
         resources.Update(clusterCB, &clusterData, sizeof(ClusterConstantsCB));
 
-        /// @note 別視点にはメインカメラのクラスタ割り当てを使わず、ライトバッファがある場合だけ全数走査する。
+        // 別視点にはメインカメラのクラスタ割り当てを使わず、ライトバッファがある場合だけ全数走査する。
         ClusterConstantsCB linearData = clusterData;
-        if (clusterMode != ClusterLightMode::Legacy)
+        if (clusterMode != ClusterLightMode::Legacy) {
             linearData.clusterLightMode = static_cast<uint32_t>(ClusterLightMode::Linear);
+        }
         linearData.clusterDebugMode = 0u;
         linearData.manyLightControl = 0u;
         resources.Update(clusterLinearCB, &linearData, sizeof(ClusterConstantsCB));
@@ -904,46 +943,54 @@ void RenderSystem(Scene& scene,
     passCtx.cloudShadowScale    = skyCloudShadowScale;
     passCtx.cloudShadowSpeed    = skyCloudShadowSpeed;
     passCtx.cloudShadowTime     = Time::time;
-    /// @note 影を無効にした場合は、シェーダーの PCF 処理も省く。
+    // 影を無効にした場合は、シェーダーの PCF 処理も省く。
     passCtx.shadowStrength =
         (rs.shadowEnabled && dirCastShadows) ? dirShadowStrength : 0.0f;
-    /// @note 単一カスケード相当のバイアス。カスケードごとの値は ShadowCascade::biasNDC が持つ。
+    // 単一カスケード相当のバイアス。カスケードごとの値は ShadowCascade::biasNDC が持つ。
     passCtx.shadowBiasNDC  = cascades[0].biasNDC;
     passCtx.shadowCascadeCount = cascadeCount;
-    for (int i = 0; i < cascadeCount; ++i)
+    for (int i = 0; i < cascadeCount; ++i) {
         passCtx.shadowCascades[i] = cascades[i];
+    }
 
     passCtx.punctualShadowViewCount  = punctualViewCount;
     passCtx.punctualShadowResolution = punctualShadowRes;
-    for (int i = 0; i < punctualViewCount; ++i)
+    for (int i = 0; i < punctualViewCount; ++i) {
         passCtx.punctualShadowViews[i] = punctualViews[i];
+    }
     for (int i = 0; i < kMaxLegacyPunctualLights; ++i) {
         passCtx.legacyShadowSlots[i] = legacyShadowSlots[i];
         passCtx.legacyCookieSlots[i] = legacyCookieSlots[i];
     }
 
     passCtx.lightCookieViewCount = cookieViewCount;
-    for (int i = 0; i < cookieViewCount; ++i)
+    for (int i = 0; i < cookieViewCount; ++i) {
         passCtx.lightCookieViews[i] = cookieViews[i];
+    }
 
     passCtx.legacyShapedLightCount = 0;
     for (const PunctualLightGPU& light : passCtx.punctualLights) {
-        if (passCtx.legacyShapedLightCount >= kMaxLegacyShapedLights) break;
+        if (passCtx.legacyShapedLightCount >= kMaxLegacyShapedLights) {
+            break;
+        }
         const bool shaped = light.type == static_cast<uint32_t>(PunctualLightType::Area)
                          || light.type == static_cast<uint32_t>(PunctualLightType::Sphere)
                          || light.type == static_cast<uint32_t>(PunctualLightType::Tube);
-        if (!shaped) continue;
+        if (!shaped) {
+            continue;
+        }
         passCtx.legacyShapedLights[passCtx.legacyShapedLightCount++] = light;
     }
-    for (int i = 0; i < kMaxLegacyPunctualLights; ++i)
+    for (int i = 0; i < kMaxLegacyPunctualLights; ++i) {
         passCtx.legacySourceRadius[i] = legacySourceRadius[i];
+    }
     profiler::Profiler::EndScope(passContextProfile);
 
-    /// @note プローブも同じ入力を読むため、グラフ外の捕捉より前に変形と抽出を完了する。
+    // プローブも同じ入力を読むため、グラフ外の捕捉より前に変形と抽出を完了する。
     cpuTrace.SetPhase(cpu_trace::Phase::SKIN);
     skinning_demand_detail::GpuOutputDemandScope gpuOutputDemand(passCtx);
     {
-        /// @note 出力要求の件数を診断するときに、このビューの呼び出しを識別する。
+        // 出力要求の件数を診断するときに、このビューの呼び出しを識別する。
         skinning_demand_detail::OutputDemandScope demandScope(passCtx);
         profiler::frame_timeline::Scope timelineSkinning(profiler::frame_timeline::Event::SKINNING);
         ExecuteSkinningComputePass(passCtx);
@@ -952,7 +999,7 @@ void RenderSystem(Scene& scene,
     cpuTrace.SetPhase(cpu_trace::Phase::EXTRACT);
     RenderFrameGeometryCache* reusableGeometry = frameGeometry;
     if (reusableGeometry && !CanShareFrameGeometry(scene)) {
-        /// @note ビュー間で描画入力を書き換え得る状態になったら次回抽出をやり直す。公開済みの入力は共有所有権を保持する。
+        // ビュー間で描画入力を書き換え得る状態になったら次回抽出をやり直す。公開済みの入力は共有所有権を保持する。
         reusableGeometry->geometry.reset();
         reusableGeometry->deferredItemGeometry.reset();
         reusableGeometry = nullptr;
@@ -987,7 +1034,7 @@ void RenderSystem(Scene& scene,
     }
 
 
-    /// @note GPU query 領域は renderer の物理フレームが所有する。ビュー開始で再初期化しない。
+    // GPU query 領域は renderer の物理フレームが所有する。ビュー開始で再初期化しない。
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::GpuProfilerSetup");
         renderer.GpuProfCollect();
@@ -1029,7 +1076,7 @@ void RenderSystem(Scene& scene,
             shadowCaches[index].contentKey = passCtx.staticShadowCache.contentKeys[index];
         }
     }
-    /// @note TAA が今回書いた履歴と、自動露出が処理したリセット世代を次の描画へ引き継ぐ。
+    // TAA が今回書いた履歴と、自動露出が処理したリセット世代を次の描画へ引き継ぐ。
     viewTargets.taaFlip                 = passHandles.taaFlip;
     viewTargets.exposureResetGeneration = passHandles.exposureResetGeneration;
 

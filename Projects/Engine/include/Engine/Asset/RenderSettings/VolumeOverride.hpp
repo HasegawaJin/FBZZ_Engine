@@ -70,7 +70,7 @@ public:
     /// @note Inspector のカード左のチェックボックス。false でも設定値は保持したまま無効化する。
     /// @note 削除でなく無効化にするのは、効果を一時的に外して見比べる作業がオーサリング中に頻繁に
     /// @note 起きるため。そのたびに値を捨てさせない。
-    bool active = true;
+    bool active = true; ///< この上書き設定をボリュームの合成で評価するか。
 };
 
 /// @brief 型名から実体を作るレジストリ。DataAssetFactory と同方針。
@@ -82,10 +82,10 @@ public:
 
     /// @note Add Override メニューを組むためのメタ情報。
     struct Entry {
-        std::string            typeName;
-        std::string            displayName;
-        VolumeOverrideCategory category = VolumeOverrideCategory::Color;
-        bool                   allowsMultiple = false;
+        std::string            typeName; ///< 保存された設定から具体型を生成するときに使う登録名。
+        std::string            displayName; ///< エディターの効果一覧に表示する名前。
+        VolumeOverrideCategory category = VolumeOverrideCategory::Color; ///< エディターの追加メニューでこの効果を所属させる分類。
+        bool                   allowsMultiple = false; ///< 同じプロファイルへこの型を複数追加できるか。
     };
 
     template<typename T>
@@ -102,7 +102,7 @@ public:
     FBZZ_ENGINE_API static const std::vector<Entry>& RegisteredEntries();
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset
 
 /// @note VolumeOverride 派生を静的登録するマクロ。
 #define FBZZ_VOLUME_OVERRIDE_CONCAT_INNER(a, b) a##b

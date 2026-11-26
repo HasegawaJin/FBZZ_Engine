@@ -73,8 +73,9 @@ std::uint64_t HashByte(std::uint64_t hash, std::uint8_t value)
 
 std::uint64_t HashU32(std::uint64_t hash, std::uint32_t value)
 {
-    for (unsigned shift = 0; shift < 32; shift += 8)
+    for (unsigned shift = 0; shift < 32; shift += 8) {
         hash = HashByte(hash, static_cast<std::uint8_t>(value >> shift));
+    }
     return hash;
 }
 
@@ -101,8 +102,15 @@ bool SegmentsIntersect(const Point2& a, const Point2& b, const Point2& c, const 
     const double abD = Cross(a, b, d);
     const double cdA = Cross(c, d, a);
     const double cdB = Cross(c, d, b);
-    if (((abC > epsilon && abD < -epsilon) || (abC < -epsilon && abD > epsilon))
-        && ((cdA > epsilon && cdB < -epsilon) || (cdA < -epsilon && cdB > epsilon))) return true;
+    // 各線分の端点が相手の直線の両側にあれば、線分の内部で交差する。
+    const bool oppositeSidesOfAB = (abC > epsilon && abD < -epsilon) || (abC < -epsilon && abD > epsilon);
+    if (oppositeSidesOfAB) {
+        const bool oppositeSidesOfCD = (cdA > epsilon && cdB < -epsilon) || (cdA < -epsilon && cdB > epsilon);
+        if (oppositeSidesOfCD) {
+            return true;
+        }
+    }
+
     return OnSegment(a, b, c, epsilon) || OnSegment(a, b, d, epsilon)
         || OnSegment(c, d, a, epsilon) || OnSegment(c, d, b, epsilon);
 }
@@ -110,7 +118,9 @@ bool SegmentsIntersect(const Point2& a, const Point2& b, const Point2& c, const 
 bool IsSimplePolygon(const std::vector<Point2>& polygon, double epsilon)
 {
     const std::size_t count = polygon.size();
-    if (count < 3) return false;
+    if (count < 3) {
+        return false;
+    }
     struct Edge {
         std::size_t first, second;
         double minX, maxX, minZ, maxZ;
@@ -125,7 +135,9 @@ bool IsSimplePolygon(const std::vector<Point2>& polygon, double epsilon)
         const Point2& b = polygon[next];
         const double dx = b.x - a.x;
         const double dz = b.z - a.z;
-        if (dx * dx + dz * dz <= epsilon * epsilon) return false;
+        if (dx * dx + dz * dz <= epsilon * epsilon) {
+            return false;
+        }
         const Edge edge{i, next, (std::min)(a.x, b.x), (std::max)(a.x, b.x),
             (std::min)(a.z, b.z), (std::max)(a.z, b.z)};
         minX = (std::min)(minX, edge.minX);
@@ -140,7 +152,7 @@ bool IsSimplePolygon(const std::vector<Point2>& polygon, double epsilon)
             std::swap(edge.maxX, edge.maxZ);
         }
     std::sort(edges.begin(), edges.end(), [](const Edge& a, const Edge& b) { return a.minX < b.minX; });
-    /// @note 既存の 2 種の許容判定をともに使い、どちらかの線分の丸め境界に入る端点を残す。
+    // 既存の 2 種の許容判定をともに使い、どちらかの線分の丸め境界に入る端点を残す。
     const auto separated = [epsilon](double lowEnd, double highStart) {
         return lowEnd + epsilon < highStart && lowEnd < highStart - epsilon;
     };
@@ -149,9 +161,13 @@ bool IsSimplePolygon(const std::vector<Point2>& polygon, double epsilon)
         for (std::size_t j = i + 1; j < count && !separated(a.maxX, edges[j].minX); ++j) {
             const Edge& b = edges[j];
             if (a.second == b.first || b.second == a.first
-                || separated(a.maxZ, b.minZ) || separated(b.maxZ, a.minZ)) continue;
+                || separated(a.maxZ, b.minZ) || separated(b.maxZ, a.minZ)) {
+                continue;
+            }
             if (SegmentsIntersect(polygon[a.first], polygon[a.second],
-                    polygon[b.first], polygon[b.second], epsilon)) return false;
+                    polygon[b.first], polygon[b.second], epsilon)) {
+                return false;
+            }
         }
     }
     return true;
@@ -176,7 +192,9 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
         const Point2& b = polygon[(i + 1) % polygon.size()];
         signedArea += a.x * b.z - b.x * a.z;
     }
-    if (!std::isfinite(signedArea) || std::abs(signedArea) <= epsilon) return false;
+    if (!std::isfinite(signedArea) || std::abs(signedArea) <= epsilon) {
+        return false;
+    }
     const double orientation = signedArea > 0.0 ? 1.0 : -1.0;
     const auto count = static_cast<std::uint32_t>(polygon.size());
     struct Corner {
@@ -186,8 +204,9 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
     };
     std::vector<Corner> corners;
     corners.reserve(count);
-    for (std::uint32_t i = 0; i < count; ++i)
+    for (std::uint32_t i = 0; i < count; ++i) {
         corners.push_back({(i + count - 1) % count, (i + 1) % count});
+    }
     std::vector<std::uint32_t> blocked;
     std::uint32_t first = 0;
     const auto contains = [&](std::uint32_t current, std::uint32_t candidate) {
@@ -205,10 +224,14 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
             if (corner.convex) {
                 std::uint32_t candidate = corner.next;
                 do {
-                    if (contains(current, candidate)) ++corner.blockers;
+                    if (contains(current, candidate)) {
+                        ++corner.blockers;
+                    }
                     candidate = corners[candidate].next;
                 } while (candidate != current);
-                if (corner.blockers != 0) blocked.push_back(current);
+                if (corner.blockers != 0) {
+                    blocked.push_back(current);
+                }
             }
         }
         return corner.convex && corner.blockers == 0;
@@ -219,26 +242,38 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
         std::uint32_t ear = first;
         while (!isEar(ear)) {
             ear = corners[ear].next;
-            if (ear == first) return false;
+            if (ear == first) {
+                return false;
+            }
         }
         const auto previous = corners[ear].previous, next = corners[ear].next;
         triangles.push_back({previous, ear, next});
         corners[previous].next = next;
         corners[next].previous = previous;
-        if (first == ear) first = next;
-        if (remaining == 4) break;
-        /// @note 形状が変わるのは除去点に隣接する 2 頂点だけ。他の耳では除去点による阻害だけが解消され得る。
+        if (first == ear) {
+            first = next;
+        }
+        if (remaining == 4) {
+            break;
+        }
+        // 形状が変わるのは除去点に隣接する 2 頂点だけ。他の耳では除去点による阻害だけが解消され得る。
         corners[previous].checked = false;
         corners[next].checked = false;
         std::erase_if(blocked, [&](std::uint32_t current) {
             auto& corner = corners[current];
-            if (!corner.checked) return true;
-            if (contains(current, ear)) --corner.blockers;
+            if (!corner.checked) {
+                return true;
+            }
+            if (contains(current, ear)) {
+                --corner.blockers;
+            }
             return corner.blockers == 0;
         });
     }
     const auto second = corners[first].next, third = corners[second].next;
-    if (orientation * Cross(polygon[first], polygon[second], polygon[third]) <= epsilon) return false;
+    if (orientation * Cross(polygon[first], polygon[second], polygon[third]) <= epsilon) {
+        return false;
+    }
     triangles.push_back({first, second, third});
     return true;
 }
@@ -305,7 +340,9 @@ bool MakeWorldVelocity(const math::Vector3& tangent, float speed,
         0.0f, tangent.z * transform.worldScale.z};
     const math::Vector3 worldTangent = transform.worldRotation * scaledTangent;
     const double length = std::hypot(static_cast<double>(worldTangent.x), static_cast<double>(worldTangent.z));
-    if (!std::isfinite(length) || length <= 1.0e-8 || !std::isfinite(speed)) return false;
+    if (!std::isfinite(length) || length <= 1.0e-8 || !std::isfinite(speed)) {
+        return false;
+    }
     velocity = {static_cast<float>(worldTangent.x / length * speed), 0.0f,
         static_cast<float>(worldTangent.z / length * speed)};
     return Finite(velocity);
@@ -338,7 +375,9 @@ bool ComputeTriangleGradient(const std::vector<WaterSplineVertex>& vertices,
     const double dx2 = static_cast<double>(p2.x) - p0.x;
     const double dz2 = static_cast<double>(p2.z) - p0.z;
     const double determinant = dx1 * dz2 - dx2 * dz1;
-    if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-12) return false;
+    if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-12) {
+        return false;
+    }
     const double dy1 = static_cast<double>(vertices[indices[1]].baseHeightOffset)
         - vertices[indices[0]].baseHeightOffset;
     const double dy2 = static_cast<double>(vertices[indices[2]].baseHeightOffset)
@@ -347,7 +386,9 @@ bool ComputeTriangleGradient(const std::vector<WaterSplineVertex>& vertices,
     const double gradientZ = (dx1 * dy2 - dx2 * dy1) / determinant;
     if (!std::isfinite(gradientX) || !std::isfinite(gradientZ)
         || std::abs(gradientX) > std::numeric_limits<float>::max()
-        || std::abs(gradientZ) > std::numeric_limits<float>::max()) return false;
+        || std::abs(gradientZ) > std::numeric_limits<float>::max()) {
+        return false;
+    }
     gradient = {static_cast<float>(gradientX), static_cast<float>(gradientZ)};
     return true;
 }
@@ -356,7 +397,9 @@ bool AddTriangle(WaterSplineSnapshot& snapshot, std::uint32_t a, std::uint32_t b
 {
     const std::array<std::uint32_t, 3> indices{a, b, c};
     math::Vector2 gradient;
-    if (!ComputeTriangleGradient(snapshot.vertices, indices, gradient)) return false;
+    if (!ComputeTriangleGradient(snapshot.vertices, indices, gradient)) {
+        return false;
+    }
     snapshot.triangles.push_back({indices, gradient});
     return true;
 }
@@ -365,21 +408,43 @@ bool ValidateAuthoring(WaterSurfaceShape shape, std::span<const WaterSplinePoint
     std::uint32_t samplesPerSegment, float maximumWaterDepth, float maximumWorldCellSize)
 {
     const bool lake = shape == WaterSurfaceShape::SPLINE_LAKE;
-    if (!lake && shape != WaterSurfaceShape::SPLINE_RIVER) return false;
-    if (points.size() < (lake ? 3u : 2u) || points.size() > MAXIMUM_CONTROL_POINTS
-        || samplesPerSegment < MINIMUM_SAMPLES_PER_SEGMENT || samplesPerSegment > MAXIMUM_SAMPLES_PER_SEGMENT
-        || !std::isfinite(maximumWaterDepth) || maximumWaterDepth < 0.0f
-        || !std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f)
+    if (!lake && shape != WaterSurfaceShape::SPLINE_RIVER) {
         return false;
+    }
+    const std::size_t minimumControlPoints = lake ? 3u : 2u;
+    if (points.size() < minimumControlPoints || points.size() > MAXIMUM_CONTROL_POINTS) {
+        return false;
+    }
+
+    // メッシュ化に使う区間の標本数と、水深・細分化の上限を確かめる。
+    if (samplesPerSegment < MINIMUM_SAMPLES_PER_SEGMENT || samplesPerSegment > MAXIMUM_SAMPLES_PER_SEGMENT) {
+        return false;
+    }
+    if (!std::isfinite(maximumWaterDepth) || maximumWaterDepth < 0.0f
+        || !std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f) {
+        return false;
+    }
+
+    // 制御点は一意の ID と有限の幾何を持ち、湖の制御点は同じ高さに並ぶ。
     std::unordered_set<std::uint32_t> ids;
     ids.reserve(points.size());
     for (const auto& point : points) {
-        if (point.id == 0 || point.id > WATER_SPLINE_MAX_POINT_ID
-            || !Finite(point.localPosition) || !std::isfinite(point.width)
-            || !std::isfinite(point.depth) || point.depth < 0.0f || !std::isfinite(point.flowSpeed)) return false;
-        if (shape == WaterSurfaceShape::SPLINE_RIVER && point.width <= 0.0f) return false;
-        if (!ids.insert(point.id).second) return false;
-        if (lake && std::abs(point.localPosition.y - points[0].localPosition.y) > 0.0001f) return false;
+        if (point.id == 0 || point.id > WATER_SPLINE_MAX_POINT_ID) {
+            return false;
+        }
+        if (!Finite(point.localPosition) || !std::isfinite(point.width)
+            || !std::isfinite(point.depth) || point.depth < 0.0f || !std::isfinite(point.flowSpeed)) {
+            return false;
+        }
+        if (shape == WaterSurfaceShape::SPLINE_RIVER && point.width <= 0.0f) {
+            return false;
+        }
+        if (!ids.insert(point.id).second) {
+            return false;
+        }
+        if (lake && std::abs(point.localPosition.y - points[0].localPosition.y) > 0.0001f) {
+            return false;
+        }
     }
     return true;
 }
@@ -400,7 +465,9 @@ void IncludeBounds(WaterSplineSnapshot& snapshot, const WaterSplineVertex& verte
     };
     include(vertex.localPosition, snapshot.localBoundsMin, snapshot.localBoundsMax);
     include(vertex.worldPosition, snapshot.worldBoundsMin, snapshot.worldBoundsMax);
-    if (first) snapshot.minimumBaseHeightOffset = snapshot.maximumBaseHeightOffset = vertex.baseHeightOffset;
+    if (first) {
+        snapshot.minimumBaseHeightOffset = snapshot.maximumBaseHeightOffset = vertex.baseHeightOffset;
+    }
     else {
         snapshot.minimumBaseHeightOffset = (std::min)(snapshot.minimumBaseHeightOffset, vertex.baseHeightOffset);
         snapshot.maximumBaseHeightOffset = (std::max)(snapshot.maximumBaseHeightOffset, vertex.baseHeightOffset);
@@ -412,15 +479,21 @@ bool AddVertex(WaterSplineSnapshot& snapshot, const SplineValue& value,
     const math::Vector3& localPosition, const Transform& transform,
     float maximumWaterDepth, std::uint32_t& index)
 {
-    if (snapshot.vertices.size() >= MAXIMUM_SNAPSHOT_VERTICES) return false;
+    if (snapshot.vertices.size() >= MAXIMUM_SNAPSHOT_VERTICES) {
+        return false;
+    }
     const math::Vector3 worldDelta = TransformLocalDelta(localPosition, transform);
     const math::Vector3 worldPosition = transform.worldPosition + worldDelta;
     math::Vector3 worldVelocity;
-    if (!MakeWorldVelocity(value.tangent, value.flowSpeed, transform, worldVelocity)) return false;
+    if (!MakeWorldVelocity(value.tangent, value.flowSpeed, transform, worldVelocity)) {
+        return false;
+    }
     const float depth = (std::min)(value.depth, maximumWaterDepth);
     const float baseHeightOffset = worldDelta.y;
     if (!Finite(worldPosition) || !std::isfinite(depth) || depth < 0.0f
-        || !std::isfinite(baseHeightOffset)) return false;
+        || !std::isfinite(baseHeightOffset)) {
+        return false;
+    }
     WaterSplineVertex vertex{localPosition, worldPosition, worldVelocity, baseHeightOffset, depth};
     IncludeBounds(snapshot, vertex, snapshot.vertices.empty());
     snapshot.vertices.push_back(vertex);
@@ -432,7 +505,9 @@ bool BuildLake(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint> 
     std::uint32_t samplesPerSegment, const Transform& transform, float maximumWaterDepth)
 {
     const std::size_t count = points.size() * samplesPerSegment;
-    if (count > WATER_SPLINE_MAX_LAKE_BOUNDARY_VERTICES) return false;
+    if (count > WATER_SPLINE_MAX_LAKE_BOUNDARY_VERTICES) {
+        return false;
+    }
     std::vector<Point2> polygon;
     polygon.reserve(count);
     snapshot.outlineIndices.reserve(count);
@@ -442,18 +517,26 @@ bool BuildLake(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint> 
             const SplineValue value = EvaluateSpline(points, segment, t, true);
             math::Vector3 local{value.position.x, points[0].localPosition.y, value.position.z};
             std::uint32_t index = 0;
-            if (!AddVertex(snapshot, value, local, transform, maximumWaterDepth, index)) return false;
+            if (!AddVertex(snapshot, value, local, transform, maximumWaterDepth, index)) {
+                return false;
+            }
             const auto& world = snapshot.vertices[index].worldPosition;
             polygon.push_back({world.x, world.z});
             snapshot.outlineIndices.push_back(index);
         }
     }
     const double epsilon = PolygonEpsilon(polygon);
-    if (!IsSimplePolygon(polygon, std::sqrt(epsilon))) return false;
+    if (!IsSimplePolygon(polygon, std::sqrt(epsilon))) {
+        return false;
+    }
     std::vector<std::array<std::uint32_t, 3>> triangles;
-    if (!TriangulatePolygon(polygon, epsilon, triangles)) return false;
+    if (!TriangulatePolygon(polygon, epsilon, triangles)) {
+        return false;
+    }
     for (const auto& triangle : triangles)
-        if (!AddTriangle(snapshot, triangle[0], triangle[1], triangle[2])) return false;
+        if (!AddTriangle(snapshot, triangle[0], triangle[1], triangle[2])) {
+            return false;
+        }
     return true;
 }
 
@@ -468,7 +551,9 @@ bool LakeOutlinesIntersect(const WaterSplineSnapshot& a, const WaterSplineSnapsh
         const auto end = worldPoint(a, (i + 1) % a.outlineIndices.size());
         for (std::size_t j = 0; j < b.outlineIndices.size(); ++j)
             if (SegmentsIntersect(start, end, worldPoint(b, j),
-                    worldPoint(b, (j + 1) % b.outlineIndices.size()), 1.0e-9)) return true;
+                    worldPoint(b, (j + 1) % b.outlineIndices.size()), 1.0e-9)) {
+                return true;
+            }
     }
     return false;
 }
@@ -477,11 +562,14 @@ bool LakeOutlinesIntersect(const WaterSplineSnapshot& a, const WaterSplineSnapsh
 bool ApplyLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterLakeIslandPoint> islands,
     const Transform& transform, float localHeight)
 {
-    if (islands.size() > WATER_LAKE_MAX_ISLAND_POINTS || !RebuildWaterSplineSnapshotDerivedData(lake))
+    if (islands.size() > WATER_LAKE_MAX_ISLAND_POINTS || !RebuildWaterSplineSnapshotDerivedData(lake)) {
         return false;
+    }
     std::array<std::vector<WaterSplinePoint>, WATER_LAKE_MAX_ISLANDS> rings;
     for (const auto& point : islands) {
-        if (point.ring < 0 || point.ring >= WATER_LAKE_MAX_ISLANDS || !Finite(point.localPosition)) return false;
+        if (point.ring < 0 || point.ring >= WATER_LAKE_MAX_ISLANDS || !Finite(point.localPosition)) {
+            return false;
+        }
         auto& ring = rings[point.ring];
         ring.push_back({static_cast<std::uint32_t>(ring.size() + 1),
             {point.localPosition.x, localHeight, point.localPosition.z}});
@@ -492,19 +580,28 @@ bool ApplyLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterLakeIsland
         return TrySampleWaterSpline(mesh, point.x, point.z, sample);
     };
     for (const auto& ring : rings) {
-        if (ring.empty()) continue;
-        if (ring.size() < 3 || ring.size() > WATER_SPLINE_MAX_CONTROL_POINTS) return false;
+        if (ring.empty()) {
+            continue;
+        }
+        if (ring.size() < 3 || ring.size() > WATER_SPLINE_MAX_CONTROL_POINTS) {
+            return false;
+        }
         WaterSplineSnapshot cutout;
         cutout.worldBaseY = lake.worldBaseY;
         if (!BuildLake(cutout, ring, 1, transform, 0.0f)
             || !RebuildWaterSplineSnapshotDerivedData(cutout)
-            || !contains(lake, cutout.vertices.front().worldPosition) || LakeOutlinesIntersect(lake, cutout)) return false;
+            || !contains(lake, cutout.vertices.front().worldPosition) || LakeOutlinesIntersect(lake, cutout)) {
+            return false;
+        }
         for (const auto& other : cutouts)
             if (LakeOutlinesIntersect(other, cutout) || contains(other, cutout.vertices.front().worldPosition)
-                || contains(cutout, other.vertices.front().worldPosition)) return false;
+                || contains(cutout, other.vertices.front().worldPosition)) {
+                return false;
+            }
         auto& outline = lake.islandOutlines.emplace_back();
-        for (const auto index : cutout.outlineIndices)
+        for (const auto index : cutout.outlineIndices) {
             outline.push_back(cutout.vertices[index].worldPosition);
+        }
         cutouts.push_back(std::move(cutout));
     }
     return SubtractLakeIslands(lake, cutouts, transform);
@@ -516,8 +613,12 @@ bool IsConvexQuad(const Point2& a, const Point2& b, const Point2& c, const Point
     bool positive = false;
     bool negative = false;
     for (const double value : cross) {
-        if (value > epsilon) positive = true;
-        if (value < -epsilon) negative = true;
+        if (value > epsilon) {
+            positive = true;
+        }
+        if (value < -epsilon) {
+            negative = true;
+        }
     }
     return !(positive && negative) && (positive || negative);
 }
@@ -527,14 +628,16 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
 {
     const std::size_t segmentCount = points.size() - 1;
     const std::size_t sampleCount = segmentCount * samplesPerSegment + 1;
-    if (sampleCount * 2 > WATER_SPLINE_MAX_RIVER_BOUNDARY_VERTICES) return false;
+    if (sampleCount * 2 > WATER_SPLINE_MAX_RIVER_BOUNDARY_VERTICES) {
+        return false;
+    }
     std::vector<std::uint32_t> left;
     std::vector<std::uint32_t> right;
     std::vector<float> travelSpeeds;
     left.reserve(sampleCount);
     right.reserve(sampleCount);
     travelSpeeds.reserve(sampleCount);
-    /// @note 帯域ごとの代表波数を使い、描画位相の積分値をビューとメッシュ LOD に依存させない。
+    // 帯域ごとの代表波数を使い、描画位相の積分値をビューとメッシュ LOD に依存させない。
     /// @see https://web.mit.edu/fluids-modules/waves/www/material/chap-3.pdf Akylas and Mei, Eq. (1.21), finite-depth gravity-wave dispersion.
     const auto phaseSpeed = [](float current, float depth, float wavelength) {
         const float waveNumber = math::TWO_PI / wavelength;
@@ -548,7 +651,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
             const double tangentLength = std::hypot(static_cast<double>(value.tangent.x),
                 static_cast<double>(value.tangent.z));
             if (!std::isfinite(tangentLength) || tangentLength <= 1.0e-8
-                || !std::isfinite(value.width) || value.width <= 0.0f) return false;
+                || !std::isfinite(value.width) || value.width <= 0.0f) {
+                return false;
+            }
             const float normalX = static_cast<float>(-value.tangent.z / tangentLength);
             const float normalZ = static_cast<float>(value.tangent.x / tangentLength);
             const float halfWidth = value.width * 0.5f;
@@ -559,7 +664,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
             std::uint32_t leftIndex = 0;
             std::uint32_t rightIndex = 0;
             if (!AddVertex(snapshot, value, leftLocal, transform, maximumWaterDepth, leftIndex)
-                || !AddVertex(snapshot, value, rightLocal, transform, maximumWaterDepth, rightIndex)) return false;
+                || !AddVertex(snapshot, value, rightLocal, transform, maximumWaterDepth, rightIndex)) {
+                return false;
+            }
             left.push_back(leftIndex);
             right.push_back(rightIndex);
             travelSpeeds.push_back(value.flowSpeed);
@@ -569,7 +676,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
     const double endTangentLength = std::hypot(static_cast<double>(end.tangent.x),
         static_cast<double>(end.tangent.z));
     if (!std::isfinite(endTangentLength) || endTangentLength <= 1.0e-8
-        || !std::isfinite(end.width) || end.width <= 0.0f) return false;
+        || !std::isfinite(end.width) || end.width <= 0.0f) {
+        return false;
+    }
     const float endNormalX = static_cast<float>(-end.tangent.z / endTangentLength);
     const float endNormalZ = static_cast<float>(end.tangent.x / endTangentLength);
     const float endHalfWidth = end.width * 0.5f;
@@ -578,7 +687,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
     if (!AddVertex(snapshot, end, {end.position.x + endNormalX * endHalfWidth, end.position.y,
             end.position.z + endNormalZ * endHalfWidth}, transform, maximumWaterDepth, endLeft)
         || !AddVertex(snapshot, end, {end.position.x - endNormalX * endHalfWidth, end.position.y,
-            end.position.z - endNormalZ * endHalfWidth}, transform, maximumWaterDepth, endRight)) return false;
+            end.position.z - endNormalZ * endHalfWidth}, transform, maximumWaterDepth, endRight)) {
+        return false;
+    }
     left.push_back(endLeft);
     right.push_back(endRight);
     travelSpeeds.push_back(end.flowSpeed);
@@ -600,7 +711,7 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
         const float current = travelSpeeds[i];
         const float fundamentalSpeed = phaseSpeed(current, a.depth, WATER_RIVER_WAVE_REFERENCE_LENGTHS.x);
         const float shortSpeed = phaseSpeed(current, a.depth, WATER_RIVER_WAVE_REFERENCE_LENGTHS.y);
-        /// @note 流速ゼロ付近で符号の遷移を滑らかにし、逆流への切り替わりでも積算位相を連続に保つ。
+        // 流速ゼロ付近で符号の遷移を滑らかにし、逆流への切り替わりでも積算位相を連続に保つ。
         const float direction = std::copysign((std::min)(std::abs(current) / 0.4f, 1.0f), current);
         const math::Vector2 inverseSpeed{direction / (std::max)(fundamentalSpeed, 0.25f),
             direction / (std::max)(shortSpeed, 0.25f)};
@@ -609,7 +720,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
         travelTime += halfStep * (previousInverseSpeed.x + inverseSpeed.x);
         shortTravelTime += halfStep * (previousInverseSpeed.y + inverseSpeed.y);
         weightedPhaseSpeed += halfStep * (previousPhaseSpeed + fundamentalSpeed);
-        if (!std::isfinite(distance)) return false;
+        if (!std::isfinite(distance)) {
+            return false;
+        }
         a.riverDistance = b.riverDistance = distance;
         a.riverTravelTime = b.riverTravelTime =
             static_cast<float>((std::clamp)(travelTime, -TRAVEL_TIME_LIMIT, TRAVEL_TIME_LIMIT));
@@ -619,8 +732,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
         previousPhaseSpeed = fundamentalSpeed;
         previousInverseSpeed = inverseSpeed;
     }
-    if (distance > 0.0f)
+    if (distance > 0.0f) {
         snapshot.riverWaveReferenceSpeed = static_cast<float>(weightedPhaseSpeed / distance);
+    }
 
     std::vector<Point2> outline;
     outline.reserve(left.size() + right.size());
@@ -636,7 +750,9 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
         snapshot.outlineIndices.push_back(*it);
     }
     const double epsilon = PolygonEpsilon(outline);
-    if (!IsSimplePolygon(outline, std::sqrt(epsilon))) return false;
+    if (!IsSimplePolygon(outline, std::sqrt(epsilon))) {
+        return false;
+    }
     double stripOrientation = 0.0;
     for (std::size_t i = 0; i + 1 < left.size(); ++i) {
         const auto& leftA = snapshot.vertices[left[i]].worldPosition;
@@ -645,13 +761,21 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
         const auto& rightB = snapshot.vertices[right[i + 1]].worldPosition;
         const Point2 a{leftA.x, leftA.z}, b{rightA.x, rightA.z};
         const Point2 c{rightB.x, rightB.z}, d{leftB.x, leftB.z};
-        if (!IsConvexQuad(a, b, c, d, epsilon)) return false;
+        if (!IsConvexQuad(a, b, c, d, epsilon)) {
+            return false;
+        }
         const double orientation = Cross(a, b, c);
-        if (std::abs(orientation) <= epsilon) return false;
-        if (stripOrientation == 0.0) stripOrientation = orientation;
+        if (std::abs(orientation) <= epsilon) {
+            return false;
+        }
+        if (stripOrientation == 0.0) {
+            stripOrientation = orientation;
+        }
         else if (orientation * stripOrientation <= 0.0) return false;
         if (!AddTriangle(snapshot, left[i], right[i], right[i + 1])
-            || !AddTriangle(snapshot, left[i], right[i + 1], left[i + 1])) return false;
+            || !AddTriangle(snapshot, left[i], right[i + 1], left[i + 1])) {
+            return false;
+        }
     }
     return !snapshot.triangles.empty();
 }
@@ -716,17 +840,22 @@ void BuildTriangleBvh(WaterSplineSnapshot& snapshot)
         snapshot.bvhNodes[nodeIndex].right = right;
         return nodeIndex;
     };
-    if (!snapshot.triangleOrder.empty())
+    if (!snapshot.triangleOrder.empty()) {
         build(build, 0, static_cast<std::uint32_t>(snapshot.triangleOrder.size()));
+    }
 }
 
 }
 
 math::Vector2 WaterSurfaceLocalExtent(const WaterComponent& water, WaterSurfaceReadView view)
 {
-    if (!UsesWaterSurfaceGeometry(water, view)) return {water.extentX, water.extentZ};
+    if (!UsesWaterSurfaceGeometry(water, view)) {
+        return {water.extentX, water.extentZ};
+    }
     const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view);
-    if (!geometry) return math::Vector2::ZERO;
+    if (!geometry) {
+        return math::Vector2::ZERO;
+    }
     const auto& snapshot = *geometry;
     return {2.0f * (std::max)(std::abs(snapshot.localBoundsMin.x), std::abs(snapshot.localBoundsMax.x)),
         2.0f * (std::max)(std::abs(snapshot.localBoundsMin.z), std::abs(snapshot.localBoundsMax.z))};
@@ -735,10 +864,12 @@ math::Vector2 WaterSurfaceLocalExtent(const WaterComponent& water, WaterSurfaceR
 WaterSurfaceShape WaterSurfaceEffectiveShape(const WaterComponent& water, WaterSurfaceReadView view)
 {
     if (view == WaterSurfaceReadView::SIMULATION && water.simulationReadEnabled
-        && water.simulationSurfacePublished)
+        && water.simulationSurfacePublished) {
         return water.simulationSurfaceShape;
-    if (water.pointRuntimeMode == ControlPointRuntimeMode::BAKED_STATIC && water.bakeValid)
+    }
+    if (water.pointRuntimeMode == ControlPointRuntimeMode::BAKED_STATIC && water.bakeValid) {
         return water.bakedSurfaceShape;
+    }
     return water.surfaceShape;
 }
 
@@ -758,20 +889,29 @@ const WaterSplineSnapshot* WaterSurfaceGeometry(const WaterComponent& water, Wat
 {
     if (view == WaterSurfaceReadView::SIMULATION && water.simulationReadEnabled
         && water.simulationSurfacePublished) {
-        if (water.simulationZoneSnapshot) return &water.simulationZoneSnapshot->geometry;
-        if (water.simulationZoneSurfaceSelected) return nullptr;
+        if (water.simulationZoneSnapshot) {
+            return &water.simulationZoneSnapshot->geometry;
+        }
+        if (water.simulationZoneSurfaceSelected) {
+            return nullptr;
+        }
         if (water.simulationSplineSnapshot
-            && water.simulationSplineSnapshot->shape == water.simulationSurfaceShape)
+            && water.simulationSplineSnapshot->shape == water.simulationSurfaceShape) {
             return water.simulationSplineSnapshot.get();
+        }
         return nullptr;
     }
     if (water.zoneSurfaceSelected) {
         return water.zoneSnapshot ? &water.zoneSnapshot->geometry : nullptr;
     }
-    if (water.zoneSnapshot) return &water.zoneSnapshot->geometry;
+    if (water.zoneSnapshot) {
+        return &water.zoneSnapshot->geometry;
+    }
     const WaterSurfaceShape shape = WaterSurfaceEffectiveShape(water, view);
     if (shape == WaterSurfaceShape::RECTANGLE || !water.splineSnapshot
-        || water.splineSnapshot->shape != shape) return nullptr;
+        || water.splineSnapshot->shape != shape) {
+        return nullptr;
+    }
     return water.splineSnapshot.get();
 }
 
@@ -799,13 +939,17 @@ bool HasValidWaterSplineExtents(const WaterSplineSnapshot& snapshot, const Trans
     const double extentZ = 2.0 * (std::max)(std::abs(static_cast<double>(snapshot.localBoundsMin.z)),
         std::abs(static_cast<double>(snapshot.localBoundsMax.z)));
     if (!std::isfinite(extentX) || !std::isfinite(extentZ) || extentX <= 0.0 || extentZ <= 0.0
-        || extentX > FLOAT_EXTENT_LIMIT || extentZ > FLOAT_EXTENT_LIMIT) return false;
+        || extentX > FLOAT_EXTENT_LIMIT || extentZ > FLOAT_EXTENT_LIMIT) {
+        return false;
+    }
 
     const double scaledExtentX = extentX * std::abs(static_cast<double>(transform.worldScale.x));
     const double scaledExtentZ = extentZ * std::abs(static_cast<double>(transform.worldScale.z));
     if (!std::isfinite(scaledExtentX) || !std::isfinite(scaledExtentZ)
         || scaledExtentX <= 0.0 || scaledExtentZ <= 0.0
-        || scaledExtentX > FLOAT_EXTENT_LIMIT || scaledExtentZ > FLOAT_EXTENT_LIMIT) return false;
+        || scaledExtentX > FLOAT_EXTENT_LIMIT || scaledExtentZ > FLOAT_EXTENT_LIMIT) {
+        return false;
+    }
 
     const math::Vector3 worldAxisX = transform.worldRotation * math::Vector3{1.0f, 0.0f, 0.0f};
     const math::Vector3 worldAxisZ = transform.worldRotation * math::Vector3{0.0f, 0.0f, 1.0f};
@@ -865,36 +1009,53 @@ bool BuildWaterSplineSnapshot(WaterSurfaceShape shape, std::span<const WaterSpli
     float maximumWaterDepth, float maximumWorldCellSize, std::span<const WaterLakeIslandPoint> islands)
 {
     if (!ValidateAuthoring(shape, points, samplesPerSegment, maximumWaterDepth, maximumWorldCellSize)
-        || !SupportedTransform(transform)) return false;
+        || !SupportedTransform(transform)) {
+        return false;
+    }
     WaterSplineSnapshot snapshot;
     snapshot.shape = shape;
     snapshot.worldBaseY = transform.worldPosition.y;
     snapshot.signature = WaterSplineSnapshotSignature(shape, points, samplesPerSegment,
         transform, maximumWaterDepth, maximumWorldCellSize, islands);
-    /// @note 制御点間の水深、幅、符号付き流速は線形補間し、正の物理量がスプライン補間で範囲を超えないようにする。
+    // 制御点間の水深、幅、符号付き流速は線形補間し、正の物理量がスプライン補間で範囲を超えないようにする。
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine Epic Games, Water Body Actors: lake and river spline metadata.
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/Components/USplineComponent Epic Games, USplineComponent spline evaluation.
     const bool success = shape == WaterSurfaceShape::SPLINE_LAKE
         ? BuildLake(snapshot, points, samplesPerSegment, transform, maximumWaterDepth)
         : BuildRiver(snapshot, points, samplesPerSegment, transform, maximumWaterDepth);
-    if (!success || !HasValidWaterSplineExtents(snapshot, transform)) return false;
+    if (!success || !HasValidWaterSplineExtents(snapshot, transform)) {
+        return false;
+    }
     if (shape == WaterSurfaceShape::SPLINE_LAKE && !islands.empty()
-        && !ApplyLakeIslands(snapshot, islands, transform, points.front().localPosition.y)) return false;
+        && !ApplyLakeIslands(snapshot, islands, transform, points.front().localPosition.y)) {
+        return false;
+    }
     snapshot.footprintTriangles = snapshot.triangles;
     if (!FinalizeWaterSplineSnapshot(snapshot, maximumWorldCellSize)
-        || snapshot.outlineIndices.size() < 3) return false;
+        || snapshot.outlineIndices.size() < 3) {
+        return false;
+    }
     out = std::move(snapshot);
     return true;
 }
 
 bool FinalizeWaterSplineSnapshot(WaterSplineSnapshot& snapshot, float maximumWorldCellSize)
 {
-    if (!std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f
-        || snapshot.vertices.empty() || snapshot.vertices.size() > WATER_SPLINE_MAX_VERTICES
-        || snapshot.triangles.empty() || snapshot.triangles.size() > 65536u
-        || !std::isfinite(snapshot.worldBaseY)) return false;
-    if (snapshot.footprintTriangles.empty()) snapshot.footprintTriangles = snapshot.triangles;
-    if (snapshot.footprintTriangles.empty() || snapshot.footprintTriangles.size() > 65536u) return false;
+    if (!std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f) {
+        return false;
+    }
+    const bool validMeshSize = !snapshot.vertices.empty() && snapshot.vertices.size() <= WATER_SPLINE_MAX_VERTICES
+        && !snapshot.triangles.empty() && snapshot.triangles.size() <= 65536u;
+    if (!validMeshSize || !std::isfinite(snapshot.worldBaseY)) {
+        return false;
+    }
+
+    if (snapshot.footprintTriangles.empty()) {
+        snapshot.footprintTriangles = snapshot.triangles;
+    }
+    if (snapshot.footprintTriangles.empty() || snapshot.footprintTriangles.size() > 65536u) {
+        return false;
+    }
     snapshot.localBoundsMin = snapshot.localBoundsMax = math::Vector3::ZERO;
     snapshot.worldBoundsMin = snapshot.worldBoundsMax = math::Vector3::ZERO;
     snapshot.minimumBaseHeightOffset = std::numeric_limits<float>::infinity();
@@ -903,20 +1064,27 @@ bool FinalizeWaterSplineSnapshot(WaterSplineSnapshot& snapshot, float maximumWor
     for (std::size_t i = 0; i < snapshot.vertices.size(); ++i) {
         const auto& vertex = snapshot.vertices[i];
         if (!Finite(vertex.localPosition) || !Finite(vertex.worldPosition) || !Finite(vertex.worldVelocity)
-            || !std::isfinite(vertex.baseHeightOffset) || !std::isfinite(vertex.depth) || vertex.depth < 0.0f)
+            || !std::isfinite(vertex.baseHeightOffset) || !std::isfinite(vertex.depth) || vertex.depth < 0.0f) {
             return false;
+        }
         IncludeBounds(snapshot, vertex, i == 0);
     }
     for (auto& triangle : snapshot.triangles) {
         if (triangle.indices[0] >= snapshot.vertices.size() || triangle.indices[1] >= snapshot.vertices.size()
             || triangle.indices[2] >= snapshot.vertices.size()
-            || !ComputeTriangleGradient(snapshot.vertices, triangle.indices, triangle.baseHeightGradient)) return false;
+            || !ComputeTriangleGradient(snapshot.vertices, triangle.indices, triangle.baseHeightGradient)) {
+            return false;
+        }
     }
     for (const auto& triangle : snapshot.footprintTriangles)
         if (triangle.indices[0] >= snapshot.vertices.size() || triangle.indices[1] >= snapshot.vertices.size()
-            || triangle.indices[2] >= snapshot.vertices.size()) return false;
+            || triangle.indices[2] >= snapshot.vertices.size()) {
+            return false;
+        }
     for (const auto index : snapshot.outlineIndices)
-        if (index >= snapshot.vertices.size()) return false;
+        if (index >= snapshot.vertices.size()) {
+            return false;
+        }
 
     RefineWaterSplineMesh(snapshot, maximumWorldCellSize);
     return RebuildWaterSplineSnapshotDerivedData(snapshot);
@@ -926,7 +1094,9 @@ bool RebuildWaterSplineSnapshotDerivedData(WaterSplineSnapshot& snapshot)
 {
     if (snapshot.vertices.empty() || snapshot.vertices.size() > WATER_SPLINE_MAX_VERTICES
         || snapshot.triangles.empty() || snapshot.triangles.size() > 65536u
-        || !std::isfinite(snapshot.worldBaseY)) return false;
+        || !std::isfinite(snapshot.worldBaseY)) {
+        return false;
+    }
     snapshot.localBoundsMin = snapshot.localBoundsMax = math::Vector3::ZERO;
     snapshot.worldBoundsMin = snapshot.worldBoundsMax = math::Vector3::ZERO;
     snapshot.minimumBaseHeightOffset = std::numeric_limits<float>::infinity();
@@ -936,14 +1106,17 @@ bool RebuildWaterSplineSnapshotDerivedData(WaterSplineSnapshot& snapshot)
     for (std::size_t i = 0; i < snapshot.vertices.size(); ++i) {
         const auto& vertex = snapshot.vertices[i];
         if (!Finite(vertex.localPosition) || !Finite(vertex.worldPosition) || !Finite(vertex.worldVelocity)
-            || !std::isfinite(vertex.baseHeightOffset) || !std::isfinite(vertex.depth) || vertex.depth < 0.0f)
+            || !std::isfinite(vertex.baseHeightOffset) || !std::isfinite(vertex.depth) || vertex.depth < 0.0f) {
             return false;
+        }
         IncludeBounds(snapshot, vertex, i == 0);
     }
     for (auto& triangle : snapshot.triangles) {
         if (triangle.indices[0] >= snapshot.vertices.size() || triangle.indices[1] >= snapshot.vertices.size()
             || triangle.indices[2] >= snapshot.vertices.size()
-            || !ComputeTriangleGradient(snapshot.vertices, triangle.indices, triangle.baseHeightGradient)) return false;
+            || !ComputeTriangleGradient(snapshot.vertices, triangle.indices, triangle.baseHeightGradient)) {
+            return false;
+        }
         for (std::size_t edge = 0; edge < 3; ++edge) {
             const auto& a = snapshot.vertices[triangle.indices[edge]].worldPosition;
             const auto& b = snapshot.vertices[triangle.indices[(edge + 1) % 3]].worldPosition;
@@ -955,9 +1128,13 @@ bool RebuildWaterSplineSnapshotDerivedData(WaterSplineSnapshot& snapshot)
     }
     for (const auto& triangle : snapshot.footprintTriangles)
         if (triangle.indices[0] >= snapshot.vertices.size() || triangle.indices[1] >= snapshot.vertices.size()
-            || triangle.indices[2] >= snapshot.vertices.size()) return false;
+            || triangle.indices[2] >= snapshot.vertices.size()) {
+            return false;
+        }
     for (const auto index : snapshot.outlineIndices)
-        if (index >= snapshot.vertices.size()) return false;
+        if (index >= snapshot.vertices.size()) {
+            return false;
+        }
     snapshot.bvhNodes.clear();
     snapshot.triangleOrder.clear();
     BuildTriangleBvh(snapshot);
@@ -974,45 +1151,62 @@ bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot, float worldX, flo
     WaterSplineSample& out)
 {
     if (!std::isfinite(worldX) || !std::isfinite(worldZ) || snapshot.vertices.empty()
-        || snapshot.triangles.empty() || snapshot.bvhNodes.empty() || !std::isfinite(snapshot.worldBaseY)) return false;
+        || snapshot.triangles.empty() || snapshot.bvhNodes.empty() || !std::isfinite(snapshot.worldBaseY)) {
+        return false;
+    }
     const float boundsScale = (std::max)({std::abs(snapshot.worldBoundsMin.x), std::abs(snapshot.worldBoundsMax.x),
         std::abs(snapshot.worldBoundsMin.z), std::abs(snapshot.worldBoundsMax.z), 1.0f});
     const float boundsTolerance = (std::max)(1.0e-5f, boundsScale * 8.0f * std::numeric_limits<float>::epsilon());
     if (worldX < snapshot.worldBoundsMin.x - boundsTolerance || worldX > snapshot.worldBoundsMax.x + boundsTolerance
-        || worldZ < snapshot.worldBoundsMin.z - boundsTolerance || worldZ > snapshot.worldBoundsMax.z + boundsTolerance)
+        || worldZ < snapshot.worldBoundsMin.z - boundsTolerance || worldZ > snapshot.worldBoundsMax.z + boundsTolerance) {
         return false;
+    }
     std::array<std::uint32_t, 64> stack{};
     std::size_t stackSize = 1;
     stack[0] = 0;
     while (stackSize > 0) {
         const auto nodeIndex = stack[--stackSize];
-        if (nodeIndex >= snapshot.bvhNodes.size()) return false;
+        if (nodeIndex >= snapshot.bvhNodes.size()) {
+            return false;
+        }
         const auto& node = snapshot.bvhNodes[nodeIndex];
         if (worldX < node.boundsMin.x - boundsTolerance || worldX > node.boundsMax.x + boundsTolerance
-            || worldZ < node.boundsMin.y - boundsTolerance || worldZ > node.boundsMax.y + boundsTolerance) continue;
+            || worldZ < node.boundsMin.y - boundsTolerance || worldZ > node.boundsMax.y + boundsTolerance) {
+            continue;
+        }
         if (node.count == 0) {
-            if (stackSize + 2 > stack.size()) return false;
+            if (stackSize + 2 > stack.size()) {
+                return false;
+            }
             stack[stackSize++] = node.left;
             stack[stackSize++] = node.right;
             continue;
         }
-        if (static_cast<std::size_t>(node.first) + node.count > snapshot.triangleOrder.size()) return false;
+        if (static_cast<std::size_t>(node.first) + node.count > snapshot.triangleOrder.size()) {
+            return false;
+        }
         for (std::uint32_t candidate = node.first; candidate < node.first + node.count; ++candidate) {
             const std::uint32_t triangleIndex = snapshot.triangleOrder[candidate];
-            if (triangleIndex >= snapshot.triangles.size()) return false;
+            if (triangleIndex >= snapshot.triangles.size()) {
+                return false;
+            }
             const auto& triangle = snapshot.triangles[triangleIndex];
             const std::uint32_t ia = triangle.indices[0];
             const std::uint32_t ib = triangle.indices[1];
             const std::uint32_t ic = triangle.indices[2];
             if (ia >= snapshot.vertices.size() || ib >= snapshot.vertices.size()
-                || ic >= snapshot.vertices.size()) return false;
+                || ic >= snapshot.vertices.size()) {
+                return false;
+            }
             const auto& a = snapshot.vertices[ia].worldPosition;
             const auto& b = snapshot.vertices[ib].worldPosition;
             const auto& c = snapshot.vertices[ic].worldPosition;
             const double denominator = (static_cast<double>(b.z) - c.z)
                     * (static_cast<double>(a.x) - c.x)
                 + (static_cast<double>(c.x) - b.x) * (static_cast<double>(a.z) - c.z);
-            if (!std::isfinite(denominator) || std::abs(denominator) <= 1.0e-12) return false;
+            if (!std::isfinite(denominator) || std::abs(denominator) <= 1.0e-12) {
+                return false;
+            }
             const double queryX = static_cast<double>(worldX);
             const double queryZ = static_cast<double>(worldZ);
             const double wa = ((static_cast<double>(b.z) - c.z) * (queryX - c.x)
@@ -1022,7 +1216,9 @@ bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot, float worldX, flo
             const double wc = 1.0 - wa - wb;
             constexpr double BARYCENTRIC_TOLERANCE = 1.0e-7;
             if (wa < -BARYCENTRIC_TOLERANCE || wb < -BARYCENTRIC_TOLERANCE
-                || wc < -BARYCENTRIC_TOLERANCE) continue;
+                || wc < -BARYCENTRIC_TOLERANCE) {
+                continue;
+            }
             const auto& va = snapshot.vertices[ia];
             const auto& vb = snapshot.vertices[ib];
             const auto& vc = snapshot.vertices[ic];
@@ -1042,7 +1238,9 @@ bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot, float worldX, flo
                 + wb * vb.horizonMaterialWeight + wc * vc.horizonMaterialWeight);
             if (!std::isfinite(sample.baseHeight) || !std::isfinite(sample.baseHeightOffset)
                 || !std::isfinite(sample.depth) || sample.depth < 0.0f
-                || !Finite(sample.worldVelocity) || !Finite(sample.baseHeightGradient)) return false;
+                || !Finite(sample.worldVelocity) || !Finite(sample.baseHeightGradient)) {
+                return false;
+            }
             out = sample;
             return true;
         }

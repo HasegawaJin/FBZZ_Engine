@@ -77,7 +77,9 @@ protected:
     {
         scene::Scene definition; definition.CreateGameObject("TargetPointSpawnRoot");
         const auto path = m_temp.File("Assets/Placement.prefab").generic_string();
-        if (!util::FileSystem::WriteText(path, scene::SceneSerializer::SaveToText(definition))) return {};
+        if (!util::FileSystem::WriteText(path, scene::SceneSerializer::SaveToText(definition))) {
+            return {};
+        }
         return scene::CanonicalPrefabAssetRef(path);
     }
 };

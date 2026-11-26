@@ -18,4 +18,4 @@ template<typename Integer>
     return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
 }
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

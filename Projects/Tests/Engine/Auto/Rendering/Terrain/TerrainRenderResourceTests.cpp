@@ -36,7 +36,9 @@ public:
     uint32_t GetStride() const override { return m_stride; }
     bool CopyData(size_t offset, size_t bytes, void* output) const override
     {
-        if (!output || offset > m_bytes.size() || bytes > m_bytes.size() - offset) return false;
+        if (!output || offset > m_bytes.size() || bytes > m_bytes.size() - offset) {
+            return false;
+        }
         std::memcpy(output, m_bytes.data() + offset, bytes); return true;
     }
 private:
@@ -57,7 +59,9 @@ public:
     void Update(const void*, size_t) override {}
     bool UpdateRegion(const void* data, size_t bytes, size_t offset) override
     {
-        if (!m_uploads || *m_failAfter == 0 || m_stride != sizeof(float)) return false;
+        if (!m_uploads || *m_failAfter == 0 || m_stride != sizeof(float)) {
+            return false;
+        }
         if (*m_failAfter > 0) --*m_failAfter;
         const auto* first = static_cast<const float*>(data);
         HeightUpload upload{offset / sizeof(float), {}};
@@ -92,7 +96,9 @@ public:
     bool UpdateRegion(uint32_t x, uint32_t z, uint32_t width, uint32_t height,
         const void* pixels, uint32_t rowPitch) override
     {
-        if (!m_uploads || *m_failUploadAfter == 0) return false;
+        if (!m_uploads || *m_failUploadAfter == 0) {
+            return false;
+        }
         if (*m_failUploadAfter > 0) --*m_failUploadAfter;
         SplatUpload upload{x, z, width, height, rowPitch, {}};
         const auto* source = static_cast<const uint8_t*>(pixels);
@@ -149,14 +155,18 @@ private:
     std::unique_ptr<renderer::ITexture> CreateNativeDynamicTexture(
         uint32_t width, uint32_t height, renderer::DynamicTextureFormat format) override
     {
-        if (!dynamicSplatSupported || format != renderer::DynamicTextureFormat::RGBA8) return {};
+        if (!dynamicSplatSupported || format != renderer::DynamicTextureFormat::RGBA8) {
+            return {};
+        }
         return std::make_unique<TerrainCpuTexture>(width, height, texturesAlive, &splatUploads, &failSplatUploadAfter);
     }
     std::unique_ptr<renderer::IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t count, uint32_t stride) override
     { ++buffersCreated; return std::make_unique<TerrainCpuStructuredBuffer>(count, stride, buffersAlive); }
     std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t count, uint32_t stride) override
     {
-        if (!dynamicHeightSupported) return {};
+        if (!dynamicHeightSupported) {
+            return {};
+        }
         ++buffersCreated;
         return std::make_unique<TerrainCpuStructuredBuffer>(count, stride, buffersAlive, &heightUploads, &failHeightUploadAfter);
     }

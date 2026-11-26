@@ -40,7 +40,7 @@ Scene::~Scene()
     ForgetWorldPartitionRuntime(*this);
     PrefabPool::Clear(*this);
     ManagedScriptRuntime::RetireScene(*this);
-    /// @note 終了済み subsystem を Script が触らないよう、破棄では Clear / OnDestroy を呼ばない。
+    // 終了済み subsystem を Script が触らないよう、破棄では Clear / OnDestroy を呼ばない。
     ReleaseSceneOwnedGpuResources(*this);
 }
 
@@ -61,7 +61,9 @@ Scene::Scene(Scene&& other) noexcept : Scene()
 
 Scene& Scene::operator=(Scene&& other) noexcept
 {
-    if (this == &other) return *this;
+    if (this == &other) {
+        return *this;
+    }
     assert(m_destroyBatchDepth == 0 && other.m_destroyBatchDepth == 0 && "Scene move requires no active destruction callback");
 
 
@@ -82,7 +84,7 @@ Scene& Scene::operator=(Scene&& other) noexcept
     m_scriptDebugDrawCommands = std::move(other.m_scriptDebugDrawCommands);
     m_lastScriptDebugDrawTickFrame = other.m_lastScriptDebugDrawTickFrame;
     m_environment = other.m_environment;
-    /// @note 同一フレームでも移動元と内容が異なるため、流れは移動先で集め直す。
+    // 同一フレームでも移動元と内容が異なるため、流れは移動先で集め直す。
     InvalidateFlowFrame();
 
     FixupOwnership();
@@ -92,8 +94,9 @@ Scene& Scene::operator=(Scene&& other) noexcept
 }
 
 EntityID Scene::TryAllocateEntity() {
-    if (m_freeIndices.empty() && m_nextIndex >= MAX_ENTITIES)
+    if (m_freeIndices.empty() && m_nextIndex >= MAX_ENTITIES) {
         return EntityID::INVALID;
+    }
 
     uint32_t idx;
     if (!m_freeIndices.empty()) {
@@ -109,9 +112,13 @@ EntityID Scene::TryAllocateEntity() {
 }
 
 bool Scene::IsValid(EntityID id) const {
-    if (!id.IsValid()) return false;
-    if (id.index >= m_nextIndex) return false;
-    /// @note 破棄後の空きスロットにも世代があるため、個体の存在も確認する。
+    if (!id.IsValid()) {
+        return false;
+    }
+    if (id.index >= m_nextIndex) {
+        return false;
+    }
+    // 破棄後の空きスロットにも世代があるため、個体の存在も確認する。
     return m_generations[id.index] == id.generation && m_entityToGameObject[id.index] != nullptr;
 }
 
@@ -142,7 +149,9 @@ GameObject* Scene::TryCreateGameObject(const std::string& name) {
 GameObject& Scene::CreateGameObject(const std::string& name) {
     GameObject* gameObject = TryCreateGameObject(name);
     assert(gameObject && "CreateGameObject requires available capacity; use TryCreateGameObject");
-    if (!gameObject) std::abort();
+    if (!gameObject) {
+        std::abort();
+    }
     return *gameObject;
 }
 
@@ -155,49 +164,64 @@ bool Scene::CanCreateGameObjects(size_t count) const {
 }
 
 GameObject* Scene::FindByGuid(const std::string& guid) const {
-    if (guid.empty()) return nullptr;
+    if (guid.empty()) {
+        return nullptr;
+    }
     for (const auto& go : m_gameObjects)
-        if (go && go->instanceId == guid) return go.get();
+        if (go && go->instanceId == guid) {
+            return go.get();
+        }
     return nullptr;
 }
 
 GameObject* Scene::Find(const std::string& name) const {
     for (auto& go : m_gameObjects)
-        if (go && go->name == name) return go.get();
+        if (go && go->name == name) {
+            return go.get();
+        }
     return nullptr;
 }
 
 GameObject* Scene::FindWithTag(const std::string& t) const {
     for (auto& go : m_gameObjects)
-        if (go && go->tag == t) return go.get();
+        if (go && go->tag == t) {
+            return go.get();
+        }
     return nullptr;
 }
 
 GameObject* Scene::FindWithLayer(int layer) const {
     for (auto& go : m_gameObjects)
-        if (go && go->layer == layer) return go.get();
+        if (go && go->layer == layer) {
+            return go.get();
+        }
     return nullptr;
 }
 
 std::vector<GameObject*> Scene::FindAllWithTag(const std::string& t) const {
     std::vector<GameObject*> result;
     for (auto& go : m_gameObjects)
-        if (go && go->tag == t) result.push_back(go.get());
+        if (go && go->tag == t) {
+            result.push_back(go.get());
+        }
     return result;
 }
 
 std::vector<GameObject*> Scene::FindAllWithLayer(int layer) const {
     std::vector<GameObject*> result;
     for (auto& go : m_gameObjects)
-        if (go && go->layer == layer) result.push_back(go.get());
+        if (go && go->layer == layer) {
+            result.push_back(go.get());
+        }
     return result;
 }
 
 std::vector<GameObject*> Scene::GetRootGameObjects() const {
     std::vector<GameObject*> result;
     for (auto& go : m_gameObjects)
-        if (go && !go->m_parent.IsValid())
+        if (go && !go->m_parent.IsValid()) {
             result.push_back(go.get());
+        }
     return result;
 }
 
@@ -210,16 +234,23 @@ void Scene::SortEntitiesBySceneOrder(std::span<EntityID> entities) const
     std::sort(entities.begin(), entities.end(), [this](EntityID left, EntityID right) {
         const auto* leftObject = GetGameObject(left);
         const auto* rightObject = GetGameObject(right);
-        if (leftObject && rightObject)
+        if (leftObject && rightObject) {
             return leftObject->m_sceneStorageIndex < rightObject->m_sceneStorageIndex;
-        if (leftObject || rightObject) return leftObject != nullptr;
-        if (left.index != right.index) return left.index < right.index;
+        }
+        if (leftObject || rightObject) {
+            return leftObject != nullptr;
+        }
+        if (left.index != right.index) {
+            return left.index < right.index;
+        }
         return left.generation < right.generation;
     });
 }
 
 GameObject* Scene::GetGameObject(EntityID id) const {
-    if (!IsValid(id)) return nullptr;
+    if (!IsValid(id)) {
+        return nullptr;
+    }
     return m_entityToGameObject[id.index];
 }
 
@@ -227,11 +258,11 @@ void Scene::Clear()
 {
     InvokeClearDestroyScripts();
 
-    /// @note GPU 資源のハンドルが残っている間に、元の資源管理者へ返す。
+    // GPU 資源のハンドルが残っている間に、元の資源管理者へ返す。
     ManagedScriptRuntime::RetireScene(*this);
     ReleaseSceneOwnedGpuResources(*this);
 
-    /// @note Play / Stop で Scene* と EntityID が再利用されるため、旧内容のプール参照を破棄する。
+    // Play / Stop で Scene* と EntityID が再利用されるため、旧内容のプール参照を破棄する。
     PrefabPool::Clear(*this);
 
     m_destroyQueue.clear();
@@ -258,8 +289,9 @@ void Scene::Clear()
 
 renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
 {
-    if (!m_runtimePostProcessSettings)
+    if (!m_runtimePostProcessSettings) {
         m_runtimePostProcessSettings = std::make_unique<renderer::PostProcessSettings>();
+    }
     return *m_runtimePostProcessSettings;
 }
 
@@ -270,10 +302,12 @@ const renderer::PostProcessSettings* Scene::TryGetRuntimePostProcessSettings() c
 
 void Scene::SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings)
 {
-    if (!m_runtimePostProcessSettings)
+    if (!m_runtimePostProcessSettings) {
         m_runtimePostProcessSettings = std::make_unique<renderer::PostProcessSettings>(settings);
-    else
+    }
+    else {
         *m_runtimePostProcessSettings = settings;
+    }
 }
 
 void Scene::ClearRuntimePostProcessSettings()
@@ -298,7 +332,7 @@ const std::vector<UserRenderPassDesc>& Scene::GetUserRenderPasses() const
 
 void Scene::QueueScriptDebugDraw(ScriptDebugDrawCommand command)
 {
-    /// @note 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
+    // 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
     command.frameCreated = Time::frameCount;
     m_scriptDebugDrawCommands.push_back(command);
 }
@@ -306,13 +340,15 @@ void Scene::QueueScriptDebugDraw(ScriptDebugDrawCommand command)
 void Scene::TickScriptDebugDrawCommands(float dt)
 {
     const uint64_t currentFrame = Time::frameCount;
-    if (m_lastScriptDebugDrawTickFrame == currentFrame)
+    if (m_lastScriptDebugDrawTickFrame == currentFrame) {
         return;
+    }
 
     m_lastScriptDebugDrawTickFrame = currentFrame;
     for (auto& command : m_scriptDebugDrawCommands) {
-        if (command.frameCreated < currentFrame)
+        if (command.frameCreated < currentFrame) {
             command.duration -= dt;
+        }
     }
 
     m_scriptDebugDrawCommands.erase(
@@ -331,25 +367,29 @@ const std::vector<ScriptDebugDrawCommand>& Scene::GetScriptDebugDrawCommands() c
 void Scene::FixupOwnership()
 {
     m_rendererOwnerRevision = AllocateComponentLifetime();
-    /// @note move 前の Scene を指す非所有参照と逆引きを新しい所有者へ付け替える。
+    // move 前の Scene を指す非所有参照と逆引きを新しい所有者へ付け替える。
     for (auto& go : m_gameObjects) {
-        if (!go) continue;
+        if (!go) {
+            continue;
+        }
         go->m_scene = this;
         m_entityToGameObject[go->m_id.index] = go.get();
     }
 
-    /// @note Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
+    // Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
     bool managedReferences = false;
     for (EntityID id : GetArray<ScriptComponent>().Entities()) {
         auto& sc = GetArray<ScriptComponent>().Get(id);
         for (auto& entry : sc.scripts) {
-            if (!entry.script) continue;
+            if (!entry.script) {
+                continue;
+            }
             entry.script->SetContext(this, GetGameObject(id));
             const std::string_view type = entry.script->GetTypeName();
             managedReferences |= type.starts_with("cs:") || type.starts_with("cs-internal:");
         }
     }
-    /// @note 保存参照の再解決は Scene 移動の一部。通常の owner 再束縛では古い wrapper を復活させない。
+    // 保存参照の再解決は Scene 移動の一部。通常の owner 再束縛では古い wrapper を復活させない。
     if (managedReferences && !ManagedScriptRuntime::Instance().RebindSceneReferences(*this))
         FBZZ_LOG_ERROR("Scene move could not rebind managed saved references.");
 }

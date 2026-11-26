@@ -50,14 +50,26 @@ bool ResolveProjectionCamera(const Script* script, GameObject* object, renderer:
 {
     if (!object && script) {
         object = script->scene.Self();
-        if (!ObjectComponent<CameraComponent>(object)) object = script->scene.GetMainCameraObject();
+        if (!ObjectComponent<CameraComponent>(object)) {
+            object = script->scene.GetMainCameraObject();
+        }
     }
     const auto* component = ObjectComponent<CameraComponent>(object);
-    if (!component || !component->enabled || !object->activeInHierarchy()) return false;
-    if (!std::isfinite(component->fovY) || component->fovY <= 0.0f || component->fovY >= 180.0f ||
-        !std::isfinite(component->aspectRatio) || component->aspectRatio <= 0.0f ||
-        !std::isfinite(component->nearZ) || component->nearZ <= 0.0f ||
-        !std::isfinite(component->farZ) || component->farZ <= component->nearZ) return false;
+    if (!component || !component->enabled || !object->activeInHierarchy()) {
+        return false;
+    }
+    // 投影の視野角と縦横比を確認し、前後のクリップ面が正の距離で並ぶことを確かめる。
+    if (!std::isfinite(component->fovY) || component->fovY <= 0.0f || component->fovY >= 180.0f) {
+        return false;
+    }
+    if (!std::isfinite(component->aspectRatio) || component->aspectRatio <= 0.0f) {
+        return false;
+    }
+    if (!std::isfinite(component->nearZ) || component->nearZ <= 0.0f
+        || !std::isfinite(component->farZ) || component->farZ <= component->nearZ) {
+        return false;
+    }
+
     out = BuildCameraFromComponent(object, component);
     return true;
 }
@@ -67,56 +79,73 @@ bool ProjectToViewport(const renderer::Camera& camera, const math::Vector3& worl
                        math::Vector3& outViewport)
 {
     const math::Vector4 clip = camera.GetViewProjection() * math::Vector4(worldPos, 1.0f);
-    if (!std::isfinite(clip.w) || clip.w <= 0.000001f) return false;
+    if (!std::isfinite(clip.w) || clip.w <= 0.000001f) {
+        return false;
+    }
     const math::Vector3 result{0.5f + 0.5f * clip.x / clip.w,
                               0.5f - 0.5f * clip.y / clip.w, clip.z / clip.w};
-    if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z)) return false;
+    if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z)) {
+        return false;
+    }
     outViewport = result;
     return true;
 }
 
 
-} /// @note namespace
+} // namespace
 void ScriptLightProxy::SetColor(const math::Vector3& color) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) l->color = color;
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        l->color = color;
+    }
 }
 
 
 void ScriptLightProxy::SetType(LightType type) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script))
+    if (auto* l = SelfComponent<LightComponent>(script)) {
         l->type = static_cast<LightComponent::Type>(static_cast<int>(type));
+    }
 }
 
 
 void ScriptLightProxy::SetIntensity(float intensity) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) l->intensity = intensity;
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        l->intensity = intensity;
+    }
 }
 
 
 void ScriptLightProxy::SetRange(float range) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) l->range = range;
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        l->range = range;
+    }
 }
 
 
 void ScriptLightProxy::SetInnerCone(float degrees) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) l->innerCone = degrees;
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        l->innerCone = degrees;
+    }
 }
 
 
 void ScriptLightProxy::SetOuterCone(float degrees) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) l->outerCone = degrees;
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        l->outerCone = degrees;
+    }
 }
 
 
 void ScriptLightProxy::SetEnabled(bool enabled) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) l->enabled = enabled;
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        l->enabled = enabled;
+    }
 }
 
 
@@ -171,25 +200,33 @@ bool ScriptLightProxy::IsEnabled() const
 
 void ScriptCameraProxy::SetAsMain() const
 {
-    if (!script || !script->m_scene || !script->m_gameObject) return;
-    for (auto& go : script->m_scene->GameObjects()) {
-        if (auto* cam = go.GetComponent<CameraComponent>())
-            cam->isMain = false;
+    if (!script || !script->m_scene || !script->m_gameObject) {
+        return;
     }
-    if (auto* cam = script->m_gameObject->GetComponent<CameraComponent>())
+    for (auto& go : script->m_scene->GameObjects()) {
+        if (auto* cam = go.GetComponent<CameraComponent>()) {
+            cam->isMain = false;
+        }
+    }
+    if (auto* cam = script->m_gameObject->GetComponent<CameraComponent>()) {
         cam->isMain = true;
+    }
 }
 
 
 void ScriptCameraProxy::SetFOV(float fovY) const
 {
-    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->fovY = fovY;
+    if (auto* cam = SelfComponent<CameraComponent>(script)) {
+        cam->fovY = fovY;
+    }
 }
 
 
 void ScriptCameraProxy::SetAspectRatio(float aspectRatio) const
 {
-    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->aspectRatio = (std::max)(aspectRatio, 0.0001f);
+    if (auto* cam = SelfComponent<CameraComponent>(script)) {
+        cam->aspectRatio = (std::max)(aspectRatio, 0.0001f);
+    }
 }
 
 
@@ -204,26 +241,34 @@ void ScriptCameraProxy::SetNearFar(float nearZ, float farZ) const
 
 void ScriptCameraProxy::SetCullingMask(fbzz::LayerMask mask) const
 {
-    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->cullingMask = mask;
+    if (auto* cam = SelfComponent<CameraComponent>(script)) {
+        cam->cullingMask = mask;
+    }
 }
 
 
 void ScriptCameraProxy::SetBackgroundColor(const math::Vector4& color) const
 {
-    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->backgroundColor = color;
+    if (auto* cam = SelfComponent<CameraComponent>(script)) {
+        cam->backgroundColor = color;
+    }
 }
 
 
 void ScriptCameraProxy::SetClearMode(renderer::CameraClearMode mode) const
 {
-    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->clearMode = mode;
+    if (auto* cam = SelfComponent<CameraComponent>(script)) {
+        cam->clearMode = mode;
+    }
 }
 
 
 math::Vector3 ScriptCameraProxy::WorldToScreenPoint(const math::Vector3& worldPos) const
 {
     math::Vector3 viewport;
-    if (!TryWorldToViewportPoint(worldPos, viewport)) return math::Vector3::ZERO;
+    if (!TryWorldToViewportPoint(worldPos, viewport)) {
+        return math::Vector3::ZERO;
+    }
     const auto rt = ScriptRuntime::GetCurrent();
     const float width  = static_cast<float>((std::max)(rt.viewportWidth,  1u));
     const float height = static_cast<float>((std::max)(rt.viewportHeight, 1u));
@@ -243,15 +288,20 @@ bool ScriptCameraProxy::TryWorldToViewportPoint(const math::Vector3& worldPos,
 bool ScriptCameraProxy::TryViewportToWorldPoint(const math::Vector2& uv, float depth,
     math::Vector3& outWorld, GameObject* cameraObject) const
 {
-    if (!std::isfinite(depth) || depth <= 0.0f || !std::isfinite(uv.x) || !std::isfinite(uv.y))
+    if (!std::isfinite(depth) || depth <= 0.0f || !std::isfinite(uv.x) || !std::isfinite(uv.y)) {
         return false;
+    }
     renderer::Camera camera;
-    if (!ResolveProjectionCamera(script, cameraObject, camera)) return false;
+    if (!ResolveProjectionCamera(script, cameraObject, camera)) {
+        return false;
+    }
     const float halfHeight = std::tan(camera.m_fovY * DEG_TO_RAD * 0.5f) * depth;
     const math::Vector3 result = camera.m_position + camera.GetForward() * depth
         + camera.GetRight() * ((uv.x * 2.0f - 1.0f) * halfHeight * camera.m_aspect)
         + camera.GetUp() * ((1.0f - uv.y * 2.0f) * halfHeight);
-    if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z)) return false;
+    if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z)) {
+        return false;
+    }
     outWorld = result;
     return true;
 }
@@ -260,7 +310,9 @@ bool ScriptCameraProxy::TryViewportToWorldPoint(const math::Vector2& uv, float d
 math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenPos) const
 {
     renderer::Camera camera;
-    if (!ResolveProjectionCamera(script, nullptr, camera)) return math::Vector3::ZERO;
+    if (!ResolveProjectionCamera(script, nullptr, camera)) {
+        return math::Vector3::ZERO;
+    }
     const auto rt = ScriptRuntime::GetCurrent();
     const float width  = static_cast<float>((std::max)(rt.viewportWidth,  1u));
     const float height = static_cast<float>((std::max)(rt.viewportHeight, 1u));
@@ -353,4 +405,4 @@ Ray ScriptCameraProxy::ScreenPointToRay(float screenX, float screenY) const
 /// @brief スロットを所有する MaterialComponent を解決する。
 /// @brief SetEnabled のようなコンポーネント全体の操作はこちらを使う。
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

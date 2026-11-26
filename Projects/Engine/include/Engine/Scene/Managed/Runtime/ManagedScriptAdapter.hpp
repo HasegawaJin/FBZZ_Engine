@@ -15,20 +15,20 @@ namespace fbzz::scene {
 class ManagedScriptRuntime;
 
 struct ManagedFieldDescriptor {
-    std::string name;
-    ManagedValueKind kind = ManagedValueKind::NONE;
-    uint32_t flags = 0;
-    std::string label;
-    std::string schemaJson;
-    std::vector<std::string> previousKeys;
-    float minimum = 0;
-    float maximum = 0;
+    std::string name; ///< Inspector と保存データのフィールドを識別するキー。
+    ManagedValueKind kind = ManagedValueKind::NONE; ///< フィールドの値を橋渡し ABI で表す型の分類。
+    uint32_t flags = 0; ///< Inspector・保存・再読み込みで扱うフィールド属性のビット集合。
+    std::string label; ///< Inspector に表示するフィールドの表示名。
+    std::string schemaJson; ///< 複合フィールドの構成や型を渡す JSON スキーマ。
+    std::vector<std::string> previousKeys; ///< 既存保存データの読み替えに使う以前のフィールドキー。
+    float minimum = 0; ///< 範囲付きのフィールドが受け付ける下限。
+    float maximum = 0; ///< 範囲付きのフィールドが受け付ける上限。
 };
 
 struct ManagedFieldValue {
-    std::string name;
-    ManagedBridgeReply value;
-    std::string text;
+    std::string name; ///< Inspector と保存データのフィールドを識別するキー。
+    ManagedBridgeReply value; ///< Managed Host が返したフィールドの型と値のパケット。
+    std::string text; ///< ABI パケットに直接収まらないフィールドの文字列表現。
 };
 
 class ManagedScriptAdapter final : public Script {
@@ -114,28 +114,27 @@ private:
     FBZZ_ENGINE_API void Invoke(ManagedCallback callback);
     FBZZ_ENGINE_API void InvokeCollision(ManagedCallback callback, const CollisionInfo& collision);
     FBZZ_ENGINE_API void RecordFault();
-    ManagedScriptRuntime& m_runtime;
-    std::string m_typeName;
-    std::string m_savedScriptId;
-    /// @note Reload は元 adapter の寿命を保ち、実際の add/redo は新しい寿命を持つ。
-    std::string m_referenceBirth;
-    uint64_t m_generation;
-    uint64_t m_instanceId;
-    uint64_t m_ownerId;
-    bool m_executeAlways;
-    int m_executionOrder = 0;
-    std::vector<std::string> m_requiredComponents;
-    bool m_managedAwoken = false;
-    bool m_managedStarted = false;
-    bool m_connectionsActive = false;
-    std::vector<ManagedFieldDescriptor> m_fields;
-    std::string m_faultDiagnostic;
-    std::string m_resumeDiagnostic;
-    Scene* m_boundScene = nullptr;
-    GameObject* m_boundObject = nullptr;
-    uint64_t m_contextSceneGeneration = 0;
-    EntityID m_contextEntity;
-    uint64_t m_objectId = 0;
+    ManagedScriptRuntime& m_runtime; ///< Managed Host と通信するランタイムへの非所有参照。
+    std::string m_typeName; ///< このアダプターが実行する Managed Script 型の名前。
+    std::string m_savedScriptId; ///< シーン保存や復元で同じ Script を識別する ID。
+    std::string m_referenceBirth; ///< Reload は元 adapter の寿命を保ち、実際の add/redo は新しい寿命を持つ。
+    uint64_t m_generation; ///< Managed Host 上で実体を識別する読み込み世代。
+    uint64_t m_instanceId; ///< Managed Host 上の Script 実体の世代内識別子。
+    uint64_t m_ownerId; ///< Managed Host のスコープで照合する所有者 ID。
+    bool m_executeAlways; ///< 編集モードでも実行する Script かどうか。
+    int m_executionOrder = 0; ///< 同じ実行段階で Script を呼ぶ順序。
+    std::vector<std::string> m_requiredComponents; ///< 生存・実行の前提として確認するコンポーネント型名の列。
+    bool m_managedAwoken = false; ///< Managed 側の Awake を呼び出したか。
+    bool m_managedStarted = false; ///< Managed 側の Start を呼び出したか。
+    bool m_connectionsActive = false; ///< この実体の入力・イベント購読が有効か。
+    std::vector<ManagedFieldDescriptor> m_fields; ///< この Script 型の設定値を編集・保存するためのフィールド記述。
+    std::string m_faultDiagnostic; ///< Script の実行停止を引き起こした診断。
+    std::string m_resumeDiagnostic; ///< 実行再開時に呼び出し元へ伝える診断。
+    Scene* m_boundScene = nullptr; ///< Script 所有者の現在のシーンを照合する非所有参照。
+    GameObject* m_boundObject = nullptr; ///< Script が結び付いた GameObject の非所有参照。
+    uint64_t m_contextSceneGeneration = 0; ///< バインド済みシーンが作り直されていないか検証する世代。
+    EntityID m_contextEntity; ///< バインド済み GameObject を再解決する世代付き ID。
+    uint64_t m_objectId = 0; ///< ネイティブのオブジェクト表から所有者を引く実行時 ID。
     friend class ManagedScriptRuntime;
 };
 

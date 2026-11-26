@@ -42,6 +42,6 @@ private:
 /// @brief 現在のスレッドで保持する容量を返す。アロケーターの管理情報とコンポーネント所有の配列を除く。
 FBZZ_SKINNING_SIGNATURE_SCRATCH_API ScratchMetrics CurrentSignatureScratchMetrics();
 
-} /// @note namespace skinning_signature_detail
-} /// @note namespace fbzz::scene
+} // namespace skinning_signature_detail
+} // namespace fbzz::scene
 #undef FBZZ_SKINNING_SIGNATURE_SCRATCH_API

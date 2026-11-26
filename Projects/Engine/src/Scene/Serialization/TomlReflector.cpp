@@ -70,27 +70,57 @@ static input::KeyCode KeyCodeFromString(const std::string& s)
     if (s == "4") return KC::KEY_4; if (s == "5") return KC::KEY_5;
     if (s == "6") return KC::KEY_6; if (s == "7") return KC::KEY_7;
     if (s == "8") return KC::KEY_8; if (s == "9") return KC::KEY_9;
-    if (s == "Escape")     return KC::ESCAPE;
-    if (s == "Tab") return KC::TAB;
-    if (s == "Space")      return KC::SPACE;
-    if (s == "Enter")      return KC::ENTER;
-    if (s == "Backspace")  return KC::BACKSPACE;
-    if (s == "Shift")      return KC::SHIFT;
-    if (s == "Ctrl")       return KC::CTRL;
-    if (s == "Alt")        return KC::ALT;
-    if (s == "Left")       return KC::LEFT;
-    if (s == "Right")      return KC::RIGHT;
-    if (s == "Up")         return KC::UP;
-    if (s == "Down")       return KC::DOWN;
+    if (s == "Escape") {
+        return KC::ESCAPE;
+    }
+    if (s == "Tab") {
+        return KC::TAB;
+    }
+    if (s == "Space") {
+        return KC::SPACE;
+    }
+    if (s == "Enter") {
+        return KC::ENTER;
+    }
+    if (s == "Backspace") {
+        return KC::BACKSPACE;
+    }
+    if (s == "Shift") {
+        return KC::SHIFT;
+    }
+    if (s == "Ctrl") {
+        return KC::CTRL;
+    }
+    if (s == "Alt") {
+        return KC::ALT;
+    }
+    if (s == "Left") {
+        return KC::LEFT;
+    }
+    if (s == "Right") {
+        return KC::RIGHT;
+    }
+    if (s == "Up") {
+        return KC::UP;
+    }
+    if (s == "Down") {
+        return KC::DOWN;
+    }
     if (s == "F1")  return KC::F1;  if (s == "F2")  return KC::F2;
     if (s == "F3")  return KC::F3;  if (s == "F4")  return KC::F4;
     if (s == "F5")  return KC::F5;  if (s == "F6")  return KC::F6;
     if (s == "F7")  return KC::F7;  if (s == "F8")  return KC::F8;
     if (s == "F9")  return KC::F9;  if (s == "F10") return KC::F10;
     if (s == "F11") return KC::F11; if (s == "F12") return KC::F12;
-    if (s == "MouseLeft")   return KC::MouseLeft;
-    if (s == "MouseRight")  return KC::MouseRight;
-    if (s == "MouseMiddle") return KC::MouseMiddle;
+    if (s == "MouseLeft") {
+        return KC::MouseLeft;
+    }
+    if (s == "MouseRight") {
+        return KC::MouseRight;
+    }
+    if (s == "MouseMiddle") {
+        return KC::MouseMiddle;
+    }
     return KC::SPACE;
 }
 
@@ -120,7 +150,9 @@ enum class Int32ReadResult {
 [[nodiscard]] Int32ReadResult ReadInt32(const toml::node& node, int& out)
 {
     const auto value = node.value<int64_t>();
-    if (!value) return Int32ReadResult::INVALID;
+    if (!value) {
+        return Int32ReadResult::INVALID;
+    }
     if (*value < (std::numeric_limits<int>::min)()
         || *value > (std::numeric_limits<int>::max)()) {
         out = (std::numeric_limits<int>::min)();
@@ -134,9 +166,12 @@ enum class Int32ReadResult {
 template<std::size_t N>
 [[nodiscard]] bool ReadFloats(const toml::array* array, float (&out)[N])
 {
-    if (!array || array->size() < N) return false;
-    for (std::size_t i = 0; i < N; ++i)
+    if (!array || array->size() < N) {
+        return false;
+    }
+    for (std::size_t i = 0; i < N; ++i) {
         out[i] = ElementAsFloat(array->at(i), out[i]);
+    }
     return true;
 }
 
@@ -144,7 +179,9 @@ template<typename Element, typename Convert>
 [[nodiscard]] toml::array MakeArray(const std::vector<Element>& values, Convert&& convert)
 {
     toml::array array;
-    for (const auto& value : values) array.push_back(convert(value));
+    for (const auto& value : values) {
+        array.push_back(convert(value));
+    }
     return array;
 }
 
@@ -178,28 +215,36 @@ toml::array QuatToArr(const math::Quaternion& q)
 math::Vector2 ArrToVec2(const toml::array* a, math::Vector2 def)
 {
     float values[2] = { def.x, def.y };
-    if (!ReadFloats(a, values)) return def;
+    if (!ReadFloats(a, values)) {
+        return def;
+    }
     return { values[0], values[1] };
 }
 
 math::Vector3 ArrToVec3(const toml::array* a, math::Vector3 def)
 {
     float values[3] = { def.x, def.y, def.z };
-    if (!ReadFloats(a, values)) return def;
+    if (!ReadFloats(a, values)) {
+        return def;
+    }
     return { values[0], values[1], values[2] };
 }
 
 math::Vector4 ArrToVec4(const toml::array* a, math::Vector4 def)
 {
     float values[4] = { def.x, def.y, def.z, def.w };
-    if (!ReadFloats(a, values)) return def;
+    if (!ReadFloats(a, values)) {
+        return def;
+    }
     return { values[0], values[1], values[2], values[3] };
 }
 
 math::Quaternion ArrToQuat(const toml::array* a, math::Quaternion def)
 {
     float values[4] = { def.x, def.y, def.z, def.w };
-    if (!ReadFloats(a, values)) return def;
+    if (!ReadFloats(a, values)) {
+        return def;
+    }
     return { values[0], values[1], values[2], values[3] };
 }
 
@@ -212,7 +257,9 @@ void TomlWriteReflector::Field(const char* name, input::KeyCode& value)
 void TomlReadReflector::Field(const char* name, input::KeyCode& value)
 {
     if (const auto* node = FindNode(name)) {
-        if (const auto text = node->value<std::string>()) value = KeyCodeFromString(*text);
+        if (const auto text = node->value<std::string>()) {
+            value = KeyCodeFromString(*text);
+        }
         else if (const auto number = node->value<int64_t>(); number && *number >= 0 && *number <= 255)
             value = static_cast<input::KeyCode>(*number);
     }
@@ -220,19 +267,23 @@ void TomlReadReflector::Field(const char* name, input::KeyCode& value)
 
 void TomlWriteReflector::AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType)
 {
-    if (value.guid.empty() && !value.path.empty()) value.SetPath(value.path);
+    if (value.guid.empty() && !value.path.empty()) {
+        value.SetPath(value.path);
+    }
     Put(name, toml::table{{"guid", value.guid}, {"path", value.path}});
 }
 
 void TomlReadReflector::AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType)
 {
     const auto* node = FindNode(name);
-    if (!node) return;
+    if (!node) {
+        return;
+    }
     if (const auto* table = node->as_table()) {
         value.guid = (*table)["guid"].value_or(std::string{});
         value.path = (*table)["path"].value_or(std::string{});
     } else if (const auto path = node->value<std::string>()) {
-        /// @note 以前の DataAsset は path 文字列だけを保存していた。
+        // 以前の DataAsset は path 文字列だけを保存していた。
         value.Clear();
         value.SetPath(*path);
     }
@@ -242,7 +293,9 @@ void TomlWriteReflector::AssetListField(const char* name, std::vector<scene::Scr
 {
     toml::array array;
     for (auto& value : values) {
-        if (value.guid.empty() && !value.path.empty()) value.SetPath(value.path);
+        if (value.guid.empty() && !value.path.empty()) {
+            value.SetPath(value.path);
+        }
         array.push_back(toml::table{{"guid", value.guid}, {"path", value.path}});
     }
     Put(name, std::move(array));
@@ -251,7 +304,9 @@ void TomlWriteReflector::AssetListField(const char* name, std::vector<scene::Scr
 void TomlReadReflector::AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType)
 {
     const auto* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     std::vector<scene::ScriptAssetReference> result;
     for (const auto& node : *array) {
         scene::ScriptAssetReference value;
@@ -276,7 +331,9 @@ void TomlWriteReflector::ReferenceField(const char* name, scene::ScriptSerialize
         value.preservedFieldsToml = text.str();
     } else if (!value.preservedFieldsToml.empty()) {
         auto parsed = toml::parse(value.preservedFieldsToml);
-        if (parsed) fields = std::move(parsed.table());
+        if (parsed) {
+            fields = std::move(parsed.table());
+        }
     }
     Put(name, toml::table{{"type", value.type}, {"fields", std::move(fields)}});
 }
@@ -285,11 +342,15 @@ void TomlReadReflector::ReferenceField(const char* name, scene::ScriptSerialized
 {
     const auto* node = FindNode(name);
     const auto* reference = node ? node->as_table() : nullptr;
-    if (!reference) return;
+    if (!reference) {
+        return;
+    }
     value.type = (*reference)["type"].value_or(std::string{});
     const auto* fields = (*reference)["fields"].as_table();
     std::ostringstream text;
-    if (fields) text << *fields;
+    if (fields) {
+        text << *fields;
+    }
     value.preservedFieldsToml = text.str();
     value.value = scene::ScriptSerializableFactory::Create(value.type);
     if (value.value && fields) {
@@ -322,10 +383,12 @@ void TomlWriteReflector::ListField(const char* name, std::vector<int>& values)
 
 void TomlWriteReflector::ListField(const char* name, std::vector<bool>& values)
 {
-    /// @note `vector<bool>` だけ MakeArray を通さない。プロキシ参照を返す特殊化のため、
-    /// @note const auto& で受けた要素をそのまま push_back できない。
+    // `vector<bool>` だけ MakeArray を通さない。プロキシ参照を返す特殊化のため、
+    // const auto& で受けた要素をそのまま push_back できない。
     toml::array array;
-    for (const bool value : values) array.push_back(value);
+    for (const bool value : values) {
+        array.push_back(value);
+    }
     Put(name, std::move(array));
 }
 
@@ -351,19 +414,21 @@ void TomlWriteReflector::ListField(const char* name, std::vector<math::Vector4>&
 
 void TomlWriteReflector::BeginObject(const char* name)
 {
-    /// @note 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。構築し終えてから move で
-    /// @note 挿入する方式だと、構築中に子のアドレスを保持できずスタックに積めない。
+    // 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。構築し終えてから move で
+    // 挿入する方式だと、構築中に子のアドレスを保持できずスタックに積めない。
     auto [iterator, inserted] =
         Current().insert_or_assign(PersistentKey(name), toml::table{});
     toml::table* child = iterator->second.as_table();
-    /// @note 挿入直後なので as_table() は必ず成功する。防御的に親を積み直して破綻を避ける。
+    // 挿入直後なので as_table() は必ず成功する。防御的に親を積み直して破綻を避ける。
     m_stack.push_back(child ? child : &Current());
 }
 
 void TomlWriteReflector::EndObject()
 {
-    /// @note ルート (最初の 1 枚) は決して pop しない。
-    if (m_stack.size() > 1) m_stack.pop_back();
+    // ルート (最初の 1 枚) は決して pop しない。
+    if (m_stack.size() > 1) {
+        m_stack.pop_back();
+    }
 }
 
 std::size_t TomlWriteReflector::BeginObjectList(const char* name, std::size_t count)
@@ -371,7 +436,7 @@ std::size_t TomlWriteReflector::BeginObjectList(const char* name, std::size_t co
     auto [iterator, inserted] =
         Current().insert_or_assign(PersistentKey(name), toml::array{});
     m_listStack.push_back(iterator->second.as_array());
-    /// @note 書き込みは要素数を変えない
+    // 書き込みは要素数を変えない
     return count;
 }
 
@@ -388,8 +453,10 @@ void TomlWriteReflector::BeginObjectElement(std::size_t index)
 
 std::size_t TomlWriteReflector::EndObjectList()
 {
-    if (!m_listStack.empty()) m_listStack.pop_back();
-    /// @note 永続化は要素を削除しない
+    if (!m_listStack.empty()) {
+        m_listStack.pop_back();
+    }
+    // 永続化は要素を削除しない
     return NO_REMOVE;
 }
 
@@ -398,11 +465,17 @@ std::size_t TomlWriteReflector::EndObjectList()
 const toml::node* TomlReadReflector::FindNode(const char* fallback) const
 {
     const toml::table* table = Current();
-    /// @note 欠損スコープの内側
-    if (!table) return nullptr;
-    if (const toml::node* node = table->get(PersistentKey(fallback))) return node;
+    // 欠損スコープの内側
+    if (!table) {
+        return nullptr;
+    }
+    if (const toml::node* node = table->get(PersistentKey(fallback))) {
+        return node;
+    }
     for (const std::string& key : PreviousFieldKeys())
-        if (const toml::node* node = table->get(key)) return node;
+        if (const toml::node* node = table->get(key)) {
+            return node;
+        }
     return nullptr;
 }
 
@@ -416,7 +489,9 @@ void TomlReadReflector::Field(const char* name, float& v)
 {
     const toml::node* node = FindNode(name);
     double value = 0.0;
-    if (node && ReadNumber(*node, value)) v = static_cast<float>(value);
+    if (node && ReadNumber(*node, value)) {
+        v = static_cast<float>(value);
+    }
 }
 
 void TomlReadReflector::Field(const char* name, int& v)
@@ -429,40 +504,52 @@ void TomlReadReflector::Field(const char* name, int& v)
 
 void TomlReadReflector::Field(const char* name, bool& v)
 {
-    if (const toml::node* node = FindNode(name)) v = node->value_or(v);
+    if (const toml::node* node = FindNode(name)) {
+        v = node->value_or(v);
+    }
 }
 
 /// @note codec 側は「キーが無ければ何もしない」ため、欠損スコープでも既定値が残る。
 void TomlReadReflector::Field(const char* name, scene::ParticleCurve& v)
 {
-    if (const toml::table* table = Current())
+    if (const toml::table* table = Current()) {
         asset::DeserializeParticleCurve(*table, PersistentKey(name), v);
+    }
 }
 
 void TomlReadReflector::Field(const char* name, scene::ParticleGradient& v)
 {
-    if (const toml::table* table = Current())
+    if (const toml::table* table = Current()) {
         asset::DeserializeParticleGradient(*table, PersistentKey(name), v);
+    }
 }
 
 void TomlReadReflector::Field(const char* name, std::string& v)
 {
-    if (const toml::node* node = FindNode(name)) v = node->value_or(v);
+    if (const toml::node* node = FindNode(name)) {
+        v = node->value_or(v);
+    }
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<float>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array) values.push_back(ElementAsFloat(node, 0.0f));
+    for (const auto& node : *array) {
+        values.push_back(ElementAsFloat(node, 0.0f));
+    }
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<int>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
     bool outOfRange = false;
@@ -478,60 +565,82 @@ void TomlReadReflector::ListField(const char* name, std::vector<int>& values)
 void TomlReadReflector::ListField(const char* name, std::vector<bool>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array) values.push_back(node.value_or(false));
+    for (const auto& node : *array) {
+        values.push_back(node.value_or(false));
+    }
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<std::string>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array) values.push_back(node.value_or(std::string{}));
+    for (const auto& node : *array) {
+        values.push_back(node.value_or(std::string{}));
+    }
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<math::Vector2>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array) values.push_back(ArrToVec2(node.as_array()));
+    for (const auto& node : *array) {
+        values.push_back(ArrToVec2(node.as_array()));
+    }
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<math::Vector3>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array) values.push_back(ArrToVec3(node.as_array()));
+    for (const auto& node : *array) {
+        values.push_back(ArrToVec3(node.as_array()));
+    }
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<math::Vector4>& values)
 {
     const toml::array* array = FindArray(name);
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array) values.push_back(ArrToVec4(node.as_array()));
+    for (const auto& node : *array) {
+        values.push_back(ArrToVec4(node.as_array()));
+    }
 }
 
 void TomlReadReflector::BeginObject(const char* name)
 {
     const toml::node* node = FindNode(name);
-    /// @note 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため何もせず、
-    /// @note 呼び出し側の既定値がそのまま残る (欠損スコープ)。スコープ対は必ず EndObject と
-    /// @note 釣り合う必要があるため、積まずに抜けると EndObject でスタックが破綻する。
+    // 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため何もせず、
+    // 呼び出し側の既定値がそのまま残る (欠損スコープ)。スコープ対は必ず EndObject と
+    // 釣り合う必要があるため、積まずに抜けると EndObject でスタックが破綻する。
     m_stack.push_back(node ? node->as_table() : nullptr);
 }
 
 void TomlReadReflector::EndObject()
 {
-    if (m_stack.size() > 1) m_stack.pop_back();
+    if (m_stack.size() > 1) {
+        m_stack.pop_back();
+    }
 }
 
 std::size_t TomlReadReflector::BeginObjectList(const char* name, std::size_t count)
@@ -539,8 +648,8 @@ std::size_t TomlReadReflector::BeginObjectList(const char* name, std::size_t cou
     (void)count;
     const toml::array* array = FindArray(name);
     m_listStack.push_back(array);
-    /// @note 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
-    /// @note 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
+    // 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
+    // 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
     return array ? array->size() : 0u;
 }
 
@@ -553,7 +662,9 @@ void TomlReadReflector::BeginObjectElement(std::size_t index)
 
 std::size_t TomlReadReflector::EndObjectList()
 {
-    if (!m_listStack.empty()) m_listStack.pop_back();
+    if (!m_listStack.empty()) {
+        m_listStack.pop_back();
+    }
     return NO_REMOVE;
 }
 

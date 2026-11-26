@@ -28,7 +28,7 @@ bool NearlyEqualXZ(const math::Vector3& a, const math::Vector3& b)
     return std::abs(a.x - b.x) < kEps && std::abs(a.z - b.z) < kEps;
 }
 
-} /// @note namespace
+} // namespace
 
 void NavMesh::SetPolygons(std::vector<NavMeshPolygon> polygons)
 {
@@ -39,21 +39,25 @@ void NavMesh::SetPolygons(std::vector<NavMeshPolygon> polygons)
     leaves.reserve(m_polygons.size());
     for (size_t index = 0; index < m_polygons.size(); ++index) {
         const auto& vertices = m_polygons[index].vertices;
-        if (vertices.empty()) continue;
+        if (vertices.empty()) {
+            continue;
+        }
         PolygonNode bounds{FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, 0, 0, index};
         float previousZ = vertices.back().z;
         for (const auto& vertex : vertices) {
             const float dz = std::abs(vertex.z - previousZ);
-            /// @note 既存の float 交差計算で積の overflow や極短辺の丸めがあり得るメッシュは線形探索する。
+            // 既存の float 交差計算で積の overflow や極短辺の丸めがあり得るメッシュは線形探索する。
             if (!(std::abs(vertex.x) <= 1e15f && std::abs(vertex.z) <= 1e15f)
-                || (dz != 0.0f && dz < 1e-12f)) return;
+                || (dz != 0.0f && dz < 1e-12f)) {
+                return;
+            }
             bounds.minX = std::min(bounds.minX, vertex.x);
             bounds.minZ = std::min(bounds.minZ, vertex.z);
             bounds.maxX = std::max(bounds.maxX, vertex.x);
             bounds.maxZ = std::max(bounds.maxZ, vertex.z);
             previousZ = vertex.z;
         }
-        /// @note float の線分補間で端点の外へ丸められる範囲まで含める。
+        // float の線分補間で端点の外へ丸められる範囲まで含める。
         const float padX = 8.0f * FLT_EPSILON * std::max({1.0f, std::abs(bounds.minX), std::abs(bounds.maxX)});
         const float padZ = 8.0f * FLT_EPSILON * std::max({1.0f, std::abs(bounds.minZ), std::abs(bounds.maxZ)});
         bounds.minX -= padX;
@@ -62,7 +66,9 @@ void NavMesh::SetPolygons(std::vector<NavMeshPolygon> polygons)
         bounds.maxZ += padZ;
         leaves.push_back(bounds);
     }
-    if (leaves.empty()) return;
+    if (leaves.empty()) {
+        return;
+    }
     m_polygonNodes.reserve(leaves.size() * 2 - 1);
     BuildPolygonNode(leaves, 0, leaves.size());
 }
@@ -72,7 +78,9 @@ size_t NavMesh::BuildPolygonNode(std::vector<PolygonNode>& leaves, size_t begin,
     const size_t nodeIndex = m_polygonNodes.size();
     PolygonNode node = leaves[begin];
     m_polygonNodes.push_back(node);
-    if (end - begin == 1) return nodeIndex;
+    if (end - begin == 1) {
+        return nodeIndex;
+    }
     for (size_t i = begin + 1; i < end; ++i) {
         node.minX = std::min(node.minX, leaves[i].minX);
         node.minZ = std::min(node.minZ, leaves[i].minZ);
@@ -94,7 +102,7 @@ size_t NavMesh::BuildPolygonNode(std::vector<PolygonNode>& leaves, size_t begin,
 
 float NavMesh::PolygonNode::DistanceSqXZ(const math::Vector3& pos) const
 {
-    /// @note 点が箱の内側にある軸の距離は 0。外へはみ出した軸だけを二乗して足せば、箱に含まれるどの多角形よりも近いか等しい距離の二乗になる。
+    // 点が箱の内側にある軸の距離は 0。外へはみ出した軸だけを二乗して足せば、箱に含まれるどの多角形よりも近いか等しい距離の二乗になる。
     const float dx = std::max({minX - pos.x, pos.x - maxX, 0.0f});
     const float dz = std::max({minZ - pos.z, pos.z - maxZ, 0.0f});
     return dx * dx + dz * dz;
@@ -118,10 +126,14 @@ int NavMesh::FindNearestPolygon(const math::Vector3& pos, float distanceLimit) c
         }
     };
     if (m_polygonNodes.empty() || !std::isfinite(pos.x) || !std::isfinite(pos.z)) {
-        for (size_t index = 0; index < m_polygons.size() && bestInside == SIZE_MAX; ++index) checkPolygon(index);
+        for (size_t index = 0; index < m_polygons.size() && bestInside == SIZE_MAX; ++index) {
+            checkPolygon(index);
+        }
     } else {
         const auto visit = [&](auto&& self, size_t index, float lowerBound) -> void {
-            if (lowerBound > (bestInside == SIZE_MAX ? bestDistSq : 0.0f)) return;
+            if (lowerBound > (bestInside == SIZE_MAX ? bestDistSq : 0.0f)) {
+                return;
+            }
             const PolygonNode& node = m_polygonNodes[index];
             if (node.polygonIndex != SIZE_MAX) {
                 checkPolygon(node.polygonIndex);
@@ -139,7 +151,9 @@ int NavMesh::FindNearestPolygon(const math::Vector3& pos, float distanceLimit) c
         };
         visit(visit, 0, m_polygonNodes.front().DistanceSqXZ(pos));
     }
-    if (bestInside != SIZE_MAX) return static_cast<int>(bestInside);
+    if (bestInside != SIZE_MAX) {
+        return static_cast<int>(bestInside);
+    }
     return best == SIZE_MAX ? -1 : static_cast<int>(best);
 }
 
@@ -147,15 +161,21 @@ void NavMesh::SetOffMeshLinks(std::vector<OffMeshConnection> links)
 {
     m_offMeshLinks = std::move(links);
     m_linksByPolygon.clear();
-    if (m_offMeshLinks.empty()) return;
+    if (m_offMeshLinks.empty()) {
+        return;
+    }
     m_linksByPolygon.resize(m_polygons.size());
     for (size_t index = 0; index < m_offMeshLinks.size(); ++index) {
         const auto& link = m_offMeshLinks[index];
         const size_t a = static_cast<size_t>(link.polyA);
         const size_t b = static_cast<size_t>(link.polyB);
-        if (a >= m_polygons.size() || b >= m_polygons.size()) continue;
+        if (a >= m_polygons.size() || b >= m_polygons.size()) {
+            continue;
+        }
         m_linksByPolygon[a].push_back(index);
-        if (link.bidirectional && b != a) m_linksByPolygon[b].push_back(index);
+        if (link.bidirectional && b != a) {
+            m_linksByPolygon[b].push_back(index);
+        }
     }
 }
 
@@ -180,20 +200,24 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
         return (navMesh.Polygons()[static_cast<size_t>(a)].Center()
               - navMesh.Polygons()[static_cast<size_t>(b)].Center()).Length();
     };
-    /// @note エリアタイプのコストを取得する。areaCosts が nullptr のとき 1.0f を返す。
+    // エリアタイプのコストを取得する。areaCosts が nullptr のとき 1.0f を返す。
     auto areaCost = [&](int areaType) -> float {
-        if (!areaCosts) return 1.0f;
+        if (!areaCosts) {
+            return 1.0f;
+        }
         const float c = areaCosts[areaType < 0 ? 0 : (areaType > 31 ? 31 : areaType)];
         return c > 0.0f ? c : 1.0f;
     };
-    /// @note areaMask でポリゴンが通過可能かチェックする。
+    // areaMask でポリゴンが通過可能かチェックする。
     auto canTraverse = [&](int polyIdx) -> bool {
-        if (areaMask == -1) return true;
+        if (areaMask == -1) {
+            return true;
+        }
         const int at = navMesh.Polygons()[static_cast<size_t>(polyIdx)].areaType;
         return (areaMask & (1 << (at & 31))) != 0;
     };
 
-    /// @note 優先度は fScore、同値ならポリゴンの添字。
+    // 優先度は fScore、同値ならポリゴンの添字。
     using OpenEntry = std::pair<float, int>;
     std::priority_queue<OpenEntry, std::vector<OpenEntry>, std::greater<OpenEntry>> open;
     open.push({ heuristic(startPoly, goalPoly), startPoly });
@@ -201,12 +225,15 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
     while (!open.empty()) {
         const int current = open.top().second;
         open.pop();
-        if (closed[static_cast<size_t>(current)]) continue;
+        if (closed[static_cast<size_t>(current)]) {
+            continue;
+        }
 
         if (current == goalPoly) {
             outPath.clear();
-            for (int node = current; node != -1; node = cameFrom[static_cast<size_t>(node)])
+            for (int node = current; node != -1; node = cameFrom[static_cast<size_t>(node)]) {
                 outPath.push_back(node);
+            }
             std::reverse(outPath.begin(), outPath.end());
             return true;
         }
@@ -214,8 +241,12 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
         closed[static_cast<size_t>(current)] = 1;
         for (const auto& portal : navMesh.Polygons()[static_cast<size_t>(current)].portals) {
             const int nb = portal.neighbor;
-            if (closed[static_cast<size_t>(nb)]) continue;
-            if (!canTraverse(nb)) continue;
+            if (closed[static_cast<size_t>(nb)]) {
+                continue;
+            }
+            if (!canTraverse(nb)) {
+                continue;
+            }
             const float edgeCost = heuristic(current, nb) * areaCost(navMesh.Polygons()[static_cast<size_t>(nb)].areaType);
             const float tentativeG = gScore[static_cast<size_t>(current)] + edgeCost;
             if (tentativeG < gScore[static_cast<size_t>(nb)]) {
@@ -224,14 +255,20 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
                 open.push({ tentativeG + heuristic(nb, goalPoly), nb });
             }
         }
-        /// @note オフメッシュリンクをグラフエッジとして扱う
+        // オフメッシュリンクをグラフエッジとして扱う
         for (const size_t linkIndex : navMesh.OffMeshLinksFrom(static_cast<size_t>(current))) {
             const auto& link = navMesh.OffMeshLinks()[linkIndex];
-            /// @note agentTypeMask フィルタ: -1 は全 Agent 通過可
-            if (link.agentTypeMask != -1 && !(link.agentTypeMask & (1 << (agentTypeId & 31)))) continue;
+            // agentTypeMask フィルタ: -1 は全 Agent 通過可
+            if (link.agentTypeMask != -1 && !(link.agentTypeMask & (1 << (agentTypeId & 31)))) {
+                continue;
+            }
             auto tryLink = [&](int from, int to, float cost) {
-                if (from != current || closed[static_cast<size_t>(to)]) return;
-                if (!canTraverse(to)) return;
+                if (from != current || closed[static_cast<size_t>(to)]) {
+                    return;
+                }
+                if (!canTraverse(to)) {
+                    return;
+                }
                 const float tentativeG = gScore[static_cast<size_t>(current)] + cost;
                 if (tentativeG < gScore[static_cast<size_t>(to)]) {
                     gScore[static_cast<size_t>(to)] = tentativeG;
@@ -241,7 +278,9 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
             };
             const float cost = (link.posB - link.posA).Length();
             tryLink(link.polyA, link.polyB, cost);
-            if (link.bidirectional) tryLink(link.polyB, link.polyA, cost);
+            if (link.bidirectional) {
+                tryLink(link.polyB, link.polyA, cost);
+            }
         }
     }
     return false;
@@ -258,7 +297,7 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
         return result;
     }
 
-    /// @name チャンネル構築: 各境界の Portal を進行方向基準の左右へ並べ直す
+    // チャンネル構築: 各境界の Portal を進行方向基準の左右へ並べ直す
     struct ChannelPortal { math::Vector3 left, right; };
     std::vector<ChannelPortal> channel;
     channel.push_back({ startPos, startPos });
@@ -329,7 +368,9 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
 float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
 {
     const int polyIdx = FindNearestPolygon(navMesh, pos);
-    if (polyIdx < 0) return -1e7f;
+    if (polyIdx < 0) {
+        return -1e7f;
+    }
     const NavMeshPolygon& poly = navMesh.Polygons()[static_cast<size_t>(polyIdx)];
     const size_t n = poly.vertices.size();
     for (size_t i = 1; i + 1 < n; ++i) {
@@ -339,9 +380,13 @@ float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
         const float d1 = (pos.x - b.x) * (a.z - b.z) - (a.x - b.x) * (pos.z - b.z);
         const float d2 = (pos.x - c.x) * (b.z - c.z) - (b.x - c.x) * (pos.z - c.z);
         const float d3 = (pos.x - a.x) * (c.z - a.z) - (c.x - a.x) * (pos.z - a.z);
-        if (((d1 < 0) || (d2 < 0) || (d3 < 0)) && ((d1 > 0) || (d2 > 0) || (d3 > 0))) continue;
+        if (((d1 < 0) || (d2 < 0) || (d3 < 0)) && ((d1 > 0) || (d2 > 0) || (d3 > 0))) {
+            continue;
+        }
         const float denom = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
-        if (std::abs(denom) < 1e-6f) continue;
+        if (std::abs(denom) < 1e-6f) {
+            continue;
+        }
         const float wa = ((b.z - c.z) * (pos.x - c.x) + (c.x - b.x) * (pos.z - c.z)) / denom;
         const float wb = ((c.z - a.z) * (pos.x - c.x) + (a.x - c.x) * (pos.z - c.z)) / denom;
         return a.y * wa + b.y * wb + c.y * (1.0f - wa - wb);
@@ -349,4 +394,4 @@ float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
     return poly.Center().y;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

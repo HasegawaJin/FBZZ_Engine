@@ -51,7 +51,7 @@ constexpr float kFauxItalicShear = 0.21f;
 
 struct UIRichTextState {
     math::Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
-    float scale  = 1.0f;   ///< @note 基準 fontSize に対する倍率
+    float scale  = 1.0f; ///< 基準 fontSize に対する倍率
     bool  bold   = false;
     bool  italic = false;
 
@@ -64,19 +64,31 @@ struct UIRichTextState {
 /// @note "#RRGGBB" / "#RRGGBBAA" / "RRGGBB" を色へ。読めなければ false。
 inline bool ParseRichColor(std::string_view body, math::Vector4& out)
 {
-    if (!body.empty() && body.front() == '#') body.remove_prefix(1);
-    if (body.size() != 6 && body.size() != 8) return false;
+    if (!body.empty() && body.front() == '#') {
+        body.remove_prefix(1);
+    }
+    if (body.size() != 6 && body.size() != 8) {
+        return false;
+    }
     const auto hex = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        if (c >= 'A' && c <= 'F') {
+            return c - 'A' + 10;
+        }
         return -1;
     };
     float channels[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
     for (std::size_t i = 0; i + 1 < body.size(); i += 2) {
         const int hi = hex(body[i]);
         const int lo = hex(body[i + 1]);
-        if (hi < 0 || lo < 0) return false;
+        if (hi < 0 || lo < 0) {
+            return false;
+        }
         channels[i / 2] = static_cast<float>(hi * 16 + lo) / 255.0f;
     }
     out = { channels[0], channels[1], channels[2], channels[3] };
@@ -88,7 +100,9 @@ inline bool ApplyRichTag(std::string_view tag, float baseFontSize, UIRichTextSta
                   bool& outLineBreak)
 {
     outLineBreak = false;
-    if (tag.empty()) return false;
+    if (tag.empty()) {
+        return false;
+    }
 
     if (tag == "br") { outLineBreak = true; return true; }
     if (tag == "b")  { state.bold = true;   return true; }
@@ -97,49 +111,72 @@ inline bool ApplyRichTag(std::string_view tag, float baseFontSize, UIRichTextSta
     if (tag == "/i") { state.italic = false; return true; }
 
     if (tag == "/color") {
-        if (state.colorDepth > 0) state.color = state.colorStack[--state.colorDepth];
-        else                      state.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+        if (state.colorDepth > 0) {
+            state.color = state.colorStack[--state.colorDepth];
+        }
+        else {
+            state.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+        }
         return true;
     }
     if (tag == "/size") {
-        if (state.scaleDepth > 0) state.scale = state.scaleStack[--state.scaleDepth];
-        else                      state.scale = 1.0f;
+        if (state.scaleDepth > 0) {
+            state.scale = state.scaleStack[--state.scaleDepth];
+        }
+        else {
+            state.scale = 1.0f;
+        }
         return true;
     }
 
     const std::size_t equals = tag.find('=');
-    if (equals == std::string_view::npos) return false;
+    if (equals == std::string_view::npos) {
+        return false;
+    }
     const std::string_view name  = tag.substr(0, equals);
     const std::string_view value = tag.substr(equals + 1);
 
     if (name == "color") {
         math::Vector4 parsed{};
-        if (!ParseRichColor(value, parsed)) return false;
-        if (state.colorDepth < kRichTextStackDepth)
+        if (!ParseRichColor(value, parsed)) {
+            return false;
+        }
+        if (state.colorDepth < kRichTextStackDepth) {
             state.colorStack[state.colorDepth++] = state.color;
+        }
         state.color = parsed;
         return true;
     }
     if (name == "alpha") {
         math::Vector4 parsed{};
-        /// @note alpha は 1 バイトだけ。色と同じ読み取りへ寄せるため 6 桁へ水増しする。
+        // alpha は 1 バイトだけ。色と同じ読み取りへ寄せるため 6 桁へ水増しする。
         std::string_view digits = value;
-        if (!digits.empty() && digits.front() == '#') digits.remove_prefix(1);
-        if (digits.size() != 2) return false;
+        if (!digits.empty() && digits.front() == '#') {
+            digits.remove_prefix(1);
+        }
+        if (digits.size() != 2) {
+            return false;
+        }
         const std::string expanded = std::string("0000") + std::string(digits);
-        if (!ParseRichColor(expanded, parsed)) return false;
-        /// @note 展開した 3 バイト目が alpha 値になる。
+        if (!ParseRichColor(expanded, parsed)) {
+            return false;
+        }
+        // 展開した 3 バイト目が alpha 値になる。
         state.color.w = parsed.z;
         return true;
     }
     if (name == "size") {
-        if (baseFontSize <= 0.0f || value.empty()) return false;
-        /// @note std::stof は読めない文字列で例外を投げる。タグは手書きで誤記が普通に混ざるので、
-        /// @note 「読めなければ普通の文字として出す」で受け止める。
+        if (baseFontSize <= 0.0f || value.empty()) {
+            return false;
+        }
+        // std::stof は読めない文字列で例外を投げる。タグは手書きで誤記が普通に混ざるので、
+        // 「読めなければ普通の文字として出す」で受け止める。
         std::size_t cursor = 0;
         const bool relative = value[0] == '+' || value[0] == '-';
         const float sign = value[0] == '-' ? -1.0f : 1.0f;
-        if (relative) cursor = 1;
+        if (relative) {
+            cursor = 1;
+        }
         float magnitude = 0.0f;
         bool  anyDigit  = false;
         for (; cursor < value.size() && value[cursor] >= '0' && value[cursor] <= '9'; ++cursor) {
@@ -155,13 +192,18 @@ inline bool ApplyRichTag(std::string_view tag, float baseFontSize, UIRichTextSta
                 anyDigit = true;
             }
         }
-        if (!anyDigit || cursor != value.size()) return false;
+        if (!anyDigit || cursor != value.size()) {
+            return false;
+        }
 
         const float target   = sign * magnitude;
         const float absolute = relative ? baseFontSize + target : target;
-        if (absolute <= 0.0f) return false;
-        if (state.scaleDepth < kRichTextStackDepth)
+        if (absolute <= 0.0f) {
+            return false;
+        }
+        if (state.scaleDepth < kRichTextStackDepth) {
             state.scaleStack[state.scaleDepth++] = state.scale;
+        }
         state.scale = absolute / baseFontSize;
         return true;
     }
@@ -178,14 +220,16 @@ inline char32_t NextRichGlyph(const std::string& source, std::size_t& offset, bo
         outBegin = offset;
         if (richText && source[offset] == '<') {
             const std::size_t close = source.find('>', offset + 1);
-            /// @note 閉じない '<' は普通の文字。行末の不等号を消してしまわない。
+            // 閉じない '<' は普通の文字。行末の不等号を消してしまわない。
             if (close != std::string::npos) {
                 const std::string_view tag(source.data() + offset + 1, close - offset - 1);
                 bool lineBreak = false;
                 if (ApplyRichTag(tag, baseFontSize, state, lineBreak)) {
                     offset = close + 1;
-                    if (lineBreak) return U'\n';
-                    /// @note 見た目を変えただけ。次の文字を探しに戻る。
+                    if (lineBreak) {
+                        return U'\n';
+                    }
+                    // 見た目を変えただけ。次の文字を探しに戻る。
                     continue;
                 }
             }
@@ -199,7 +243,7 @@ inline char32_t NextRichGlyph(const std::string& source, std::size_t& offset, bo
 /// @note (空文字列でも 1 行)。レイアウト計算と描画が同じ送り幅の規則を要るので 1 本化する。
 /// @note バイト範囲まで返すのは、折り返しが元の文字列に改行文字の無い位置で行を切るため。
 /// @note 描く側が改行文字だけを見ると、測った行数と描く行数が食い違う。
-/// @param fontSize 試したい文字サイズ。autoSize の探索が別の値で呼び直すため、
+/// @param[in] fontSize 試したい文字サイズ。autoSize の探索が別の値で呼び直すため、
 /// @note text.fontSize ではなく引数で受ける。
 inline void LayoutTextLines(const UIText& text,
                      const renderer::FontAtlas& atlas,
@@ -207,29 +251,31 @@ inline void LayoutTextLines(const UIText& text,
                      std::vector<UITextLine>& out)
 {
     out.clear();
-    if (atlas.GetLineHeight() <= 0.0f) return;
+    if (atlas.GetLineHeight() <= 0.0f) {
+        return;
+    }
 
     const float baseScale = fontSize / atlas.GetLineHeight();
     const float cellH     = fontSize;
     const float limit     = text.maxWidth > 0.0f ? text.maxWidth : 0.0f;
 
-    /// @note 今の行の先頭バイト
+    // 今の行の先頭バイト
     std::size_t lineBegin = 0;
     float       lineW     = 0.0f;
-    /// @note その行でいちばん大きい字の倍率。`<size>` を使うと行の高さが変わる。
+    // その行でいちばん大きい字の倍率。`<size>` を使うと行の高さが変わる。
     float       lineScale = 1.0f;
     char32_t    previous  = 0;
 
-    /// @note 直近の折り返し候補 (空白の直後)。単語の途中で切らないために覚えておく。
+    // 直近の折り返し候補 (空白の直後)。単語の途中で切らないために覚えておく。
     bool        hasBreak    = false;
-    /// @note candidate の行終端 (空白は含めない)
+    // candidate の行終端 (空白は含めない)
     std::size_t breakEnd    = 0;
-    /// @note 次の行の先頭
+    // 次の行の先頭
     std::size_t breakNext   = 0;
     float       breakWidth  = 0.0f;
 
     UIRichTextState style{};
-    /// @note 折り返しで巻き戻すときのために、行頭時点の見た目も控える。
+    // 折り返しで巻き戻すときのために、行頭時点の見た目も控える。
     UIRichTextState breakStyle{};
 
     auto pushLine = [&](std::size_t end, float width) {
@@ -247,7 +293,9 @@ inline void LayoutTextLines(const UIText& text,
         std::size_t charBegin = offset;
         const char32_t code =
             NextRichGlyph(text.text, offset, text.richText, fontSize, style, charBegin);
-        if (code == 0) break;
+        if (code == 0) {
+            break;
+        }
 
         if (code == U'\n') {
             pushLine(charBegin, lineW);
@@ -260,15 +308,15 @@ inline void LayoutTextLines(const UIText& text,
 
         const float glyphScale = baseScale * style.scale;
 
-        /// @note カーニングは「前の文字との組」に対して定義されるため、行頭では適用しない。
+        // カーニングは「前の文字との組」に対して定義されるため、行頭では適用しない。
         const float kerning = previous != 0 ? atlas.GetKerning(previous, code) * glyphScale : 0.0f;
         const renderer::FontGlyph* glyph = atlas.GetGlyph(code);
         const float advance = (glyph ? glyph->advance : atlas.GetFallbackAdvance()) * glyphScale
                             + text.letterSpacing;
         const float next = lineW + kerning + advance;
 
-        /// @note 折り返し候補は空白「の直後」。行末の空白まで幅に数えると、
-        /// @note 右揃え・中央揃えで見えない余白のぶんだけ行がずれる。
+        // 折り返し候補は空白「の直後」。行末の空白まで幅に数えると、
+        // 右揃え・中央揃えで見えない余白のぶんだけ行がずれる。
         if (code == U' ' || code == U'\t') {
             hasBreak   = true;
             breakEnd   = charBegin;
@@ -277,19 +325,19 @@ inline void LayoutTextLines(const UIText& text,
             breakStyle = style;
         }
 
-        /// @note 折り返し。行頭の 1 文字目は、はみ出しても切らない (切ると無限に進まない)。
-        /// @note 行の高さより先に判定する。この文字は次の行へ送られるので、先に lineScale へ
-        /// @note 畳むと大きい字が「まだ載っていない行」の高さを押し上げる。
+        // 折り返し。行頭の 1 文字目は、はみ出しても切らない (切ると無限に進まない)。
+        // 行の高さより先に判定する。この文字は次の行へ送られるので、先に lineScale へ
+        // 畳むと大きい字が「まだ載っていない行」の高さを押し上げる。
         if (limit > 0.0f && next > limit && charBegin > lineBegin) {
             if (hasBreak && breakEnd > lineBegin) {
                 pushLine(breakEnd, breakWidth);
                 lineBegin = breakNext;
-                /// @note 空白の次から測り直す
+                // 空白の次から測り直す
                 offset    = breakNext;
                 style     = breakStyle;
             } else {
-                /// @note 空白の無い長い連なり (日本語・URL 等) は文字単位で折る。
-                /// @note charBegin はタグ消化後の位置なので、style を戻すとタグが 1 回失われる。
+                // 空白の無い長い連なり (日本語・URL 等) は文字単位で折る。
+                // charBegin はタグ消化後の位置なので、style を戻すとタグが 1 回失われる。
                 pushLine(charBegin, lineW);
                 lineBegin = charBegin;
                 offset    = charBegin;
@@ -311,7 +359,9 @@ inline void LayoutTextLines(const UIText& text,
 inline float TotalTextHeight(const std::vector<UITextLine>& lines, float lineSpacing)
 {
     float total = 0.0f;
-    for (const UITextLine& line : lines) total += line.height * lineSpacing;
+    for (const UITextLine& line : lines) {
+        total += line.height * lineSpacing;
+    }
     return total;
 }
 
@@ -319,23 +369,32 @@ inline float TotalTextHeight(const std::vector<UITextLine>& lines, float lineSpa
 /// @note 戻り値は落とした行があったか。
 inline bool ApplyTextOverflow(const UIText& text, std::vector<UITextLine>& lines)
 {
-    if (text.maxHeight <= 0.0f || text.overflow == TextOverflow::Overflow) return false;
+    if (text.maxHeight <= 0.0f || text.overflow == TextOverflow::Overflow) {
+        return false;
+    }
 
     float used = 0.0f;
     std::size_t kept = 0;
     for (const UITextLine& line : lines) {
         const float next = used + line.height * text.lineSpacing;
-        if (next > text.maxHeight) break;
+        if (next > text.maxHeight) {
+            break;
+        }
         used = next;
         ++kept;
     }
-    /// @note 1 行も入らないなら 1 行だけは残す。何も出ないより、切れていても読めるほうがよい。
-    if (kept == 0) kept = 1;
-    if (kept >= lines.size()) return false;
+    // 1 行も入らないなら 1 行だけは残す。何も出ないより、切れていても読めるほうがよい。
+    if (kept == 0) {
+        kept = 1;
+    }
+    if (kept >= lines.size()) {
+        return false;
+    }
 
     lines.resize(kept);
-    if (text.overflow == TextOverflow::Ellipsis && !lines.empty())
+    if (text.overflow == TextOverflow::Ellipsis && !lines.empty()) {
         lines.back().ellipsis = true;
+    }
     return true;
 }
 
@@ -343,10 +402,14 @@ inline bool ApplyTextOverflow(const UIText& text, std::vector<UITextLine>& lines
 inline bool TextFitsBox(const UIText& text, const std::vector<UITextLine>& lines)
 {
     if (text.maxHeight > 0.0f
-        && TotalTextHeight(lines, text.lineSpacing) > text.maxHeight) return false;
+        && TotalTextHeight(lines, text.lineSpacing) > text.maxHeight) {
+        return false;
+    }
     if (text.maxWidth > 0.0f) {
         for (const UITextLine& line : lines)
-            if (line.width > text.maxWidth) return false;
+            if (line.width > text.maxWidth) {
+                return false;
+            }
     }
     return true;
 }
@@ -361,20 +424,26 @@ inline float SolveAutoFontSize(const UIText& text, const renderer::FontAtlas& at
     const float lower = (std::min)((std::max)(text.autoSizeMin, 1.0f), upper);
 
     UIText probe = text;
-    /// @note 探索の途中で省略が挟まると「入った」の判定が意味を失う。素の状態で測る。
+    // 探索の途中で省略が挟まると「入った」の判定が意味を失う。素の状態で測る。
     probe.overflow = TextOverflow::Overflow;
 
     LayoutTextLines(probe, atlas, upper, scratch);
-    if (TextFitsBox(probe, scratch)) return upper;
+    if (TextFitsBox(probe, scratch)) {
+        return upper;
+    }
 
-    /// @note 1 px 未満の差は画面に出ない。文字数の多い段落で探索が長引くほうが害になるため、
-    /// @note 回数を切る。
+    // 1 px 未満の差は画面に出ない。文字数の多い段落で探索が長引くほうが害になるため、
+    // 回数を切る。
     float low = lower, high = upper;
     for (int i = 0; i < 8 && high - low > 0.5f; ++i) {
         const float mid = (low + high) * 0.5f;
         LayoutTextLines(probe, atlas, mid, scratch);
-        if (TextFitsBox(probe, scratch)) low = mid;
-        else                             high = mid;
+        if (TextFitsBox(probe, scratch)) {
+            low = mid;
+        }
+        else {
+            high = mid;
+        }
     }
     return low;
 }

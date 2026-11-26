@@ -48,7 +48,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, DecodedMotionTimesStrengthRestoresNegat
     constexpr float kStrength = 0.02f;
     const std::vector<math::Vector2> displacements = {
         { 0.02f, 0.0f }, { -0.02f, 0.013f }, { 0.0071f, -0.0033f }, { 0.0f, 0.0f } };
-    /// @note 8bit の量子化は [-1,1] で半ステップ 1/255。S を掛けると S/255 まで。
+    // 8bit の量子化は [-1,1] で半ステップ 1/255。S を掛けると S/255 まで。
     const float tolerance = kStrength / 255.0f * 1.001f;
 
     for (const math::Vector2& d : displacements) {
@@ -75,7 +75,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, WarpedSamplesLandOnTheSameContentForAKn
         const math::Vector2 current = asset::WarpCurrentUv(pixel, motion, blend, strength);
         const math::Vector2 next = asset::WarpNextUv(pixel, motion, blend, strength);
 
-        /// @note コマ N+blend の画素 p にある内容は、コマ N では p - blend·d、コマ N+1 では p + (1-blend)·d にある。
+        // コマ N+blend の画素 p にある内容は、コマ N では p - blend·d、コマ N+1 では p + (1-blend)·d にある。
         EXPECT_VEC2_NEAR(current, (math::Vector2{ pixel.x - d.x * blend, pixel.y - d.y * blend }), tolerance)
             << "blend=" << blend;
         EXPECT_VEC2_NEAR(next, (math::Vector2{ pixel.x + d.x * (1.0f - blend), pixel.y + d.y * (1.0f - blend) }),
@@ -132,7 +132,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, TileOriginIsRowMajorFromTopLeftLikeSpri
 
     const asset::FlipbookTileOrigin origin = asset::TileOriginPx(5, grid, 64, 32);
 
-    /// @note ParticlePass の SpriteRectForFrame: x = frame % columns, y = frame / columns。
+    // ParticlePass の SpriteRectForFrame: x = frame % columns, y = frame / columns。
     EXPECT_EQ(origin.x, 64u);
     EXPECT_EQ(origin.y, 32u);
 }
@@ -140,7 +140,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, TileOriginIsRowMajorFromTopLeftLikeSpri
 /// @brief Dilation fills uncovered texels without crossing tiles.
 TEST_F(FlipbookMotionVectorEncodingTest, DilationFillsUncoveredTexelsWithoutCrossingTiles)
 {
-    /// @note 2x2 のタイル 2 枚を横に並べた 4x2 の Atlas。各タイルに 1 画素だけ覆われた画素がある。
+    // 2x2 のタイル 2 枚を横に並べた 4x2 の Atlas。各タイルに 1 画素だけ覆われた画素がある。
     const asset::FlipbookGrid grid = asset::ComputeFlipbookGrid(2, 2);
     std::vector<math::Vector2> motion(8, math::Vector2::ZERO);
     std::vector<float> coverage(8, 0.0f);

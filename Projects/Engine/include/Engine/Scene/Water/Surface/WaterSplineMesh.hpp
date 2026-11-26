@@ -10,4 +10,4 @@ struct WaterSplineSnapshot;
 /// @note world mの目標辺長。共有辺の中点と線形属性を共有し、元の高さ・深さ・流速の面を維持する。
 /// @note 予算上限では最後の完全な段階を保持し、実際の最大辺長とmeshQualityLimitedを返す。
 FBZZ_ENGINE_API void RefineWaterSplineMesh(WaterSplineSnapshot& snapshot, float maximumWorldCellSize);
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

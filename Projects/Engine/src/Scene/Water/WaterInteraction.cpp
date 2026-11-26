@@ -24,7 +24,9 @@
 namespace fbzz::scene {
 void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity)
 {
-    if (!std::isfinite(intensity)) return;
+    if (!std::isfinite(intensity)) {
+        return;
+    }
     const float strength = math::Clamp01(intensity);
     WaterInteractionImpulse impulse{WaterInteractionKind::SURFACE_FOAM, worldPos,
         {0.0f, 1.5f + strength * 3.0f, 0.0f}, 0.2f + strength * 0.3f, strength, 1.2f};
@@ -107,13 +109,19 @@ std::shared_ptr<WaterInteractionSceneStore> ExistingStore(const Scene& scene)
 std::shared_ptr<WaterInteractionSceneStore> AcquireStore(Scene& scene)
 {
     auto store = ExistingStore(scene);
-    if (store && !store->invalidated) return store;
+    if (store && !store->invalidated) {
+        return store;
+    }
     std::erase_if(s_stores, [](const auto& row) { return row.second.expired(); });
     auto created = std::make_shared<WaterInteractionSceneStore>();
     created->generation = scene.GetRenderSceneGeneration();
     if (store) {
-        for (const auto& row : store->owners) created->retired.push_back(row.second);
-        for (const auto& row : store->retired) created->retired.push_back(row);
+        for (const auto& row : store->owners) {
+            created->retired.push_back(row.second);
+        }
+        for (const auto& row : store->retired) {
+            created->retired.push_back(row);
+        }
     }
     s_stores[created->generation] = created;
     return created;
@@ -122,7 +130,9 @@ WaterComponent* OwnerWater(Scene& scene, EntityID& id)
 {
     WaterComponent* water = scene.GetComponent<WaterComponent>(id);
     GameObject* object = scene.GetGameObject(id);
-    if (!water || !object || !water->enabled || !object->activeInHierarchy()) return nullptr;
+    if (!water || !object || !water->enabled || !object->activeInHierarchy()) {
+        return nullptr;
+    }
     const EntityID owner = WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION);
     if (owner.IsValid()) {
         id = owner;
@@ -135,11 +145,15 @@ bool Allowed(Scene& scene, EntityID owner, const WaterInteractionImpulse& impuls
 {
     const GameObject* object = scene.GetGameObject(owner);
     const WaterComponent* water = scene.GetComponent<WaterComponent>(owner);
-    if (!object || !water) return false;
+    if (!object || !water) {
+        return false;
+    }
     const auto& pose = WaterSurfaceTransform(*water, object->transform, WaterSurfaceReadView::SIMULATION);
     WaterSurfaceHeightSample sample;
     if (!TrySampleWaterSurfaceHeightWorld(*water, pose, impulse.worldPosition, Time::time,
-            sample, WaterSurfaceReadView::SIMULATION) || !sample.insideSurface || sample.excluded) return false;
+            sample, WaterSurfaceReadView::SIMULATION) || !sample.insideSurface || sample.excluded) {
+        return false;
+    }
     return impulse.kind == WaterInteractionKind::SURFACE_FOAM
         ? std::abs(sample.depth) <= water->interactionSettings.surfaceBand : sample.underwater;
 }
@@ -165,7 +179,9 @@ WaterInteractionRuntime* Runtime(Scene& scene, EntityID owner, WaterComponent& w
     }
     const auto found = store->owners.find(Key(owner));
     if (found == store->owners.end()) {
-        if (store->owners.size() >= WATER_INTERACTION_MAX_OWNERS) return nullptr;
+        if (store->owners.size() >= WATER_INTERACTION_MAX_OWNERS) {
+            return nullptr;
+        }
         store->owners.emplace(Key(owner), OwnerEntry{owner, lifetime, {}});
     } else if (found->second.lifetime != lifetime) {
         store->retired.push_back(found->second);
@@ -183,12 +199,16 @@ bool OwnedEmitter(Scene& scene, const WaterInteractionEmitterState& state)
 void Retire(Scene& scene, const OwnerEntry& owner)
 {
     for (const auto& emitter : owner.emitters)
-        if (OwnedEmitter(scene, emitter)) scene.DestroyGameObject(emitter.id);
+        if (OwnedEmitter(scene, emitter)) {
+            scene.DestroyGameObject(emitter.id);
+        }
 }
 ParticleEmitter* EnsureEmitter(Scene& scene, EntityID owner, size_t index)
 {
     WaterComponent* water = scene.GetComponent<WaterComponent>(owner);
-    if (!water) return nullptr;
+    if (!water) {
+        return nullptr;
+    }
     auto state = water->interactionRuntime.emitters[index];
     if (OwnedEmitter(scene, state)) {
         ParticleEmitter* emitter = scene.GetComponent<ParticleEmitter>(state.id);
@@ -198,7 +218,9 @@ ParticleEmitter* EnsureEmitter(Scene& scene, EntityID owner, size_t index)
         return emitter;
     }
     GameObject* created = scene.TryCreateGameObject(index == 0 ? "__WaterBubbles" : "__WaterSediment");
-    if (!created) return nullptr;
+    if (!created) {
+        return nullptr;
+    }
     const EntityID id = created->GetID();
     created->SetRuntimeGenerated(true);
     created->AddComponent<ParticleEmitter>();
@@ -246,15 +268,21 @@ void Publish(WaterInteractionRuntime& runtime)
 void PruneParticles(Scene& scene, EntityID owner, bool sediment, float dt,
     const WaterInteractionEmitterState& emitterState)
 {
-    if (!OwnedEmitter(scene, emitterState)) return;
+    if (!OwnedEmitter(scene, emitterState)) {
+        return;
+    }
     const auto* water = scene.GetComponent<WaterComponent>(owner);
     const auto* object = scene.GetGameObject(owner);
     auto* emitter = scene.GetComponent<ParticleEmitter>(emitterState.id);
-    if (!water || !object || !emitter) return;
+    if (!water || !object || !emitter) {
+        return;
+    }
     const auto& pose = WaterSurfaceTransform(*water, object->transform, WaterSurfaceReadView::SIMULATION);
     const std::vector<ActiveFlowField> noSceneFields;
     const auto allowed = [&](math::Vector3 position) {
-        if (!Finite(position)) return false;
+        if (!Finite(position)) {
+            return false;
+        }
         WaterSurfaceHeightSample sample;
         return TrySampleWaterSurfaceHeightWorld(*water, pose, position, Time::time,
                 sample, WaterSurfaceReadView::SIMULATION)
@@ -262,11 +290,15 @@ void PruneParticles(Scene& scene, EntityID owner, bool sediment, float dt,
             && (sample.underwater || (!sediment && std::abs(sample.depth) <= water->interactionSettings.surfaceBand));
     };
     std::erase_if(emitter->runtime.particles, [&](auto& particle) {
-        if (!allowed(particle.position)) return true;
+        if (!allowed(particle.position)) {
+            return true;
+        }
         WaterSurfaceSample sample;
         if (!TrySampleWaterSurfaceWorld(*water, pose, noSceneFields, particle.position, Time::time,
-                sample, WaterSurfaceReadView::SIMULATION)) return true;
-        /// @note シーンの場は ParticleSimulator の receiveFlowFields で一度だけ適用する。ここで位置を移動するのは Water/Spline の流れだけ。
+                sample, WaterSurfaceReadView::SIMULATION)) {
+            return true;
+        }
+        // シーンの場は ParticleSimulator の receiveFlowFields で一度だけ適用する。ここで位置を移動するのは Water/Spline の流れだけ。
         particle.position = particle.position + sample.flowVelocity * dt;
         return !allowed(particle.position);
     });
@@ -294,35 +326,51 @@ void WaterInteractionSettings::Reflect(IReflector& reflector)
 
 bool QueueWaterInteraction(Scene& scene, EntityID owner, const WaterInteractionImpulse& impulse)
 {
-    if (!ValidImpulse(impulse)) return false;
+    if (!ValidImpulse(impulse)) {
+        return false;
+    }
     WaterComponent* water = OwnerWater(scene, owner);
     if (!water || !water->interactionSettings.enabled || !ValidSettings(water->interactionSettings)
-        || !KindEnabled(water->interactionSettings, impulse.kind) || !Allowed(scene, owner, impulse)) return false;
+        || !KindEnabled(water->interactionSettings, impulse.kind) || !Allowed(scene, owner, impulse)) {
+        return false;
+    }
     auto* runtime = Runtime(scene, owner, *water);
-    if (!runtime || runtime->pending.size() >= WATER_INTERACTION_MAX_PENDING) return false;
+    if (!runtime || runtime->pending.size() >= WATER_INTERACTION_MAX_PENDING) {
+        return false;
+    }
     runtime->pending.push_back(impulse);
     return true;
 }
 
 bool QueueWaterSurfaceInteraction(Scene& scene, EntityID owner, math::Vector3 worldPosition, float strength)
 {
-    if (!Finite(worldPosition) || !std::isfinite(strength) || strength <= 0 || strength > 1) return false;
+    if (!Finite(worldPosition) || !std::isfinite(strength) || strength <= 0 || strength > 1) {
+        return false;
+    }
     WaterComponent* water = OwnerWater(scene, owner);
     const GameObject* object = scene.GetGameObject(owner);
-    if (!water || !object) return false;
+    if (!water || !object) {
+        return false;
+    }
     const auto& pose = WaterSurfaceTransform(*water, object->transform, WaterSurfaceReadView::SIMULATION);
     WaterSurfaceHeightSample sample;
     if (!TrySampleWaterSurfaceHeightWorld(*water, pose, worldPosition, Time::time,
-            sample, WaterSurfaceReadView::SIMULATION) || !sample.insideSurface || sample.excluded) return false;
+            sample, WaterSurfaceReadView::SIMULATION) || !sample.insideSurface || sample.excluded) {
+        return false;
+    }
     return QueueWaterInteraction(scene, owner, {WaterInteractionKind::SURFACE_FOAM,
         sample.position, {}, 0.3f, strength, water->interactionSettings.bubbleLifetime, false});
 }
 
 void BeginWaterInteractionPhysicsStep(Scene& scene, float fixedDt)
 {
-    if (!Positive(fixedDt)) return;
+    if (!Positive(fixedDt)) {
+        return;
+    }
     auto store = ExistingStore(scene);
-    if (!store || store->invalidated) return;
+    if (!store || store->invalidated) {
+        return;
+    }
     ++store->physicsStep;
     store->accumulatedDt += fixedDt;
 }
@@ -330,22 +378,33 @@ void BeginWaterInteractionPhysicsStep(Scene& scene, float fixedDt)
 void SupplyWaterMotionImpulse(Scene& scene, EntityID owner, EntityID body,
     math::Vector3 worldPosition, math::Vector3 worldVelocity, float dt, bool nearSurface, bool emitSurfaceRipple)
 {
-    if (!Positive(dt) || !Finite(worldPosition) || !Finite(worldVelocity)) return;
+    if (!Positive(dt) || !Finite(worldPosition) || !Finite(worldVelocity)) {
+        return;
+    }
     WaterComponent* water = OwnerWater(scene, owner);
-    if (!water || !water->interactionSettings.enabled || !ValidSettings(water->interactionSettings)) return;
+    if (!water || !water->interactionSettings.enabled || !ValidSettings(water->interactionSettings)) {
+        return;
+    }
     const uint64_t bodyLifetime = scene.GetComponentLifetime<RigidBodyComponent>(body);
-    if (!bodyLifetime) return;
+    if (!bodyLifetime) {
+        return;
+    }
     auto* runtime = Runtime(scene, owner, *water);
-    if (!runtime) return;
+    if (!runtime) {
+        return;
+    }
     auto& store = *runtime->sceneStore;
     auto found = store.bodies.find(Key(body));
     if (found == store.bodies.end()) {
-        if (store.bodies.size() >= WATER_INTERACTION_MAX_TRACKED_BODIES) return;
+        if (store.bodies.size() >= WATER_INTERACTION_MAX_TRACKED_BODIES) {
+            return;
+        }
         found = store.bodies.emplace(Key(body), BodyEntry{}).first;
     }
     auto& tracked = found->second;
-    if (tracked.lifetime != bodyLifetime || tracked.owner != owner || tracked.ownerLifetime != runtime->ownerLifetime)
+    if (tracked.lifetime != bodyLifetime || tracked.owner != owner || tracked.ownerLifetime != runtime->ownerLifetime) {
         tracked = BodyEntry{body, bodyLifetime, owner, runtime->ownerLifetime};
+    }
     tracked.seenFrame = store.cleanupFrame;
     tracked.velocity = worldVelocity;
     tracked.motionTimer = (std::max)(tracked.motionTimer - dt, 0.0f);
@@ -353,28 +412,42 @@ void SupplyWaterMotionImpulse(Scene& scene, EntityID owner, EntityID body,
     const double speedSquared = static_cast<double>(worldVelocity.x) * worldVelocity.x
         + static_cast<double>(worldVelocity.y) * worldVelocity.y + static_cast<double>(worldVelocity.z) * worldVelocity.z;
     if (speedSquared < static_cast<double>(water->interactionSettings.minimumMotionSpeed)
-            * water->interactionSettings.minimumMotionSpeed || tracked.motionTimer > 0) return;
+            * water->interactionSettings.minimumMotionSpeed || tracked.motionTimer > 0) {
+        return;
+    }
     const float strength = (std::min)(static_cast<float>(std::sqrt(speedSquared) / 12.0), 0.5f);
     WaterInteractionImpulse impulse{nearSurface ? WaterInteractionKind::SURFACE_FOAM : WaterInteractionKind::BUBBLES,
         worldPosition, worldVelocity * 0.1f, nearSurface ? 0.3f : 0.12f, strength,
         water->interactionSettings.bubbleLifetime, emitSurfaceRipple};
-    if (QueueWaterInteraction(scene, owner, impulse)) tracked.motionTimer = water->interactionSettings.motionInterval;
+    if (QueueWaterInteraction(scene, owner, impulse)) {
+        tracked.motionTimer = water->interactionSettings.motionInterval;
+    }
 }
 
 void SupplyWaterGroundContact(Scene& scene, EntityID body, math::Vector3 worldPoint, math::Vector3 worldNormal,
     float approachSpeed)
 {
-    if (!Finite(worldPoint) || !Finite(worldNormal) || !std::isfinite(approachSpeed) || approachSpeed < 0) return;
+    if (!Finite(worldPoint) || !Finite(worldNormal) || !std::isfinite(approachSpeed) || approachSpeed < 0) {
+        return;
+    }
     const double lengthSquared = static_cast<double>(worldNormal.x) * worldNormal.x
         + static_cast<double>(worldNormal.y) * worldNormal.y + static_cast<double>(worldNormal.z) * worldNormal.z;
-    if (lengthSquared <= 1.0e-12 || worldNormal.y / std::sqrt(lengthSquared) < 0.5) return;
+    if (lengthSquared <= 1.0e-12 || worldNormal.y / std::sqrt(lengthSquared) < 0.5) {
+        return;
+    }
     const auto store = ExistingStore(scene);
-    if (!store || store->invalidated) return;
+    if (!store || store->invalidated) {
+        return;
+    }
     const auto found = store->bodies.find(Key(body));
-    if (found == store->bodies.end()) return;
+    if (found == store->bodies.end()) {
+        return;
+    }
     auto& tracked = found->second;
     if (tracked.lifetime != scene.GetComponentLifetime<RigidBodyComponent>(body)
-        || tracked.seenFrame + 1 < store->cleanupFrame) return;
+        || tracked.seenFrame + 1 < store->cleanupFrame) {
+        return;
+    }
     tracked.contactPoint = worldPoint;
     tracked.contactNormal = worldNormal;
     tracked.contactFrame = store->cleanupFrame;
@@ -393,14 +466,19 @@ void ResetWaterInteractionRuntime(WaterComponent& water) { water.interactionRunt
 void ClearWaterInteractions(Scene& scene)
 {
     auto store = ExistingStore(scene);
-    if (!store) return;
+    if (!store) {
+        return;
+    }
     for (const auto& row : store->owners) {
         Retire(scene, row.second);
         if (auto* water = scene.GetComponent<WaterComponent>(row.second.id))
-            if (scene.GetComponentLifetime<WaterComponent>(row.second.id) == row.second.lifetime)
+            if (scene.GetComponentLifetime<WaterComponent>(row.second.id) == row.second.lifetime) {
                 ResetWaterInteractionRuntime(*water);
+            }
     }
-    for (const auto& row : store->retired) Retire(scene, row);
+    for (const auto& row : store->retired) {
+        Retire(scene, row);
+    }
     store->owners.clear();
     store->bodies.clear();
     store->retired.clear();
@@ -411,44 +489,65 @@ void ClearWaterInteractions(Scene& scene)
 void WaterInteractionSystem::Update(SystemContext& context)
 {
     auto& scene = context.scene;
-    if (m_store && m_store->generation != scene.GetRenderSceneGeneration()) m_store->invalidated = true;
+    if (m_store && m_store->generation != scene.GetRenderSceneGeneration()) {
+        m_store->invalidated = true;
+    }
     m_store = ExistingStore(scene);
-    if (!m_store) return;
+    if (!m_store) {
+        return;
+    }
     if (!context.playing) { ClearWaterInteractions(scene); m_store.reset(); return; }
-    if (m_store->invalidated) m_store = AcquireStore(scene);
+    if (m_store->invalidated) {
+        m_store = AcquireStore(scene);
+    }
     const auto store = m_store;
-    for (const auto& row : store->retired) Retire(scene, row);
+    for (const auto& row : store->retired) {
+        Retire(scene, row);
+    }
     store->retired.clear();
     std::vector<OwnerEntry> owners;
     owners.reserve(store->owners.size());
-    for (const auto& row : store->owners) owners.push_back(row.second);
+    for (const auto& row : store->owners) {
+        owners.push_back(row.second);
+    }
     std::sort(owners.begin(), owners.end(), [](const auto& a, const auto& b) { return Key(a.id) < Key(b.id); });
     if (!context.simulating || !Positive(context.dt)) {
         for (const auto& owner : owners) {
             auto* water = scene.GetComponent<WaterComponent>(owner.id);
             const auto* object = scene.GetGameObject(owner.id);
-            if (water && object && scene.GetComponentLifetime<WaterComponent>(owner.id) == owner.lifetime
-                && water->enabled && object->activeInHierarchy() && water->interactionSettings.enabled
-                && ValidSettings(water->interactionSettings)) continue;
+            // 一時停止中でも、同じ所有元で水面への接触を処理できる間は状態を保持する。
+            const bool sameOwner = water && object && scene.GetComponentLifetime<WaterComponent>(owner.id) == owner.lifetime;
+            if (sameOwner && water->enabled && object->activeInHierarchy() && water->interactionSettings.enabled
+                && ValidSettings(water->interactionSettings)) {
+                continue;
+            }
+
             Retire(scene, owner);
-            if (water && scene.GetComponentLifetime<WaterComponent>(owner.id) == owner.lifetime)
+            if (water && scene.GetComponentLifetime<WaterComponent>(owner.id) == owner.lifetime) {
                 ResetWaterInteractionRuntime(*water);
+            }
             store->owners.erase(Key(owner.id));
         }
         return;
     }
     for (auto& row : store->bodies) {
         auto& body = row.second;
-        if (!body.hasContact) continue;
+        if (!body.hasContact) {
+            continue;
+        }
         body.hasContact = false;
         const float approachSpeed = body.approachSpeed;
         body.approachSpeed = 0;
         const GameObject* bodyObject = scene.GetGameObject(body.id);
         if (body.contactFrame != store->cleanupFrame || body.sedimentTimer > 0
             || !bodyObject || !bodyObject->activeInHierarchy()
-            || body.lifetime != scene.GetComponentLifetime<RigidBodyComponent>(body.id)) continue;
+            || body.lifetime != scene.GetComponentLifetime<RigidBodyComponent>(body.id)) {
+            continue;
+        }
         WaterComponent* water = scene.GetComponent<WaterComponent>(body.owner);
-        if (!water || body.ownerLifetime != scene.GetComponentLifetime<WaterComponent>(body.owner)) continue;
+        if (!water || body.ownerLifetime != scene.GetComponentLifetime<WaterComponent>(body.owner)) {
+            continue;
+        }
         const double tangentSpeedSquared = static_cast<double>(body.velocity.x) * body.velocity.x
             + static_cast<double>(body.velocity.z) * body.velocity.z;
         if (tangentSpeedSquared >= static_cast<double>(water->interactionSettings.sedimentMinimumSpeed)
@@ -456,8 +555,9 @@ void WaterInteractionSystem::Update(SystemContext& context)
             || approachSpeed >= water->interactionSettings.sedimentMinimumSpeed) {
             WaterInteractionImpulse impulse{WaterInteractionKind::SEDIMENT, body.contactPoint,
                 body.velocity * 0.05f, 0.4f, 0.35f, water->interactionSettings.sedimentLifetime};
-            if (QueueWaterInteraction(scene, body.owner, impulse))
+            if (QueueWaterInteraction(scene, body.owner, impulse)) {
                 body.sedimentTimer = water->interactionSettings.sedimentInterval;
+            }
         }
     }
     const float dt = static_cast<float>((std::min)(store->accumulatedDt > 0 ? store->accumulatedDt : context.dt, 60.0));
@@ -479,8 +579,9 @@ void WaterInteractionSystem::Update(SystemContext& context)
             continue;
         }
         Runtime(scene, owner.id, *water);
-        for (size_t index = 0; index < water->interactionRuntime.emitters.size(); ++index)
+        for (size_t index = 0; index < water->interactionRuntime.emitters.size(); ++index) {
             PruneParticles(scene, owner.id, index == 1u, dt, water->interactionRuntime.emitters[index]);
+        }
         bool changed = false;
         std::vector<WaterInteractionImpulse> pending;
         {
@@ -497,7 +598,9 @@ void WaterInteractionSystem::Update(SystemContext& context)
                 }
                 plume.worldPosition = plume.worldPosition + (plume.worldVelocity + sample.flowVelocity) * dt;
                 plume.density *= std::exp(-dt * 3.0f / plume.lifetime);
-                if (!Finite(plume.worldPosition)) plume.age = plume.lifetime;
+                if (!Finite(plume.worldPosition)) {
+                    plume.age = plume.lifetime;
+                }
             }
             std::erase_if(runtime.active, [](const auto& plume) { return plume.age >= plume.lifetime || plume.density < 0.001f; });
             pending = std::move(runtime.pending);
@@ -507,25 +610,38 @@ void WaterInteractionSystem::Update(SystemContext& context)
         for (const auto& impulse : pending) {
             water = scene.GetComponent<WaterComponent>(owner.id);
             object = scene.GetGameObject(owner.id);
-            if (!water || !object || scene.GetComponentLifetime<WaterComponent>(owner.id) != owner.lifetime) break;
-            if (!Allowed(scene, owner.id, impulse)) continue;
+            if (!water || !object || scene.GetComponentLifetime<WaterComponent>(owner.id) != owner.lifetime) {
+                break;
+            }
+            if (!Allowed(scene, owner.id, impulse)) {
+                continue;
+            }
             const bool sediment = impulse.kind == WaterInteractionKind::SEDIMENT;
             {
                 auto& active = water->interactionRuntime.active;
-                if (active.size() >= WATER_INTERACTION_MAX_ACTIVE) active.erase(active.begin());
+                if (active.size() >= WATER_INTERACTION_MAX_ACTIVE) {
+                    active.erase(active.begin());
+                }
                 active.push_back({impulse.kind, impulse.worldPosition, impulse.worldVelocity,
                     sediment ? water->interactionSettings.sedimentScattering : math::Vector3{},
                     impulse.radius, impulse.strength, 0, impulse.lifetime});
             }
-            if (impulse.kind == WaterInteractionKind::SURFACE_FOAM && impulse.emitSurfaceRipple)
+            if (impulse.kind == WaterInteractionKind::SURFACE_FOAM && impulse.emitSurfaceRipple) {
                 EmitWaterRipple(*water, object->transform, impulse.worldPosition, impulse.strength);
+            }
             ParticleEmitter* emitter = EnsureEmitter(scene, owner.id, sediment ? 1u : 0u);
             water = scene.GetComponent<WaterComponent>(owner.id);
-            if (!emitter || !water) continue;
+            if (!emitter || !water) {
+                continue;
+            }
             const size_t occupied = emitter->runtime.particles.size();
             size_t queued = 0;
-            for (const auto& spawn : emitter->runtime.injectedSpawns) queued += static_cast<size_t>(spawn.count);
-            if (occupied + queued >= WATER_INTERACTION_MAX_PARTICLES) continue;
+            for (const auto& spawn : emitter->runtime.injectedSpawns) {
+                queued += static_cast<size_t>(spawn.count);
+            }
+            if (occupied + queued >= WATER_INTERACTION_MAX_PARTICLES) {
+                continue;
+            }
             const int count = (std::min)(static_cast<int>(WATER_INTERACTION_MAX_PARTICLES - occupied - queued),
                 static_cast<int>(2 + impulse.strength * 8));
             const auto velocity = impulse.worldVelocity
@@ -533,7 +649,9 @@ void WaterInteractionSystem::Update(SystemContext& context)
             emitter->runtime.injectedSpawns.push_back({impulse.worldPosition, velocity, count, impulse.lifetime});
         }
         water = scene.GetComponent<WaterComponent>(owner.id);
-        if (water && changed) Publish(water->interactionRuntime);
+        if (water && changed) {
+            Publish(water->interactionRuntime);
+        }
     }
     ++store->cleanupFrame;
     std::erase_if(store->bodies, [&](const auto& row) {

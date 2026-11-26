@@ -15,8 +15,7 @@ struct RagdollDefinition {
     bool definitionsOnly = true;
     std::vector<RagdollBodyDefinition> bodies;
     std::vector<RagdollCollisionExclusion> collisionExclusions;
-    /// @note 読み込んだ内容の署名。他アセットの再読込で同一の物理を組み直さないために使う。
-    std::uint64_t signature = 0;
+    std::uint64_t signature = 0; ///< 読み込んだ内容の署名。他アセットの再読込で同一の物理を組み直さないために使う。
 };
 
 /// @note version=1 の TOML。角度は degrees、寸法は m、質量は kg、慣性は kg·m²、駆動周波数は Hz。

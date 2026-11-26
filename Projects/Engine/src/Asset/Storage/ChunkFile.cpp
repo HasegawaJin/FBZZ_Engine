@@ -35,7 +35,9 @@ constexpr std::array<uint32_t, 256> MakeCrcTable()
     std::array<uint32_t, 256> table{};
     for (uint32_t n = 0; n < 256; ++n) {
         uint32_t c = n;
-        for (int k = 0; k < 8; ++k) c = (c & 1u) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+        for (int k = 0; k < 8; ++k) {
+            c = (c & 1u) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+        }
         table[n] = c;
     }
     return table;
@@ -65,7 +67,9 @@ public:
     detail::AtomicWriteError CreateParent()
     {
         std::error_code error;
-        if (!m_target.parent_path().empty()) std::filesystem::create_directories(m_target.parent_path(), error);
+        if (!m_target.parent_path().empty()) {
+            std::filesystem::create_directories(m_target.parent_path(), error);
+        }
         return {error};
     }
 
@@ -73,7 +77,7 @@ public:
     {
         static std::atomic<uint64_t> serial{0};
         detail::AtomicWriteError failure;
-        /// @note 排他的な作成では残留ファイルや他のライターの一時ファイルを切り詰めない。名前が衝突した場合だけ別の名前を試す。
+        // 排他的な作成では残留ファイルや他のライターの一時ファイルを切り詰めない。名前が衝突した場合だけ別の名前を試す。
         /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fopen-s-wfopen-s C11 の x による排他的な作成モード。
         for (unsigned attempt = 0; attempt < 8; ++attempt) {
             m_temporary = m_target;
@@ -81,27 +85,37 @@ public:
                          + L"_" + std::to_wstring(serial.fetch_add(1, std::memory_order_relaxed));
             ResetCrtFailure();
             const int code = _wfopen_s(&m_file, m_temporary.c_str(), L"wbx");
-            if (code == 0 && m_file) return {};
+            if (code == 0 && m_file) {
+                return {};
+            }
             failure = CrtFailure(code);
-            if (code != EEXIST) break;
+            if (code != EEXIST) {
+                break;
+            }
         }
         return failure;
     }
 
     detail::AtomicWriteError Write(const void* bytes, std::size_t size)
     {
-        if (size == 0) return {};
+        if (size == 0) {
+            return {};
+        }
         ResetCrtFailure();
-        if (std::fwrite(bytes, 1, size, m_file) == size) return {};
+        if (std::fwrite(bytes, 1, size, m_file) == size) {
+            return {};
+        }
         return CrtFailure();
     }
 
     detail::AtomicWriteError Flush()
     {
         ResetCrtFailure();
-        /// @note 閉じる前に CRT バッファをフラッシュする。電源断に対する永続化は保証しない。
+        // 閉じる前に CRT バッファをフラッシュする。電源断に対する永続化は保証しない。
         /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fflush fflush の戻り値。
-        if (std::fflush(m_file) == 0) return {};
+        if (std::fflush(m_file) == 0) {
+            return {};
+        }
         return CrtFailure();
     }
 
@@ -123,7 +137,7 @@ public:
     detail::AtomicWriteError Cleanup()
     {
         std::error_code error;
-        /// @note 後始末するのは、この呼び出しで排他的に作成したパスだけ。他の一時ファイルを探したり削除したりしない。
+        // 後始末するのは、この呼び出しで排他的に作成したパスだけ。他の一時ファイルを探したり削除したりしない。
         std::filesystem::remove(m_temporary, error);
         return {error};
     }
@@ -142,7 +156,9 @@ void ReportAtomicFailure(const std::string& path, const NativeAtomicChunkIo& io,
     const std::string target = path;
     const std::string temporary = util::FileSystem::PathToUtf8(io.TemporaryPath());
     const auto report = [&](const char* stage, const detail::AtomicWriteError& error) {
-        if (!error) return;
+        if (!error) {
+            return;
+        }
         FBZZ_LOG_WARN("ChunkFileWriter: stage=%s target='%s' temporary='%s' error=%d category=%s native=%lu message='%s'",
             stage, target.c_str(), temporary.c_str(), error.code.value(), error.code.category().name(),
             error.nativeCode, error.code.message().c_str());
@@ -156,12 +172,14 @@ void ReportAtomicFailure(const std::string& path, const NativeAtomicChunkIo& io,
     report("cleanup", result.cleanup);
 }
 
-} /// @note namespace
+} // namespace
 
 uint32_t Crc32(std::span<const uint8_t> bytes)
 {
     uint32_t c = 0xFFFFFFFFu;
-    for (const uint8_t b : bytes) c = kCrcTable[(c ^ b) & 0xFFu] ^ (c >> 8);
+    for (const uint8_t b : bytes) {
+        c = kCrcTable[(c ^ b) & 0xFFu] ^ (c >> 8);
+    }
     return c ^ 0xFFFFFFFFu;
 }
 
@@ -194,14 +212,20 @@ bool ChunkFileWriter::WriteAtomically(const std::string& path, uint32_t contentK
     NativeAtomicChunkIo io(util::FileSystem::PathFromUtf8(path));
     const auto result = detail::WriteAtomicChunkFile(io, [&](NativeAtomicChunkIo& output) {
         auto error = output.Write(&header, sizeof(header));
-        if (!error) error = output.Write(entries.data(), sizeof(FzChunkEntry) * entries.size());
+        if (!error) {
+            error = output.Write(entries.data(), sizeof(FzChunkEntry) * entries.size());
+        }
         for (const auto& chunk : m_chunks) {
-            if (error) break;
+            if (error) {
+                break;
+            }
             error = output.Write(chunk.bytes.data(), chunk.bytes.size());
         }
         return error;
     });
-    if (!result.published) ReportAtomicFailure(path, io, result);
+    if (!result.published) {
+        ReportAtomicFailure(path, io, result);
+    }
     return result.published;
 }
 
@@ -212,12 +236,14 @@ bool BinaryReader::OpenReplaceableChunkStream(const std::string& path)
     pos = 0;
     bytesRead = 0;
     const auto nativePath = util::FileSystem::PathFromUtf8(path);
-    /// @note リーダーは削除や名前変更を許可し、元のファイルへの直接書き込みを禁止する。置換後も開いていた元のファイルを読み続ける。
+    // リーダーは削除や名前変更を許可し、元のファイルへの直接書き込みを禁止する。置換後も開いていた元のファイルを読み続ける。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew FILE_SHARE_DELETE による名前変更の許可。
     const HANDLE file = ::CreateFileW(nativePath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
         nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return false;
-    /// @note 所有権は HANDLE から CRT 記述子を経て FILE へ移る。移譲に成功した時点の所有者だけが閉じる。
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    // 所有権は HANDLE から CRT 記述子を経て FILE へ移る。移譲に成功した時点の所有者だけが閉じる。
     /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle _open_osfhandle による所有権の移譲。
     const int descriptor = _open_osfhandle(std::bit_cast<std::intptr_t>(file), _O_RDONLY | _O_BINARY);
     if (descriptor == -1) {
@@ -241,25 +267,36 @@ bool ChunkFileReader::Open(const std::string& path)
 {
     m_entries.clear();
     m_header = {};
-    if (!m_reader.OpenReplaceableChunkStream(path)) return false;
+    if (!m_reader.OpenReplaceableChunkStream(path)) {
+        return false;
+    }
     const auto fail = [&] { m_reader.Close(); return false; };
     FzChunkFileHeader header{};
-    if (!m_reader.Read(header)) return fail();
-    if (header.magic[0] != 'F' || header.magic[1] != 'Z' || header.magic[2] != 'C' || header.magic[3] != 'K'
-        || header.version != FZCHUNK_VERSION)
+    if (!m_reader.Read(header)) {
         return fail();
-    /// @note 壊れた数で巨大な確保をしない。索引がファイルに収まるかを先に確かめる。
+    }
+    if (header.magic[0] != 'F' || header.magic[1] != 'Z' || header.magic[2] != 'C' || header.magic[3] != 'K'
+        || header.version != FZCHUNK_VERSION) {
+        return fail();
+    }
+    // 壊れた数で巨大な確保をしない。索引がファイルに収まるかを先に確かめる。
     const uint64_t indexBytes = static_cast<uint64_t>(header.chunkCount) * sizeof(FzChunkEntry);
     const uint64_t payloadStart = sizeof(FzChunkFileHeader) + indexBytes;
     const uint64_t fileSize = m_reader.Size();
-    if (payloadStart > fileSize) return fail();
+    if (payloadStart > fileSize) {
+        return fail();
+    }
     std::vector<FzChunkEntry> entries(header.chunkCount);
-    if (!m_reader.ReadBytes(entries.data(), static_cast<std::size_t>(indexBytes))) return fail();
-    /// @note 非負の残量で比較し、offset + storedSize の桁あふれを避ける。v1 の無圧縮本体は索引の後に置く。
+    if (!m_reader.ReadBytes(entries.data(), static_cast<std::size_t>(indexBytes))) {
+        return fail();
+    }
+    // 非負の残量で比較し、offset + storedSize の桁あふれを避ける。v1 の無圧縮本体は索引の後に置く。
     for (const FzChunkEntry& entry : entries)
         if (entry.offset < payloadStart || entry.offset > fileSize || entry.storedSize > fileSize - entry.offset
-            || entry.flags != FZCHUNK_FLAG_STORED || entry.rawSize != entry.storedSize) return fail();
-    /// @note 一件でも壊れていたら Find / ReadChunk から検証途中の索引を参照させない。
+            || entry.flags != FZCHUNK_FLAG_STORED || entry.rawSize != entry.storedSize) {
+            return fail();
+        }
+    // 一件でも壊れていたら Find / ReadChunk から検証途中の索引を参照させない。
     m_header = header;
     m_entries = std::move(entries);
     return true;
@@ -268,17 +305,23 @@ bool ChunkFileReader::Open(const std::string& path)
 const FzChunkEntry* ChunkFileReader::Find(uint32_t id) const
 {
     for (const FzChunkEntry& entry : m_entries)
-        if (entry.id == id) return &entry;
+        if (entry.id == id) {
+            return &entry;
+        }
     return nullptr;
 }
 
 bool ChunkFileReader::ReadChunk(uint32_t id, std::vector<uint8_t>& out)
 {
     const FzChunkEntry* entry = Find(id);
-    if (!entry || !m_reader.Seek(entry->offset)) return false;
+    if (!entry || !m_reader.Seek(entry->offset)) {
+        return false;
+    }
     out.resize(static_cast<std::size_t>(entry->storedSize));
-    if (!m_reader.ReadBytes(out.data(), out.size())) return false;
+    if (!m_reader.ReadBytes(out.data(), out.size())) {
+        return false;
+    }
     return Crc32(out) == entry->checksum;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

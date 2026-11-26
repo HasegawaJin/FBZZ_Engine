@@ -28,7 +28,9 @@ protected:
         ai::BTNodeDef node; node.id = 1; node.type = type; node.duration = duration;
         ai::BehaviorTreeAsset asset; asset.nodes.push_back(node);
         auto runtime = std::make_shared<ai::BehaviorTreeRuntime>();
-        if (!ai::CompileBehaviorTree(asset, *runtime)) return false;
+        if (!ai::CompileBehaviorTree(asset, *runtime)) {
+            return false;
+        }
         auto& bt = object.AddComponent<scene::BehaviorTreeComponent>();
         bt.runtime = runtime; bt.initialized = true; bt.loadedTreePath = bt.treePath;
         bt.blackboard.Reset(runtime->blackboard); bt.state.Resize(runtime->NodeCount());

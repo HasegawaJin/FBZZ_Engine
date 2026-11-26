@@ -12,7 +12,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptWindProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 風操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetDirection(const math::Vector3& direction) const;
@@ -22,4 +22,4 @@ struct ScriptWindProxy {
     FBZZ_ENGINE_API void SetPulseFrequency(float frequency) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

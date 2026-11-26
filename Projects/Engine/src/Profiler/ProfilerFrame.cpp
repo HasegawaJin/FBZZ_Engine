@@ -19,13 +19,13 @@ detail::ApplicationFrameElapsedModeWitness FrameElapsedMode()
         Profiler::GetSnapshot().captureSessionId, scene::ScriptProfiler::GetSnapshot().captureSessionId,
         scene::ScriptProfiler::GetRuntimeEpoch(), scene::ScriptProfiler::GetDllGeneration()};
 }
-} /// @note namespace
+} // namespace
 namespace detail {
 uint64_t ArmApplicationFrameElapsedObserver() { return s_frameElapsedObserver.Arm(); }
 void RequestStopApplicationFrameElapsedObserver() { s_frameElapsedObserver.RequestStop(); }
 ApplicationFrameElapsedSnapshot ReadApplicationFrameElapsedObserver() { return s_frameElapsedObserver.Read(); }
 void MarkApplicationFrameElapsedAborted() { s_frameElapsedObserver.MarkAborted(); }
-} /// @note namespace detail
+} // namespace detail
 
 void BeginApplicationProfileFrame(const renderer::ResourceManager* resources)
 {
@@ -47,7 +47,9 @@ void EndApplicationProfileFrame()
     const double endMs = observed ? ProfileRecorder::NowMs() : 0.0;
     frame_timeline::EndApplicationFrame(endMs);
     Profiler::EndFrame();
-    if (observed) s_frameElapsedObserver.End(endMs, FrameElapsedMode());
+    if (observed) {
+        s_frameElapsedObserver.End(endMs, FrameElapsedMode());
+    }
 }
 
-} /// @note namespace fbzz::profiler
+} // namespace fbzz::profiler

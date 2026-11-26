@@ -18,9 +18,9 @@ namespace fbzz::asset {
 class AssetLeaseSet {
 public:
     struct Progress {
-        std::uint32_t total = 0;
-        std::uint32_t ready = 0;
-        std::uint32_t failed = 0;
+        std::uint32_t total = 0; ///< このセットが進捗を追っている利用権の総数。
+        std::uint32_t ready = 0; ///< このセットのうち公開済みになったアセット数。
+        std::uint32_t failed = 0; ///< このセットのうち失敗状態にあるアセット数。
         /// @note 失敗も «待つ必要が無い» に数える。
         [[nodiscard]] bool IsSettled() const { return ready + failed >= total; }
     };
@@ -49,12 +49,12 @@ public:
 
 private:
     struct Held {
-        std::uint64_t  leaseId = 0;
-        std::string    typeName;
-        RawAssetHandle handle;
+        std::uint64_t  leaseId = 0; ///< 台帳で追跡するアセット要求の利用権 ID。
+        std::string    typeName; ///< 型を消去した処理で経路を識別する登録型名。
+        RawAssetHandle handle; ///< 型別のアセットを台帳で照会するためのストア内ハンドル。
     };
-    AssetStreamer*    m_streamer = nullptr;
-    std::vector<Held> m_leases;
+    AssetStreamer*    m_streamer = nullptr; ///< この利用権集合が参照するストリーマーの非所有参照。
+    std::vector<Held> m_leases; ///< セットの寿命中に保持し、まとめて解除する利用権の列。
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

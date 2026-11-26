@@ -69,5 +69,5 @@ private:
     uint32_t m_epoch = 0;
 };
 
-} /// @note namespace managed_detail
-} /// @note namespace fbzz::scene
+} // namespace managed_detail
+} // namespace fbzz::scene

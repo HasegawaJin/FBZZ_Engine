@@ -49,16 +49,11 @@ enum class WaterSurfaceShape : std::uint8_t {
 
 /// @brief 湖の外周または河川の中心線を表す安定 ID 付きの制御点。
 struct WaterSplinePoint {
-    /// @brief 点の並べ替えで変わらない非ゼロの識別子。
-    std::uint32_t id = 0;
-    /// @brief コンポーネントのローカル座標 [m]。
-    math::Vector3 localPosition = math::Vector3::ZERO;
-    /// @brief 河川の全幅 [ローカル m]。湖では使わないが有限値が必要。
-    float width = 0.0f;
-    /// @brief コンポーネントの上限適用前の水柱の深さ [ワールド m]。
-    float depth = 0.0f;
-    /// @brief スプライン接線方向の符号付き流速 [ワールド m/s]。
-    float flowSpeed = 0.0f;
+    std::uint32_t id = 0; ///< 点の並べ替えで変わらない非ゼロの識別子。
+    math::Vector3 localPosition = math::Vector3::ZERO; ///< コンポーネントのローカル座標 [m]。
+    float width = 0.0f; ///< 河川の全幅 [ローカル m]。湖では使わないが有限値が必要。
+    float depth = 0.0f; ///< コンポーネントの上限適用前の水柱の深さ [ワールド m]。
+    float flowSpeed = 0.0f; ///< スプライン接線方向の符号付き流速 [ワールド m/s]。
 
     /// @brief 制作とシーン保存に使う安定した制御点フィールドを反射する。
     void Reflect(IReflector& reflector);
@@ -82,10 +77,10 @@ struct WaterSplineVertex {
     math::Vector3 worldVelocity = math::Vector3::ZERO;
     float baseHeightOffset = 0.0f;
     float depth = 0.0f;
-    float riverDistance = 0.0f; ///< @note 河川中心線の始点からサンプルに沿った距離 [ワールド m]。
+    float riverDistance = 0.0f; ///< 河川中心線の始点からサンプルに沿った距離 [ワールド m]。
     float horizonMaterialWeight = 0.0f;
-    float riverTravelTime = 0.0f; ///< @note 河川中心線に沿う基本波の符号付き伝播時間 [s]。
-    float riverShortTravelTime = 0.0f; ///< @note 河川中心線に沿う短波長帯の符号付き伝播時間 [s]。
+    float riverTravelTime = 0.0f; ///< 河川中心線に沿う基本波の符号付き伝播時間 [s]。
+    float riverShortTravelTime = 0.0f; ///< 河川中心線に沿う短波長帯の符号付き伝播時間 [s]。
 };
 
 /// @brief 共有水面スナップショットの三角形。
@@ -109,10 +104,8 @@ struct WaterSplineSnapshot {
     WaterSurfaceShape shape = WaterSurfaceShape::RECTANGLE;
     std::vector<WaterSplineVertex> vertices;
     std::vector<WaterSplineTriangle> triangles;
-    /// @brief 共有辺の細分化前に保持する水面範囲の三角形分割。
-    std::vector<WaterSplineTriangle> footprintTriangles;
-    /// @note BuildWaterSplineSnapshot は左岸を点順、右岸を逆順で格納する。
-    std::vector<std::uint32_t> outlineIndices;
+    std::vector<WaterSplineTriangle> footprintTriangles; ///< 共有辺の細分化前に保持する水面範囲の三角形分割。
+    std::vector<std::uint32_t> outlineIndices; ///< BuildWaterSplineSnapshot は左岸を点順、右岸を逆順で格納する。
     std::vector<std::vector<math::Vector3>> islandOutlines;
     std::vector<WaterSplineBvhNode> bvhNodes;
     std::vector<std::uint32_t> triangleOrder;
@@ -125,8 +118,8 @@ struct WaterSplineSnapshot {
     float maximumBaseHeightOffset = 0.0f;
     float maximumDepth = 0.0f;
     float maximumWorldEdgeLength = 0.0f;
-    float riverWaveReferenceSpeed = 0.0f; ///< @note 弧長で重み付けした基本波の位相速度の大きさ [m/s]。
-    math::Vector4 horizonMouth{}; ///< @note ワールド XZ の中心と平坦部・フェード部の半径 [m]。
+    float riverWaveReferenceSpeed = 0.0f; ///< 弧長で重み付けした基本波の位相速度の大きさ [m/s]。
+    math::Vector4 horizonMouth{}; ///< ワールド XZ の中心と平坦部・フェード部の半径 [m]。
     bool meshQualityLimited = false;
     std::uint64_t signature = 0;
 };
@@ -143,7 +136,7 @@ struct WaterSplineSample {
 };
 
 /// @brief 水面形状と UV マッピングに使うコンポーネント中心基準のローカル XZ の広がりを返す。
-/// @param water 選択形状で平面範囲が決まる水面。
+/// @param[in] water 選択形状で平面範囲が決まる水面。
 /// @return 制作時の矩形範囲、またはスプラインの対称なローカル境界の広がり。
 [[nodiscard]] FBZZ_ENGINE_API math::Vector2 WaterSurfaceLocalExtent(const WaterComponent& water,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
@@ -163,31 +156,31 @@ struct WaterSplineSample {
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @brief 選択した水面ジオメトリと同時に確定した所有者の姿勢を返す。
-/// @param water シミュレーション姿勢を保持する Water コンポーネント。
-/// @param currentTransform LIVE_QUERY または初回のシミュレーション公開前に使う現在の姿勢。
-/// @param view 姿勢を読むジオメトリの境界。
+/// @param[in] water シミュレーション姿勢を保持する Water コンポーネント。
+/// @param[in] currentTransform LIVE_QUERY または初回のシミュレーション公開前に使う現在の姿勢。
+/// @param[in] view 姿勢を読むジオメトリの境界。
 [[nodiscard]] FBZZ_ENGINE_API const Transform& WaterSurfaceTransform(const WaterComponent& water,
     const Transform& currentTransform, WaterSurfaceReadView view);
 
 /// @brief 選択した水面ジオメトリと同時に確定した Zone 所属を返す。
-/// @param water 現在とシミュレーションの所属を保持する Water コンポーネント。
-/// @param view Zone 所有者を読むジオメトリの境界。
+/// @param[in] water 現在とシミュレーションの所属を保持する Water コンポーネント。
+/// @param[in] view Zone 所有者を読むジオメトリの境界。
 [[nodiscard]] FBZZ_ENGINE_API EntityID WaterSurfaceZoneOwner(const WaterComponent& water,
     WaterSurfaceReadView view);
 
 /// @brief スプラインの UV とアトラスが使うローカル、拡縮後、回転後の共有範囲を検証する。
-/// @param snapshot ベイク済みのスプライン境界。
-/// @param transform 中心基準の境界を写すワールド姿勢。
+/// @param[in] snapshot ベイク済みのスプライン境界。
+/// @param[in] transform 中心基準の境界を写すワールド姿勢。
 /// @return すべての範囲が有限で float に収まるときだけ true。
 [[nodiscard]] FBZZ_ENGINE_API bool HasValidWaterSplineExtents(const WaterSplineSnapshot& snapshot, const Transform& transform);
 
 /// @brief スナップショットの構築に使う全制作値とワールド変換をハッシュする。
-/// @param shape 選択した湖または河川のスプライン形状。
-/// @param points コンポーネントのローカル空間にある安定 ID 付き制御点。
-/// @param samplesPerSegment 制御点区間あたりの Catmull-Rom サンプル数。
-/// @param transform 位置と流速ベクトルのベイクに使う現在のワールド変換。
-/// @param maximumWaterDepth 物理と描画が共有する全体の深さ上限。
-/// @param maximumWorldCellSize 共有辺を中点で細分化した後に求めるワールド空間の最大辺長。
+/// @param[in] shape 選択した湖または河川のスプライン形状。
+/// @param[in] points コンポーネントのローカル空間にある安定 ID 付き制御点。
+/// @param[in] samplesPerSegment 制御点区間あたりの Catmull-Rom サンプル数。
+/// @param[in] transform 位置と流速ベクトルのベイクに使う現在のワールド変換。
+/// @param[in] maximumWaterDepth 物理と描画が共有する全体の深さ上限。
+/// @param[in] maximumWorldCellSize 共有辺を中点で細分化した後に求めるワールド空間の最大辺長。
 /// @return キャッシュの失効判定に使う安定した署名。
 [[nodiscard]] FBZZ_ENGINE_API std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
     std::span<const WaterSplinePoint> points, std::uint32_t samplesPerSegment,
@@ -195,11 +188,11 @@ struct WaterSplineSample {
     float maximumWorldCellSize = 2.0f, std::span<const WaterLakeIslandPoint> islands = {});
 
 /// @brief 選択した湖または河川の上限付き三角形スナップショットを描画、照会、物理向けに構築する。
-/// @param points コンポーネントのローカル空間にある安定 ID 付き制御点。
-/// @param samplesPerSegment Catmull-Rom の分割数。切り詰めずに検証する。
-/// @param transform 位置と水平流速に使う、上下軸を保つワールド姿勢。
-/// @param maximumWaterDepth 物理と描画が共有するワールド空間の深さ上限。
-/// @param maximumWorldCellSize メッシュと波のサンプリングで共有する、細分化後のワールド辺長の目安。
+/// @param[in] points コンポーネントのローカル空間にある安定 ID 付き制御点。
+/// @param[in] samplesPerSegment Catmull-Rom の分割数。切り詰めずに検証する。
+/// @param[in] transform 位置と水平流速に使う、上下軸を保つワールド姿勢。
+/// @param[in] maximumWaterDepth 物理と描画が共有するワールド空間の深さ上限。
+/// @param[in] maximumWorldCellSize メッシュと波のサンプリングで共有する、細分化後のワールド辺長の目安。
 /// @return 無効または上限超過で false。out は未変更。成功時は out を一括で置き換える。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine Epic Games, Water Body Actors.
 [[nodiscard]] FBZZ_ENGINE_API bool BuildWaterSplineSnapshot(WaterSurfaceShape shape,
@@ -216,9 +209,9 @@ struct WaterSplineSample {
 [[nodiscard]] FBZZ_ENGINE_API bool RebuildWaterSplineSnapshotDerivedData(WaterSplineSnapshot& snapshot);
 
 /// @brief レンダラーが使う三角形水面をサンプリングする。
-/// @param snapshot 不変のワールド空間スプライン形状。
-/// @param worldX,worldZ 照会位置のワールド座標。
-/// @param out 成功時に補間した高さ、深さ、流速を格納する。
+/// @param[in] snapshot 不変のワールド空間スプライン形状。
+/// @param[in] worldX,worldZ 照会位置のワールド座標。
+/// @param[out] out 成功時に補間した高さ、深さ、流速を格納する。
 /// @return 水面範囲外、無効なスナップショット、無効な照会で false。out は未変更。
 [[nodiscard]] FBZZ_ENGINE_API bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot,
     float worldX, float worldZ, WaterSplineSample& out);

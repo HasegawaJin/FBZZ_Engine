@@ -31,11 +31,17 @@ constexpr float         kMarker       = 0.05f;
 /// @brief JointSync の相手探しを GameObject 単位でなぞる。剛体の実体は見ない (編集中は無いため)。
 GameObject* FindAuthoredPartner(Scene& scene, GameObject& go, const JointComponent& joint)
 {
-    if (joint.connectedBody.IsValid()) return joint.connectedBody.Resolve(scene);
-    if (!joint.connectToParent) return nullptr;
+    if (joint.connectedBody.IsValid()) {
+        return joint.connectedBody.Resolve(scene);
+    }
+    if (!joint.connectToParent) {
+        return nullptr;
+    }
     for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
         const auto* rb = parent->GetComponent<RigidBodyComponent>();
-        if (rb && rb->enabled && parent->activeInHierarchy()) return parent;
+        if (rb && rb->enabled && parent->activeInHierarchy()) {
+            return parent;
+        }
     }
     return nullptr;
 }
@@ -72,8 +78,9 @@ void DrawAuthoredJoint(RenderPassContext& ctx, GameObject& go, const JointCompon
             points.push_back(body->transform.worldPosition);
         }
         renderer::DebugDraw::Polyline(r, points, false, kAuthorColor);
-        for (const math::Vector3& point : points)
+        for (const math::Vector3& point : points) {
             renderer::DebugDraw::Sphere(r, point, kMarker, kAuthorColor);
+        }
         return;
     }
 
@@ -109,18 +116,23 @@ void DrawAuthoredJoint(RenderPassContext& ctx, GameObject& go, const JointCompon
     }
     case JointType::Slider:
         renderer::DebugDraw::Arrow(r, self.worldPosition, self.worldPosition + axis * 0.5f, 0.1f, 0.03f, kAxisColor);
-        if (joint.useLimits)
+        if (joint.useLimits) {
             renderer::DebugDraw::Line(r, self.worldPosition + axis * joint.lowerLimit,
                                       self.worldPosition + axis * joint.upperLimit, kLimitColor);
+        }
         break;
     case JointType::Distance:
     case JointType::Rope:
     case JointType::Spring: {
-        /// @note autoDistance は張った瞬間の間隔を使うので、編集中は «今の間隔» がそのまま長さ。
-        if (joint.autoDistance) break;
+        // autoDistance は張った瞬間の間隔を使うので、編集中は «今の間隔» がそのまま長さ。
+        if (joint.autoDistance) {
+            break;
+        }
         const math::Vector3 toSelf = self.worldPosition - other.worldPosition;
         const float gap = toSelf.Length();
-        if (gap < 1e-5f) break;
+        if (gap < 1e-5f) {
+            break;
+        }
         const math::Vector3 restPoint = other.worldPosition + toSelf * ((std::max)(joint.distance, 0.0f) / gap);
         renderer::DebugDraw::Sphere(r, restPoint, kMarker, kLimitColor);
         break;
@@ -146,20 +158,27 @@ void ConstraintDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
 
     if (ctx.physicsWorld) {
         for (const auto* constraint : ctx.physicsWorld->GetConstraints()) {
-            if (!constraint) continue;
+            if (!constraint) {
+                continue;
+            }
             const physics::ConstraintDebugGeometry geometry =
                 physics::BuildConstraintDebugGeometry(*constraint);
-            for (const physics::DebugLine& line : geometry.lines)
+            for (const physics::DebugLine& line : geometry.lines) {
                 renderer::DebugDraw::Line(ctx.renderer, line.from, line.to, kLiveColor);
+            }
         }
     }
 
-    /// @note 物理は Play 中しか拘束を張らない (SimOnly)。編集中と接続に失敗した関節は設定値から描く。
+    // 物理は Play 中しか拘束を張らない (SimOnly)。編集中と接続に失敗した関節は設定値から描く。
     for (EntityID id : ctx.scene.GetEntities<JointComponent>()) {
         auto* joint = ctx.scene.GetComponent<JointComponent>(id);
         GameObject* go = ctx.scene.GetGameObject(id);
-        if (!joint || !go || !joint->enabled || !go->activeInHierarchy()) continue;
-        if (joint->connected && ctx.physicsWorld) continue;
+        if (!joint || !go || !joint->enabled || !go->activeInHierarchy()) {
+            continue;
+        }
+        if (joint->connected && ctx.physicsWorld) {
+            continue;
+        }
         DrawAuthoredJoint(ctx, *go, *joint);
     }
 

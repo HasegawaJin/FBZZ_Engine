@@ -15,7 +15,9 @@ inline constexpr float RAGDOLL_FIXED_STEP = 1.0f / 120.0f;
 /// 過負荷時の残り時間は捨てず次回へ持ち越す。物理と各タイマーは返した回数だけ進める。
 inline int AccumulateRagdollSteps(double& remaining, float dt)
 {
-    if (std::isfinite(dt) && dt > 0.0f) remaining += dt;
+    if (std::isfinite(dt) && dt > 0.0f) {
+        remaining += dt;
+    }
     const int count = static_cast<int>(std::min(16.0,
         std::floor((remaining + 1.0e-9) / RAGDOLL_FIXED_STEP)));
     remaining = std::max(0.0, remaining - count * static_cast<double>(RAGDOLL_FIXED_STEP));
@@ -52,7 +54,9 @@ inline float AdvanceRagdollPhase(RagdollComponent& ragdoll, float dt)
         ragdoll.weight = ceiling;
         if (ragdoll.holdRemaining > 0.0f) {
             ragdoll.holdRemaining -= dt;
-            if (ragdoll.holdRemaining <= 0.0f) ragdoll.endRequested = true;
+            if (ragdoll.holdRemaining <= 0.0f) {
+                ragdoll.endRequested = true;
+            }
         }
         break;
     }

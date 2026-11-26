@@ -1094,7 +1094,9 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReusePreservesFirstFkWhenRootMotionCall
     scene::EntityID removed = scene::EntityID::INVALID;
     auto callback = std::make_unique<BoneBakeTestPoseCallback>();
     callback->onMove = [&] {
-        if (removed.IsValid()) return;
+        if (removed.IsValid()) {
+            return;
+        }
         ASSERT_EQ(smr.nodeEntities.size(), 3u);
         removed = smr.nodeEntities[2];
         EXPECT_TRUE(scene.DestroyGameObject(removed));
@@ -1374,7 +1376,9 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodHoldsPoseEventsAndFullPreviousPal
         const auto identity=math::Matrix4::Identity();
         for (const auto& write:world.renderer.writes) {
             if(write.buffer==0)++currentWrites;
-            if(write.buffer!=1)continue;
+            if(write.buffer!=1) {
+                continue;
+            }
             ++previousWrites;ASSERT_EQ(write.bytes.size(),8192u);
             EXPECT_EQ(std::memcmp(write.bytes.data(),palette.data(),palette.size()*sizeof(math::Matrix4)),0);
             for(size_t bone=palette.size();bone<128;++bone)

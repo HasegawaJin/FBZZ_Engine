@@ -15,7 +15,7 @@ class Script;
 class GameObject;
 
 struct ScriptColliderProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< コライダー操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetTrigger(bool trigger) const;
@@ -67,4 +67,4 @@ struct ScriptColliderProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

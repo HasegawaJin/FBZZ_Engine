@@ -91,7 +91,9 @@ protected:
     {
         auto& entry = object.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.ObjectBatchComponent", entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&targetScene, &object);
         auto& runtime = scene::ManagedScriptRuntime::Instance();
         auto* adapter = runtime.FindAdapter(entry.script.get());
@@ -156,7 +158,7 @@ TEST_F(ManagedObjectBatchTest, ReadsCurrentWorldAndPreservesMissingSlotsAndOutpu
     child.transform.position = {1, 2, 3};
     child.SetActive(false);
     scene::FlushWorldTransforms(m_scene);
-    /// @note 未 Flush の local と描画補間の world を区別し、read が再計算しないことを観測する。
+    // 未 Flush の local と描画補間の world を区別し、read が再計算しないことを観測する。
     child.transform.position = {99, 0, 0};
     child.transform.worldPosition = {12, 3, 4};
     const std::string missing = "00000000-0000-4000-8000-000000000001";
@@ -213,7 +215,7 @@ TEST_F(ManagedObjectBatchTest, AppliesParentChildDuplicatesInInputOrderAndSynchr
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{39, 0, 0}), testkit::kTolerance);
     EXPECT_VEC3_NEAR(grandchild.transform.worldPosition, (math::Vector3{39, 6, 0}), testkit::kTolerance);
 
-    /// @note 親のゼロスケール軸は通常 setter 同様に投影され、入力の world 値そのものには一致しない。
+    // 親のゼロスケール軸は通常 setter 同様に投影され、入力の world 値そのものには一致しない。
     parent.transform.scale = {0, 2, 3};
     scene::FlushWorldTransforms(parent);
     ASSERT_TRUE(Configure(Targets({&child})));
@@ -417,8 +419,12 @@ protected:
             return out->GetScene() == &fixture.m_scene ? scene::ManagedBridgeStatus::OK : scene::ManagedBridgeStatus::SCENE_MISMATCH;
         }
         for (const auto& [id, object] : fixture.m_objects) {
-            if (id != token) continue;
-            if (object->GetScene() != &fixture.m_scene) return scene::ManagedBridgeStatus::SCENE_MISMATCH;
+            if (id != token) {
+                continue;
+            }
+            if (object->GetScene() != &fixture.m_scene) {
+                return scene::ManagedBridgeStatus::SCENE_MISMATCH;
+            }
             out = object;
             break;
         }
@@ -751,7 +757,7 @@ TEST_F(ManagedObjectBatchKernelTest, RejectsZeroAndTinyQuaternionBeforeMathContr
         EXPECT_QUAT_NEAR(child.transform.rotation, rotation, testkit::kTolerance);
     }
     child.transform.rotation = math::Quaternion::Identity();
-    /// @note Length は正規化可能でも LengthSq が逆回転の閾値未満となる親を区別する。
+    // Length は正規化可能でも LengthSq が逆回転の閾値未満となる親を区別する。
     parent.transform.rotation = {0, 0, 0, 1e-4f};
     scene::ManagedBridgeReply reply;
     EXPECT_EQ(Run(request, reply), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
@@ -797,7 +803,7 @@ TEST_F(ManagedObjectBatchKernelTest, RejectsOffsetOverflowHiddenByZeroScaleBefor
     EXPECT_VEC3_NEAR(child.transform.position, math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_EQ(child.transform.worldPosition.x, parent.transform.position.x);
 
-    /// @note 差分は有限でも、非単位の親回転を逆算したベクトルが overflow する経路を別に検証する。
+    // 差分は有限でも、非単位の親回転を逆算したベクトルが overflow する経路を別に検証する。
     parent.transform.position = math::Vector3::ZERO;
     parent.transform.rotation = {0.002f, 0, 0, 0};
     scene::FlushWorldTransforms(parent);

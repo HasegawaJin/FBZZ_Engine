@@ -52,7 +52,9 @@ class ThreadPool {
             {
                 std::unique_lock lk(m_mutex);
                 m_cv.wait(lk, [this]{ return m_stop.load() || !m_queue.empty(); });
-                if (m_stop.load() && m_queue.empty()) return;
+                if (m_stop.load() && m_queue.empty()) {
+                    return;
+                }
                 queued = std::move(m_queue.front());
                 m_queue.pop_front();
                 m_queued.fetch_sub(1, std::memory_order_relaxed);
@@ -78,8 +80,9 @@ class ThreadPool {
 public:
     explicit ThreadPool(int n) {
         m_workers.reserve(static_cast<size_t>(n));
-        for (int i = 0; i < n; ++i)
+        for (int i = 0; i < n; ++i) {
             m_workers.emplace_back([this]{ WorkerLoop(); });
+        }
     }
 
     ~ThreadPool() {
@@ -88,7 +91,9 @@ public:
             m_stop.store(true);
         }
         m_cv.notify_all();
-        for (auto& w : m_workers) w.join();
+        for (auto& w : m_workers) {
+            w.join();
+        }
     }
 
     void Submit(std::function<void()> fn) {
@@ -127,7 +132,7 @@ public:
 std::unique_ptr<ThreadPool> s_pool;
 std::array<std::atomic<int>, 3> s_externalWorkers{};
 
-} /// @note namespace
+} // namespace
 
 void TaskSystem::Init(int numWorkers) {
     const int n = (numWorkers > 0)
@@ -173,4 +178,4 @@ TaskSystem::Stats TaskSystem::GetStats()
     return stats;
 }
 
-} /// @note namespace fbzz
+} // namespace fbzz

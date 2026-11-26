@@ -43,8 +43,9 @@ const std::unordered_set<std::string>& ObjectKeys()
             "parentInstanceId", "prefabAssetPath", "prefabSourceId", "prefabSourceSnapshot", "transform", "ScriptComponents",
             "ForceField", "ParticleForceField"};
         ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-            if constexpr (!std::is_same_v<T, ScriptComponent> && !std::is_same_v<T, ProceduralMeshComponent>)
+            if constexpr (!std::is_same_v<T, ScriptComponent> && !std::is_same_v<T, ProceduralMeshComponent>) {
                 result.emplace(Registration::serializedName);
+            }
         });
         return result;
     }();
@@ -53,17 +54,24 @@ const std::unordered_set<std::string>& ObjectKeys()
 
 bool FiniteValues(const toml::node& node, unsigned depth = 0)
 {
-    if (depth > 64) return false;
-    if (const auto* value = node.as_floating_point())
+    if (depth > 64) {
+        return false;
+    }
+    if (const auto* value = node.as_floating_point()) {
         return std::isfinite(value->get()) && std::abs(value->get()) <= (std::numeric_limits<float>::max)();
+    }
     if (const auto* array = node.as_array()) {
         for (const auto& element : *array)
-            if (!FiniteValues(element, depth + 1)) return false;
+            if (!FiniteValues(element, depth + 1)) {
+                return false;
+            }
     }
     if (const auto* table = node.as_table()) {
         for (const auto& [key, value] : *table) {
             (void)key;
-            if (!FiniteValues(value, depth + 1)) return false;
+            if (!FiniteValues(value, depth + 1)) {
+                return false;
+            }
         }
     }
     return true;
@@ -72,11 +80,17 @@ bool FiniteValues(const toml::node& node, unsigned depth = 0)
 bool ValidateArray(const toml::table& table, const char* key, size_t count)
 {
     const auto* node = table.get(key);
-    if (!node) return true;
+    if (!node) {
+        return true;
+    }
     const auto* values = node->as_array();
-    if (!values || values->size() != count) return false;
+    if (!values || values->size() != count) {
+        return false;
+    }
     for (const auto& value : *values)
-        if (!value.is_number()) return false;
+        if (!value.is_number()) {
+            return false;
+        }
     return true;
 }
 
@@ -91,7 +105,9 @@ bool ValidateObjectFields(const toml::table& table, std::string& error)
         bool valid = false;
         if (name == "name" || name == "tag" || name == "instanceId" || name == "parent"
             || name == "parentInstanceId" || name == "prefabAssetPath" || name == "prefabSourceId"
-            || name == "prefabSourceSnapshot") valid = value.is_string();
+            || name == "prefabSourceSnapshot") {
+            valid = value.is_string();
+        }
         else if (name == "layer") valid = value.is_integer();
         else if (name == "active") valid = value.is_boolean();
         else if (name == "ScriptComponents") {
@@ -102,17 +118,27 @@ bool ValidateObjectFields(const toml::table& table, std::string& error)
                     const auto* fields = script.as_table();
                     const auto type = fields ? (*fields)["type"].value<std::string>() : std::nullopt;
                     if (!type || type->empty()) { valid = false; break; }
-                    if (const auto* enabled = fields->get("enabled"); enabled && !enabled->is_boolean()) valid = false;
-                    if (const auto* settings = fields->get("fields"); settings && !settings->is_table()) valid = false;
+                    if (const auto* enabled = fields->get("enabled"); enabled && !enabled->is_boolean()) {
+                        valid = false;
+                    }
+                    if (const auto* settings = fields->get("fields"); settings && !settings->is_table()) {
+                        valid = false;
+                    }
                     if (const auto* idNode = fields->get("savedScriptId")) {
                         const auto id = idNode->value<std::string>();
-                        /// @note この形式判定はレジストリ、ファクトリー、書き換え可能なグローバル状態を参照しない。
-                        if (!id || !ScriptFactory::IsValidSavedScriptId(*id) || !identities.insert(*id).second) valid = false;
+                        // この形式判定はレジストリ、ファクトリー、書き換え可能なグローバル状態を参照しない。
+                        if (!id || !ScriptFactory::IsValidSavedScriptId(*id) || !identities.insert(*id).second) {
+                            valid = false;
+                        }
                     }
-                    if (!valid) break;
+                    if (!valid) {
+                        break;
+                    }
                 }
             }
-        } else valid = value.is_table();
+        } else {
+            valid = value.is_table();
+        }
         if (!valid) {
             error = "Invalid forest object field or component value: " + std::string(name);
             return false;
@@ -196,7 +222,9 @@ bool ValidateDocument(toml::table& document,
             error = "A streamed forest cannot contain a nested world-partition controller.";
             return false;
         }
-        if (!ValidateObjectFields(*table, error)) return false;
+        if (!ValidateObjectFields(*table, error)) {
+            return false;
+        }
         const auto id = (*table)["instanceId"].value<std::string>();
         if (!id || id->empty() || !ids.emplace(*id, objects.size()).second) {
             error = "Every forest object requires a unique nonempty saved identity.";
@@ -271,7 +299,9 @@ bool ValidateDocument(toml::table& document,
             error = "Forest hierarchy contains a parent cycle.";
             return false;
         }
-        for (const auto index : path) marks[index] = 2;
+        for (const auto index : path) {
+            marks[index] = 2;
+        }
     }
     return true;
 }
@@ -296,9 +326,13 @@ bool ValidateSceneForestDocument(const std::string& document, std::vector<std::s
     error.clear();
     toml::table normalized;
     std::vector<ForestObject> objects;
-    if (!ParseDocument(document, normalized, objects, error)) return false;
+    if (!ParseDocument(document, normalized, objects, error)) {
+        return false;
+    }
     outIds.reserve(objects.size());
-    for (const auto& object : objects) outIds.push_back(object.id);
+    for (const auto& object : objects) {
+        outIds.push_back(object.id);
+    }
     return true;
 }
 
@@ -312,7 +346,9 @@ bool AppendSceneForest(Scene& destination, const std::string& document, const st
     toml::table normalized;
     std::vector<ForestObject> objects;
     if (!ParseDocument(document, normalized, objects, error)
-        || !DestinationAccepts(destination, objects, error)) return false;
+        || !DestinationAccepts(destination, objects, error)) {
+        return false;
+    }
     std::ostringstream encoded;
     encoded << normalized;
     auto prepared = SceneSerializer::LoadPassiveDataFromText(encoded.str(), sourcePath);
@@ -320,10 +356,14 @@ bool AppendSceneForest(Scene& destination, const std::string& document, const st
         error = "Forest preparation failed; check component assets and saved Script identities.";
         return false;
     }
-    if (!DestinationAccepts(destination, objects, error)) return false;
+    if (!DestinationAccepts(destination, objects, error)) {
+        return false;
+    }
 
     std::unordered_map<std::string, EntityID> preparedIds;
-    for (const auto& object : prepared->GameObjects()) preparedIds.emplace(object.instanceId, object.GetID());
+    for (const auto& object : prepared->GameObjects()) {
+        preparedIds.emplace(object.instanceId, object.GetID());
+    }
     std::unordered_map<std::string, EntityID> publishedIds;
     std::vector<std::pair<EntityID, EntityID>> replacements;
     replacements.reserve(objects.size());
@@ -356,24 +396,31 @@ bool AppendSceneForest(Scene& destination, const std::string& document, const st
     }
     for (const auto& identity : objects) {
         auto* target = destination.GetGameObject(publishedIds.at(identity.id));
-        if (identity.parent.empty()) outRoots.push_back(target->GetID());
+        if (identity.parent.empty()) {
+            outRoots.push_back(target->GetID());
+        }
         else if (!target->SetParent(destination.GetGameObject(publishedIds.at(identity.parent)))) {
             rollback();
             error = "Forest hierarchy changed while publishing its parents.";
             return false;
         }
     }
-    for (const auto& [source, target] : replacements)
+    for (const auto& [source, target] : replacements) {
         destination.CopyComponentsFromPassive(*prepared, source, target);
+    }
     RemapCopiedObjectReferences(*prepared, destination, replacements, outEntities);
     for (const auto entity : outEntities) {
         auto* object = destination.GetGameObject(entity);
-        if (auto* grid = object->GetComponent<TerrainGridComponent>()) grid->ResolveFromScene(destination);
+        if (auto* grid = object->GetComponent<TerrainGridComponent>()) {
+            grid->ResolveFromScene(destination);
+        }
         if (resources) {
-            if (auto* mesh = object->GetComponent<MeshRenderer>(); mesh && !mesh->mesh && !mesh->meshPath.empty())
+            if (auto* mesh = object->GetComponent<MeshRenderer>(); mesh && !mesh->mesh && !mesh->meshPath.empty()) {
                 mesh->mesh = ResolveMeshPath(mesh->meshPath, *resources);
-            if (auto* skin = object->GetComponent<SkinnedMeshRenderer>(); skin && !skin->model && !skin->modelPath.empty())
+            }
+            if (auto* skin = object->GetComponent<SkinnedMeshRenderer>(); skin && !skin->model && !skin->modelPath.empty()) {
                 skin->model = asset::AssetManager::LoadAndGet<asset::Model>(skin->modelPath);
+            }
         }
     }
     FlushWorldTransforms(destination);

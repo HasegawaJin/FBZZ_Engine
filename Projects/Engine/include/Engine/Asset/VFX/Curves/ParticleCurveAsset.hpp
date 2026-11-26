@@ -30,4 +30,4 @@ struct ParticleCurveAsset {
 [[nodiscard]] FBZZ_ENGINE_API bool SaveParticleCurveAsset(const std::string& absPath, const ParticleCurveAsset& asset);
 [[nodiscard]] FBZZ_ENGINE_API bool LoadParticleCurveAssetFile(const std::string& absPath, ParticleCurveAsset& outAsset);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

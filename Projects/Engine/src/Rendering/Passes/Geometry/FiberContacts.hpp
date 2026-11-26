@@ -32,7 +32,9 @@ inline math::Vector3 FiberContactPosition(const FiberContactSample& sample)
 inline float FiberContactRadius(const FiberContactSample& sample)
 {
     const math::Vector3 extent{sample.m_extent.x, sample.m_extent.y, sample.m_extent.z};
-    if (sample.m_time.w == 1.0f) return sample.m_center.w + extent.Length();
+    if (sample.m_time.w == 1.0f) {
+        return sample.m_center.w + extent.Length();
+    }
     return sample.m_center.w;
 }
 
@@ -45,24 +47,34 @@ inline bool FiberContactFinite(const math::Vector3& value)
 inline bool ReadFiberContact(GameObject& go, const FiberInteractorComponent& actor, FiberContactSample& sample)
 {
     if (!std::isfinite(actor.m_strength) || !std::isfinite(actor.m_recoverySeconds)
-        || actor.m_strength <= 0.0f) return false;
+        || actor.m_strength <= 0.0f) {
+        return false;
+    }
     const auto scale = go.transform.worldScale;
     const math::Vector3 absolute{std::abs(scale.x), std::abs(scale.y), std::abs(scale.z)};
     const auto rotation = go.transform.worldRotation;
     if (!FiberContactFinite(scale) || !std::isfinite(rotation.Length())
-        || std::abs(rotation.Length() - 1.0f) > 0.001f) return false;
+        || std::abs(rotation.Length() - 1.0f) > 0.001f) {
+        return false;
+    }
     math::Vector3 center = go.transform.worldPosition;
     sample.m_time = {Time::time, std::clamp(actor.m_strength, 0.0f, 1.0f),
         std::clamp(actor.m_recoverySeconds, 0.05f, 30.0f), 0.0f};
     bool hasCollider = false, resolved = false;
     const auto tryShape = [&]<class T>(T* collider) {
-        if (!collider) return;
+        if (!collider) {
+            return;
+        }
         hasCollider = true;
-        if (resolved || !collider->enabled) return;
+        if (resolved || !collider->enabled) {
+            return;
+        }
         resolved = true;
         center = ColliderWorldCenter(go, *collider);
         if constexpr (std::is_same_v<T, CapsuleColliderComponent>) {
-            if (collider->halfHeight < 0.0f) return;
+            if (collider->halfHeight < 0.0f) {
+                return;
+            }
             sample.m_center.w = collider->radius * std::max(absolute.x, absolute.z);
             const auto axis = rotation * math::Vector3{0, collider->halfHeight * absolute.y, 0};
             sample.m_extent = {axis.x, axis.y, axis.z, 0};
@@ -77,8 +89,9 @@ inline bool ReadFiberContact(GameObject& go, const FiberInteractorComponent& act
             sample.m_extent = {half.x, half.y, half.z, 0};
             sample.m_center.w = half.Length();
             sample.m_time.w = 2.0f;
-            if constexpr (std::is_same_v<T, BoxColliderComponent>)
+            if constexpr (std::is_same_v<T, BoxColliderComponent>) {
                 sample.m_rotation = {rotation.x, rotation.y, rotation.z, rotation.w};
+            }
         }
     };
     if (actor.m_useCollider) {
@@ -88,7 +101,9 @@ inline bool ReadFiberContact(GameObject& go, const FiberInteractorComponent& act
         tryShape(go.GetComponent<AabbColliderComponent>());
     }
     if (!resolved) {
-        if (hasCollider || !std::isfinite(actor.m_radius)) return false;
+        if (hasCollider || !std::isfinite(actor.m_radius)) {
+            return false;
+        }
         sample.m_center.w = std::clamp(actor.m_radius, 0.01f, 10.0f);
     }
     sample.m_center.x = center.x; sample.m_center.y = center.y; sample.m_center.z = center.z;
@@ -138,16 +153,22 @@ struct FiberContactCache {
 inline bool FiberContactCells(const math::Vector3& center, float radius, int budget,
     std::array<int, 3>& low, std::array<int, 3>& high)
 {
-    if (!FiberContactFinite(center) || !std::isfinite(radius) || radius < 0) return false;
+    if (!FiberContactFinite(center) || !std::isfinite(radius) || radius < 0) {
+        return false;
+    }
     const float coordinates[]{center.x, center.y, center.z};
     int64_t count = 1;
     for (int axis = 0; axis < 3; ++axis) {
         const double first = std::floor((static_cast<double>(coordinates[axis]) - radius) / FIBER_CONTACT_CELL_SIZE);
         const double last = std::floor((static_cast<double>(coordinates[axis]) + radius) / FIBER_CONTACT_CELL_SIZE);
-        if (first < INT32_MIN || last >= INT32_MAX || last - first + 1 > budget) return false;
+        if (first < INT32_MIN || last >= INT32_MAX || last - first + 1 > budget) {
+            return false;
+        }
         low[axis] = static_cast<int>(first); high[axis] = static_cast<int>(last);
         count *= static_cast<int64_t>(high[axis]) - low[axis] + 1;
-        if (count > budget) return false;
+        if (count > budget) {
+            return false;
+        }
     }
     return true;
 }
@@ -162,7 +183,9 @@ inline void BuildFiberContactIndex(FiberContactIndex& index, const std::vector<F
             continue;
         }
         for (int x = low[0]; x <= high[0]; ++x) for (int y = low[1]; y <= high[1]; ++y)
-            for (int z = low[2]; z <= high[2]; ++z) index.m_cells.push_back({{x, y, z}, i});
+            for (int z = low[2]; z <= high[2]; ++z) {
+                index.m_cells.push_back({{x, y, z}, i});
+            }
     }
     std::sort(index.m_cells.begin(), index.m_cells.end());
 }
@@ -171,8 +194,9 @@ inline void BuildFiberContactIndex(FiberContactIndex& index, const std::vector<F
 inline void StampFiberContact(FiberActorContacts& state, const FiberContactSample& current, bool consecutive)
 {
     float thickness = current.m_center.w;
-    if (current.m_time.w == 2.0f)
+    if (current.m_time.w == 2.0f) {
         thickness = std::min({current.m_extent.x, current.m_extent.y, current.m_extent.z});
+    }
     const float spacing = std::max(thickness * 0.5f, 0.005f);
     const auto from = FiberContactPosition(state.m_last), to = FiberContactPosition(current);
     const auto& oldRotation = state.m_last.m_rotation;
@@ -180,7 +204,7 @@ inline void StampFiberContact(FiberActorContacts& state, const FiberContactSampl
     const math::Quaternion oldQ{oldRotation.x, oldRotation.y, oldRotation.z, oldRotation.w};
     const math::Quaternion newQ{newRotation.x, newRotation.y, newRotation.z, newRotation.w};
     const float rotationDot = std::clamp(std::abs(math::Quaternion::Dot(oldQ, newQ)), 0.0f, 1.0f);
-    /// @note 同じ単位四元数でも丸めで内積が 1 を下回るため、静止中の見かけ上の回転を加算しない。
+    // 同じ単位四元数でも丸めで内積が 1 を下回るため、静止中の見かけ上の回転を加算しない。
     const float angle = rotationDot >= 1.0f - 1.0e-6f ? 0.0f : 2.0f * std::acos(rotationDot);
     const math::Vector3 oldExtent{state.m_last.m_extent.x, state.m_last.m_extent.y, state.m_last.m_extent.z};
     const math::Vector3 newExtent{current.m_extent.x, current.m_extent.y, current.m_extent.z};
@@ -221,9 +245,13 @@ inline void StampFiberContact(FiberActorContacts& state, const FiberContactSampl
 /// @note 現在と前回の状態の不変スナップショットを、同一フレームの全ビューと影パスで共有する。
 inline void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
 {
-    if (cache.m_frame == Time::frameCount) return;
+    if (cache.m_frame == Time::frameCount) {
+        return;
+    }
     if (!std::isfinite(Time::time)) { cache = {}; return; }
-    if (Time::time < cache.m_time || (cache.m_frame != UINT64_MAX && Time::frameCount < cache.m_frame)) cache = {};
+    if (Time::time < cache.m_time || (cache.m_frame != UINT64_MAX && Time::frameCount < cache.m_frame)) {
+        cache = {};
+    }
     const bool consecutive = cache.m_frame != UINT64_MAX && Time::frameCount == cache.m_frame + 1;
     cache.m_previousTime = cache.m_time;
     cache.m_time = Time::time; cache.m_frame = Time::frameCount;
@@ -232,11 +260,17 @@ inline void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
     cache.m_current.clear();
     for (EntityID id : scene.GetEntities<FiberInteractorComponent>()) {
         auto* go = scene.GetGameObject(id);
-        if (!go || !go->activeInHierarchy()) continue;
+        if (!go || !go->activeInHierarchy()) {
+            continue;
+        }
         const auto* actor = go->GetComponent<FiberInteractorComponent>();
-        if (!actor || !actor->m_enabled) continue;
+        if (!actor || !actor->m_enabled) {
+            continue;
+        }
         FiberContactSample sample;
-        if (!ReadFiberContact(*go, *actor, sample)) continue;
+        if (!ReadFiberContact(*go, *actor, sample)) {
+            continue;
+        }
         const uint64_t key = (static_cast<uint64_t>(id.generation) << 32) | id.index;
         auto& state = cache.m_actors[key];
         StampFiberContact(state, sample, consecutive && state.m_seen + 1 == Time::frameCount);
@@ -245,10 +279,14 @@ inline void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
         bool alive = false;
         for (const auto& sample : it->second.m_samples) {
             const float age = Time::time - sample.m_time.x;
-            if (sample.m_center.w <= 0 || age < 0 || age >= sample.m_time.z) continue;
+            if (sample.m_center.w <= 0 || age < 0 || age >= sample.m_time.z) {
+                continue;
+            }
             cache.m_current.push_back(sample); alive = true;
         }
-        if (!alive) it = cache.m_actors.erase(it); else ++it;
+        if (!alive) {
+            it = cache.m_actors.erase(it);
+        } else ++it;
     }
     BuildFiberContactIndex(cache.m_currentIndex, cache.m_current);
     if (!consecutive) {
@@ -275,18 +313,24 @@ inline void SelectFiberContactSide(FiberContactCache& cache, const std::vector<F
             for (int z = low[2]; z <= high[2]; ++z) {
                 const std::array<int, 3> key{x, y, z};
                 auto found = std::lower_bound(index.m_cells.begin(), index.m_cells.end(), FiberContactCell{key, 0});
-                for (; found != index.m_cells.end() && found->m_key == key; ++found) candidates.push_back(found->m_sample);
+                for (; found != index.m_cells.end() && found->m_key == key; ++found) {
+                    candidates.push_back(found->m_sample);
+                }
             }
         std::sort(candidates.begin(), candidates.end());
         candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
     } else {
-        for (size_t i = 0; i < samples.size(); ++i) candidates.push_back(i);
+        for (size_t i = 0; i < samples.size(); ++i) {
+            candidates.push_back(i);
+        }
     }
     for (size_t i : candidates) {
         const auto& sample = samples[i];
         const float reach = FiberContactRadius(sample);
         const float distanceSq = (FiberContactPosition(sample) - center).LengthSq();
-        if (hasBounds && distanceSq > (reach + radius) * (reach + radius)) continue;
+        if (hasBounds && distanceSq > (reach + radius) * (reach + radius)) {
+            continue;
+        }
         const float phase = std::clamp((time - sample.m_time.x) / sample.m_time.z, 0.0f, 1.0f);
         const float distance = hasBounds ? std::max(0.0f, std::sqrt(distanceSq) - radius) : 0.0f;
         const float score = sample.m_time.y * (1 - phase) * (1 - phase) / (1 + distance / std::max(reach, 0.01f));
@@ -313,8 +357,10 @@ inline void SelectFiberContactSide(FiberContactCache& cache, const std::vector<F
 inline renderer::FiberContactCB SelectFiberContacts(FiberContactCache& cache, const renderer::RenderFiberInput& input)
 {
     renderer::FiberContactCB output;
-    if (input.material.m_planarShading <= 0 || (cache.m_current.empty() && cache.m_previous.empty())) return output;
-    /// @note 地形パッチは所有者の描画 ID を共有するため、移動境界はジオメトリの世代で識別する。
+    if (input.material.m_planarShading <= 0 || (cache.m_current.empty() && cache.m_previous.empty())) {
+        return output;
+    }
+    // 地形パッチは所有者の描画 ID を共有するため、移動境界はジオメトリの世代で識別する。
     const auto geometry = input.blades.m_blades.IsValid()
         ? (static_cast<uint64_t>(input.blades.m_blades.gen) << 32) | input.blades.m_blades.id
         : (static_cast<uint64_t>(input.vertices.gen) << 32) | input.vertices.id;
@@ -332,5 +378,5 @@ inline renderer::FiberContactCB SelectFiberContacts(FiberContactCache& cache, co
         surface.m_previousRadius, input.hasBounds, cache.m_previousTime, FIBER_CONTACT_LIMIT, output);
     return output;
 }
-} /// @note namespace fiber_extraction_detail
-} /// @note namespace fbzz::scene
+} // namespace fiber_extraction_detail
+} // namespace fbzz::scene

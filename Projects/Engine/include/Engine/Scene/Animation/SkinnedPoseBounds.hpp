@@ -15,8 +15,9 @@ inline void UpdateSkinnedPoseBounds(AnimatorComponent& animator, const asset::Sk
     math::Vector3 hi{ -1.0e18f, -1.0e18f, -1.0e18f };
     bool any = false;
     for (const auto& bone : skeleton.bones) {
-        if (bone.nodeIndex < 0 || bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        if (bone.nodeIndex < 0 || bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
             continue;
+        }
         const auto matrix = skeleton.rootInverseTransform *
             animator.nodeGlobalTransforms[static_cast<std::size_t>(bone.nodeIndex)];
         const math::Vector3 p{ matrix.m[0][3], matrix.m[1][3], matrix.m[2][3] };

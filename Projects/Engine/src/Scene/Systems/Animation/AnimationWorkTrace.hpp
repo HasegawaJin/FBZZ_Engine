@@ -53,14 +53,18 @@ inline PaletteEquality CompareEffectivePalettes(std::span<const math::Matrix4> c
     const uint32_t common=(std::min)(result.currentClampedCount,result.previousClampedCount);
     if(common) {
         const size_t bytes=common*sizeof(math::Matrix4); result.compareArgumentBytes+=bytes;
-        if(std::memcmp(current.data(),previous.data(),bytes)!=0)return result;
+        if(std::memcmp(current.data(),previous.data(),bytes)!=0) {
+            return result;
+        }
     }
     const auto identity=math::Matrix4::Identity();
     const auto extra=result.currentClampedCount>common?current:previous;
     const uint32_t end=(std::max)(result.currentClampedCount,result.previousClampedCount);
     for(uint32_t index=common;index<end;++index) {
         result.compareArgumentBytes+=sizeof(math::Matrix4);
-        if(std::memcmp(&extra[index],&identity,sizeof(identity))!=0)return result;
+        if(std::memcmp(&extra[index],&identity,sizeof(identity))!=0) {
+            return result;
+        }
     }
     result.equal=true; return result;
 }
@@ -159,15 +163,13 @@ struct AnimationWorkRow {
     uint64_t legacyPoses = 0, bakedCpuPoses = 0, bakedGpuPoses = 0, poseCacheHits = 0, poseCacheMisses = 0;
     uint64_t cbBulkPackets = 0;
     uint64_t wallBeginIntervalNs = 0;
-    /// @note 追記する診断項目はアクター更新・呼び出し・書き込みの回数であり、個体数や GPU バイト数を表さない。
-    static constexpr uint32_t POSE_OBSERVATION_SCHEMA = 1;
+    static constexpr uint32_t POSE_OBSERVATION_SCHEMA = 1; ///< 追記する診断項目はアクター更新・呼び出し・書き込みの回数であり、個体数や GPU バイト数を表さない。
     bool poseCountersAvailable = false, legacyBoneWritesAvailable = false, paletteApiCountersAvailable = false;
     uint64_t beginResourceFrame = 0, beginSceneGeneration = 0, beginResourceEpoch = 0;
     uint64_t endResourceFrame = 0, endSceneGeneration = 0, endResourceEpoch = 0;
     bool sourceIdentityFinalized = false, sourceIdentityMismatch = false;
     uint64_t posePathActors = 0, poseLodGatePassed = 0, poseReducedIntervalActors = 0;
-    /// @note 更新経路に入った回数にはバインド姿勢、エラー、外部姿勢へのフォールバックも含む。
-    uint64_t poseRefreshEntered = 0, poseHeld = 0, poseLegacyFkCalls = 0, poseBakedSuccesses = 0;
+    uint64_t poseRefreshEntered = 0, poseHeld = 0, poseLegacyFkCalls = 0, poseBakedSuccesses = 0; ///< 更新経路に入った回数にはバインド姿勢、エラー、外部姿勢へのフォールバックも含む。
     uint64_t poseBindFallbackActors = 0, poseOtherRefreshActors = 0, legacyEvaluatedBoneWrites = 0;
     uint64_t previousPaletteUpdateCalls = 0, previousPaletteApiBytes = 0;
     uint64_t currentPaletteUpdateCalls = 0, currentPaletteApiBytes = 0;
@@ -201,7 +203,9 @@ struct AnimationWorkRow {
     void CountPoseDecision(bool lodGatePassed, bool reducedInterval, bool refreshEntered)
     {
         ++posePathActors; if (lodGatePassed) ++poseLodGatePassed; if (reducedInterval) ++poseReducedIntervalActors;
-        if (refreshEntered) ++poseRefreshEntered; else { ++poseHeld; ++heldCurrentPaletteUpdates; }
+        if (refreshEntered) {
+            ++poseRefreshEntered;
+        } else { ++poseHeld; ++heldCurrentPaletteUpdates; }
     }
 };
 /// @note シミュレーション中の AnimatorSystem の更新内だけでスレッドローカルの作業行が有効となり、完了した行は共有領域で直列化する。
@@ -275,41 +279,32 @@ struct AnimationSkinningCpuRow {
     uint64_t resourceInstanceId=0,passOrdinalWithinResourceFrame=0;
     uint64_t renderersVisited=0,renderersEligible=0,alreadyCurrentReuse=0;
     uint64_t requestedDispatches=0,requestedVertexCount=0;
-    /// @note 需要の件数だけを任意収集する。理由は重複するため、合計値を内訳や省略可能件数として扱わない。
-    uint64_t demandScopeActive=0,sceneObjectCount=0,sceneAnimatorComponentCount=0,sceneSkinnedRendererComponentCount=0;
+    uint64_t demandScopeActive=0,sceneObjectCount=0,sceneAnimatorComponentCount=0,sceneSkinnedRendererComponentCount=0; ///< 需要の件数だけを任意収集する。理由は重複するため、合計値を内訳や省略可能件数として扱わない。
     uint64_t activeNativeScriptEntries=0,activeManagedScriptEntries=0,activeReflectionProbes=0,activeReflectionSceneProbes=0;
     uint64_t activeLightProbeVolumes=0,activeLightProbeBakeConsumers=0,activeInstancedComponents=0;
     uint64_t demandObservedRenderers=0,provisionalColorExcludedRenderers=0,conservativeNonColorRequiredRenderers=0;
     uint64_t provisionalNoKnownConsumerRenderers=0,legacyEnteredRenderers=0,renderersWithOutputRequests=0,nativePublishedRenderers=0;
     std::array<uint64_t,skinning_demand_detail::REASON_COUNT> outputDemandReasonRenderers{};
-    /// @note 版 2 では論理上のモーフ配列、選択した入力経路、GPU 側の観測を区別する。計測値による GPU 処理の省略は行わない。
-    uint64_t demandClassifierVersion=2;
+    uint64_t demandClassifierVersion=2; ///< 版 2 では論理上のモーフ配列、選択した入力経路、GPU 側の観測を区別する。計測値による GPU 処理の省略は行わない。
     std::array<uint64_t,skinning_demand_detail::INPUT_FLAG_COUNT> inputObservedRenderers{};
-    /// @note 各スロットは既存のシグネチャ取得で観測する。取得に成功しても、内容の整合性や頂点形式の完全性は保証しない。
-    uint64_t sourceObservedSlots=0,sourceBasePathSlots=0,sourceMorphPathSlots=0,sourceDiffersFromBaseSlots=0;
+    uint64_t sourceObservedSlots=0,sourceBasePathSlots=0,sourceMorphPathSlots=0,sourceDiffersFromBaseSlots=0; ///< 各スロットは既存のシグネチャ取得で観測する。取得に成功しても、内容の整合性や頂点形式の完全性は保証しない。
     uint64_t sourceLookupNonNullBasePathSlots=0,sourceLookupNonNullMorphPathSlots=0,sourceLookupNullSlots=0,sourceNativeVersionZeroSlots=0;
     uint64_t boneBakeQueuedReplayRows=0;
     uint64_t sourceCacheHits=0,sourceCacheMisses=0,sourceCreateAttempts=0,sourceCreateSuccesses=0,sourceReleaseCalls=0,sourceCopyBytes=0;
     uint64_t outputCreateAttempts=0,outputCreateSuccesses=0,outputReleaseCalls=0,outputCapacityRejects=0;
-    /// @note 配列数は論理的な生成回数、容量は観測の合計、下限は容量増加を観測した非空の生成回数を表す。
-    uint64_t signatureVectors=0,signatureBytes=0,signatureCapacityBytes=0,signatureAllocationLowerBound=0;
+    uint64_t signatureVectors=0,signatureBytes=0,signatureCapacityBytes=0,signatureAllocationLowerBound=0; ///< 配列数は論理的な生成回数、容量は観測の合計、下限は容量増加を観測した非空の生成回数を表す。
     renderer::skinning_trace_detail::RequestCounters requests;
-    /// @note 拡張を伴う追加時間は、確保・移動・旧領域の解放・新要素の追加を含み、生成時間の内数となる。
-    uint64_t signatureBuildNs=0,signatureGrowthPushNs=0,signatureCompareNs=0,signaturePublicationMoveNs=0,signatureReserveNs=0;
+    uint64_t signatureBuildNs=0,signatureGrowthPushNs=0,signatureCompareNs=0,signaturePublicationMoveNs=0,signatureReserveNs=0; ///< 拡張を伴う追加時間は、確保・移動・旧領域の解放・新要素の追加を含み、生成時間の内数となる。
     uint64_t signatureBuildCalls=0,signatureGrowthPushCalls=0,signatureCompareCalls=0,signaturePublicationMoveCalls=0,signatureReserveCalls=0;
-    /// @note 容量増分は配列本体の再確保だけを数え、アロケーターの管理情報や CLR・GPU のメモリを除く。
-    uint64_t signaturePayloadAllocationCalls=0,signaturePayloadAllocationBytes=0,signatureGrowthRelocatedLogicalBytes=0;
+    uint64_t signaturePayloadAllocationCalls=0,signaturePayloadAllocationBytes=0,signatureGrowthRelocatedLogicalBytes=0; ///< 容量増分は配列本体の再確保だけを数え、アロケーターの管理情報や CLR・GPU のメモリを除く。
     uint64_t signatureClockPairCount=0,signatureClockProbeNs=0,unattributedSkinningNs=0;
-    /// @note 代入時間は宛先へのコピーと確保を含み、クリアおよび作業領域の取得とは重複しない。
-    uint64_t signatureAssignNs=0,signatureAssignCalls=0,signatureAssignCopyLogicalBytes=0;
+    uint64_t signatureAssignNs=0,signatureAssignCalls=0,signatureAssignCopyLogicalBytes=0; ///< 代入時間は宛先へのコピーと確保を含み、クリアおよび作業領域の取得とは重複しない。
     uint64_t signatureClearNs=0,signatureClearCalls=0;
     uint64_t signatureDestinationPayloadAllocationCalls=0,signatureDestinationPayloadAllocationBytes=0;
     uint64_t signatureScratchAcquireNs=0,signatureScratchAcquireCalls=0;
-    /// @note 生成に成功したネイティブ記憶領域とポインター配列本体を数え、管理情報やワード配列の増加は除く。
-    uint64_t signatureScratchStorageAllocationCalls=0,signatureScratchStorageAllocationBytes=0;
+    uint64_t signatureScratchStorageAllocationCalls=0,signatureScratchStorageAllocationBytes=0; ///< 生成に成功したネイティブ記憶領域とポインター配列本体を数え、管理情報やワード配列の増加は除く。
     uint64_t signatureScratchPoolPointerAllocationCalls=0,signatureScratchPoolPointerAllocationBytes=0;
-    /// @note パス終了時の現在スレッドの値は保持容量を表し、確保総量やパスに帰属する実メモリを表さない。
-    uint64_t signatureScratchRetainedPayloadBytes=0,signatureScratchRetainedStorageBytes=0;
+    uint64_t signatureScratchRetainedPayloadBytes=0,signatureScratchRetainedStorageBytes=0; ///< パス終了時の現在スレッドの値は保持容量を表し、確保総量やパスに帰属する実メモリを表さない。
     uint64_t signatureScratchRetainedPointerPayloadBytes=0,signatureScratchSlotsAtPassEnd=0;
 };
 /// @note 資源管理者・世代・フレームごとの呼び出し番号。ゼロは追跡枠の使い切りを表す。
@@ -320,14 +315,16 @@ public:
     AnimationSkinningCpuFrame(uint64_t frame,uint64_t scene,uint64_t epoch,uint64_t instance):m_enabled(AnimationGpuTraceRequested())
     {
         row.resourceFrame=frame;row.sceneGeneration=scene;row.resourceEpoch=epoch;row.resourceInstanceId=instance;
-        if(m_enabled)AssignAnimationSkinningPassOrdinal(row);
+        if(m_enabled) {
+            AssignAnimationSkinningPassOrdinal(row);
+        }
         m_start=Mark();
     }
     ~AnimationSkinningCpuFrame()
     {
         if(m_enabled){
             row.totalNs=Elapsed(m_start);
-            /// @note 重複しない生の区間だけを差し引く。拡張と予約は生成時間に含み、計時自体の時間は概算となる。
+            // 重複しない生の区間だけを差し引く。拡張と予約は生成時間に含み、計時自体の時間は概算となる。
             const uint64_t measured=row.profilerSyncNs+row.replaySubmitNs+row.vertexSubmitNs+row.signatureBuildNs
                 +row.signatureCompareNs+row.signaturePublicationMoveNs+row.signatureClockProbeNs
                 +row.signatureAssignNs+row.signatureClearNs+row.signatureScratchAcquireNs;

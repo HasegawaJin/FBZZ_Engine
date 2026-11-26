@@ -37,24 +37,28 @@ void EnsureSampleStorage(MeshTrailComponent& trail)
 {
     const int sampleCapacity = (std::max)(trail.maxSamples, 1);
     if (trail.allocatedMaxSamples == sampleCapacity &&
-        trail.samples.size() == static_cast<size_t>(sampleCapacity))
+        trail.samples.size() == static_cast<size_t>(sampleCapacity)) {
         return;
+    }
 
     std::vector<MeshTrailSample> retainedSamples;
     retainedSamples.reserve(static_cast<size_t>((std::min)(trail.sampleCount, sampleCapacity)));
     if (trail.allocatedMaxSamples > 0 && !trail.samples.empty()) {
         const int keepCount = (std::min)(trail.sampleCount, sampleCapacity);
         const int discardCount = trail.sampleCount - keepCount;
-        for (int sampleIndex = 0; sampleIndex < discardCount; ++sampleIndex)
+        for (int sampleIndex = 0; sampleIndex < discardCount; ++sampleIndex) {
             ReleaseSampleResources(ReadMeshTrailSample(trail, sampleIndex));
-        for (int sampleIndex = discardCount; sampleIndex < trail.sampleCount; ++sampleIndex)
+        }
+        for (int sampleIndex = discardCount; sampleIndex < trail.sampleCount; ++sampleIndex) {
             retainedSamples.push_back(std::move(ReadMeshTrailSample(trail, sampleIndex)));
+        }
     }
 
     trail.samples.clear();
     trail.samples.resize(static_cast<size_t>(sampleCapacity));
-    for (size_t sampleIndex = 0; sampleIndex < retainedSamples.size(); ++sampleIndex)
+    for (size_t sampleIndex = 0; sampleIndex < retainedSamples.size(); ++sampleIndex) {
         trail.samples[sampleIndex] = std::move(retainedSamples[sampleIndex]);
+    }
     trail.sampleHead = 0;
     trail.sampleCount = static_cast<int>(retainedSamples.size());
     trail.allocatedMaxSamples = sampleCapacity;
@@ -87,11 +91,13 @@ bool ShouldSample(const MeshTrailComponent& trail, const math::Vector3& position
 {
     const bool firstSample = trail.lastSampleTime < 0.0f;
     const bool timeReady = firstSample || currentTime - trail.lastSampleTime >= trail.sampleInterval;
-    if (!timeReady)
+    if (!timeReady) {
         return false;
+    }
 
-    if (trail.sampleCount == 0)
+    if (trail.sampleCount == 0) {
         return true;
+    }
 
     const float minimumDistance = (std::max)(trail.minVertexDist, 0.0f);
     const int lastSampleIndex = (trail.sampleHead + trail.sampleCount - 1) % trail.allocatedMaxSamples;
@@ -106,16 +112,18 @@ void CaptureSample(GameObject& owner, MeshTrailComponent& trail, float currentTi
     sample.position = owner.transform.worldPosition;
     sample.world = owner.transform.GetWorldMatrix();
 
-    /// @note 子 SkinnedMeshRenderer は親 GameObject の Animator を共有する。自 GO だけを見ると
-    /// @note bone palette が空になり、武器残像が bind pose で描画される。
+    // 子 SkinnedMeshRenderer は親 GameObject の Animator を共有する。自 GO だけを見ると
+    // bone palette が空になり、武器残像が bind pose で描画される。
     if (auto* animator = FindAnimator(owner)) {
         sample.boneMatrices = animator->boneMatrices;
-        if (sample.boneMatrices.size() > asset::MAX_SKINNING_BONES)
+        if (sample.boneMatrices.size() > asset::MAX_SKINNING_BONES) {
             sample.boneMatrices.resize(asset::MAX_SKINNING_BONES);
+        }
     }
 
-    if (trail.allocatedMaxSamples <= 0)
+    if (trail.allocatedMaxSamples <= 0) {
         return;
+    }
 
     if (trail.sampleCount == trail.allocatedMaxSamples) {
         MeshTrailSample& writeSlot = trail.samples[static_cast<size_t>(trail.sampleHead)];
@@ -130,7 +138,7 @@ void CaptureSample(GameObject& owner, MeshTrailComponent& trail, float currentTi
     trail.lastSampleTime = currentTime;
 }
 
-} /// @note namespace
+} // namespace
 
 void ClearMeshTrailSamples(MeshTrailComponent& trail)
 {
@@ -156,9 +164,10 @@ void PrepareMeshTrailSampleStorage(MeshTrailComponent& trail)
 void UpdateMeshTrailSamples(GameObject& owner, MeshTrailComponent& trail, float currentTime)
 {
     ExpireSamples(trail, currentTime);
-    if (trail.enabled && ShouldSample(trail, owner.transform.worldPosition, currentTime))
+    if (trail.enabled && ShouldSample(trail, owner.transform.worldPosition, currentTime)) {
         CaptureSample(owner, trail, currentTime);
+    }
     ExpireSamples(trail, currentTime);
 }
 
-} /// @note namespace fbzz::scene::mesh_trail_extraction_detail
+} // namespace fbzz::scene::mesh_trail_extraction_detail

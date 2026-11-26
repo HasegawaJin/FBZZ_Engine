@@ -13,19 +13,19 @@ namespace fbzz::scene::light_extraction_detail {
 void BuildPunctualShadowAtlas(std::vector<PunctualShadowCandidate>& shadowCandidates,
     const renderer::RenderSettings& settings, uint32_t atlasResolution, RenderLightExtraction& output)
 {
-    /// @note キューブ 1 面ぶんの半画角 (= 90 度の半分)。Point シャドウの 6 面で使う。
+    // キューブ 1 面ぶんの半画角 (= 90 度の半分)。Point シャドウの 6 面で使う。
     constexpr float CUBE_FACE_HALF_FOV = 3.14159265f / 4.0f;
     auto& punctualLights = output.punctualLights;
 
-    /// @note Spot / Point シャドウのスロット割り当てと行列の組み立て
-    /// @note カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
-    /// @note 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
+    // Spot / Point シャドウのスロット割り当てと行列の組み立て
+    // カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
+    // 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
     std::sort(shadowCandidates.begin(), shadowCandidates.end(),
               [](const PunctualShadowCandidate& a, const PunctualShadowCandidate& b) {
                   return a.cameraDistanceSquared < b.cameraDistanceSquared;
               });
 
-    /// @note アトラスは 4x4 = kMaxPunctualShadows タイル。Spot が 1 枚、Point が 6 枚を使う。
+    // アトラスは 4x4 = kMaxPunctualShadows タイル。Spot が 1 枚、Point が 6 枚を使う。
     constexpr uint32_t PUNCTUAL_TILES_PER_SIDE = 4u;
     static_assert(PUNCTUAL_TILES_PER_SIDE * PUNCTUAL_TILES_PER_SIDE
                       == static_cast<uint32_t>(kMaxPunctualShadows),
@@ -36,9 +36,9 @@ void BuildPunctualShadowAtlas(std::vector<PunctualShadowCandidate>& shadowCandid
     const float    punctualUvScale   =
         static_cast<float>(punctualTileSize) / atlasResolutionFloat;
 
-    /// @note キューブ 6 面の向きと up。順序は PunctualShadow.hlsli の FBZZ_CubeFaceIndex と
-    /// @note 一致させること (+X, -X, +Y, -Y, +Z, -Z)。
-    /// @note up は描く行列と引く行列が同じなら何でもよい (両方ここで作った 1 本を使う)。
+    // キューブ 6 面の向きと up。順序は PunctualShadow.hlsli の FBZZ_CubeFaceIndex と
+    // 一致させること (+X, -X, +Y, -Y, +Z, -Z)。
+    // up は描く行列と引く行列が同じなら何でもよい (両方ここで作った 1 本を使う)。
     static constexpr math::Vector3 CUBE_FACE_DIRECTIONS[6] = {
         {  1.0f,  0.0f,  0.0f }, { -1.0f,  0.0f,  0.0f },
         {  0.0f,  1.0f,  0.0f }, {  0.0f, -1.0f,  0.0f },
@@ -52,13 +52,15 @@ void BuildPunctualShadowAtlas(std::vector<PunctualShadowCandidate>& shadowCandid
 
     auto& punctualViews = output.punctualShadowViews;
     auto& punctualViewCount = output.punctualShadowViewCount;
-    /// @note キューブ 6 面を使ったライトの本数 (Point / Sphere / Tube)。
+    // キューブ 6 面を使ったライトの本数 (Point / Sphere / Tube)。
     int shadowedCubeCount   = 0;
-    /// @note b3 経路 (既定の Forward) 向けのスロット番号。-1 = 影なし。
+    // b3 経路 (既定の Forward) 向けのスロット番号。-1 = 影なし。
     auto& legacyShadowSlots = output.legacyShadowSlots;
-    for (int& slot : legacyShadowSlots) slot = -1;
+    for (int& slot : legacyShadowSlots) {
+        slot = -1;
+    }
 
-    /// @note タイル 1 枚を組み立てる。halfFovRad はそのタイルの投影半画角。
+    // タイル 1 枚を組み立てる。halfFovRad はそのタイルの投影半画角。
     const auto buildPunctualView =
         [&](int slot, const math::Vector3& lightPosition, const math::Vector3& direction,
             const math::Vector3& up, float halfFovRad, float nearDepth, float farDepth,
@@ -82,39 +84,43 @@ void BuildPunctualShadowAtlas(std::vector<PunctualShadowCandidate>& shadowCandid
             punctualUvScale, punctualUvScale
         };
 
-        /// @note 基本バイアスは「1 テクセルが覆うワールド距離」。アクネはテクセルの幅の中で
-        /// @note 面の深度が変わることから出るので、補正量はテクセルの実寸そのものになる
-        /// @note (斜め面ぶんの tan(theta) はシェーダー側の FBZZ_PunctualSlopeBias が掛ける)。
-        /// @note 評価点が range の中ほどなのは、透視投影ではテクセル実寸が深度に比例するため。
+        // 基本バイアスは「1 テクセルが覆うワールド距離」。アクネはテクセルの幅の中で
+        // 面の深度が変わることから出るので、補正量はテクセルの実寸そのものになる
+        // (斜め面ぶんの tan(theta) はシェーダー側の FBZZ_PunctualSlopeBias が掛ける)。
+        // 評価点が range の中ほどなのは、透視投影ではテクセル実寸が深度に比例するため。
         const float middleDepth       = (std::max)((nearDepth + farDepth) * 0.5f, nearDepth * 2.0f);
         const float texelWorldSize =
             2.0f * middleDepth * std::tan(halfFovRad) / static_cast<float>(punctualTileSize);
-        /// @note 透視投影の NDC 深度は非線形なので、ワールド距離をそのまま渡せない。
-        /// @note z_ndc = f/(f-n) * (1 - n/z)  →  dz_ndc/dz = f*n / ((f-n) * z^2)
+        // 透視投影の NDC 深度は非線形なので、ワールド距離をそのまま渡せない。
+        // z_ndc = f/(f-n) * (1 - n/z)  →  dz_ndc/dz = f*n / ((f-n) * z^2)
         const float ndcPerWorld =
             (farDepth * nearDepth) / ((std::max)(farDepth - nearDepth, 0.001f) * middleDepth * middleDepth);
         view.biasNDC = texelWorldSize * ndcPerWorld * biasScale;
 
-        /// @note 1 テクセルが張る角度。ShadowPass の極小 caster カリングが使う。
+        // 1 テクセルが張る角度。ShadowPass の極小 caster カリングが使う。
         view.texelAngularSize =
             2.0f * std::tan(halfFovRad) / static_cast<float>(punctualTileSize);
 
-        /// @note 光源半径がシャドウマップ上で何テクセルぶんの半影になるか。
-        /// @note 本来は「光源の大きさ × 遮蔽物と受光面の距離比」だが、ブロッカー探索が無いので
-        /// @note 比を 1 とみなす。遮蔽物が遠いほど硬くなるが「大きな電球ほど柔らかい」は出る。
+        // 光源半径がシャドウマップ上で何テクセルぶんの半影になるか。
+        // 本来は「光源の大きさ × 遮蔽物と受光面の距離比」だが、ブロッカー探索が無いので
+        // 比を 1 とみなす。遮蔽物が遠いほど硬くなるが「大きな電球ほど柔らかい」は出る。
         view.penumbraTexels = (texelWorldSize > 0.0f) ? (sourceRadius / texelWorldSize) : 0.0f;
     };
 
     if (settings.shadowEnabled) {
         for (const PunctualShadowCandidate& shadowCandidate : shadowCandidates) {
             const int requiredTiles = shadowCandidate.needsCube ? 6 : 1;
-            /// @note break ではなく continue。全方位のライトが入らなかっただけで、後ろに続く
-            /// @note Spot / Area は 1 枚で収まる可能性がある。
-            if (punctualViewCount + requiredTiles > kMaxPunctualShadows) continue;
-            if (shadowCandidate.needsCube && shadowedCubeCount >= settings.shadow.maxShadowedPointLights) continue;
+            // break ではなく continue。全方位のライトが入らなかっただけで、後ろに続く
+            // Spot / Area は 1 枚で収まる可能性がある。
+            if (punctualViewCount + requiredTiles > kMaxPunctualShadows) {
+                continue;
+            }
+            if (shadowCandidate.needsCube && shadowedCubeCount >= settings.shadow.maxShadowedPointLights) {
+                continue;
+            }
 
-            /// @note Inspector で range より大きい shadowNearPlane を入れられるので、
-            /// @note ここで潰さないと Matrix4::Perspective の assert を踏む。
+            // Inspector で range より大きい shadowNearPlane を入れられるので、
+            // ここで潰さないと Matrix4::Perspective の assert を踏む。
             const float farDepth  = shadowCandidate.range;
             const float nearDepth = (std::min)(shadowCandidate.nearPlane, farDepth * 0.5f);
 
@@ -129,9 +135,9 @@ void BuildPunctualShadowAtlas(std::vector<PunctualShadowCandidate>& shadowCandid
                 punctualViewCount += 6;
                 ++shadowedCubeCount;
             } else {
-                /// @note 錐台は円錐へ外接させる。outerCone は半角なので画角はその 2 倍。
-                /// @note 少し広げるのは、ぴったり切ると PCF が縁ではみ出して影が欠けるため。
-                /// @note Area はコーンを持たないので kAreaShadowOuterConeDeg が入っている。
+                // 錐台は円錐へ外接させる。outerCone は半角なので画角はその 2 倍。
+                // 少し広げるのは、ぴったり切ると PCF が縁ではみ出して影が欠けるため。
+                // Area はコーンを持たないので kAreaShadowOuterConeDeg が入っている。
                 const float halfFov = (std::min)(
                     std::clamp(shadowCandidate.outerCone, 1.0f, 79.0f) * DEGREES_TO_RADIANS * 1.05f,
                     CUBE_FACE_HALF_FOV * 1.9f);
@@ -143,11 +149,12 @@ void BuildPunctualShadowAtlas(std::vector<PunctualShadowCandidate>& shadowCandid
                                   shadowCandidate.sourceRadius);
                 punctualViewCount += 1;
             }
-            /// @note クラスタ経路はライト構造体から、レガシー経路は b12 の対応表から番号を引く。
-            /// @note どちらの経路でも同じスロットを指すよう、ここで両方へ書く。
+            // クラスタ経路はライト構造体から、レガシー経路は b12 の対応表から番号を引く。
+            // どちらの経路でも同じスロットを指すよう、ここで両方へ書く。
             punctualLights[shadowCandidate.punctualIndex].shadowIndex = baseSlot;
-            if (shadowCandidate.legacySlot >= 0 && shadowCandidate.legacySlot < kMaxLegacyPunctualLights)
+            if (shadowCandidate.legacySlot >= 0 && shadowCandidate.legacySlot < kMaxLegacyPunctualLights) {
                 legacyShadowSlots[shadowCandidate.legacySlot] = baseSlot;
+            }
         }
     }
 }
@@ -156,8 +163,8 @@ void BuildLightCookieAtlas(std::vector<LightCookieCandidate>& cookieCandidates, 
 {
     auto& punctualLights = output.punctualLights;
 
-    /// @note Cookie のスロット割り当て
-    /// @note 影と同じくカメラから近い順。タイルは 8 枚しかない。
+    // Cookie のスロット割り当て
+    // 影と同じくカメラから近い順。タイルは 8 枚しかない。
     std::sort(cookieCandidates.begin(), cookieCandidates.end(),
               [](const LightCookieCandidate& a, const LightCookieCandidate& b) {
                   return a.cameraDistanceSquared < b.cameraDistanceSquared;
@@ -166,17 +173,21 @@ void BuildLightCookieAtlas(std::vector<LightCookieCandidate>& cookieCandidates, 
     auto& cookieViews = output.lightCookieViews;
     auto& cookieViewCount = output.lightCookieViewCount;
     auto& legacyCookieSlots = output.legacyCookieSlots;
-    for (int& slot : legacyCookieSlots) slot = -1;
+    for (int& slot : legacyCookieSlots) {
+        slot = -1;
+    }
 
     for (const LightCookieCandidate& cookieCandidate : cookieCandidates) {
-        if (cookieViewCount >= kMaxLightCookies) break;
+        if (cookieViewCount >= kMaxLightCookies) {
+            break;
+        }
 
         const int slot = cookieViewCount++;
         LightCookieView& view = cookieViews[slot];
 
-        /// @note 投影は影と同じ「スポットの円錐に外接する透視錐台」。
-        /// @note 影の行列を流用しないのは、Cookie が影を落とさないライトにも付くため。
-        /// @note 縁を広げないのは、近傍サンプルが無く広げると模様がコーンより内側で終わるため。
+        // 投影は影と同じ「スポットの円錐に外接する透視錐台」。
+        // 影の行列を流用しないのは、Cookie が影を落とさないライトにも付くため。
+        // 縁を広げないのは、近傍サンプルが無く広げると模様がコーンより内側で終わるため。
         const float farDepth    = cookieCandidate.range;
         const float nearDepth   = (std::min)(cookieCandidate.nearPlane, farDepth * 0.5f);
         const float halfFov = std::clamp(cookieCandidate.outerCone, 1.0f, 79.0f) * DEGREES_TO_RADIANS;
@@ -203,9 +214,10 @@ void BuildLightCookieAtlas(std::vector<LightCookieCandidate>& cookieCandidates, 
         view.rotationRad = cookieCandidate.rotationRad;
 
         punctualLights[cookieCandidate.punctualIndex].cookieIndex = slot;
-        if (cookieCandidate.legacySlot >= 0 && cookieCandidate.legacySlot < kMaxLegacyPunctualLights)
+        if (cookieCandidate.legacySlot >= 0 && cookieCandidate.legacySlot < kMaxLegacyPunctualLights) {
             legacyCookieSlots[cookieCandidate.legacySlot] = slot;
+        }
     }
 }
 
-} /// @note namespace fbzz::scene::light_extraction_detail
+} // namespace fbzz::scene::light_extraction_detail

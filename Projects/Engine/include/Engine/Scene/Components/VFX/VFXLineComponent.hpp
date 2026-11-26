@@ -25,103 +25,82 @@ enum class VFXLineMode : int { Lightning = 0, Beam = 1 };
 enum class VFXLinePreset : int { Lightning = 0, ElectricArc, Laser, EnergyBeam, Tether, Count };
 
 struct VFXLineComponent {
-    bool enabled = true;
-    VFXLineMode mode = VFXLineMode::Lightning;
+    bool enabled = true; ///< この線エフェクトの形状更新と描画を行う。
+    VFXLineMode mode = VFXLineMode::Lightning; ///< 線の形状として分岐する雷または連続ビームを選ぶ。
 
     /// @name 端点
     /// @{
     /// @note 始点の実体。無効なら自分の位置。
-    EntityRef fromEntity;
-    /// @note 終点の実体。無効なら toPoint (自分から見たローカル座標 = 置いただけで線が見える)。
-    EntityRef toEntity;
-    /// @note 始点へのワールド オフセット (足元ではなく手や胸から出すとき)。
-    math::Vector3 fromOffset = math::Vector3::ZERO;
-    math::Vector3 toPoint = { 0.0f, 0.0f, 5.0f };
-    /// @note 終点の実体が消えたら線を畳む (誰も居ない場所へ伸び続けないように)。
-    bool disableWhenEndpointMissing = true;
+    EntityRef fromEntity; ///< 線の始点を追従させるオブジェクト参照。未指定は所有者の位置。
+    EntityRef toEntity; ///< 終点の実体。無効なら toPoint (自分から見たローカル座標 = 置いただけで線が見える)。
+    math::Vector3 fromOffset = math::Vector3::ZERO; ///< 始点へのワールド オフセット (足元ではなく手や胸から出すとき)。
+    math::Vector3 toPoint = { 0.0f, 0.0f, 5.0f }; ///< 終点オブジェクトを使わないときの、所有者ローカルの終点。
+    bool disableWhenEndpointMissing = true; ///< 終点の実体が消えたら線を畳む (誰も居ない場所へ伸び続けないように)。
     /// @}
 
     /// @name 見た目
     /// @{
-    std::string materialPath = "Assets/Materials/Effects/VFXLine.mat";
-    /// @note グローの色 (リニア)。A は全体の不透明度。
-    math::Vector4 color = { 0.35f, 0.6f, 1.0f, 1.0f };
-    /// @note 芯の色 (リニア HDR)。白熱させるなら 1 より大きく。
-    math::Vector4 coreColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    /// @note 全体の明るさ (HDR)。ブルームが拾う。
-    float intensity = 4.0f;
-    /// @note 帯の幅 [m]。
-    float width = 0.12f;
-    /// @note 芯の太さ (帯の半幅に対する割合)。
-    float coreWidth = 0.25f;
-    /// @note 終点側の幅 (始点を 1 とした割合)。
-    float endTaper = 0.3f;
+    std::string materialPath = "Assets/Materials/Effects/VFXLine.mat"; ///< 線を板として描画するシェーダーと材質の参照。
+    math::Vector4 color = { 0.35f, 0.6f, 1.0f, 1.0f }; ///< グローの色 (リニア)。A は全体の不透明度。
+    math::Vector4 coreColor = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< 芯の色 (リニア HDR)。白熱させるなら 1 より大きく。
+    float intensity = 4.0f; ///< 全体の明るさ (HDR)。ブルームが拾う。
+    float width = 0.12f; ///< 帯の幅 [m]。
+    float coreWidth = 0.25f; ///< 芯の太さ (帯の半幅に対する割合)。
+    float endTaper = 0.3f; ///< 終点側の幅 (始点を 1 とした割合)。
     /// @}
 
     /// @name 雷
     /// @{
     /// @note 折れの細かさ。中点変位の段数で、本流は 2^detail 区間になる。
-    int   detail = 6;
-    /// @note 折れの大きさ (線の長さに対する割合)。
-    float chaos = 0.18f;
-    int   branchCount = 3;
-    /// @note 枝の長さ (本流の長さに対する割合)。
-    float branchLength = 0.35f;
-    /// @note 本流からの開き [度]。
-    float branchAngle = 35.0f;
-    /// @note 枝の幅と明るさ (本流を 1 とした割合)。
-    float branchWidth = 0.55f;
-    float branchBrightness = 0.6f;
-    /// @note 形を作り直す回数 [回/秒]。0 で形を固定する。
-    float strikeRate = 14.0f;
-    /// @note 明滅の強さ [0,1]。打ち直すたびに明るさが揺れ、打った直後が一番明るい。
-    float flicker = 0.5f;
-    /// @note 打ち直しの間の震え (線の長さに対する割合)。
-    float jitter = 0.01f;
+    int   detail = 6; ///< 雷の折れ線に中点を追加する反復段数。本流を 2 の detail 乗の区間に分ける。
+    float chaos = 0.18f; ///< 折れの大きさ (線の長さに対する割合)。
+    int   branchCount = 3; ///< 雷の本流から分ける枝の数。
+    float branchLength = 0.35f; ///< 枝の長さ (本流の長さに対する割合)。
+    float branchAngle = 35.0f; ///< 本流からの開き [度]。
+    float branchWidth = 0.55f; ///< 枝の幅と明るさ (本流を 1 とした割合)。
+    float branchBrightness = 0.6f; ///< 本流を基準として枝に適用する明るさの倍率。
+    float strikeRate = 14.0f; ///< 形を作り直す回数 [回/秒]。0 で形を固定する。
+    float flicker = 0.5f; ///< 明滅の強さ [0,1]。打ち直すたびに明るさが揺れ、打った直後が一番明るい。
+    float jitter = 0.01f; ///< 打ち直しの間の震え (線の長さに対する割合)。
     /// @}
 
     /// @name ビーム
     /// @{
-    int   beamSegments = 32;
-    /// @note たるみ [m]。中点をこの距離だけ下げる (張った光線と «引っ張られる紐» の違い)。
-    float sag = 0.0f;
-    /// @note 横ゆれの振幅 [m]・時間周波数 [Hz]・線に沿った山の数。
-    float wobble = 0.0f;
-    float wobbleFrequency = 3.0f;
-    float wobbleWaves = 2.0f;
+    int   beamSegments = 32; ///< ビームの曲線を折れ線に変換する際の区間数。
+    float sag = 0.0f; ///< たるみ [m]。中点をこの距離だけ下げる (張った光線と «引っ張られる紐» の違い)。
+    float wobble = 0.0f; ///< 横ゆれの振幅 [m]・時間周波数 [Hz]・線に沿った山の数。
+    float wobbleFrequency = 3.0f; ///< ビームの横揺れが時間方向に繰り返す周波数（Hz）。
+    float wobbleWaves = 2.0f; ///< ビームの端から端までの横揺れの波数。
     /// @}
 
     /// @name 帯の模様 (シェーダー)
     /// @{
     /// @note 芯の太さのムラ [0,1]。
-    float breakup = 0.4f;
-    /// @note 帯を流れる輝点の速さと数。0 で流さない。
-    float pulseSpeed = 0.0f;
-    float pulseDensity = 0.0f;
+    float breakup = 0.4f; ///< 線の芯の太さを場所によって変化させる割合（0〜1）。
+    float pulseSpeed = 0.0f; ///< 帯を流れる輝点の速さと数。0 で流さない。
+    float pulseDensity = 0.0f; ///< 線に沿って配置する光る模様の密度。
     /// @}
 
     /// @name 時間
     /// @{
-    float fadeIn = 0.0f;
-    /// @note 0 以下はずっと出し続ける。
-    float duration = 0.0f;
-    float fadeOut = 0.2f;
-    bool  loop = true;
-    int   seed = 1;
+    float fadeIn = 0.0f; ///< 再生開始後に線を表示強度まで立ち上げる時間（秒）。
+    float duration = 0.0f; ///< 0 以下はずっと出し続ける。
+    float fadeOut = 0.2f; ///< 生存時間の末尾で線を消すまでの時間（秒）。
+    bool  loop = true; ///< 有限の生存時間を過ぎたときに先頭へ戻して繰り返す。
+    int   seed = 1; ///< 雷の形状を打ち直す際の決定論的な乱数シード。
     /// @}
 
     /// @name ランタイム (保存しない)
     /// @{
-    float time = 0.0f;
-    /// @note 今の形を打ってからの経過 [秒]。
-    float strikeClock = 0.0f;
-    std::uint32_t strikeIndex = 0;
+    float time = 0.0f; ///< 線の時間変化に使う現在の再生時刻（秒）。
+    float strikeClock = 0.0f; ///< 今の形を打ってからの経過 [秒]。
+    std::uint32_t strikeIndex = 0; ///< 雷を打ち直すたびに進む形状の連番。乱数入力の一部。
 
     const char* GetTypeName() const { return "VFX Line"; }
 
     void Reflect(IReflector& r)
     {
-        /// @note Group / 表示条件は Inspector だけの話で、保存キーは常に同じ (モードを戻しても値は残る)。
+        // Group / 表示条件は Inspector だけの話で、保存キーは常に同じ (モードを戻しても値は残る)。
         r.Field("enabled", enabled);
         int modeValue = static_cast<int>(mode);
         static constexpr const char* kModes[] = { "Lightning", "Beam" };
@@ -147,7 +126,9 @@ struct VFXLineComponent {
         r.FloatRange("coreWidth", coreWidth, 0.0f, 1.0f);
         r.FloatRange("endTaper", endTaper, 0.0f, 1.0f);
 
-        if (lightning) r.Group("Lightning");
+        if (lightning) {
+            r.Group("Lightning");
+        }
         r.FieldIf("detail", detail, lightning, "折れの細かさ (中点変位の段数)。本流は 2^detail 区間になります。");
         r.FieldIf("chaos", chaos, lightning, "折れの大きさ。線の長さに対する割合です。");
         r.FieldIf("branchCount", branchCount, lightning);
@@ -158,7 +139,9 @@ struct VFXLineComponent {
         r.FieldIf("strikeRate", strikeRate, lightning, "1 秒に形を何回打ち直すか。0 で形を固定します。");
         r.FieldIf("jitter", jitter, lightning, "打ち直しの間の震え。線の長さに対する割合です。");
 
-        if (!lightning) r.Group("Beam");
+        if (!lightning) {
+            r.Group("Beam");
+        }
         r.FieldIf("beamSegments", beamSegments, !lightning);
         r.FieldIf("sag", sag, !lightning, "たるみ [m]。張った光線と «引っ張られる紐» を分けます。");
         r.FieldIf("wobble", wobble, !lightning, "横ゆれの振幅 [m]。");

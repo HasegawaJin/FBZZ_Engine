@@ -14,4 +14,4 @@ FBZZ_ENGINE_API ManagedBridgeStatus RunManagedJointService(Scene& scene, Script&
     const ManagedBridgeRequest& request, std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result, bool fixed);
 FBZZ_ENGINE_API bool PrepareJointChain(Scene& scene, GameObject& owner, std::span<GameObject* const> targets,
     float distance, uint32_t iterations, JointComponent& candidate);
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

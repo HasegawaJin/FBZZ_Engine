@@ -18,14 +18,18 @@ class BonePoseSharing {
 public:
     static asset::BoneBakeStatus Quantize(const asset::BakedBoneAnimation& bake, uint32_t rate, asset::BakedBoneFrame& frame)
     {
-        if (rate == 0) return asset::BoneBakeStatus::OK;
+        if (rate == 0) {
+            return asset::BoneBakeStatus::OK;
+        }
         if (rate > 1000 || bake.frameCount < 2 || !std::isfinite(bake.durationSeconds) || bake.durationSeconds <= 0.0
             || frame.first >= bake.frameCount || frame.second != (std::min)(frame.first + 1u,bake.frameCount - 1u)
-            || !std::isfinite(frame.alpha) || frame.alpha < 0.0f || frame.alpha > 1.0f)
+            || !std::isfinite(frame.alpha) || frame.alpha < 0.0f || frame.alpha > 1.0f) {
             return asset::BoneBakeStatus::INVALID_DATA;
+        }
         const double intervals = std::ceil(bake.durationSeconds * rate);
-        if (!std::isfinite(intervals) || intervals < 1.0 || intervals > 10000000.0)
+        if (!std::isfinite(intervals) || intervals < 1.0 || intervals > 10000000.0) {
             return asset::BoneBakeStatus::CAPACITY_EXCEEDED;
+        }
         const double normalized = (frame.first + static_cast<double>(frame.alpha)) / (bake.frameCount - 1u);
         const double position = std::clamp(std::round(normalized * intervals) / intervals * (bake.frameCount - 1u),
                                            0.0, static_cast<double>(bake.frameCount - 1u));
@@ -40,17 +44,25 @@ public:
         asset::BakedBoneWorkspace& workspace, bool& hit)
     {
         hit = false;
-        if (!source) return asset::BoneBakeStatus::INVALID_DATA;
+        if (!source) {
+            return asset::BoneBakeStatus::INVALID_DATA;
+        }
         if (m_frame != frameSerial || m_generation != generation || m_rate != rate) {
             m_entries.clear(); m_payloadBytes = 0; m_frame = frameSerial; m_generation = generation; m_rate = rate;
         }
         if (rate == 0) return asset::EvaluateBakedBoneAnimation(*source,frame,palette,globals,target.get(),
                                                                target ? &targetFrame : nullptr,weight,&workspace);
-        if (const auto status = Quantize(*source,rate,frame); status != asset::BoneBakeStatus::OK) return status;
-        if (target) {
-            if (const auto status = Quantize(*target,rate,targetFrame); status != asset::BoneBakeStatus::OK) return status;
+        if (const auto status = Quantize(*source,rate,frame); status != asset::BoneBakeStatus::OK) {
+            return status;
         }
-        if (!std::isfinite(weight) || weight < 0.0f || weight > 1.0f) return asset::BoneBakeStatus::INVALID_DATA;
+        if (target) {
+            if (const auto status = Quantize(*target,rate,targetFrame); status != asset::BoneBakeStatus::OK) {
+                return status;
+            }
+        }
+        if (!std::isfinite(weight) || weight < 0.0f || weight > 1.0f) {
+            return asset::BoneBakeStatus::INVALID_DATA;
+        }
         const Key key{source.get(),target.get(),frame.first,frame.second,std::bit_cast<uint32_t>(frame.alpha),
             target ? targetFrame.first : 0,target ? targetFrame.second : 0,
             target ? std::bit_cast<uint32_t>(targetFrame.alpha) : 0,std::bit_cast<uint32_t>(weight)};
@@ -60,9 +72,11 @@ public:
         }
         const auto status = asset::EvaluateBakedBoneAnimation(*source,frame,palette,globals,target.get(),
                                                              target ? &targetFrame : nullptr,weight,&workspace);
-        if (status != asset::BoneBakeStatus::OK) return status;
+        if (status != asset::BoneBakeStatus::OK) {
+            return status;
+        }
         const uint64_t bytes = static_cast<uint64_t>(palette.size() + globals.size()) * sizeof(math::Matrix4);
-        /// @note 件数上限はマップ要素・配列・アセット参照の費用も抑え、超過時はキャッシュせず評価する。
+        // 件数上限はマップ要素・配列・アセット参照の費用も抑え、超過時はキャッシュせず評価する。
         if (m_entries.size() < 4096 && bytes <= PAYLOAD_BUDGET - m_payloadBytes) {
             m_entries.emplace(key,Value{palette,globals}); m_payloadBytes += bytes;
         }

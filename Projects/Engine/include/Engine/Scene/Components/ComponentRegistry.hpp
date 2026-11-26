@@ -95,7 +95,9 @@ struct ComponentString {
 
     constexpr ComponentString(const char (&text)[N])
     {
-        for (size_t i = 0; i < N; ++i) value[i] = text[i];
+        for (size_t i = 0; i < N; ++i) {
+            value[i] = text[i];
+        }
     }
 };
 
@@ -180,4 +182,4 @@ constexpr void ForEachRegisteredComponent(Fn&& fn)
 #undef FBZZ_CUSTOM_COMPONENT
 #undef FBZZ_COMPONENT
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

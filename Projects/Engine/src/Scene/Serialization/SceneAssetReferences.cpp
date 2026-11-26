@@ -28,15 +28,23 @@ std::string ToLower(std::string_view text)
 std::optional<SceneAssetKind> KindOfPath(std::string_view path)
 {
     const std::size_t dot = path.find_last_of('.');
-    if (dot == std::string_view::npos) return std::nullopt;
+    if (dot == std::string_view::npos) {
+        return std::nullopt;
+    }
     const std::string ext = ToLower(path.substr(dot));
     static constexpr std::string_view kTextures[] = {
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".bmp", ".hdr", ".exr",
     };
     for (const std::string_view candidate : kTextures)
-        if (ext == candidate) return SceneAssetKind::Texture;
-    if (asset::IsModelSourcePath(ext) || ext == ".fzasset") return SceneAssetKind::Model;
-    if (ext == ".mat") return SceneAssetKind::Material;
+        if (ext == candidate) {
+            return SceneAssetKind::Texture;
+        }
+    if (asset::IsModelSourcePath(ext) || ext == ".fzasset") {
+        return SceneAssetKind::Model;
+    }
+    if (ext == ".mat") {
+        return SceneAssetKind::Material;
+    }
     return std::nullopt;
 }
 
@@ -45,15 +53,21 @@ std::string_view StripSubmeshSuffix(std::string_view value)
 {
     const std::size_t colon = value.find_last_of(':');
     const std::size_t dot = value.find_last_of('.');
-    if (colon == std::string_view::npos || dot == std::string_view::npos || colon < dot) return value;
+    if (colon == std::string_view::npos || dot == std::string_view::npos || colon < dot) {
+        return value;
+    }
     const std::string_view digits = value.substr(colon + 1);
-    if (digits.empty()) return value;
+    if (digits.empty()) {
+        return value;
+    }
     for (const char c : digits)
-        if (!std::isdigit(static_cast<unsigned char>(c))) return value;
+        if (!std::isdigit(static_cast<unsigned char>(c))) {
+            return value;
+        }
     return value.substr(0, colon);
 }
 
-} /// @note namespace
+} // namespace
 
 std::string_view StreamTypeNameOf(SceneAssetKind kind)
 {
@@ -69,30 +83,39 @@ std::optional<SceneAssetReference> ClassifySceneAssetReference(
     std::string_view value,
     const std::function<std::string(std::string_view)>& pathOfGuid)
 {
-    if (value.empty()) return std::nullopt;
-    /// @note Sprite 参照は親テクスチャを先読みする。
-    if (const std::size_t sprite = value.find("::sprite::"); sprite != std::string_view::npos)
+    if (value.empty()) {
+        return std::nullopt;
+    }
+    // Sprite 参照は親テクスチャを先読みする。
+    if (const std::size_t sprite = value.find("::sprite::"); sprite != std::string_view::npos) {
         value = value.substr(0, sprite);
+    }
 
     std::optional<SceneAssetKind> kind;
     std::string reference;
     if (value.rfind("guid:", 0) == 0) {
-        /// @note guid 参照は `guid:<hex>|<最後に知っていたパス>`。種類はヒントの拡張子で決め、
-        ///       参照自体は guid のまま渡す (移動・改名に追従させる)。
+        // guid 参照は `guid:<hex>|<最後に知っていたパス>`。種類はヒントの拡張子で決め、
+        //       参照自体は guid のまま渡す (移動・改名に追従させる)。
         const std::size_t bar = value.find('|');
         const std::string_view hint = bar != std::string_view::npos ? value.substr(bar + 1) : std::string_view{};
         const std::string_view guidPart = bar != std::string_view::npos ? value.substr(0, bar) : value;
         const std::string_view stripped = StripSubmeshSuffix(hint);
-        if (!stripped.empty()) kind = KindOfPath(stripped);
+        if (!stripped.empty()) {
+            kind = KindOfPath(stripped);
+        }
         else if (pathOfGuid) kind = KindOfPath(pathOfGuid(guidPart));
         reference = std::string(guidPart);
-        if (!stripped.empty()) reference += "|" + std::string(stripped);
+        if (!stripped.empty()) {
+            reference += "|" + std::string(stripped);
+        }
     } else {
         const std::string_view stripped = StripSubmeshSuffix(value);
         kind = KindOfPath(stripped);
         reference = std::string(stripped);
     }
-    if (!kind) return std::nullopt;
+    if (!kind) {
+        return std::nullopt;
+    }
     return SceneAssetReference{ *kind, std::move(reference) };
 }
 
@@ -105,7 +128,7 @@ std::vector<SceneAssetReference> CollectSceneAssetReferences(
     while (i < sceneText.size()) {
         const char quote = sceneText[i];
         if (quote == '#') {
-            /// @note コメント行の中身は拾わない。
+            // コメント行の中身は拾わない。
             const std::size_t end = sceneText.find('\n', i);
             i = end == std::string_view::npos ? sceneText.size() : end + 1;
             continue;
@@ -114,16 +137,19 @@ std::vector<SceneAssetReference> CollectSceneAssetReferences(
         std::string value;
         std::size_t j = i + 1;
         for (; j < sceneText.size() && sceneText[j] != quote && sceneText[j] != '\n'; ++j) {
-            /// @note 基本文字列の \" と \\ だけを戻す。パスに他のエスケープは現れない。
-            if (quote == '"' && sceneText[j] == '\\' && j + 1 < sceneText.size()) ++j;
+            // 基本文字列の \" と \\ だけを戻す。パスに他のエスケープは現れない。
+            if (quote == '"' && sceneText[j] == '\\' && j + 1 < sceneText.size()) {
+                ++j;
+            }
             value.push_back(sceneText[j]);
         }
         if (auto found = ClassifySceneAssetReference(value, pathOfGuid);
-            found && std::find(references.begin(), references.end(), *found) == references.end())
+            found && std::find(references.begin(), references.end(), *found) == references.end()) {
             references.push_back(std::move(*found));
+        }
         i = j + 1;
     }
     return references;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -32,19 +32,27 @@ inline bool ReadDefinition(const toml::table& table, std::vector<InstanceMeshPar
     const auto* mesh = table["mesh"].as_table();
     const auto* partArray = mesh ? (*mesh)["parts"].as_array() : nullptr;
     const auto* lods = mesh ? (*mesh)["lodHeights"].as_array() : nullptr;
-    if (!partArray || partArray->empty() || partArray->size() > 64 || !lods || lods->empty() || lods->size() > 4) return false;
+    if (!partArray || partArray->empty() || partArray->size() > 64 || !lods || lods->empty() || lods->size() > 4) {
+        return false;
+    }
     for (const auto& entry : *partArray) {
         const auto* row = entry.as_table();
-        if (!row) return false;
+        if (!row) {
+            return false;
+        }
         const auto meshRef = (*row)["mesh"].value<std::string>();
         const auto material = (*row)["material"].value<std::string>();
         const auto lod = (*row)["lod"].value<int64_t>();
-        if (!meshRef || !material || !lod || *lod < 0 || *lod > 3) return false;
+        if (!meshRef || !material || !lod || *lod < 0 || *lod > 3) {
+            return false;
+        }
         parts.push_back({*meshRef, *material, static_cast<uint32_t>(*lod)});
     }
     for (const auto& entry : *lods) {
         const auto value = entry.value<float>();
-        if (!value) return false;
+        if (!value) {
+            return false;
+        }
         heights.push_back(*value);
     }
     return true;
@@ -53,21 +61,28 @@ inline bool ReadDefinition(const toml::table& table, std::vector<InstanceMeshPar
 inline void WriteDefinition(toml::table& table, const InstanceSetAsset& definition)
 {
     toml::array parts, lods;
-    for (const auto& part : definition.Parts())
+    for (const auto& part : definition.Parts()) {
         parts.push_back(toml::table{{"mesh", part.meshPath}, {"material", part.materialPath}, {"lod", part.lod}});
-    for (float height : definition.LodHeights()) lods.push_back(height);
+    }
+    for (float height : definition.LodHeights()) {
+        lods.push_back(height);
+    }
     table.insert("mesh", toml::table{{"parts", std::move(parts)}, {"lodHeights", std::move(lods)}});
 }
 
 inline bool ReadVector(const toml::node& node, math::Vector3& vector)
 {
     const auto* array = node.as_array();
-    if (!array || array->size() != 3) return false;
+    if (!array || array->size() != 3) {
+        return false;
+    }
     const auto x = (*array)[0].value<float>(), y = (*array)[1].value<float>(), z = (*array)[2].value<float>();
-    if (!x || !y || !z) return false;
+    if (!x || !y || !z) {
+        return false;
+    }
     vector = {*x, *y, *z};
     return true;
 }
 
 inline toml::array WriteVector(const math::Vector3& vector) { return toml::array{vector.x, vector.y, vector.z}; }
-} /// @note namespace fbzz::asset::mesh_instances_serialization
+} // namespace fbzz::asset::mesh_instances_serialization

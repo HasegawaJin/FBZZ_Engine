@@ -85,18 +85,21 @@ public:
         /// @note 上限に達したとき、これより低い優先度の音を畳んで場所を空ける。
         /// @note 同値なら古い方が畳まれる。ループ音は畳まれない。
         int   priority      = 0;
-        /// @note 0 から鳴らし始めて指定秒で通常音量まで上げる。0 なら即座に本来の音量。
-        float fadeInSeconds = 0.0f;
-        /// @brief true なら PCM 全体をキャッシュせず分割供給する。.synth は生成クリップを使う。
-        bool streaming = false;
+        float fadeInSeconds = 0.0f; ///< 0 から鳴らし始めて指定秒で通常音量まで上げる。0 なら即座に本来の音量。
+        bool streaming = false; ///< true なら PCM 全体をキャッシュせず分割供給する。.synth は生成クリップを使う。
     };
 
+private:
+    /// @brief 設定を省略した再生に、PlayParams の既定値を渡す。
+    static constexpr PlayParams DefaultPlayParams() noexcept;
+
+public:
     /// @note Scene の AudioSourceComponent が所有する voice を個別に操作する低レベル API。
     /// @note 複数の 3D 音源を同時追跡するため voiceId を返す。共有状態では足りない。
     [[nodiscard]] FBZZ_ENGINE_API uint32_t PlayVoice(const std::string& path, bool loop, BusIndex bus,
-                                     const PlayParams& params = {});
+                                     const PlayParams& params = DefaultPlayParams());
     [[nodiscard]] FBZZ_ENGINE_API uint32_t PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
-                                         const PlayParams& params = {});
+                                         const PlayParams& params = DefaultPlayParams());
 
     /// @note 既定の短いフェードを掛けてから畳む。
     /// @note 波形の途中で切ると段差が生まれ「プツッ」と鳴るため即断しない。呼んだ側から見た voiceId はこの時点で無効になり、実体の後始末は Update が引き取る (フェード中も PCM は保持される)。
@@ -129,7 +132,7 @@ public:
     /// @name BGM / SE のショートハンド
     /// @note それぞれ "BGM" / "SE" バスへ流す。バスが無ければ Master。
     /// @{
-    /// @param fadeSeconds 0 より大きいと、鳴っていた BGM を消しながら新しい BGM を
+    /// @param[in] fadeSeconds 0 より大きいと、鳴っていた BGM を消しながら新しい BGM を
     /// @note 立ち上げる (クロスフェード)。曲の切り替わりで音が途切れない。
     FBZZ_ENGINE_API void PlayBGM(const std::string& path, bool loop = true, float fadeSeconds = 0.0f);
     FBZZ_ENGINE_API void StopBGM(float fadeSeconds = 0.0f);
@@ -147,10 +150,9 @@ public:
     /// @{
     struct PositionalRequest
     {
-        std::string path;              ///< @note 空なら clip を使う
-        ClipId      clip = 0;          ///< @note 参照を 1 つ握った状態で積まれる
-        /// @note audio モジュールは Math へ依存していないため math::Vector3 を使わない。3 つの float で足りるものに依存を増やさない。
-        float x = 0.0f, y = 0.0f, z = 0.0f;
+        std::string path; ///< 空なら clip を使う
+        ClipId      clip = 0; ///< 参照を 1 つ握った状態で積まれる
+        float x = 0.0f, y = 0.0f, z = 0.0f; ///< audio モジュールは Math へ依存していないため math::Vector3 を使わない。3 つの float で足りるものに依存を増やさない。
         float volume      = 1.0f;
         float minDistance = 1.0f;
         float maxDistance = 50.0f;
@@ -168,7 +170,7 @@ public:
     struct ClipInfo
     {
         WaveFormat     fmt{};
-        const uint8_t* pcm   = nullptr;   ///< @note 次にこのクリップが解放されるまで有効
+        const uint8_t* pcm   = nullptr; ///< 次にこのクリップが解放されるまで有効
         size_t         bytes = 0;
         float          durationSeconds = 0.0f;
     };
@@ -181,8 +183,8 @@ private:
         std::vector<uint8_t> pcm;
         int                  refCount   = 0;
         int                  voiceCount = 0;
-        bool                 persistent = false;   ///< @note パス由来。Shutdown まで保持し、参照が 0 でも捨てない。
-        uint64_t             specHash   = 0;        ///< @note 生成クリップの重複排除キー (persistent なら 0)。
+        bool                 persistent = false; ///< パス由来。Shutdown まで保持し、参照が 0 でも捨てない。
+        uint64_t             specHash   = 0; ///< 生成クリップの重複排除キー (persistent なら 0)。
     };
 
     /// @note 鳴っている 1 本。デバイスへ送る音量は volume * fadeGain。
@@ -197,11 +199,11 @@ private:
         float    fadeFrom  = 1.0f;
         float    fadeTo    = 1.0f;
         float    elapsed   = 0.0f;
-        float    duration  = 0.0f;   ///< @note 0 ならフェード中でない
+        float    duration  = 0.0f; ///< 0 ならフェード中でない
         bool     stopAtEnd = false;
         bool     loop      = false;
         int      priority  = 0;
-        uint64_t sequence  = 0;      ///< @note 同優先度なら小さい方 (古い方) から畳む
+        uint64_t sequence  = 0; ///< 同優先度なら小さい方 (古い方) から畳む
     };
 
     /// @note 上限に達していれば 1 本畳んで場所を空ける。
@@ -232,14 +234,20 @@ private:
     std::unordered_map<ClipId, ClipEntry>   m_clips;
     std::unordered_map<std::string, ClipId> m_pathToClip;
     std::unordered_map<uint64_t, ClipId>    m_specToClip;
-    std::unordered_map<uint32_t, VoiceState> m_voices;   ///< @note 鳴っている voice。終了を検出してクリップの参照を戻すためにも要る。
+    std::unordered_map<uint32_t, VoiceState> m_voices; ///< 鳴っている voice。終了を検出してクリップの参照を戻すためにも要る。
     uint64_t                                m_nextVoiceSequence = 1;
     size_t                                  m_voiceLimit = 48;
-    float                                   m_reverbWet     = -1.0f;   ///< @note reverb 有効バスへ最後に送った値。同じ値を送り続けないための記録。
+    float                                   m_reverbWet     = -1.0f; ///< reverb 有効バスへ最後に送った値。同じ値を送り続けないための記録。
     float                                   m_reverbDecay   = 0.0f;
     float                                   m_reverbHfRatio = 1.0f;
     size_t                                  m_generatedBytes = 0;
     std::vector<PositionalRequest>          m_positional;
 };
 
-} /// @note namespace fbzz::audio
+constexpr AudioManager::PlayParams AudioManager::DefaultPlayParams() noexcept
+{
+    // 外側のクラス定義が完了してから、PlayParams のメンバー初期化子を使う。
+    return {};
+}
+
+} // namespace fbzz::audio

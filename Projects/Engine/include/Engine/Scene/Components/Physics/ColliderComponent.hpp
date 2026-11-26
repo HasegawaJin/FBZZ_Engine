@@ -28,23 +28,21 @@
 namespace fbzz::scene {
 
 struct ColliderComponent {
-    /// @note ColliderComponent が Collider の唯一の所有者。World には Collider* (非所有) を渡す。
-    std::unique_ptr<physics::Collider> collider;
-    physics::ColliderHandle colliderHandle;
+    std::unique_ptr<physics::Collider> collider; ///< ColliderComponent が Collider の唯一の所有者。World には Collider* (非所有) を渡す。
+    physics::ColliderHandle colliderHandle; ///< 物理ワールドへ登録したコライダーの世代付きハンドル。
 
     /// @note 実効的な表面物性。physicsMaterialPath が設定されていれば、そこから解決した値の
     /// @note キャッシュになる (物理ソルバはこの値だけを見る)。空なら手打ちのインライン値。
 
     /// @note PhysicsSystem は毎フレーム &material を World へ渡す。アセット解決結果をこの
     /// @note フィールドへ同期する形にすることで、ソルバ側の経路は共有アセット化前後で変わらない。
-    physics::PhysicsMaterial material = physics::PhysicsMaterial::Default;
+    physics::PhysicsMaterial material = physics::PhysicsMaterial::Default; ///< ソルバーへ渡す実効表面物性。共有 .physmat を解決できなければ保持済みの値を使う。
 
-    /// @note 共有 .physmat アセットへの参照 (Assets 起点の相対パス)。空 = インライン値を使う。
-    std::string physicsMaterialPath;
+    std::string physicsMaterialPath; ///< 共有 .physmat アセットへの参照 (Assets 起点の相対パス)。空 = インライン値を使う。
 
-    math::Vector3 center = math::Vector3::ZERO;
-    bool isTrigger = false;
-    bool enabled = true;
+    math::Vector3 center = math::Vector3::ZERO; ///< コライダー中心の、所有オブジェクトのローカル原点からのオフセット。
+    bool isTrigger = false; ///< 接触応答の代わりに重なりを検知するトリガーとして登録する。
+    bool enabled = true; ///< 物理ワールドでこのコライダーを有効にする。
 
     /// @note このコライダーを «祖先の剛体» へ属させる。既定 false = 自分の GameObject に
     /// @note RigidBody が無ければ静的コライダー。
@@ -54,7 +52,7 @@ struct ColliderComponent {
     /// @note 親の剛体を押してしまう。祖先の剛体へ属させると同一ボディのコライダー同士は
     /// @note PhysicsSolver で衝突除外され、自己衝突が起きない。既定 false は既存シーンの
     /// @note 「親が剛体・子が静的」構成の意味を変えないため。
-    bool attachToParentBody = false;
+    bool attachToParentBody = false; ///< 同じオブジェクトに剛体がないとき、最も近い祖先の剛体へこの形状を付ける。
 
     ColliderComponent() = default;
     ~ColliderComponent() = default;
@@ -95,18 +93,18 @@ struct ColliderComponent {
         r.Field("isTrigger", isTrigger);
         r.Field("attachToParentBody", attachToParentBody);
         r.Field("physicsMaterial", physicsMaterialPath);
-        /// @note 共有アセット使用時もインライン値を保存し続ける。.physmat が見つからない場合に
-        /// @note 最後に解決できた値へフォールバックし、既定値への黙った復帰より穏やかに壊す。
+        // 共有アセット使用時もインライン値を保存し続ける。.physmat が見つからない場合に
+        // 最後に解決できた値へフォールバックし、既定値への黙った復帰より穏やかに壊す。
         r.Field("restitution", material.restitution);
         r.Field("staticFriction", material.staticFriction);
         r.Field("dynamicFriction", material.dynamicFriction);
         r.Field("density", material.density);
-        /// @note 合成規則。.scene には保存されていたのに Reflect に無く、AI バスと汎用
-        /// @note Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
-        /// @note 外から確かめられない)。
+        // 合成規則。.scene には保存されていたのに Reflect に無く、AI バスと汎用
+        // Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
+        // 外から確かめられない)。
         int restitutionCombineValue = static_cast<int>(material.restitutionCombine);
         r.Field("restitutionCombine", restitutionCombineValue);
-        /// @note Average / GeometricMean / Minimum / Multiply / Maximum の 5 種。
+        // Average / GeometricMean / Minimum / Multiply / Maximum の 5 種。
         constexpr int kCombineMax = static_cast<int>(physics::PhysicsMaterialCombine::Maximum);
         material.restitutionCombine = static_cast<physics::PhysicsMaterialCombine>(
             std::clamp(restitutionCombineValue, 0, kCombineMax));
@@ -141,7 +139,7 @@ struct ColliderComponent {
 };
 
 struct AabbColliderComponent : public ColliderComponent {
-    math::Vector3 size = math::Vector3::ONE;
+    math::Vector3 size = math::Vector3::ONE; ///< 軸平行ボックスの各辺の全長（ローカル m）。
 
     AabbColliderComponent() { collider = std::make_unique<physics::AABBCollider>(size * 0.5f); }
     AabbColliderComponent(const AabbColliderComponent& o) : ColliderComponent(o), size(o.size)
@@ -157,7 +155,7 @@ struct AabbColliderComponent : public ColliderComponent {
 };
 
 struct BoxColliderComponent : public ColliderComponent {
-    math::Vector3 size = math::Vector3::ONE;
+    math::Vector3 size = math::Vector3::ONE; ///< オブジェクトの回転に追従するボックスの各辺の全長（ローカル m）。
 
     BoxColliderComponent() { collider = std::make_unique<physics::OBBCollider>(size * 0.5f); }
     BoxColliderComponent(const BoxColliderComponent& o) : ColliderComponent(o), size(o.size)
@@ -173,7 +171,7 @@ struct BoxColliderComponent : public ColliderComponent {
 };
 
 struct SphereColliderComponent : public ColliderComponent {
-    float radius = 0.5f;
+    float radius = 0.5f; ///< 球コライダーのローカル半径（m）。
 
     SphereColliderComponent() { collider = std::make_unique<physics::SphereCollider>(radius); }
     SphereColliderComponent(const SphereColliderComponent& o) : ColliderComponent(o), radius(o.radius)
@@ -189,8 +187,8 @@ struct SphereColliderComponent : public ColliderComponent {
 };
 
 struct CapsuleColliderComponent : public ColliderComponent {
-    float radius     = 0.5f;
-    float halfHeight = 1.0f;
+    float radius     = 0.5f; ///< カプセルの端球と胴のローカル半径（m）。
+    float halfHeight = 1.0f; ///< カプセルの中心から端球中心までの軸方向距離（ローカル m）。
 
     CapsuleColliderComponent() { collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight); }
     CapsuleColliderComponent(const CapsuleColliderComponent& o) : ColliderComponent(o), radius(o.radius), halfHeight(o.halfHeight)
@@ -212,8 +210,8 @@ struct CapsuleColliderComponent : public ColliderComponent {
 
 /// @note 天面と底面が平らな円柱。カプセルと違い縁が鋭いので、平面上に立てても倒れない。
 struct CylinderColliderComponent : public ColliderComponent {
-    float radius     = 0.5f;
-    float halfHeight = 1.0f;
+    float radius     = 0.5f; ///< 円柱の軸から側面までのローカル半径（m）。
+    float halfHeight = 1.0f; ///< 円柱中心から上端または下端の平面までの距離（ローカル m）。
 
     CylinderColliderComponent() { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
     CylinderColliderComponent(const CylinderColliderComponent& o) : ColliderComponent(o), radius(o.radius), halfHeight(o.halfHeight)
@@ -234,9 +232,9 @@ struct CylinderColliderComponent : public ColliderComponent {
 };
 
 struct MeshColliderComponent : public ColliderComponent {
-    std::string meshPath;
-    int  meshIndex         = 0;
-    bool useTransformScale = true;
+    std::string meshPath; ///< 三角形の衝突形状を読み込むモデルアセットの参照。
+    int  meshIndex         = 0; ///< 三角形の衝突形状に使うモデルのサブメッシュ添字。
+    bool useTransformScale = true; ///< 当たり判定にオブジェクトの Transform のスケールを反映する。
 
     const char* GetTypeName() const { return "Mesh Collider"; }
     void Reflect(IReflector& r)
@@ -255,9 +253,9 @@ struct MeshColliderComponent : public ColliderComponent {
 };
 
 struct ConvexHullColliderComponent : public ColliderComponent {
-    std::string meshPath;
-    int  meshIndex         = 0;
-    bool useTransformScale = true;
+    std::string meshPath; ///< 凸包の生成に使う頂点を読み込むモデルアセットの参照。
+    int  meshIndex         = 0; ///< 凸包を生成する元のモデルのサブメッシュ添字。
+    bool useTransformScale = true; ///< 凸包の寸法にオブジェクトの Transform のスケールを反映する。
 
     const char* GetTypeName() const { return "Convex Hull Collider"; }
     void Reflect(IReflector& r)

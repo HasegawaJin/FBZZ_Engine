@@ -22,19 +22,19 @@ namespace fbzz::asset {
 ///       ノードを分割単位にし、ノード内のマテリアル分割は Renderer の materials 配列の要素
 ///       として区別する。
 struct ModelNode {
-    std::string name;
-    int parentIndex = -1;
-    std::vector<int> children;
+    std::string name; ///< ノードを階層・アニメーションから照合する名前。
+    int parentIndex = -1; ///< モデルノード配列内での親の添字。ルートは -1。
+    std::vector<int> children; ///< モデルノード配列内での直下の子の添字列。
 
     /// 親ノードからの相対変換 (バインドポーズ)。生成する GameObject の Transform になる。
-    math::Vector3    localTranslation = math::Vector3::ZERO;
-    math::Quaternion localRotation    = math::Quaternion::Identity();
-    math::Vector3    localScale       = math::Vector3::ONE;
+    math::Vector3    localTranslation = math::Vector3::ZERO; ///< 親ノードを基準としたローカル位置。
+    math::Quaternion localRotation    = math::Quaternion::Identity(); ///< 親ノードを基準としたローカル回転。
+    math::Vector3    localScale       = math::Vector3::ONE; ///< 親ノードを基準としたローカル軸別倍率。
 
     /// このノードが描くメッシュ配列の添字。Assimp のマテリアル分割により複数になる。
     /// 並び順がそのまま Renderer の submesh 順 = MaterialComponent のスロット順になる。
     /// 空のノードは Transform だけを持つグループ / ボーンで、Renderer は生成しない。
-    std::vector<uint32_t> meshIndices;
+    std::vector<uint32_t> meshIndices; ///< このノードへ配置するモデル内のメッシュの添字列。
 
     [[nodiscard]] bool HasMeshes() const { return !meshIndices.empty(); }
 };

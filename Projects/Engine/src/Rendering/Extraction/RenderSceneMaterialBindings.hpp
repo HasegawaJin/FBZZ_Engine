@@ -19,7 +19,7 @@ class RenderMaterialResolver;
 void CopyResolvedMaterial(renderer::RenderMaterial& output, const renderer::Material* material,
     renderer::ResourceManager& resources, const MaterialSlot& slot, RenderMaterialResolver& materialResolver);
 
-/// @param currentDeformationVerified スキンドの場合に、現在の変形済み頂点バッファを検証できたか。
+/// @param[in] currentDeformationVerified スキンドの場合に、現在の変形済み頂点バッファを検証できたか。
 void ExtractRayMaterialInputs(renderer::RenderMaterial& material, const renderer::Material* source,
     const MaterialSlot& slot, renderer::ResourceManager& resources, bool currentDeformationVerified);
 

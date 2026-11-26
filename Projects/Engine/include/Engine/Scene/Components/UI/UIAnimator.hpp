@@ -17,38 +17,38 @@ namespace fbzz::scene {
 enum class UIEasingType { Linear, EaseIn, EaseOut, EaseInOut };
 
 struct UIColorTween {
-    math::Vector4 from     = { 1, 1, 1, 1 };
-    math::Vector4 to       = { 1, 1, 1, 0 };
-    float         duration = 1.0f;
-    float         elapsed  = 0.0f;
-    UIEasingType  easing   = UIEasingType::Linear;
-    bool          loop     = false;
+    math::Vector4 from     = { 1, 1, 1, 1 }; ///< 補間を開始するときの RGBA 色。
+    math::Vector4 to       = { 1, 1, 1, 0 }; ///< 補間を終えるときの RGBA 色。
+    float         duration = 1.0f; ///< 始点色から終点色への移行に掛ける時間 [秒]。
+    float         elapsed  = 0.0f; ///< 色の補間を開始してからの経過時間 [秒]。
+    UIEasingType  easing   = UIEasingType::Linear; ///< 経過時間から色の補間率を求めるイージング。
+    bool          loop     = false; ///< 色の補間を終えたら次の周期を開始するかどうか。
     /// @brief ループごとに from/to を反転する。往復アニメーションに使う。
     /// @note loop との違い: loop は終端でリセット、pingPong は折り返す。
-    bool          pingPong = false;
-    bool          active   = false; ///< @note false のとき UIAnimatorSystem はこのトゥイーンをスキップする
+    bool          pingPong = false; ///< 色を繰り返し補間するときに始点と終点を交互に入れ替えるかどうか。
+    bool          active   = false; ///< false のとき UIAnimatorSystem はこのトゥイーンをスキップする
 };
 
 struct UIPositionTween {
-    math::Vector2 from     = { 0, 0 };
-    math::Vector2 to       = { 100, 0 };
-    float         duration = 1.0f;
-    float         elapsed  = 0.0f;
-    UIEasingType  easing   = UIEasingType::Linear;
-    bool          loop     = false;
-    bool          pingPong = false;
-    bool          active   = false;
+    math::Vector2 from     = { 0, 0 }; ///< 開始時に Transform へ書くローカル X、Y 座標。
+    math::Vector2 to       = { 100, 0 }; ///< 終了時に Transform へ書くローカル X、Y 座標。
+    float         duration = 1.0f; ///< 始点位置から終点位置への移行に掛ける時間 [秒]。
+    float         elapsed  = 0.0f; ///< 位置の補間を開始してからの経過時間 [秒]。
+    UIEasingType  easing   = UIEasingType::Linear; ///< 経過時間から位置の補間率を求めるイージング。
+    bool          loop     = false; ///< 位置の補間を終えたら次の周期を開始するかどうか。
+    bool          pingPong = false; ///< 位置の補間を繰り返すときに始点と終点を交互に入れ替えるかどうか。
+    bool          active   = false; ///< 位置の補間を処理するかどうか。
 };
 
 struct UIScaleTween {
-    math::Vector2 from     = { 1, 1 };
-    math::Vector2 to       = { 1.2f, 1.2f };
-    float         duration = 0.3f;
-    float         elapsed  = 0.0f;
-    UIEasingType  easing   = UIEasingType::EaseOut;
-    bool          loop     = false;
-    bool          pingPong = false;
-    bool          active   = false;
+    math::Vector2 from     = { 1, 1 }; ///< 開始時に設定するローカル X、Y スケール倍率。
+    math::Vector2 to       = { 1.2f, 1.2f }; ///< 終了時に設定するローカル X、Y スケール倍率。
+    float         duration = 0.3f; ///< 始点スケールから終点スケールへの移行に掛ける時間 [秒]。
+    float         elapsed  = 0.0f; ///< スケールの補間を開始してからの経過時間 [秒]。
+    UIEasingType  easing   = UIEasingType::EaseOut; ///< 経過時間からスケールの補間率を求めるイージング。
+    bool          loop     = false; ///< スケールの補間を終えたら次の周期を開始するかどうか。
+    bool          pingPong = false; ///< スケールの補間を繰り返すときに始点と終点を交互に入れ替えるかどうか。
+    bool          active   = false; ///< スケールの補間を処理するかどうか。
 };
 
 /// @brief 1 つの数値を動かすトゥイーン。回転・塗り潰し量・マテリアルの 1 パラメータが使う。
@@ -56,38 +56,35 @@ struct UIScaleTween {
 /// @note テンプレートへまとめるとシーンに保存済みのキー名が変わって既存シーンが壊れるため、
 /// @note 型ごとに分けたまま数値版だけ追加している。
 struct UIFloatTween {
-    float        from     = 0.0f;
-    float        to       = 1.0f;
-    float        duration = 0.3f;
-    float        elapsed  = 0.0f;
-    UIEasingType easing   = UIEasingType::Linear;
-    bool         loop     = false;
-    bool         pingPong = false;
-    bool         active   = false;
+    float        from     = 0.0f; ///< 開始時に対象プロパティへ書く値。単位はプロパティに従う。
+    float        to       = 1.0f; ///< 終了時に対象プロパティへ書く値。単位はプロパティに従う。
+    float        duration = 0.3f; ///< 始点値から終点値への移行に掛ける時間 [秒]。
+    float        elapsed  = 0.0f; ///< 数値の補間を開始してからの経過時間 [秒]。
+    UIEasingType easing   = UIEasingType::Linear; ///< 経過時間から数値の補間率を求めるイージング。
+    bool         loop     = false; ///< 数値の補間を終えたら次の周期を開始するかどうか。
+    bool         pingPong = false; ///< 数値の補間を繰り返すときに始点と終点を交互に入れ替えるかどうか。
+    bool         active   = false; ///< 対象プロパティの数値補間を処理するかどうか。
 };
 
 struct UIAnimator {
-    UIColorTween    colorTween;
-    UIPositionTween positionTween;
-    UIScaleTween    scaleTween;
-    /// @brief 度。UIAnimatorSystem が transform.rotation の Z へ書く。
-    UIFloatTween    rotationTween;
-    /// @brief UIImage.fillAmount [0,1]。クールダウンや充填の演出に使う。
-    UIFloatTween    fillTween;
+    UIColorTween    colorTween; ///< UI の色に反映する補間設定と再生状態。
+    UIPositionTween positionTween; ///< UI の位置に反映する補間設定と再生状態。
+    UIScaleTween    scaleTween; ///< UI のスケールに反映する補間設定と再生状態。
+    UIFloatTween    rotationTween; ///< 度。UIAnimatorSystem が transform.rotation の Z へ書く。
+    UIFloatTween    fillTween; ///< UIImage.fillAmount [0,1]。クールダウンや充填の演出に使う。
     /// @brief UIImage の要素ごとマテリアル上書き 1 つ。materialParam が空なら何もしない。
     /// @note 複数を同時に動かしたい場面は .mat 側で 1 つの進行度から派生させたほうが破綻しない
     /// @note (色と縁と発光がばらばらに進むと調整が指数的に増える)。入口は 1 本に絞る。
-    UIFloatTween    materialTween;
-    std::string     materialParam;
+    UIFloatTween    materialTween; ///< UIImage のマテリアルパラメーター 1 個へ反映する補間設定と再生状態。
+    std::string     materialParam; ///< 補間値を書き込む UIImage のマテリアルパラメーター名。空なら書き込まない。
 
     /// @brief 再生開始までの待ち (秒)。全トゥイーン共通。
     /// @note 連結ではなく待ちにする理由: 「0.1 秒後に出る」のように絶対時刻で指定したい場面が
     /// @note 多い。待ちだけあれば、同時再生も段差も作れる。
-    float           delay   = 0.0f;
-    /// @note ランタイム専用: delay の消化量。
-    float           delayElapsed = 0.0f;
+    float           delay   = 0.0f; ///< コンポーネント内の補間を始めるまでの待機時間 [秒]。
+    float           delayElapsed = 0.0f; ///< ランタイム専用: delay の消化量。
 
-    bool            enabled = true;
+    bool            enabled = true; ///< このコンポーネントが保持するトゥイーンを更新するかどうか。
 
     /// @brief Tween 再生 API。ScriptProxy / Inspector ボタンの両方から同じ入口を使う。
     /// @note elapsed と active の初期化規則を呼び出し側へ分散させると、途中再生・ループ・
@@ -209,7 +206,7 @@ struct UIAnimator {
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
-        /// @note Inspector で編集する Tween パラメーター。
+        // Inspector で編集する Tween パラメーター。
         static constexpr const char* kEasingLabels[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
 
         r.Group("Color Tween");
@@ -248,8 +245,8 @@ struct UIAnimator {
         r.Field("scalePingPong",    scaleTween.pingPong);
         r.Field("scaleActive",      scaleTween.active);
 
-        /// @note 数値トゥイーン 3 種は項目の並びを上の 3 つと揃える。既存 3 種がフィールド名を
-        /// @note 平坦に並べているため、ここだけ入れ子にすると保存キーの付け方が 2 種類になる。
+        // 数値トゥイーン 3 種は項目の並びを上の 3 つと揃える。既存 3 種がフィールド名を
+        // 平坦に並べているため、ここだけ入れ子にすると保存キーの付け方が 2 種類になる。
         const auto reflectFloatTween = [&](const char* prefix, UIFloatTween& tween,
                                            float minDuration, float maxDuration) {
             char key[48];

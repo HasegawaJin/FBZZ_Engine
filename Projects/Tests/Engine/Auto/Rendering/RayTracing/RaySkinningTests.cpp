@@ -163,7 +163,9 @@ private:
     static void Pump()
     {
         auto* scope = s_current;
-        if (!scope || scope->m_invoked) return;
+        if (!scope || scope->m_invoked) {
+            return;
+        }
         scope->m_invoked = true;
         scope->m_resume.release();
         scope->m_callback();
@@ -822,7 +824,7 @@ TEST_F(RaySkinningSignatureScratchTest, NestedLeasesPreserveOuterWordsAndReturnE
 TEST_F(RaySkinningTest, SameFramePoseAndExactBitChangesInvalidateAReusedSignature)
 {
     Animator().boneMatrices.resize(3, math::Matrix4::Identity());
-    /// @note メッシュが参照するのはボーン 0 だが、未使用の末尾ボーンの特殊値もパレット全体の署名を失効させる。
+    // メッシュが参照するのはボーン 0 だが、未使用の末尾ボーンの特殊値もパレット全体の署名を失効させる。
     const std::array<uint32_t, 16> tailBits{
         0x00000000u, 0x80000000u, 0x3f800000u, 0xbf800000u,
         0x40000000u, 0xc0000000u, 0x7f800000u, 0xff800000u,
@@ -1025,7 +1027,7 @@ TEST_F(RaySkinningTest, AssetClipsShareImmutableKeysKeepIndependentTimeAndExpire
     asset::FzAnimHeader header{};
     std::memcpy(header.magic, "FZAN", 4); std::memcpy(header.name, "Swim", 5);
     header.version = 3; header.durationTicks = 10; header.ticksPerSecond = 1; header.trackCount = 1;
-    /// @note 保存形式 v3 の拡張は 48 バイト。400 バイトのトラックで nodeName は 256、positionCount は 388 バイト位置にある。
+    // 保存形式 v3 の拡張は 48 バイト。400 バイトのトラックで nodeName は 256、positionCount は 388 バイト位置にある。
     std::array<char, 48> extension{};
     const double durationSeconds = 10;
     std::memcpy(extension.data(), &durationSeconds, sizeof(durationSeconds)); extension[12] = 1;
@@ -1189,7 +1191,9 @@ TEST_F(RaySkinningTest, DeformedIndexedShadowAndAllGbufferTargetsMatchAfterFrust
             renderer::InstanceBatcher batch(ctx, shader, enable ? (shadow ? shadowInstanced : gbufferInstanced)
                 : renderer::ResourceHandle<renderer::ShaderTag>{}, shadow, &frustum);
             for (size_t i = 0; i < entities.size(); ++i) {
-                if (!enable && i == 3) continue;
+                if (!enable && i == 3) {
+                    continue;
+                }
                 auto* smr = m_scene.GetComponent<scene::SkinnedMeshRenderer>(entities[i]);
                 renderer::DrawCall call;
                 call.vertexBuffer = smr->ResolveSlotSkinnedVertexBuffer(0);
@@ -1537,7 +1541,7 @@ TEST_F(RaySkinningTest, CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformati
     ASSERT_EQ(m_snapshot->Objects().size(), 1u);
     EXPECT_FALSE(m_snapshot->Objects()[0].skinned);
     EXPECT_FALSE(m_snapshot->items[0].deformedVertexBuffer.IsValid());
-    /// @note 静的メッシュと材質の型が合わない場合は既存の不透明な Unlit ErrorSurface を使う。形状は遮蔽物として残る。
+    // 静的メッシュと材質の型が合わない場合は既存の不透明な Unlit ErrorSurface を使う。形状は遮蔽物として残る。
     const auto* errorMaterial = m_resources->GetErrorMaterial(false);
     ASSERT_NE(errorMaterial, nullptr);
     EXPECT_EQ(errorMaterial->shaderPath, renderer::ERROR_SURFACE_SHADER);
@@ -1603,7 +1607,7 @@ TEST_F(RaySkinningTest, ReferencePoseWorksWithoutAnimatorAndMissingPoseDoesNotPu
     ASSERT_EQ(m_snapshot->items.size(), 1u);
     EXPECT_FALSE(m_snapshot->items[0].deformedVertexBuffer.IsValid());
     EndFrameWithoutRead();
-    /// @note 有効な出力がない場合は読戻しを省く。
+    // 有効な出力がない場合は読戻しを省く。
 }
 
 /// @brief 元バッファの内容を直接更新すると、スキニングは現在の頂点バイト列を使う。
@@ -1756,7 +1760,7 @@ TEST_F(RaySkinningTest, ResourceResetRecreatesStaleOutputAndNeverReusesPreviousD
     const auto first = ReadAndEndFrame();
     ASSERT_EQ(first.size(), 4u);
     EXPECT_NEAR(first[2], 1, 0.001f);
-    /// @note シェーダーの作成順を逆にしてアドレスの再利用を検証する。PSO は新しいバイトコードに対応したものを使う。
+    // シェーダーの作成順を逆にしてアドレスの再利用を検証する。PSO は新しいバイトコードに対応したものを使う。
     for (uint32_t iteration = 0; iteration < 6; ++iteration) {
         m_resources->Reset();
         CreateReadResources((iteration & 1u) == 0);
@@ -1876,7 +1880,7 @@ TEST_F(RaySkinningTest, RejectedDispatchNeverPublishesAnOldNonzeroContentVersion
     auto pixels = ReadAndEndFrame();
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 
-    /// @note 全資源を有効にしたまま DX12 のフレーム外で Dispatch を拒否させ、書き込み記録と内容版が進まないことを確認する。
+    // 全資源を有効にしたまま DX12 のフレーム外で Dispatch を拒否させ、書き込み記録と内容版が進まないことを確認する。
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 2});
     EXPECT_EQ(ExecuteView(), 1u);
     ExpectNoCurrentDeformation();
@@ -1935,7 +1939,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseDetectsPublicPoseAndBorrowed
     EXPECT_EQ(m_directReuse, 0u); EXPECT_EQ(m_fullPreparation, 1u);
     EXPECT_EQ(ExecuteComparedView(context), 0u);
     EXPECT_EQ(m_directReuse, 1u); EXPECT_EQ(m_fullPreparation, 0u);
-    /// @note 従来どおり、署名が変わらずネイティブ出力の内容版が非ゼロなら同じ出力を再利用する。
+    // 従来どおり、署名が変わらずネイティブ出力の内容版が非ゼロなら同じ出力を再利用する。
     auto* output = m_resources->Get(Skinned().ResolveSlotSkinnedVertexBuffer(0));
     ASSERT_NE(output, nullptr);
     output->NotifyGpuWrite();
@@ -1987,7 +1991,7 @@ TEST_F(RaySkinningTest, NativePreparedTicketDefersWritesAndOwnsOriginalSourceAnd
     EXPECT_EQ(m_resources->Get(output)->GetContentVersion(), ticket->Writes()[0].previousVersion);
     auto changed = m_model->meshes[0]->cpuSkinnedVertices;
     for (auto& vertex : changed) vertex.position.z = 8;
-    /// @note Get を再度呼ばない直接更新でも ticket は旧 source の所有版を維持する。
+    // Get を再度呼ばない直接更新でも ticket は旧 source の所有版を維持する。
     sourceBuffer->Update(changed.data(), changed.size() * sizeof(renderer::SkinnedVertex));
     pose[0] = math::Matrix4::Translate({0, 0, 9});
     m_resources->Release(source);
@@ -2021,7 +2025,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedSourceSnapshotTracksDirectUpdatesA
     EXPECT_NEAR(pixels[2], 3, 0.001f);
     ticket.reset();
 
-    /// @note GPU 読戻しで両 fence を完了し最後の ticket を解放した後だけ、同じ slot の所有 source 版を再利用する。
+    // GPU 読戻しで両 fence を完了し最後の ticket を解放した後だけ、同じ slot の所有 source 版を再利用する。
     BeginFrame();
     pose[0] = math::Matrix4::Translate({0, 0, 3});
     ticket = renderer::PrepareCapturedSkinning(*m_bundle.renderer, *m_resources,
@@ -2036,7 +2040,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedSourceSnapshotTracksDirectUpdatesA
 
     auto changed = m_model->meshes[0]->cpuSkinnedVertices;
     for (auto& vertex : changed) vertex.position.z = 4;
-    /// @note 再 Get なしの借用 pointer 更新も native 成功版が変わり、同じ slot の旧 bytes を無効化する。
+    // 再 Get なしの借用 pointer 更新も native 成功版が変わり、同じ slot の旧 bytes を無効化する。
     borrowedSource->Update(changed.data(), changed.size() * sizeof(renderer::SkinnedVertex));
     ASSERT_GT(borrowedSource->GetContentVersion(), request.sourceVersion);
     request.sourceVersion = borrowedSource->GetContentVersion();
@@ -2097,7 +2101,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedReusePinsRawBorrowUntilTheNewFrame
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 
     BeginFrame();
-    /// @note Threaded BeginFrame を完了させてから、同じ成功出力を現在の physical frame で借り直す。
+    // Threaded BeginFrame を完了させてから、同じ成功出力を現在の physical frame で借り直す。
     ASSERT_NE(m_resources->Get(borrowedOutput), nullptr);
     ASSERT_TRUE(renderer::SubmitPreparedSkinning(first));
     first.reset();
@@ -2106,7 +2110,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedReusePinsRawBorrowUntilTheNewFrame
         m_handles.skinningComputeCS, std::span(&request, 1), pose);
     ASSERT_NE(second, nullptr);
     ASSERT_EQ(second->Writes().size(), 1u);
-    /// @note 旧 ticket の最後の owner を外しても、この frame の裸 handle 消費より前に再利用しない。
+    // 旧 ticket の最後の owner を外しても、この frame の裸 handle 消費より前に再利用しない。
     EXPECT_NE(second->Writes()[0].output, borrowedOutput);
     ASSERT_TRUE(renderer::SubmitPreparedSkinning(second));
     pixels = ReadOutputAndEndFrame(borrowedOutput);
@@ -2156,7 +2160,7 @@ TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKe
     BeginFrame();
     ASSERT_EQ(ExecuteView(nullptr, false), 1u);
     EndFrameWithoutRead();
-    /// @note Animator は morph の無い model でも空 handle 配列を確保する。配列の存在だけでは別入力ではない。
+    // Animator は morph の無い model でも空 handle 配列を確保する。配列の存在だけでは別入力ではない。
     Skinned().morphVertexBuffers.resize(m_model->meshes.size());
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 2});
     BeginFrame();
@@ -2180,7 +2184,7 @@ TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKe
     ASSERT_EQ(original->items[0].preparedSkinning, ticket);
     EXPECT_FALSE(original->items[0].deformedVertexBuffer.IsValid());
     EXPECT_FALSE(ticket->Writes()[0].recorded);
-    /// @note 後段で Scene の姿勢/world を変えても旧 snapshot は元の geometry と元の GPU 姿勢を使う。
+    // 後段で Scene の姿勢/world を変えても旧 snapshot は元の geometry と元の GPU 姿勢を使う。
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 9});
     Object().transform.worldPosition = {40, 0, 0};
     core::Logger::Warn("Captured skinning callback boundary");
@@ -2200,7 +2204,7 @@ TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKe
     ASSERT_EQ(pixels.size(), 4u);
     EXPECT_NEAR(pixels[2], 3, 0.001f);
     const auto completed = context.renderScene;
-    /// @note 呼び出し側が所有するコピーには抽出索引がないため、見落とさないよう全体を探索する。
+    // 呼び出し側が所有するコピーには抽出索引がないため、見落とさないよう全体を探索する。
     const auto external = std::make_shared<renderer::RenderScene>(*completed);
     context.renderScene = external;
     auto* overwritten = m_resources->Get(output);
@@ -2568,7 +2572,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWri
     const auto firstHandle=firstSnapshot->items[0].deformedVertexBuffer;
     ASSERT_TRUE(firstHandle.IsValid());
     const uint64_t firstVersion=OutputVersion();ASSERT_GT(firstVersion,0u);
-    /// @note 新しい公開 CPU 姿勢を使う 2 番目のビューでも、既存の要求入力と結果公開の経路を通る。
+    // 新しい公開 CPU 姿勢を使う 2 番目のビューでも、既存の要求入力と結果公開の経路を通る。
     context.cullMaxDistance=0;
     Animator().boneMatrices[0]=math::Matrix4::Translate({0,0,2});
     EXPECT_EQ(ExecuteObservedView(context),1u);
@@ -2586,7 +2590,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWri
     EXPECT_EQ(ExecuteObservedView(context),1u);
     const uint64_t visibleVersion=OutputVersion();
     context.cullMaxDistance=5;
-    /// @note 後の画面外ビューでも、件数観測だけなら同じ姿勢の従来出力を再利用し、公開を取り消さない。
+    // 後の画面外ビューでも、件数観測だけなら同じ姿勢の従来出力を再利用し、公開を取り消さない。
     EXPECT_EQ(ExecuteObservedView(context),0u);
     EXPECT_TRUE(m_lastDemandObservation.provisionalColorExcluded);
     EXPECT_TRUE(Skinned().gpuSkinnedThisFrame);
@@ -2734,7 +2738,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicM
         observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);
         EXPECT_TRUE(observed.Has(demand::Reason::UNPROVEN_BOUNDS));EXPECT_EQ(demandContractCallbacks,0u);
         Animator().skinnedBoundsCenter={0,0,0};
-        /// @note CTest では TEST_F ごとに別プロセスで起動する。Normalize のこの呼び出し箇所が未使用であることを確認する。
+        // CTest では TEST_F ごとに別プロセスで起動する。Normalize のこの呼び出し箇所が未使用であることを確認する。
         const auto normalized=math::Quaternion{0,0,0,0}.Normalized();
         EXPECT_FLOAT_EQ(normalized.w,1);EXPECT_EQ(demandContractCallbacks,1u);
     }
@@ -2753,7 +2757,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     Animator().skinnedBoundsCenter={0,0,0};Animator().skinnedBoundsRadius=1;
     scene::RenderPassContext context{m_scene,*m_bundle.renderer,*m_resources,m_camera,m_settings,{},~0u,m_handles};
     context.frustumCullingEnabled=false;context.cullMaxDistance=5;
-    /// @note AnimatorSystem が空のターゲットを確認するより先に配列を拡張した状態であり、有効なモーフ入力はまだない。
+    // AnimatorSystem が空のターゲットを確認するより先に配列を拡張した状態であり、有効なモーフ入力はまだない。
     Skinned().morphVertexBuffers.resize(m_model->meshes.size());
     BeginFrame();EXPECT_EQ(ExecuteObservedView(context),1u);
     EXPECT_TRUE(m_lastDemandObservation.HasInput(demand::InputFlag::VECTOR_PRESENCE_ONLY));
@@ -2769,7 +2773,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     renderer::MorphTarget target;target.name="Raise";
     target.positionDeltas.resize(3);target.normalDeltas.resize(3);target.tangentDeltas.resize(3);
     m_model->meshes[0]->morphTargets.push_back(std::move(target));
-    /// @note 公開ネイティブバッファの内容は、両方の重みマップがゼロでも異なり得る。マップだけから頂点や境界を推定しない。
+    // 公開ネイティブバッファの内容は、両方の重みマップがゼロでも異なり得る。マップだけから頂点や境界を推定しない。
     auto actualMorph=m_model->meshes[0]->cpuSkinnedVertices;
     for(auto& vertex:actualMorph)vertex.position.z=4;
     const auto source=m_resources->CreateVertexBuffer(actualMorph.data(),actualMorph.size()*sizeof(renderer::SkinnedVertex),sizeof(renderer::SkinnedVertex));
@@ -2788,7 +2792,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     ASSERT_NE(m_resources->Get(source),nullptr);EXPECT_GT(m_resources->Get(source)->GetContentVersion(),0u);
     pixels=ReadAndEndFrame();ASSERT_EQ(pixels.size(),4u);EXPECT_NEAR(pixels[2],4,0.001f);
 
-    /// @note ネイティブ資源を解放した後も型付きハンドルが選択され得る。ネイティブ解決の可否は別に確認する。
+    // ネイティブ資源を解放した後も型付きハンドルが選択され得る。ネイティブ解決の可否は別に確認する。
     m_resources->Release(source);m_bundle.renderer->WaitForCpuFrame();
     ASSERT_EQ(m_resources->Get(source),nullptr);
     {
@@ -2816,7 +2820,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlags
     const auto morphSource = m_resources->CreateVertexBuffer(mesh.cpuSkinnedVertices.data(),
         mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex), sizeof(renderer::SkinnedVertex));
     ASSERT_TRUE(morphSource.IsValid());
-    /// @note 診断用バッファをモーフスロットで単独所有し、元メッシュの頂点バッファは保持する。
+    // 診断用バッファをモーフスロットで単独所有し、元メッシュの頂点バッファは保持する。
     Skinned().morphVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{}, morphSource});
     scene::RenderPassContext context{m_scene,*m_bundle.renderer,*m_resources,m_camera,m_settings,{},~0u,m_handles};
     context.frustumCullingEnabled=false;
@@ -2839,7 +2843,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlags
         Skinned().morphVertexBuffers[0] = std::move(Skinned().morphVertexBuffers[1]);
         observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);
         EXPECT_TRUE(observed.HasInput(demand::InputFlag::SELECTED_SOURCE_DIFFERS_FROM_BASE));
-        /// @note 同一ハンドルの診断中だけメッシュからモーフバッファを借用し、描画前に元の頂点バッファを復元する。
+        // 同一ハンドルの診断中だけメッシュからモーフバッファを借用し、描画前に元の頂点バッファを復元する。
         const auto baseSource = mesh.vertexBuffer;
         mesh.vertexBuffer = morphSource;
         observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);

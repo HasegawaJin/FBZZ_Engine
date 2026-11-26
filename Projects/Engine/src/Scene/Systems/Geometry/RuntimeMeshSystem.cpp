@@ -26,13 +26,17 @@ ComponentAccess RuntimeMeshSystem::GetAccess() const { return ComponentAccess{}.
 
 void RuntimeMeshSystem::Update(SystemContext& ctx)
 {
-    if (!ctx.resources) return;
+    if (!ctx.resources) {
+        return;
+    }
     renderer::ResourceManager& resources = *ctx.resources;
     UpdateWaterfallRuntime(ctx.scene, ctx.playing && !ctx.simulating ? 0.0f : ctx.dt);
 
     for (EntityID id : ctx.scene.GetEntities<MeshRenderer>()) {
         auto* meshRenderer = ctx.scene.GetComponent<MeshRenderer>(id);
-        if (!meshRenderer || !meshRenderer->meshPathDirty) continue;
+        if (!meshRenderer || !meshRenderer->meshPathDirty) {
+            continue;
+        }
         meshRenderer->meshPathDirty = false;
         meshRenderer->mesh = ResolveMeshPath(meshRenderer->meshPath, resources);
         NotifyMeshRendererChanged(ctx.scene, id);
@@ -41,9 +45,13 @@ void RuntimeMeshSystem::Update(SystemContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<ProceduralMeshComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* procedural = ctx.scene.GetComponent<ProceduralMeshComponent>(id);
-        if (!go || !procedural) continue;
+        if (!go || !procedural) {
+            continue;
+        }
 
-        if (PrepareRuntimeMesh(ctx.scene, id, procedural->runtimeMesh, resources)) procedural->dirty = MeshDirty::All;
+        if (PrepareRuntimeMesh(ctx.scene, id, procedural->runtimeMesh, resources)) {
+            procedural->dirty = MeshDirty::All;
+        }
         const bool uploaded = procedural->dirty != MeshDirty::None;
         if (uploaded) {
             auto* waterfall = go->GetComponent<WaterfallPart>();
@@ -63,10 +71,14 @@ void RuntimeMeshSystem::Update(SystemContext& ctx)
             }
             procedural->dirty = MeshDirty::None;
         }
-        if (!procedural->runtimeMesh.HasMesh()) continue;
+        if (!procedural->runtimeMesh.HasMesh()) {
+            continue;
+        }
 
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
-        if (!meshRenderer) meshRenderer = &go->AddComponent<MeshRenderer>();
+        if (!meshRenderer) {
+            meshRenderer = &go->AddComponent<MeshRenderer>();
+        }
         auto* currentMesh = procedural->enabled && procedural->builder.TriangleCount() > 0
             ? procedural->runtimeMesh.Current() : nullptr;
         if (uploaded || meshRenderer->mesh != currentMesh) {
@@ -75,15 +87,19 @@ void RuntimeMeshSystem::Update(SystemContext& ctx)
         }
 
         if (procedural->materialPath.empty()
-            || procedural->materialPath == procedural->appliedMaterialPath)
+            || procedural->materialPath == procedural->appliedMaterialPath) {
             continue;
+        }
         auto* material = go->GetComponent<MaterialComponent>();
-        if (!material) material = &go->AddComponent<MaterialComponent>();
-        /// @note 手続きの材質は既定割当。明示した共有割当と Material.Enabled を差分反映で戻さない。
-        if (!material->Authoring().hasPresentationMaterialOverride)
+        if (!material) {
+            material = &go->AddComponent<MaterialComponent>();
+        }
+        // 手続きの材質は既定割当。明示した共有割当と Material.Enabled を差分反映で戻さない。
+        if (!material->Authoring().hasPresentationMaterialOverride) {
             material->SetMaterialPath(procedural->materialPath);
+        }
         procedural->appliedMaterialPath = procedural->materialPath;
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

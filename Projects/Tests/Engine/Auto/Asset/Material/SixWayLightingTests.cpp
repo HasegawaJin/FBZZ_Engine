@@ -36,7 +36,7 @@ TEST(SixWayLightingTest, WeightsOfAUnitDirectionSumToOne)
 /// @brief Axis aligned light reads exactly one channel.
 TEST(SixWayLightingTest, AxisAlignedLightReadsExactlyOneChannel)
 {
-    /// @note 並びは Positive = (右, 上, 奥) / Negative = (左, 下, 手前)。
+    // 並びは Positive = (右, 上, 奥) / Negative = (左, 下, 手前)。
     const math::Vector3 positiveMap{ 0.1f, 0.2f, 0.3f };
     const math::Vector3 negativeMap{ 0.4f, 0.5f, 0.6f };
     EXPECT_NEAR(asset::EvaluateSixWay(positiveMap, negativeMap, { 1.0f, 0.0f, 0.0f }), 0.1f, 1.0e-6f);
@@ -50,7 +50,7 @@ TEST(SixWayLightingTest, AxisAlignedLightReadsExactlyOneChannel)
 /// @brief Diagonal light blends the two facing channels.
 TEST(SixWayLightingTest, DiagonalLightBlendsTheTwoFacingChannels)
 {
-    /// @note 右上 45 度から来る光は «右» と «上» を半分ずつ読む。反対側 (左・下) は読まない。
+    // 右上 45 度から来る光は «右» と «上» を半分ずつ読む。反対側 (左・下) は読まない。
     const float h = std::sqrt(0.5f);
     const asset::SixWayWeights w = asset::ComputeSixWayWeights({ h, h, 0.0f });
     EXPECT_NEAR(w.positive.x, 0.5f, 1.0e-5f);
@@ -62,7 +62,7 @@ TEST(SixWayLightingTest, DiagonalLightBlendsTheTwoFacingChannels)
 /// @brief Uniform maps respond the same from every direction.
 TEST(SixWayLightingTest, UniformMapsRespondTheSameFromEveryDirection)
 {
-    /// @note 全方向が同じ明るさなら、光の向きを回しても明るさは変わらない (重みの和が 1 だから)。
+    // 全方向が同じ明るさなら、光の向きを回しても明るさは変わらない (重みの和が 1 だから)。
     const math::Vector3 uniform{ 0.7f, 0.7f, 0.7f };
     EXPECT_NEAR(asset::EvaluateSixWay(uniform, uniform, { 0.6f, -0.8f, 0.0f }), 0.7f, 1.0e-5f);
     EXPECT_NEAR(asset::EvaluateSixWay(uniform, uniform, { 0.0f, 0.6f, -0.8f }), 0.7f, 1.0e-5f);

@@ -15,4 +15,4 @@ public:
     FBZZ_ENGINE_API static void Draw(bool* open = nullptr);
 };
 
-} /// @note namespace fbzz::profiler
+} // namespace fbzz::profiler

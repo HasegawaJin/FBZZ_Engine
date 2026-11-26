@@ -51,7 +51,9 @@ constexpr std::array<std::string_view, 5> kTextureExtensions = {
             continue;
         }
         const unsigned char uc = static_cast<unsigned char>(c);
-        if (!std::isalnum(uc)) continue;
+        if (!std::isalnum(uc)) {
+            continue;
+        }
         result.push_back(atWordStart ? static_cast<char>(std::toupper(uc)) : c);
         atWordStart = false;
     }
@@ -62,8 +64,12 @@ constexpr std::array<std::string_view, 5> kTextureExtensions = {
 {
     const std::size_t slash = path.find_last_of("/\\");
     const std::size_t dot   = path.find_last_of('.');
-    if (dot == std::string_view::npos) return {};
-    if (slash != std::string_view::npos && dot < slash) return {};
+    if (dot == std::string_view::npos) {
+        return {};
+    }
+    if (slash != std::string_view::npos && dot < slash) {
+        return {};
+    }
     return path.substr(dot);
 }
 
@@ -86,9 +92,13 @@ bool IsParticleTexturePath(std::string_view path)
 
 std::string ParticleMaterialPathForTexture(std::string_view texturePath, scene::ParticleBlendMode blend)
 {
-    if (texturePath.empty()) return {};
+    if (texturePath.empty()) {
+        return {};
+    }
     const std::string stem = ToMaterialStem(Stem(texturePath));
-    if (stem.empty()) return {};
+    if (stem.empty()) {
+        return {};
+    }
     return std::string(kParticleMaterialDir) + "/" + stem + "_" + BlendFileSuffix(blend) + ".mat";
 }
 
@@ -119,9 +129,9 @@ FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbo
     const FlipbookFrameRange range = ResolveFlipbookRange(flipbook);
     int startFrame = range.first;
     int endFrame   = range.last;
-    /// @note Random Row: アトラスの各行を «1 本のアニメーションのバリエーション» として扱い、
-    ///       粒子ごとに 1 行を選んでその中だけで再生する。1 枚のアトラスで見た目の異なる
-    ///       煙・爆炎を混ぜられる (AAA のアトラスはこの構成が標準)。
+    // Random Row: アトラスの各行を «1 本のアニメーションのバリエーション» として扱い、
+    //       粒子ごとに 1 行を選んでその中だけで再生する。1 枚のアトラスで見た目の異なる
+    //       煙・爆炎を混ぜられる (AAA のアトラスはこの構成が標準)。
     if (flipbook.spriteRandomRow && range.rows > 1) {
         const int row = std::clamp(
             static_cast<int>(Clamp01(spriteSeed) * static_cast<float>(range.rows)), 0, range.rows - 1);
@@ -152,13 +162,13 @@ FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbo
         framePosition = Clamp01(normalizedAge) * static_cast<float>(span);
         break;
     }
-    /// @note Random Start Frame: 再生位相を粒子ごとにずらす。
-    ///       これが無いと同時に湧いた煙が全部同じコマで回り、群れが一枚の板に見えてしまう。
-    ///       RandomFrame はコマ自体がランダムなので位相ずらしは適用しない。
+    // Random Start Frame: 再生位相を粒子ごとにずらす。
+    //       これが無いと同時に湧いた煙が全部同じコマで回り、群れが一枚の板に見えてしまう。
+    //       RandomFrame はコマ自体がランダムなので位相ずらしは適用しない。
     if (flipbook.spriteRandomStartFrame && span > 0
         && flipbook.flipbookMode != scene::ParticleFlipbookMode::RandomFrame) {
-        /// @note 行選択と同じ seed をそのまま使うと «行と位相» が相関して規則性が見えるため、
-        ///       係数でずらしてから小数部を取り、独立した第 2 の乱数として扱う。
+        // 行選択と同じ seed をそのまま使うと «行と位相» が相関して規則性が見えるため、
+        //       係数でずらしてから小数部を取り、独立した第 2 の乱数として扱う。
         const float phaseSeed    = Clamp01(spriteSeed) * 7.13f + 0.37f;
         const float decorrelated = phaseSeed - std::floor(phaseSeed);
         const float cycle        = static_cast<float>(span + 1);
@@ -167,7 +177,9 @@ FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbo
     }
     const int relativeFrame = std::clamp(static_cast<int>(std::floor(framePosition)), 0, span);
     int nextRelativeFrame   = (std::min)(relativeFrame + 1, span);
-    if (wrapNext && relativeFrame == span) nextRelativeFrame = 0;
+    if (wrapNext && relativeFrame == span) {
+        nextRelativeFrame = 0;
+    }
 
     FlipbookFrameSample sample;
     sample.frame     = startFrame + relativeFrame;

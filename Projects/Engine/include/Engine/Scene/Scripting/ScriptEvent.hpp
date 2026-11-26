@@ -23,7 +23,7 @@ class Script;
 /// @brief Subscribe が返す購読ハンドル。個別解除が必要なときだけ保持すればよい。
 /// @note 保持しなくても Script 破棄時に自動解除される。
 struct ScriptEventToken {
-    uint64_t id = 0;
+    uint64_t id = 0; ///< 購読などのイベント接続を取り消すための識別子。
     [[nodiscard]] bool IsValid() const { return id != 0; }
 };
 
@@ -51,4 +51,4 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API static size_t SubscriptionCount();
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

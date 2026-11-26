@@ -33,8 +33,7 @@ struct WaterfallFluidBakeInput {
     int frameCount = 48;
     int framesPerSecond = 24;
     std::uint64_t stamp = 0;
-    /// @note XZ の [-1,1] を grid × grid でサンプルした高さ。X の添字が最も速く変化する。
-    std::vector<float> ground;
+    std::vector<float> ground; ///< XZ の [-1,1] を grid × grid でサンプルした高さ。X の添字が最も速く変化する。
     std::vector<WaterfallFluidObstacle> obstacles;
 };
 
@@ -51,7 +50,12 @@ struct WaterfallFluidFrame {
     int framesPerSecond = 0;
 };
 
-/// @return 成功時は空文字列。失敗やキャンセルでは既存ファイルを変更しない。
+/// @brief ローカル液体の表面をシミュレーションし、クリップを保存する。
+/// @param[in] input ベイク立方体に正規化した入口、地形、障害物とサンプリング設定。
+/// @param[in] path 保存先の UTF-8 パス。
+/// @param[in] cancel キャンセル要求を示す呼び出し元のフラグ。各フレームと保存前に読む。
+/// @param[out] progress 進捗の百分率。失敗時は最後に報告した値を保ち、入力が不正な場合は書き込まない。
+/// @return 成功時は空文字列。失敗やキャンセルでは既存ファイルを変更せず、理由を返す。
 [[nodiscard]] FBZZ_ENGINE_API std::string BakeWaterfallFluidClip(const WaterfallFluidBakeInput& input,
     const std::string& path, const std::atomic<bool>& cancel, std::atomic<int>& progress);
 
@@ -59,4 +63,4 @@ struct WaterfallFluidFrame {
 [[nodiscard]] FBZZ_ENGINE_API bool LoadWaterfallFluidFrame(const std::string& path, std::uint64_t stamp,
     int requestedFrame, WaterfallFluidFrame& out);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

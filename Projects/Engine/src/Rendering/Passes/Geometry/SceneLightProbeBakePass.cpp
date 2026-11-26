@@ -54,17 +54,21 @@ bool EnsureRuntime(renderer::ResourceManager& resources, LightProbeVolumeCompone
     if (!volume.runtimeVolume.IsValid() || !volume.runtimeRawVolume.IsValid()
         || !volume.runtimeVisibility.IsValid() || volume.runtimeGrid != grid) {
         for (auto* texture : { &volume.runtimeVolume, &volume.runtimeRawVolume }) {
-            if (texture->IsValid()) resources.Release(*texture);
+            if (texture->IsValid()) {
+                resources.Release(*texture);
+            }
             *texture = resources.CreateComputeTexture3D(
                 static_cast<uint32_t>(grid[0]), static_cast<uint32_t>(grid[1]),
                 static_cast<uint32_t>(grid[2] * kSHSlices));
         }
-        if (volume.runtimeVisibility.IsValid()) resources.Release(volume.runtimeVisibility);
+        if (volume.runtimeVisibility.IsValid()) {
+            resources.Release(volume.runtimeVisibility);
+        }
         volume.runtimeVisibility = resources.CreateComputeTexture3D(
             static_cast<uint32_t>(grid[0] * 8), static_cast<uint32_t>(grid[1] * 8),
             static_cast<uint32_t>(grid[2]));
         volume.runtimeGrid  = grid;
-        /// @note 作り直した直後の中身は未定義。1 回目を焼き終えるまで描画には使わない。
+        // 作り直した直後の中身は未定義。1 回目を焼き終えるまで描画には使わない。
         volume.runtimeReady = false;
         RestartBake(volume);
     }
@@ -75,7 +79,9 @@ bool EnsureRuntime(renderer::ResourceManager& resources, LightProbeVolumeCompone
     if (missing(volume.runtimeFaces) || missing(volume.runtimeFacing) || volume.runtimeFaceSize != faceSize) {
         for (auto* faces : { &volume.runtimeFaces, &volume.runtimeFacing }) {
             for (auto& face : *faces) {
-                if (face.IsValid()) resources.Release(face);
+                if (face.IsValid()) {
+                    resources.Release(face);
+                }
                 face = resources.CreateRenderTarget(static_cast<uint32_t>(faceSize), static_cast<uint32_t>(faceSize), 1);
             }
         }
@@ -117,15 +123,18 @@ void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolu
     data.intensity  = std::max(volume.intensity, 0.0f);
     data.invSize    = { 1.0f / boxSize.x, 1.0f / boxSize.y, 1.0f / boxSize.z };
     data.fade       = std::max(volume.edgeFade, 0.0f);
-    for (int axis = 0; axis < 3; ++axis)
+    for (int axis = 0; axis < 3; ++axis) {
         data.grid[axis] = static_cast<uint32_t>(volume.runtimeGrid[axis]);
+    }
     data.normalBias = std::max(volume.normalBias, 0.0f);
 }
 
 LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData)
 {
-    /// @note 有効なプローブがなければ、ベイク・公開を省き、キャプチャ資源を変更しない。
-    if (ctx.scene.GetEntities<LightProbeVolumeComponent>().empty()) return {};
+    // 有効なプローブがなければ、ベイク・公開を省き、キャプチャ資源を変更しない。
+    if (ctx.scene.GetEntities<LightProbeVolumeComponent>().empty()) {
+        return {};
+    }
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
     const bool canBake = h.lightProbeProjectCS.IsValid() && h.lightProbeProjectCB.IsValid()
@@ -136,7 +145,9 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
 
     for (auto& go : ctx.scene.GameObjects()) {
         auto* volume = go.GetComponent<LightProbeVolumeComponent>();
-        if (!volume || !volume->enabled || !go.activeInHierarchy() || !canBake) continue;
+        if (!volume || !volume->enabled || !go.activeInHierarchy() || !canBake) {
+            continue;
+        }
         const math::Vector3 boxMin = BoxMin(go, *volume);
         const math::Vector3 boxSize = BoxSize(*volume);
         const float distanceSq = DistanceSqToBox(ctx.camera.m_position, boxMin, boxSize);
@@ -147,17 +158,20 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             || distanceSq <= maxBakeDistance * maxBakeDistance;
         if (!canCapture) {
             if (volume->runtimeReady && !boxChanged && volume->runtimeGrid == volume->ClampedGrid()
-                && resources.Get(volume->runtimeVolume) && resources.Get(volume->runtimeVisibility))
+                && resources.Get(volume->runtimeVolume) && resources.Get(volume->runtimeVisibility)) {
                 ready.push_back({{&go, volume}, distanceSq, boxSize.x * boxSize.y * boxSize.z});
+            }
             continue;
         }
-        if (!EnsureRuntime(resources, *volume)) continue;
+        if (!EnsureRuntime(resources, *volume)) {
+            continue;
+        }
         if (volume->bakeRequested) {
             volume->bakeRequested = false;
             volume->runtimeForceBake = true;
             RestartBake(*volume);
         }
-        /// @note 箱が動いた・大きさが変わった・焼きの設定が変わったら焼き直す。古い結果は焼き上がるまで使う。
+        // 箱が動いた・大きさが変わった・焼きの設定が変わったら焼き直す。古い結果は焼き上がるまで使う。
         if (boxChanged) {
             volume->runtimeBoxMin = boxMin;
             volume->runtimeBoxSize = boxSize;
@@ -169,8 +183,8 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
         }
 
         if (volume->runtimeBaking) {
-            /// @note 捕捉で描く面は、メインビューと同じ IBL・天候を受けつつ «メインカメラの画面» に依存する項を切る。
-            /// @note 画面空間 AO / 接触影は別視点の画素を読むことになり、面に無関係な黒が焼き込まれる。
+            // 捕捉で描く面は、メインビューと同じ IBL・天候を受けつつ «メインカメラの画面» に依存する項を切る。
+            // 画面空間 AO / 接触影は別視点の画素を読むことになり、面に無関係な黒が焼き込まれる。
             AdvancedGraphicsCB capture = mainData;
             capture.screenAoStrength = 0.0f;
             capture.screenContactShadowStrength = 0.0f;
@@ -179,7 +193,7 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             capture.probeVisibilityIndices[0] = renderer::INVALID_BINDLESS_INDEX;
             capture.probeVisibilityIndices[1] = renderer::INVALID_BINDLESS_INDEX;
             capture.probeSpecularOcclusion = std::clamp(volume->specularOcclusion, 0.0f, 1.0f);
-            /// @note 2 回目以降は前回の結果を受けた面を描くので、反射が 1 回ずつ増える (同じボリュームを読み書きしながら進めるので、途中は新旧が混ざる)。
+            // 2 回目以降は前回の結果を受けた面を描くので、反射が 1 回ずつ増える (同じボリュームを読み書きしながら進めるので、途中は新旧が混ざる)。
             const bool multiBounce = volume->bounces > 1 && volume->runtimeReady && volume->runtimePass > 0;
             if (multiBounce) {
                 FillLightProbeVolumeConstants(go, *volume, capture.probeVolumes[0]);
@@ -205,8 +219,9 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             input.rejectInsideGeometry = volume->rejectInsideGeometry; input.deringing = volume->deringing;
             const int probeCount = volume->ProbeCount();
             const int budget = std::clamp(volume->probesPerFrame, 1, 256);
-            for (int n = 0; n < budget && volume->runtimeCursor < probeCount; ++n)
+            for (int n = 0; n < budget && volume->runtimeCursor < probeCount; ++n) {
                 renderer::BakeLightProbe(ctx, input, volume->runtimeCursor++, probeInput);
+            }
             renderer::DilateLightProbeVolume(ctx, input);
 
             if (volume->runtimeCursor >= probeCount) {
@@ -214,7 +229,7 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
                 volume->runtimeReady = true;
                 ++volume->runtimePass;
                 if (volume->runtimePass >= std::clamp(volume->bounces, 1, 8)) {
-                    /// @note 常時更新は «前回の結果を受けて焼く» を回し続ける。反射の回数は収束した値に落ち着く。
+                    // 常時更新は «前回の結果を受けて焼く» を回し続ける。反射の回数は収束した値に落ち着く。
                     volume->runtimeBaking = volume->realtimeUpdate;
                     volume->runtimeForceBake = false;
                     volume->runtimePass = std::clamp(volume->bounces, 1, 8);
@@ -222,17 +237,21 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             }
         }
 
-        if (!volume->runtimeReady) continue;
+        if (!volume->runtimeReady) {
+            continue;
+        }
         ready.push_back({ { &go, volume }, distanceSq,
                           boxSize.x * boxSize.y * boxSize.z });
     }
 
-    /// @note 画素ごとに引けるのは 2 つまで。カメラに近い 2 つを選び、小さい箱を内側 (上に重ねる側) にする。
+    // 画素ごとに引けるのは 2 つまで。カメラに近い 2 つを選び、小さい箱を内側 (上に重ねる側) にする。
     std::sort(ready.begin(), ready.end(), [](const Candidate& a, const Candidate& b) {
         return a.distanceSq != b.distanceSq ? a.distanceSq < b.distanceSq : a.volumeSize < b.volumeSize;
     });
     LightProbeVolumeSelection selected;
-    if (ready.empty()) return selected;
+    if (ready.empty()) {
+        return selected;
+    }
     if (ready.size() == 1) {
         selected.inner = ready[0].entry;
         return selected;

@@ -17,4 +17,4 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
 
 /// @note ビューは次回更新での再生を要求でき、複数のビューの要求が合算される。
 void RequestWaterfallFluidForView(Scene& scene, const renderer::Camera& camera, const math::Frustum& frustum, int height);
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

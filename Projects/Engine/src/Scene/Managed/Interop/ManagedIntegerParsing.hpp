@@ -7,4 +7,4 @@
 
 namespace fbzz::scene::managed_detail {
 using util::ParseInteger;
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

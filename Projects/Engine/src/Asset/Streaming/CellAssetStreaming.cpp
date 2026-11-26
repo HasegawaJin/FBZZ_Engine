@@ -28,20 +28,28 @@ uint64_t PlacementBytes(const MeshInstancesAsset& value)
 {
     uint64_t bytes = sizeof(MeshInstancesAsset) + value.terrainPaintRef.size();
     const auto snapshot = value.instances.Snapshot();
-    /// @note 編集列と不変の配置スナップショットは同時に保持される。vector の拡張分も保守的に見積もる。
-    if (snapshot) bytes += snapshot->placements.size() * 3ull * sizeof(renderer::InstancePlacement);
+    // 編集列と不変の配置スナップショットは同時に保持される。vector の拡張分も保守的に見積もる。
+    if (snapshot) {
+        bytes += snapshot->placements.size() * 3ull * sizeof(renderer::InstancePlacement);
+    }
     bytes += value.instances.Parts().size() * 4ull * sizeof(InstanceMeshPart);
     bytes += value.instances.LodHeights().size() * 2ull * sizeof(float);
-    for (const auto& part : value.instances.Parts()) bytes += (part.meshPath.size() + part.materialPath.size()) * 4ull;
+    for (const auto& part : value.instances.Parts()) {
+        bytes += (part.meshPath.size() + part.materialPath.size()) * 4ull;
+    }
     return bytes;
 }
 
 std::string ModelReference(std::string reference)
 {
     const std::size_t colon = reference.find_last_of(':'), dot = reference.find_last_of('.');
-    if (colon == std::string::npos || dot == std::string::npos || colon < dot || colon + 1 == reference.size()) return reference;
+    if (colon == std::string::npos || dot == std::string::npos || colon < dot || colon + 1 == reference.size()) {
+        return reference;
+    }
     for (std::size_t index = colon + 1; index < reference.size(); ++index)
-        if (!std::isdigit(static_cast<unsigned char>(reference[index]))) return reference;
+        if (!std::isdigit(static_cast<unsigned char>(reference[index]))) {
+            return reference;
+        }
     reference.resize(colon);
     return reference;
 }
@@ -78,12 +86,15 @@ public:
         const std::string modelType(AssetStreamTypeName<Model>()), materialType(AssetStreamTypeName<MaterialAsset>());
         std::set<std::pair<std::string, std::string>> unique;
         const auto dependency = [&](const std::string& type, const std::string& reference) {
-            if (!reference.empty() && unique.emplace(type, reference).second)
+            if (!reference.empty() && unique.emplace(type, reference).second) {
                 decoded->dependencies.push_back({type, reference, true});
+            }
         };
         for (const auto& part : decoded->asset->instances.Parts()) {
-            /// @note プリミティブの形状はレンダラーが生成するため、インポート可能な Model アセットを持たない。
-            if (!part.meshPath.starts_with("primitive:")) dependency(modelType, ModelReference(part.meshPath));
+            // プリミティブの形状はレンダラーが生成するため、インポート可能な Model アセットを持たない。
+            if (!part.meshPath.starts_with("primitive:")) {
+                dependency(modelType, ModelReference(part.meshPath));
+            }
             dependency(materialType, part.materialPath);
         }
         decoded->bytes = PlacementBytes(*decoded->asset);
@@ -106,7 +117,7 @@ public:
         return value ? PlacementBytes(*value) : 0;
     }
 };
-} /// @note namespace
+} // namespace
 
 std::shared_ptr<IAssetStreamChannel> CreateMeshInstancesStreamChannel()
 {
@@ -120,10 +131,12 @@ bool EvictUnusedMeshInstances(const std::string& reference)
 
 uint64_t MeshInstancesResidentBytes(const std::string& reference)
 {
-    if (reference.empty()) return 0;
+    if (reference.empty()) {
+        return 0;
+    }
     auto& store = AssetStore<MeshInstancesAsset>::Get();
     const auto found = store.cache.find(AssetManager::CanonicalKey(reference));
     const auto* value = found != store.cache.end() ? store.GetPtr(found->second) : nullptr;
     return value ? PlacementBytes(*value) : 0;
 }
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

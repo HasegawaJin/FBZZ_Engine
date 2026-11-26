@@ -25,7 +25,7 @@ struct ParticleEmitterSettings;
 /// @note 縮退理由を返す。emitter が Gpu を要求していない場合は NotRequested。
 /// @note 設定型を受けるのは、GPU に載るかが «どう設定したか» だけで決まり、粒子列や GPU ハンドル
 /// @note といった実行時状態を一切見ないため。実体を持たない VFX グラフのノードにも同じ判定を使える。
-/// @param material 解決済みの .mat [particle]。フリップブック補間・モーションベクター・
+/// @param[in] material 解決済みの .mat [particle]。フリップブック補間・モーションベクター・
 /// @note 自己影は素材側の値なので、渡さなければその 3 つは判定に入らない
 /// @note (パスは runtime.material を渡す。素材を解決していない静的診断は null でよい)。
 [[nodiscard]] FBZZ_ENGINE_API ParticleGpuFallbackReason GetParticleGpuFallbackReason(

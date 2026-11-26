@@ -13,7 +13,7 @@
 namespace fbzz::audio {
 
 /// @note spec から 16bit モノラル PCM を生成する。
-/// @param outFmt 生成した PCM の形式。spec.sampleRate が 0 なら 44100 を入れて返す。
+/// @param[out] outFmt 生成した PCM の形式。spec.sampleRate が 0 なら 44100 を入れて返す。
 /// @return  総再生長が 0 以下、または amplitude が 0 以下なら空。outFmt は未定義。
 [[nodiscard]] FBZZ_ENGINE_API std::vector<uint8_t> Render(const SynthSpec& spec, WaveFormat& outFmt);
 
@@ -41,7 +41,7 @@ namespace fbzz::audio {
 struct SynthAnalysis {
     float    durationSeconds   = 0.0f;
     float    peakAmplitude     = 0.0f;  ///< @note 0-1
-    float    rmsAmplitude      = 0.0f;  ///< @note 0-1。体感音量に近い
+    float    rmsAmplitude      = 0.0f; ///< 0-1。体感音量に近い
     /// @note パワー加重の実効周波数 (Hz)。いわゆる「明るさ」。
     /// @note 窓付き FFT のスペクトル重心ではなく、一次差分から求める RMS 周波数。
     /// @note 低いほど「重い / こもった」音になる。
@@ -49,10 +49,8 @@ struct SynthAnalysis {
     /// @note 1 秒あたりのゼロ交差数。ノイズ性の指標で、同じ brightness でも
     /// @note ノイズ波形の方が高く出る。
     float    zeroCrossingHz    = 0.0f;
-    /// @note ピークに達するまでの秒数。小さいほど打撃感が強い。
-    float    timeToPeakSeconds = 0.0f;
-    /// @note ±1 に張り付いたサンプルの割合 0-1。amplitude 過大の検出に使う。
-    float    clippedRatio      = 0.0f;
+    float    timeToPeakSeconds = 0.0f; ///< ピークに達するまでの秒数。小さいほど打撃感が強い。
+    float    clippedRatio      = 0.0f; ///< ±1 に張り付いたサンプルの割合 0-1。amplitude 過大の検出に使う。
     uint32_t sampleRate        = 0;
     uint32_t sampleCount       = 0;
 };
@@ -66,4 +64,4 @@ struct SynthAnalysis {
 [[nodiscard]] FBZZ_ENGINE_API const char* PresetToString(SynthPreset preset);
 [[nodiscard]] FBZZ_ENGINE_API SynthPreset PresetFromString(const char* name, SynthPreset fallback);
 
-} /// @note namespace fbzz::audio
+} // namespace fbzz::audio

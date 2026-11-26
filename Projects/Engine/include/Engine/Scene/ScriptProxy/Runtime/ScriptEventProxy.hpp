@@ -23,7 +23,7 @@ template<typename T>
 concept ScriptEventType = requires { { T::EVENT_NAME } -> std::convertible_to<const char*>; };
 
 struct ScriptEventProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< イベント操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief 購読する。この Script が破棄されると自動的に解除される。
     /// @return 「途中で降りたい」場合だけ保持すればよいトークン。
@@ -56,4 +56,4 @@ struct ScriptEventProxy {
     FBZZ_ENGINE_API void UnsubscribeAll() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

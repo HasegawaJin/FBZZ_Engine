@@ -26,13 +26,19 @@ void DecalDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
+        if (!go.activeInHierarchy()) {
+            continue;
+        }
+        if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) {
+            continue;
+        }
         const auto* dc = go.GetComponent<DecalComponent>();
-        if (!dc || !dc->enabled) continue;
+        if (!dc || !dc->enabled) {
+            continue;
+        }
 
-        /// @note DecalPass は GetWorldMatrix の単位立方体で投影する。ここもワールド TRS だけで組む
-        ///       (ローカル値を混ぜると親の下に置いたデカールで箱だけずれる)。
+        // DecalPass は GetWorldMatrix の単位立方体で投影する。ここもワールド TRS だけで組む
+        //       (ローカル値を混ぜると親の下に置いたデカールで箱だけずれる)。
         const Transform& tf = go.transform;
         const math::Vector3 halfExtents = tf.worldScale * 0.5f;
         renderer::DebugDraw::Box(ctx.renderer, tf.worldPosition, halfExtents, tf.worldRotation, kBoxColor);

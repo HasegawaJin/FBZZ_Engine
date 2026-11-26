@@ -114,13 +114,23 @@ inline const Color Color::Clear   = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 inline Color Color::FromHex(const char* hex)
 {
-    if (!hex) return {};
-    if (hex[0] == '#') ++hex;
+    if (!hex) {
+        return {};
+    }
+    if (hex[0] == '#') {
+        ++hex;
+    }
 
     auto hexVal = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        if (c >= 'A' && c <= 'F') {
+            return c - 'A' + 10;
+        }
         return 0;
     };
 
@@ -138,9 +148,13 @@ inline Color Color::FromHex(const char* hex)
 
 inline Color Color::FromHSV(float h, float s, float v, float a)
 {
-    if (s <= 0.0f) return { v, v, v, a };
+    if (s <= 0.0f) {
+        return { v, v, v, a };
+    }
     h = std::fmod(h, 360.0f);
-    if (h < 0.0f) h += 360.0f;
+    if (h < 0.0f) {
+        h += 360.0f;
+    }
     float hh = h / 60.0f;
     int   i  = static_cast<int>(hh);
     float ff = hh - i;
@@ -165,10 +179,16 @@ inline void Color::ToHSV(float& h, float& s, float& v) const
     v = cmax;
     s = (cmax > 0.0f) ? diff / cmax : 0.0f;
     if (diff <= 0.0f) { h = 0.0f; return; }
-    if      (cmax == r) h = 60.0f * std::fmod((g - b) / diff, 6.0f);
+    if      (cmax == r) {
+        h = 60.0f * std::fmod((g - b) / diff, 6.0f);
+    }
     else if (cmax == g) h = 60.0f * ((b - r) / diff + 2.0f);
-    else                h = 60.0f * ((r - g) / diff + 4.0f);
-    if (h < 0.0f) h += 360.0f;
+    else {
+        h = 60.0f * ((r - g) / diff + 4.0f);
+    }
+    if (h < 0.0f) {
+        h += 360.0f;
+    }
 }
 
 } // namespace fbzz::util

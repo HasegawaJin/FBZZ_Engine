@@ -15,17 +15,14 @@ inline constexpr std::wstring_view PIX_CAPTURE_STABLE_VERSION = L"2603.25";
 
 struct PixCaptureOptions {
     bool requested = false;
-    /// @note 空なら Program Files 配下の固定した安定版を選ぶ。明示パスは絶対ディレクトリでなければならない。
-    std::filesystem::path installedDirectory;
+    std::filesystem::path installedDirectory; ///< 空なら Program Files 配下の固定した安定版を選ぶ。明示パスは絶対ディレクトリでなければならない。
 };
 
 struct PixCaptureStatus {
     bool requested = false;
-    /// @note 起動ローダーが選択したモジュールを検証した場合のみ true。ディスク上の存在確認だけでは true にならない。
-    bool ready = false;
+    bool ready = false; ///< 起動ローダーが選択したモジュールを検証した場合のみ true。ディスク上の存在確認だけでは true にならない。
     std::string reason;
-    /// @note 解決したキャプチャ DLL のディレクトリ。要求に失敗しても値が残る場合があり、準備完了の判定には使わない。
-    std::filesystem::path installedDirectory;
+    std::filesystem::path installedDirectory; ///< 解決したキャプチャ DLL のディレクトリ。要求に失敗しても値が残る場合があり、準備完了の判定には使わない。
 };
 
 /// @brief 分割済みの PIX 引数を解析する。ファイルシステムへのアクセスやモジュールのロードは行わない。
@@ -52,4 +49,4 @@ struct PixCaptureStatus {
 /// @note 起動処理での初期化後にメインスレッドから読む。参照先の状態はプロセス終了まで有効。
 [[nodiscard]] FBZZ_ENGINE_API const PixCaptureStatus& GetPixCaptureStatus();
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

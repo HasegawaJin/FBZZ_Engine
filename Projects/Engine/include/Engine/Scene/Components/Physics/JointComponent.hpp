@@ -34,60 +34,50 @@ enum class JointType : int {
 /// @note 制約の実体は physics::World が所有し、このコンポーネントはハンドルだけを持つ。
 /// @note 張り直し・解除は JointSync が RigidBody と同じ寿命規約 (毎フレーム申告) で行う。
 struct JointComponent {
-    bool      enabled = true;
-    JointType type    = JointType::Fixed;
+    bool      enabled = true; ///< この制約を物理ワールドの更新対象にする。
+    JointType type    = JointType::Fixed; ///< 剛体を結ぶ際の可動範囲と応答方式の種類。
 
     /// @note 相手の剛体を持つ GameObject。Chain 以外で使う。
     ///
     /// @note EntityRef は既存の流儀 (SocketAttachmentComponent::target 等) に揃える。
     /// @note 保存は instanceId なので GameObject を改名しても参照が切れない。
-    EntityRef connectedBody;
+    EntityRef connectedBody; ///< Chain 以外で相手となる剛体のオブジェクト参照。
     /// @note connectedBody が空のとき、祖先方向で最初に見つかった剛体を相手にする。
     ///
     /// @note EntityRef はシーン内参照なので Prefab に保存できない。必須にすると
     /// @note «鎖 1 節の Prefab» が作れなくなる。
-    bool connectToParent = true;
+    bool connectToParent = true; ///< connectedBody が未設定なら階層をさかのぼって最初の剛体につなぐ。
 
-    /// @note Chain の連なり。先頭は常にこの GameObject 自身で、ここには 2 節目以降を並べる。
-    std::vector<EntityRef> chainBodies;
-    /// @note Chain の反復回数。多いほど伸びにくく、そのぶん重い。
-    int solverIterations = 4;
+    std::vector<EntityRef> chainBodies; ///< Chain の連なり。先頭は常にこの GameObject 自身で、ここには 2 節目以降を並べる。
+    int solverIterations = 4; ///< Chain の反復回数。多いほど伸びにくく、そのぶん重い。
 
     /// @note 張った瞬間の相手との間隔を距離として採る。
     ///
     /// @note 吊り下げ物は «置いた位置のまま垂れる» のが期待で、数値を手で合わせると
     /// @note 配置を動かすたびに古くなるため既定 true。
-    bool  autoDistance = true;
-    /// @note Distance = 保つ距離 / Rope = 最大距離 / Spring = 自然長 / Chain = 節間距離 [m]。
-    float distance = 1.0f;
-    /// @note Spring の剛性 (N/m) と減衰。
-    float spring  = 10.0f;
-    float damping = 0.5f;
+    bool  autoDistance = true; ///< 距離を使う種類で、接続時の剛体間隔を設定値の代わりに使う。
+    float distance = 1.0f; ///< Distance = 保つ距離 / Rope = 最大距離 / Spring = 自然長 / Chain = 節間距離 [m]。
+    float spring  = 10.0f; ///< Spring の剛性 (N/m) と減衰。
+    float damping = 0.5f; ///< ばねの伸縮に伴う相対運動を抑える減衰係数。
 
-    /// @note Hinge の回転軸 / Slider の移動軸 (ワールド基準)。
-    math::Vector3 axis = math::Vector3::UP;
-    /// @note Hinge のアンカー。自分側と相手側のローカル座標で、この 2 点を重ねる。
-    math::Vector3 anchor          = math::Vector3::ZERO;
-    math::Vector3 connectedAnchor = math::Vector3::ZERO;
+    math::Vector3 axis = math::Vector3::UP; ///< Hinge の回転軸 / Slider の移動軸 (ワールド基準)。
+    math::Vector3 anchor          = math::Vector3::ZERO; ///< Hinge のアンカー。自分側と相手側のローカル座標で、この 2 点を重ねる。
+    math::Vector3 connectedAnchor = math::Vector3::ZERO; ///< ヒンジで自身の anchor に重ねる、相手側ローカルの接続点。
 
-    /// @note Hinge = 角度 [degrees] / Slider = 軸方向の距離 [m] の可動域。
-    bool  useLimits  = false;
-    float lowerLimit = 0.0f;
-    float upperLimit = 0.0f;
+    bool  useLimits  = false; ///< Hinge = 角度 [degrees] / Slider = 軸方向の距離 [m] の可動域。
+    float lowerLimit = 0.0f; ///< 可動範囲の下限。Hinge は角度（度）、Slider は軸方向の距離（m）。
+    float upperLimit = 0.0f; ///< 可動範囲の上限。Hinge は角度（度）、Slider は軸方向の距離（m）。
 
-    /// @note Hinge のモーター。目標角速度 [degrees/s] と上限トルク。
-    bool  useMotor        = false;
-    float motorSpeed      = 0.0f;
-    float motorMaxTorque  = 0.0f;
+    bool  useMotor        = false; ///< Hinge のモーター。目標角速度 [degrees/s] と上限トルク。
+    float motorSpeed      = 0.0f; ///< ヒンジモーターが目標とする角速度（度/秒）。
+    float motorMaxTorque  = 0.0f; ///< ヒンジモーターが軸へ掛けられるトルクの上限（N·m）。
 
     /// @name ランタイム専用 (シリアライズしない)
     /// @{
     /// @note physics::World が持つ制約への世代付き参照。所有は World 側。
-    physics::ConstraintHandle constraintHandle;
-    /// @note 実際に物理へ張れているか。相手が見つからない・剛体が無いときは false。
-    bool  connected = false;
-    /// @note autoDistance で採った実効距離。Inspector が «結局いくつで張ったか» を出す。
-    float resolvedDistance = 0.0f;
+    physics::ConstraintHandle constraintHandle; ///< 物理ワールドが所有する実行時の制約への世代付き参照。
+    bool  connected = false; ///< 実際に物理へ張れているか。相手が見つからない・剛体が無いときは false。
+    float resolvedDistance = 0.0f; ///< autoDistance で採った実効距離。Inspector が «結局いくつで張ったか» を出す。
 
     JointComponent() = default;
     ~JointComponent() = default;
@@ -96,7 +86,9 @@ struct JointComponent {
     JointComponent(const JointComponent& o) { CopyAuthoredFrom(o); }
     JointComponent& operator=(const JointComponent& o)
     {
-        if (this != &o) CopyAuthoredFrom(o);
+        if (this != &o) {
+            CopyAuthoredFrom(o);
+        }
         return *this;
     }
     JointComponent(JointComponent&&)            = default;

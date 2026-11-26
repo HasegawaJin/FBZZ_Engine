@@ -13,27 +13,21 @@ namespace fbzz::scene {
 struct WeatherComponent {
     bool enabled = true;
 
-    /// @note 降雨量 [0, 1]。雨パーティクルの発生量と、下の wetness の到達点を決める。
-    float rainIntensity = 0.0f;
+    float rainIntensity = 0.0f; ///< 降雨量 [0, 1]。雨パーティクルの発生量と、下の wetness の到達点を決める。
 
     /// @note rainIntensity から wetness を時間積分するか。
     /// @note 雨が降った «あと» に地面が濡れるのが天候で、雨脚と濡れが同じフレームで立ち上がると
     /// @note 書き割りに見える。手付けでカーブを作るときは切って wetness を直接書く。
     bool autoWetness = true;
 
-    /// @note 乾いた状態から rainIntensity ぶんまで濡れるのに要する秒数。
-    float wetDuration = 8.0f;
-    /// @note 雨が止んでから乾ききるまでの秒数。乾く方が遅いのが自然。
-    float dryDuration = 30.0f;
+    float wetDuration = 8.0f; ///< 乾いた状態から rainIntensity ぶんまで濡れるのに要する秒数。
+    float dryDuration = 30.0f; ///< 雨が止んでから乾ききるまでの秒数。乾く方が遅いのが自然。
 
-    /// @note 濡れ量 [0, 1]。autoWetness が有効な間は WeatherSystem が毎フレーム書く。
-    float wetness = 0.0f;
+    float wetness = 0.0f; ///< 濡れ量 [0, 1]。autoWetness が有効な間は WeatherSystem が毎フレーム書く。
 
-    /// @note 濡れによる albedo の減衰 [0, 1]。多孔質な表面が水を吸って暗くなる量。
-    float darkening = 0.55f;
+    float darkening = 0.55f; ///< 濡れによる albedo の減衰 [0, 1]。多孔質な表面が水を吸って暗くなる量。
 
-    /// @note 水平な面に水が溜まる量 [0, 1]。上向きの面ほど強く効く。
-    float puddleAmount = 0.6f;
+    float puddleAmount = 0.6f; ///< 水平な面に水が溜まる量 [0, 1]。上向きの面ほど強く効く。
 
     /// @note rainIntensity = 1 のときの雨粒の発生量 [個/秒]。WeatherSystem がこの GameObject と
     /// @note その子の ParticleEmitter へ rainEmitRate * rainIntensity を毎フレーム書く。

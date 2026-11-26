@@ -13,16 +13,16 @@ namespace fbzz::scene {
 
 /// @brief ワールド座標の端点で二つの NavMesh ポリゴンを結ぶ。
 struct NavMeshOffMeshLinkComponent {
-    math::Vector3 startPoint = math::Vector3::ZERO;
-    math::Vector3 endPoint = math::Vector3::ZERO;
-    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
-    ObjectReference startTarget;
-    ObjectReference endTarget;
-    bool enabled = true;
-    bool bidirectional = true;
-    bool activated = true;
-    float traversalTime = 0.3f;
-    int agentTypeMask = -1;
+    math::Vector3 startPoint = math::Vector3::ZERO; ///< インライン指定時のリンク起点のワールド座標 [m]。
+    math::Vector3 endPoint = math::Vector3::ZERO; ///< インライン指定時のリンク終点のワールド座標 [m]。
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE; ///< 両端をワールド座標で指定するか、シーン上の参照で指定するか。
+    ObjectReference startTarget; ///< 参照指定時にリンクの起点を与えるシーンオブジェクト。
+    ObjectReference endTarget; ///< 参照指定時にリンクの終点を与えるシーンオブジェクト。
+    bool enabled = true; ///< システムがこのリンクを扱うかどうか。
+    bool bidirectional = true; ///< 終点から起点へ逆方向に渡ることを許すかどうか。
+    bool activated = true; ///< 経路探索時にこのリンクを通過可能として扱うかどうか。
+    float traversalTime = 0.3f; ///< リンク上の移動を補間する時間 [秒]。
+    int agentTypeMask = -1; ///< リンクを使えるエージェント種別のビット集合。-1 は全種別。
 
     /// @brief Inspector 上のコンポーネント名を返す。
     const char* GetTypeName() const { return "Off-Mesh Link"; }

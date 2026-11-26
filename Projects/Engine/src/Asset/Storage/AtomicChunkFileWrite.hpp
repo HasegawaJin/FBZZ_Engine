@@ -37,12 +37,18 @@ template<typename Io, typename WritePayload>
 {
     AtomicWriteResult result;
     result.createParent = io.CreateParent();
-    if (result.createParent) return result;
+    if (result.createParent) {
+        return result;
+    }
     result.open = io.Open();
-    if (result.open) return result;
+    if (result.open) {
+        return result;
+    }
 
     result.write = writePayload(io);
-    if (!result.write) result.flush = io.Flush();
+    if (!result.write) {
+        result.flush = io.Flush();
+    }
     result.close = io.Close();
     if (!result.write && !result.flush && !result.close) {
         result.publish = io.Publish();
@@ -56,4 +62,4 @@ template<typename Io, typename WritePayload>
     return result;
 }
 
-} /// @note namespace fbzz::asset::detail
+} // namespace fbzz::asset::detail

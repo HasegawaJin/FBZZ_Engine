@@ -182,7 +182,7 @@ TEST_F(RagdollDefinitionTest, ContinuousWorldContactsHoldStaticLoadAndSlipAboveF
         else EXPECT_GT(rig.BodyOfBone(0)->GetPosition().x,1.0f);
         EXPECT_NEAR(rig.BodyOfBone(0)->GetPosition().y,0.1f,0.002f);
         EXPECT_TRUE(rig.BodyOfBone(0)->IsFiniteState());
-        /// @note 支持を離した後に別の場所で再接触しても、過去の固着点へ戻らない。
+        // 支持を離した後に別の場所で再接触しても、過去の固着点へ戻らない。
         rig.BodyOfBone(0)->SetPosition({-3,2,0});
         rig.BodyOfBone(0)->SetVelocity(math::Vector3::ZERO);
         rig.RefreshContacts(nullptr); rig.Step(1.0f/120);

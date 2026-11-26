@@ -14,21 +14,25 @@
 namespace fbzz::asset {
 
 /// 静的頂点配列を読む。頂点カラーを持たない旧版は白で埋めて広げる。
-/// @param hasVertexColor ファイルのバージョンが頂点カラーを含むか。
+/// @param[in] hasVertexColor ファイルのバージョンが頂点カラーを含むか。
 inline bool ReadStaticVertices(BinaryReader& reader,
                                uint32_t count,
                                bool hasVertexColor,
                                std::vector<renderer::Vertex>& out)
 {
     out.resize(count);
-    if (count == 0) return true;
+    if (count == 0) {
+        return true;
+    }
 
-    if (hasVertexColor)
+    if (hasVertexColor) {
         return reader.ReadBytes(out.data(), static_cast<size_t>(count) * sizeof(renderer::Vertex));
+    }
 
     std::vector<FzVertexV1> legacy(count);
-    if (!reader.ReadBytes(legacy.data(), static_cast<size_t>(count) * sizeof(FzVertexV1)))
+    if (!reader.ReadBytes(legacy.data(), static_cast<size_t>(count) * sizeof(FzVertexV1))) {
         return false;
+    }
 
     for (uint32_t i = 0; i < count; ++i) {
         const FzVertexV1& src = legacy[i];

@@ -11,6 +11,10 @@ namespace fbzz::scene {
 class Scene;
 class ManagedScriptAdapter;
 namespace managed_detail {
+/// @brief 現在のスクリプト世代に属する時間ジョブを登録する。
+/// @param[in] owner ジョブの所有者。登録後は生存と世代を照合してコールバックを配送する。
+/// @param[in] request トークン、待機・繰り返し・ Tween の種別と引数。
+/// @return 不正な要求や容量不足の場合は登録済みジョブを変更しない。
 FBZZ_ENGINE_API ManagedBridgeStatus RegisterManagedJob(ManagedScriptAdapter& owner, const ManagedBridgeRequest& request);
 FBZZ_ENGINE_API ManagedBridgeStatus SubscribeManagedEvent(ManagedScriptAdapter& owner, uint64_t token, std::string_view channel);
 FBZZ_ENGINE_API ManagedBridgeStatus PublishManagedEvent(std::string_view input);

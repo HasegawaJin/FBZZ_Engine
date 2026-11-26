@@ -20,44 +20,39 @@
 namespace fbzz::asset {
 
 struct FlipbookMotionVectorSettings {
-    int columns = 1;
-    int rows = 1;
+    int columns = 1; ///< 入力アトラスの横方向のコマ数。
+    int rows = 1; ///< 入力アトラスの縦方向のコマ数。
     /// @note ブロックマッチングの窓とその探索半径 [px]。
     /// @note 探索半径はコマ間の最大移動量に相当する。大きいほど速い動きを拾えるが
     /// @note 計算量が半径の二乗で増える。
-    int blockRadius = 4;
-    int searchRadius = 8;
-    /// @note フロー場を均す回数。0 でブロック境界がそのまま出るため、通常 1 以上にする。
-    int smoothIterations = 2;
-    /// @note ループするアトラス (最終コマ → 先頭コマ) の動きも解析するか。
-    bool loop = true;
+    int blockRadius = 4; ///< 比較元テクセルの周囲からパターンを採取する半径 [px]。
+    int searchRadius = 8; ///< 次のコマで対応先を探索する最大距離 [px]。
+    int smoothIterations = 2; ///< フロー場を均す回数。0 でブロック境界がそのまま出るため、通常 1 以上にする。
+    bool loop = true; ///< ループするアトラス (最終コマ → 先頭コマ) の動きも解析するか。
     /// @note 各行を独立したアニメーション列として扱う。
     /// @note spriteRandomRow は行末から同じ行の先頭へ戻るため、アトラス全体を直列解析すると
     /// @note 行境界だけ別バリエーションへの誤った速度になる。
-    bool rowSequences = false;
+    bool rowSequences = false; ///< アトラスの各行を独立したアニメーションとして扱うか。
 };
 
 /// @note ファイルを扱わない解析結果。テストと GenerateFlipbookMotionVectors が共有する。
 struct FlipbookMotionAnalysis {
-    bool success = false;
-    std::string message;
-    /// @note Atlas と同じ寸法。各画素に «そのコマ → 次のコマ» の移動量を Atlas UV で持つ。
-    std::vector<math::Vector2> displacementUv;
-    /// @note 規約の S。マテリアルの motionVectorStrength にそのまま入れる値。
-    float recommendedStrength = 0.0f;
-    float maxObservedFlow = 0.0f; ///< @note 実測の最大移動量 [px]。探索半径の妥当性判断に使う
-    int frameCount = 0;
-    int searchRadius = 0;
+    bool success = false; ///< フリップブックの有効なモーションを算出できたか。
+    std::string message; ///< グリッドや探索範囲が無効な場合などの診断。
+    std::vector<math::Vector2> displacementUv; ///< Atlas と同じ寸法。各画素に «そのコマ → 次のコマ» の移動量を Atlas UV で持つ。
+    float recommendedStrength = 0.0f; ///< 規約の S。マテリアルの motionVectorStrength にそのまま入れる値。
+    float maxObservedFlow = 0.0f; ///< 実測の最大移動量 [px]。探索半径の妥当性判断に使う
+    int frameCount = 0; ///< モーションの解析またはエンコード対象となった有効コマ数。
+    int searchRadius = 0; ///< 次のコマで対応先を探索する最大距離 [px]。
 };
 
 struct FlipbookMotionVectorResult {
-    bool success = false;
-    std::string outputPath;   ///< @note 生成した PNG の実パス
-    std::string message;      ///< @note 失敗理由 / 成功時の要約 (UI へそのまま出せる文面)
-    int frameCount = 0;
-    float maxObservedFlow = 0.0f; ///< @note 実測の最大移動量 [px]。探索半径の妥当性判断に使う
-    /// @note マテリアルの motionVectorStrength に設定する値。これ以外の値では warp 量が合わない。
-    float recommendedStrength = 0.0f;
+    bool success = false; ///< フリップブックの有効なモーションを算出できたか。
+    std::string outputPath; ///< 生成した PNG の実パス
+    std::string message; ///< 失敗理由 / 成功時の要約 (UI へそのまま出せる文面)
+    int frameCount = 0; ///< モーションの解析またはエンコード対象となった有効コマ数。
+    float maxObservedFlow = 0.0f; ///< 実測の最大移動量 [px]。探索半径の妥当性判断に使う
+    float recommendedStrength = 0.0f; ///< マテリアルの motionVectorStrength に設定する値。これ以外の値では warp 量が合わない。
 };
 
 /// @note rgba は width x height の RGBA float を詰めて並べたもの。
@@ -70,4 +65,4 @@ struct FlipbookMotionVectorResult {
 [[nodiscard]] FBZZ_ENGINE_API FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
     const std::string& sourcePath, const FlipbookMotionVectorSettings& settings);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

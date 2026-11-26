@@ -19,7 +19,7 @@ public:
         renderer::ResourceManager* resources) override;
 
     std::span<const std::string_view> SupportedExtensions() const override {
-        /// @note ".meta" は列挙しない: サイドカーは元画像をインポートする際に受動的に発見される。
+        // ".meta" は列挙しない: サイドカーは元画像をインポートする際に受動的に発見される。
         static constexpr std::string_view kExts[] = {
             ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr", ".exr", ".bmp"
         };
@@ -27,4 +27,4 @@ public:
     }
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

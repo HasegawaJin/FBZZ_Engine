@@ -32,4 +32,4 @@ void PrepareGpuEmitter(ParticleEmitter& emitter, const Transform& transform, con
     float deltaTime, float time, bool canEmit, const std::vector<ActiveFlowField>& flowFields,
     const MeshRenderer* meshParticleRenderer, RenderPassContext& context, renderer::RenderParticleInput& input);
 
-} /// @note namespace fbzz::scene::particle_extraction_detail
+} // namespace fbzz::scene::particle_extraction_detail

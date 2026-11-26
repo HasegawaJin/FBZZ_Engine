@@ -19,7 +19,9 @@ namespace {
 GameObject* FindMainCameraOwner(Scene& scene)
 {
     const auto cameras = scene.GetEntities<CameraComponent>();
-    if (cameras.empty()) return nullptr;
+    if (cameras.empty()) {
+        return nullptr;
+    }
     thread_local std::vector<EntityID> candidates;
     candidates.assign(cameras.begin(), cameras.end());
     scene.SortEntitiesBySceneOrder(candidates);
@@ -48,8 +50,9 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
 
 void ApplyUISettings(const ProjectSettings& settings, UIInteractionContext* ctx)
 {
-    if (ctx && !settings.ui.defaultFontPath.empty())
+    if (ctx && !settings.ui.defaultFontPath.empty()) {
         ctx->defaultFontPath = settings.ui.defaultFontPath;
+    }
 }
 
 core::Window::Config MakeWindowConfig(const ProjectSettings& settings)
@@ -76,13 +79,13 @@ renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
         result.m_far      = cam->farZ;
         result.m_backgroundColor = cam->backgroundColor;
         result.m_clearMode       = cam->clearMode;
-        /// @note viewport から決まる実効 aspect を Component に戻し、Script の座標変換と描画カメラを一致させる。
+        // viewport から決まる実効 aspect を Component に戻し、Script の座標変換と描画カメラを一致させる。
         cam->aspectRatio  = aspectRatio;
         result.m_aspect   = cam->aspectRatio;
         return result;
     }
 
-    /// @note Main Camera がないシーンでも Standalone を落とさず、既定カメラで描画を継続する。
+    // Main Camera がないシーンでも Standalone を落とさず、既定カメラで描画を継続する。
     renderer::Camera fallback;
     fallback.m_aspect = aspectRatio;
     return fallback;
@@ -101,12 +104,16 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
 {
     renderer::Camera camera = editorFallback;
     camera.m_aspect = aspectRatio;
-    if (cameraId) cameraId->clear();
+    if (cameraId) {
+        cameraId->clear();
+    }
 
     if (auto* owner = FindMainCameraOwner(scene)) {
         auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
-        if (cameraId) *cameraId = go.instanceId;
+        if (cameraId) {
+            *cameraId = go.instanceId;
+        }
 
         camera.m_position = go.transform.worldPosition;
         camera.m_rotation = go.transform.worldRotation;
@@ -154,14 +161,15 @@ CameraCullingSettings ResolveGameCullingSettings(Scene& scene)
         CameraCullingSettings settings;
         settings.frustumCulling       = cam->frustumCulling;
         settings.occlusionCulling     = cam->occlusionCulling;
-        /// @note 負値は球を縮める / 距離を反転させるだけで意味を持たないので入口で 0 に潰し、
-        /// @note 各パスが毎オブジェクト符号を気にする必要をなくす。
+        // 負値は球を縮める / 距離を反転させるだけで意味を持たないので入口で 0 に潰し、
+        // 各パスが毎オブジェクト符号を気にする必要をなくす。
         settings.cullingBoundsPadding = (std::max)(cam->cullingBoundsPadding, 0.0f);
         settings.maxDrawDistance      = (std::max)(cam->maxDrawDistance, 0.0f);
         settings.cullDistanceSpherical = cam->cullDistanceSpherical;
         settings.smallObjectScreenHeight = (std::max)(cam->smallObjectScreenHeight, 0.0f);
-        for (int i = 0; i < kCullLayerCount; ++i)
+        for (int i = 0; i < kCullLayerCount; ++i) {
             settings.layerCullDistances[i] = (std::max)(cam->layerCullDistances[i], 0.0f);
+        }
         return settings;
     }
     return CameraCullingSettings{};

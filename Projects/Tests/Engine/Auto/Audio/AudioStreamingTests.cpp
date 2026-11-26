@@ -71,8 +71,12 @@ public:
     }
     bool IsPlaying(uint32_t id) override {
         const auto it = voices.find(id);
-        if (it == voices.end()) return false;
-        if (it->second.playing) return true;
+        if (it == voices.end()) {
+            return false;
+        }
+        if (it->second.playing) {
+            return true;
+        }
         voices.erase(it);
         return false;
     }
@@ -154,7 +158,7 @@ TEST_F(AudioStreamingTest, RejectsMissingAndNonAudioFiles)
 /// @brief Native stream stops while paused and rebuilds buses without keeping buffers.
 TEST_F(AudioStreamingTest, NativeStreamStopsWhilePausedAndRebuildsBusesWithoutKeepingBuffers)
 {
-    /// @note 出力デバイスのないランナーだけを除外し、デバイスがある環境での初期化失敗は検出する。
+    // 出力デバイスのないランナーだけを除外し、デバイスがある環境での初期化失敗は検出する。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-immdeviceenumerator-enumaudioendpoints 有効な再生エンドポイントの列挙。
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
     ASSERT_HRESULT_SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER,

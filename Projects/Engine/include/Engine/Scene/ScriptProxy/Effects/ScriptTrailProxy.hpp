@@ -19,7 +19,7 @@ using renderer::TrailUVMode;
 using renderer::TrailWidthEasing;
 
 struct ScriptTrailProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 軌跡操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief Trail の記録と描画を切り替える。攻撃中だけ剣閃を出す、ダッシュ中だけ残像を出す、
     /// @note といった用途を Script から簡潔に書ける。
@@ -79,4 +79,4 @@ struct ScriptTrailProxy {
     [[nodiscard]] FBZZ_ENGINE_API int   GetPointCount() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

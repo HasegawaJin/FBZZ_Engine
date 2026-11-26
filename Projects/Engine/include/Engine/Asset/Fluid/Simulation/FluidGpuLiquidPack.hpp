@@ -18,38 +18,38 @@ namespace fbzz::asset {
 
 /// @note 粒子 1 つぶんの湧かせ方。LiquidCommon.hlsli の gSpawn (float4 × 2) と 1:1。
 struct GpuLiquidSpawn {
-    float positionTime[4];  ///< @note xyz 湧く位置 / w 湧く時刻 [秒] (湧かない枠は 3e38)
-    float velocityKey[4];   ///< @note xyz 初速 (ばらつき・動きの速度込み) / w 色の鍵 (fluid::FluidSource::colorKey)
+    float positionTime[4]; ///< xyz 湧く位置 / w 湧く時刻 [秒] (湧かない枠は 3e38)
+    float velocityKey[4]; ///< xyz 初速 (ばらつき・動きの速度込み) / w 色の鍵 (fluid::FluidSource::colorKey)
 };
 static_assert(sizeof(GpuLiquidSpawn) == 32);
 
 /// @note PBF の核の定数。FluidLiquidSolver::Reset (volumetric = true) と同じ式・同じ演算順で求める。
 struct GpuLiquidKernel {
-    float radius = 0.01f;           ///< @note 粒子半径 (0.002〜0.1 に丸めた値)
-    float h = 0.04f;                ///< @note 核の半径 = radius × 4
-    float poly6 = 0.0f;
-    float spikyGradient = 0.0f;
-    float restDensity = 1.0f;
-    float relaxation = 0.0f;
-    float tensileReference = 1.0f;
-    float tensileScale = 0.0f;
+    float radius = 0.01f; ///< 粒子半径 (0.002〜0.1 に丸めた値)
+    float h = 0.04f; ///< 核の半径 = radius × 4
+    float poly6 = 0.0f; ///< SPH の Poly6 カーネルを評価するときに使う正規化係数。
+    float spikyGradient = 0.0f; ///< 圧力拘束に使う Spiky カーネル勾配の係数。
+    float restDensity = 1.0f; ///< 粒子の密度拘束が目標にする静止密度。
+    float relaxation = 0.0f; ///< 密度拘束の分母を安定化する緩和項。
+    float tensileReference = 1.0f; ///< 引張補正で比を作る基準距離におけるカーネル値。
+    float tensileScale = 0.0f; ///< 近傍粒子の引張補正に掛ける強さ。
 };
 
 /// @note 近傍探索の一様格子。範囲は CPU と同じ x/z ∈ [−1.6, 1.6]、y ∈ [−1.6, 3.0]。セルの幅は h。
 struct GpuLiquidGrid {
-    float cellSize = 0.04f;
-    float boundsMin[3] = { -1.6f, -1.6f, -1.6f };
-    float boundsMax[3] = { 1.6f, 3.0f, 1.6f };
-    int cellsX = 1;
-    int cellsY = 1;
-    int cellsZ = 1;
+    float cellSize = 0.04f; ///< 近傍検索グリッドの 1 セルの一辺。
+    float boundsMin[3] = { -1.6f, -1.6f, -1.6f }; ///< 近傍検索用グリッドの最小コーナー。シミュレーション空間の XYZ。
+    float boundsMax[3] = { 1.6f, 3.0f, 1.6f }; ///< 近傍検索用グリッドの最大コーナー。シミュレーション空間の XYZ。
+    int cellsX = 1; ///< 近傍検索グリッドを X 方向へ分けたセル数。
+    int cellsY = 1; ///< 近傍検索グリッドを Y 方向へ分けたセル数。
+    int cellsZ = 1; ///< 近傍検索グリッドを Z 方向へ分けたセル数。
 };
 
 /// @note 並べ替え (bitonic sort) の 1 段。local = true の段は j から 1 までをグループ共有メモリで一気に回す。
 struct GpuLiquidSortStage {
-    std::uint32_t k = 2;
-    std::uint32_t j = 1;
-    bool local = true;
+    std::uint32_t k = 2; ///< Bitonic ソート段階で並べ替える区間の要素数。
+    std::uint32_t j = 1; ///< Bitonic ソート段階で相手の添字を求める比較間隔。
+    bool local = true; ///< このソート段階をシェーダーのスレッド群内で完結させるか。
 };
 
 /// @note bitonic sort の 1 グループの要素数 (LiquidSort.hlsli の LIQUID_SORT_BLOCK と一致させること)。
@@ -82,4 +82,4 @@ FBZZ_ENGINE_API int PackGpuLiquidColliders(const fluid::FluidRecipe& recipe, flo
 /// @note sortCount (2 のべき乗) を昇順に並べる bitonic sort の段の並び。
 [[nodiscard]] FBZZ_ENGINE_API std::vector<GpuLiquidSortStage> BuildGpuLiquidSortStages(std::uint32_t sortCount);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

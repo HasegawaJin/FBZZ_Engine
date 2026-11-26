@@ -17,4 +17,4 @@ FBZZ_ENGINE_API const std::filesystem::path& EngineAssetRoot();
 /// @note どこにも実体が無ければ requested をそのまま返す。
 [[nodiscard]] FBZZ_ENGINE_API std::filesystem::path ResolveEngineAssetPath(const std::filesystem::path& requested);
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

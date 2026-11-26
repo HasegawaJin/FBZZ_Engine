@@ -15,7 +15,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptReflectionProbeProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 反射プローブ操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetIntensity(float intensity) const;
@@ -36,4 +36,4 @@ struct ScriptReflectionProbeProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetInfluenceRadius() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

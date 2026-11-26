@@ -18,7 +18,7 @@ class GameObject;
 class Script;
 
 struct ScriptAnimatorProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< アニメーター操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetFloat(std::string_view name, float v) const;
     FBZZ_ENGINE_API void SetInt(std::string_view name, int v) const;
@@ -116,7 +116,7 @@ struct ScriptAnimatorProxy {
     FBZZ_ENGINE_API bool             IsRootMotionAppliedByEngine() const;
 
     /// @brief ルートモーションの受け取り方を実行時に切り替える。
-    /// @param mode 0=None / 1=ApplyToTransform / 2=ExtractOnly / 3=ApplyToRigidBody
+    /// @param[in] mode 0=None / 1=ApplyToTransform / 2=ExtractOnly / 3=ApplyToRigidBody
     /// @note 「通常移動はスクリプト制御、攻撃中だけルートモーションに任せる」という
     /// @note 切り替えは Inspector の固定設定では表現できないため実行時 API がある。
     FBZZ_ENGINE_API void  SetRootMotionMode(int mode) const;
@@ -133,4 +133,4 @@ struct ScriptAnimatorProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

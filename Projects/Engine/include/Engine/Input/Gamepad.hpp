@@ -15,8 +15,7 @@ namespace fbzz::input {
 
 class Gamepad {
 public:
-    /// @note XInput が扱えるコントローラー数の上限 (XUSER_MAX_COUNT と同値)
-    static constexpr int MAX_PADS = 4;
+    static constexpr int MAX_PADS = 4; ///< XInput が扱えるコントローラー数の上限 (XUSER_MAX_COUNT と同値)
 
     /// @brief Input::Update() の先頭から呼ばれる。個別に呼ぶ必要はない。
     /// @note 更新経路 (Editor/Standalone/Sandbox) が複数あるため、呼び忘れ事故を避けて 1 箇所に集約する。
@@ -50,4 +49,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

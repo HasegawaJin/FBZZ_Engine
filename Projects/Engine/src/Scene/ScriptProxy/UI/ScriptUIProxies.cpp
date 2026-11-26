@@ -36,8 +36,9 @@ namespace {
 
 UIButtonPhase ToButtonPhase(const UIButton* button)
 {
-    if (!button || !button->enabled || !button->isInteractable)
+    if (!button || !button->enabled || !button->isInteractable) {
         return UIButtonPhase::Disabled;
+    }
     switch (button->state) {
     case UIButtonState::HOVERED: return UIButtonPhase::Hovered;
     case UIButtonState::PRESSED: return UIButtonPhase::Pressed;
@@ -68,13 +69,15 @@ void AssignUIMaterialOverride(UIImage& image, std::string_view param,
 UICanvas* OwningCanvas(GameObject* go)
 {
     for (GameObject* node = go; node != nullptr; node = node->GetParent()) {
-        if (auto* canvas = node->GetComponent<UICanvas>()) return canvas;
+        if (auto* canvas = node->GetComponent<UICanvas>()) {
+            return canvas;
+        }
     }
     return nullptr;
 }
 
 
-} /// @note namespace
+} // namespace
 bool ScriptUIProxy::WasClicked() const
 {
     const auto* b = SelfComponent<UIButton>(script);
@@ -169,37 +172,49 @@ UIButtonPhase ScriptUIProxy::GetButtonPhase(GameObject* go) const
 
 void ScriptUIProxy::SetButtonInteractable(bool v) const
 {
-    if (auto* b = SelfComponent<UIButton>(script)) b->isInteractable = v;
+    if (auto* b = SelfComponent<UIButton>(script)) {
+        b->isInteractable = v;
+    }
 }
 
 
 void ScriptUIProxy::SetButtonInteractable(GameObject* go, bool v) const
 {
-    if (auto* b = ObjectComponent<UIButton>(go)) b->isInteractable = v;
+    if (auto* b = ObjectComponent<UIButton>(go)) {
+        b->isInteractable = v;
+    }
 }
 
 
 void ScriptUIProxy::SetImageColor(const math::Vector4& color) const
 {
-    if (auto* image = SelfComponent<UIImage>(script)) image->color = color;
+    if (auto* image = SelfComponent<UIImage>(script)) {
+        image->color = color;
+    }
 }
 
 
 void ScriptUIProxy::SetText(std::string_view text) const
 {
-    if (auto* t = SelfComponent<UIText>(script)) t->text = std::string(text);
+    if (auto* t = SelfComponent<UIText>(script)) {
+        t->text = std::string(text);
+    }
 }
 
 
 void ScriptUIProxy::SetTextColor(const math::Vector4& color) const
 {
-    if (auto* t = SelfComponent<UIText>(script)) t->color = color;
+    if (auto* t = SelfComponent<UIText>(script)) {
+        t->color = color;
+    }
 }
 
 
 void ScriptUIProxy::SetCanvasSortOrder(int order) const
 {
-    if (auto* canvas = SelfComponent<UICanvas>(script)) canvas->sortOrder = order;
+    if (auto* canvas = SelfComponent<UICanvas>(script)) {
+        canvas->sortOrder = order;
+    }
 }
 
 
@@ -225,15 +240,20 @@ bool ScriptUIProxy::TryGetCanvasSize(math::Vector2& outSize, GameObject* canvasO
 {
     if (!canvasObject) {
         canvasObject = script ? script->m_gameObject : nullptr;
-        if (!ObjectComponent<UICanvas>(canvasObject))
+        if (!ObjectComponent<UICanvas>(canvasObject)) {
             canvasObject = ScriptSceneProxy{script}.FindObjectOfType<UICanvas>();
+        }
     }
     const auto* canvas = ObjectComponent<UICanvas>(canvasObject);
     const auto runtime = ScriptRuntime::GetCurrent();
-    if (!canvas || runtime.viewportWidth == 0 || runtime.viewportHeight == 0) return false;
+    if (!canvas || runtime.viewportWidth == 0 || runtime.viewportHeight == 0) {
+        return false;
+    }
     const auto size = GetCanvasRectSize(*canvas, static_cast<float>(runtime.viewportWidth),
                                        static_cast<float>(runtime.viewportHeight));
-    if (!std::isfinite(size.x) || !std::isfinite(size.y) || size.x <= 0.0f || size.y <= 0.0f) return false;
+    if (!std::isfinite(size.x) || !std::isfinite(size.y) || size.x <= 0.0f || size.y <= 0.0f) {
+        return false;
+    }
     outSize = size;
     return true;
 }
@@ -241,11 +261,15 @@ bool ScriptUIProxy::TryGetCanvasSize(math::Vector2& outSize, GameObject* canvasO
 
 math::Vector2 ScriptUIProxy::GetCanvasMousePosition() const
 {
-    /// @note 自 GO が Canvas ならそれを、そうでなければシーンの最初の Canvas を使う。
-    if (auto* self = SelfComponent<UICanvas>(script)) return self->resolvedMousePosition;
+    // 自 GO が Canvas ならそれを、そうでなければシーンの最初の Canvas を使う。
+    if (auto* self = SelfComponent<UICanvas>(script)) {
+        return self->resolvedMousePosition;
+    }
     const ScriptSceneProxy sceneProxy{ script };
     if (GameObject* go = sceneProxy.FindObjectOfType<UICanvas>())
-        if (auto* canvas = ObjectComponent<UICanvas>(go)) return canvas->resolvedMousePosition;
+        if (auto* canvas = ObjectComponent<UICanvas>(go)) {
+            return canvas->resolvedMousePosition;
+        }
     return {};
 }
 
@@ -262,57 +286,73 @@ void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float
 
 void ScriptUIProxy::SetImageTexture(std::string_view path) const
 {
-    if (auto* img = SelfComponent<UIImage>(script)) img->texturePath = std::string(path);
+    if (auto* img = SelfComponent<UIImage>(script)) {
+        img->texturePath = std::string(path);
+    }
 }
 
 
 void ScriptUIProxy::SetImageFillAmount(float amount) const
 {
-    if (auto* img = SelfComponent<UIImage>(script))
+    if (auto* img = SelfComponent<UIImage>(script)) {
         img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
+    }
 }
 
 
 void ScriptUIProxy::SetImageColor(GameObject* go, const math::Vector4& color) const
 {
-    if (auto* image = ObjectComponent<UIImage>(go)) image->color = color;
+    if (auto* image = ObjectComponent<UIImage>(go)) {
+        image->color = color;
+    }
 }
 
 
 void ScriptUIProxy::SetImageFillAmount(GameObject* go, float amount) const
 {
-    if (auto* img = ObjectComponent<UIImage>(go))
+    if (auto* img = ObjectComponent<UIImage>(go)) {
         img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
+    }
 }
 
 
 void ScriptUIProxy::SetImageTexture(GameObject* go, std::string_view path) const
 {
-    if (auto* img = ObjectComponent<UIImage>(go)) img->texturePath = std::string(path);
+    if (auto* img = ObjectComponent<UIImage>(go)) {
+        img->texturePath = std::string(path);
+    }
 }
 
 
 void ScriptUIProxy::SetText(GameObject* go, std::string_view text) const
 {
-    if (auto* t = ObjectComponent<UIText>(go)) t->text = std::string(text);
+    if (auto* t = ObjectComponent<UIText>(go)) {
+        t->text = std::string(text);
+    }
 }
 
 
 void ScriptUIProxy::SetTextColor(GameObject* go, const math::Vector4& color) const
 {
-    if (auto* t = ObjectComponent<UIText>(go)) t->color = color;
+    if (auto* t = ObjectComponent<UIText>(go)) {
+        t->color = color;
+    }
 }
 
 
 void ScriptUIProxy::SetImageEnabled(GameObject* go, bool enabled) const
 {
-    if (auto* image = ObjectComponent<UIImage>(go)) image->enabled = enabled;
+    if (auto* image = ObjectComponent<UIImage>(go)) {
+        image->enabled = enabled;
+    }
 }
 
 
 void ScriptUIProxy::SetTextEnabled(GameObject* go, bool enabled) const
 {
-    if (auto* t = ObjectComponent<UIText>(go)) t->enabled = enabled;
+    if (auto* t = ObjectComponent<UIText>(go)) {
+        t->enabled = enabled;
+    }
 }
 
 
@@ -403,12 +443,16 @@ bool ScriptUIProxy::IsTextEnabled(GameObject* go) const
 void ScriptUIProxy::SetMaterial(GameObject* go, std::string_view materialPath) const
 {
     auto* image = ObjectComponent<UIImage>(go);
-    if (!image) return;
+    if (!image) {
+        return;
+    }
     const std::string next(materialPath);
-    if (image->materialPath == next) return;
+    if (image->materialPath == next) {
+        return;
+    }
     image->materialPath = next;
-    /// @note 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
-    /// @note 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
+    // 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
+    // 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
     image->materialParamOverrides.clear();
     image->materialTextureOverrides.clear();
 }
@@ -416,8 +460,9 @@ void ScriptUIProxy::SetMaterial(GameObject* go, std::string_view materialPath) c
 
 void ScriptUIProxy::SetMaterialFloat(GameObject* go, std::string_view param, float value) const
 {
-    if (auto* image = ObjectComponent<UIImage>(go))
+    if (auto* image = ObjectComponent<UIImage>(go)) {
         AssignUIMaterialOverride(*image, param, &value, 1);
+    }
 }
 
 
@@ -425,8 +470,9 @@ void ScriptUIProxy::SetMaterialVector2(GameObject* go, std::string_view param,
                                        float x, float y) const
 {
     const float values[2] = { x, y };
-    if (auto* image = ObjectComponent<UIImage>(go))
+    if (auto* image = ObjectComponent<UIImage>(go)) {
         AssignUIMaterialOverride(*image, param, values, 2);
+    }
 }
 
 
@@ -434,8 +480,9 @@ void ScriptUIProxy::SetMaterialVector4(GameObject* go, std::string_view param,
                                        const math::Vector4& value) const
 {
     const float values[4] = { value.x, value.y, value.z, value.w };
-    if (auto* image = ObjectComponent<UIImage>(go))
+    if (auto* image = ObjectComponent<UIImage>(go)) {
         AssignUIMaterialOverride(*image, param, values, 4);
+    }
 }
 
 
@@ -450,7 +497,7 @@ void ScriptUIProxy::SetMaterialTexture(GameObject* go, std::string_view slot,
                                        std::string_view texturePath) const
 {
     if (auto* image = ObjectComponent<UIImage>(go)) {
-        /// @note 値側も assign で容量を使い回す。テクスチャパスは SSO に収まらない長さになる。
+        // 値側も assign で容量を使い回す。テクスチャパスは SSO に収まらない長さになる。
         image->materialTextureOverrides[std::string(slot)].assign(
             texturePath.data(), texturePath.size());
     }
@@ -479,7 +526,9 @@ void ScriptUIProxy::ClearMaterialOverrides(GameObject* go) const
 bool ScriptUIProxy::HasMaterialOverride(GameObject* go, std::string_view param) const
 {
     const auto* image = ObjectComponent<UIImage>(go);
-    if (!image) return false;
+    if (!image) {
+        return false;
+    }
     const std::string key(param);
     return image->materialParamOverrides.count(key) > 0
         || image->materialTextureOverrides.count(key) > 0;
@@ -492,10 +541,14 @@ bool ScriptUIProxy::HasMaterialOverride(GameObject* go, std::string_view param) 
 
 GameObject* ScriptUIProxy::Find(GameObject* parent, std::string_view childName) const
 {
-    if (!parent || !parent->IsValid()) return nullptr;
+    if (!parent || !parent->IsValid()) {
+        return nullptr;
+    }
     for (int i = 0; i < parent->GetChildCount(); ++i) {
         GameObject* child = parent->GetChild(i);
-        if (child && child->name == childName) return child;
+        if (child && child->name == childName) {
+            return child;
+        }
     }
     return nullptr;
 }
@@ -519,12 +572,14 @@ float ScriptUIProxy::GetSliderValue(GameObject* go) const
 void ScriptUIProxy::SetSliderValue(GameObject* go, float value) const
 {
     auto* s = ObjectComponent<UISlider>(go);
-    if (!s) return;
+    if (!s) {
+        return;
+    }
     const float low  = (std::min)(s->minimum, s->maximum);
     const float high = (std::max)(s->minimum, s->maximum);
     s->value = std::clamp(s->wholeNumbers ? std::round(value) : value, low, high);
-    /// @note 見た目の追従は UISystem がドラッグ中にしかやらない。外から入れた値でも
-    /// @note ゲージが動くよう、同じ規則をここでも当てる。
+    // 見た目の追従は UISystem がドラッグ中にしかやらない。外から入れた値でも
+    // ゲージが動くよう、同じ規則をここでも当てる。
     if (auto* image = ObjectComponent<UIImage>(go)) {
         const float range = s->maximum - s->minimum;
         image->fillAmount = std::abs(range) > 0.000001f
@@ -551,7 +606,9 @@ void ScriptUIProxy::SetSliderRange(GameObject* go, float minimum, float maximum)
 
 void ScriptUIProxy::SetSliderInteractable(GameObject* go, bool interactable) const
 {
-    if (auto* s = ObjectComponent<UISlider>(go)) s->interactable = interactable;
+    if (auto* s = ObjectComponent<UISlider>(go)) {
+        s->interactable = interactable;
+    }
 }
 
 
@@ -564,7 +621,9 @@ bool ScriptUIProxy::IsToggleOn(GameObject* go) const
 
 void ScriptUIProxy::SetToggleOn(GameObject* go, bool isOn) const
 {
-    if (auto* t = ObjectComponent<UIToggle>(go)) t->isOn = isOn;
+    if (auto* t = ObjectComponent<UIToggle>(go)) {
+        t->isOn = isOn;
+    }
 }
 
 
@@ -577,7 +636,9 @@ bool ScriptUIProxy::WasToggleChanged(GameObject* go) const
 
 void ScriptUIProxy::SetToggleInteractable(GameObject* go, bool interactable) const
 {
-    if (auto* t = ObjectComponent<UIToggle>(go)) t->interactable = interactable;
+    if (auto* t = ObjectComponent<UIToggle>(go)) {
+        t->interactable = interactable;
+    }
 }
 
 
@@ -590,13 +651,17 @@ math::Vector2 ScriptUIProxy::GetScrollPosition(GameObject* go) const
 
 void ScriptUIProxy::SetScrollPosition(GameObject* go, const math::Vector2& position) const
 {
-    if (auto* s = ObjectComponent<UIScrollView>(go)) s->scrollPosition = position;
+    if (auto* s = ObjectComponent<UIScrollView>(go)) {
+        s->scrollPosition = position;
+    }
 }
 
 
 void ScriptUIProxy::SetScrollContentSize(GameObject* go, const math::Vector2& size) const
 {
-    if (auto* s = ObjectComponent<UIScrollView>(go)) s->contentSize = size;
+    if (auto* s = ObjectComponent<UIScrollView>(go)) {
+        s->contentSize = size;
+    }
 }
 
 
@@ -646,7 +711,9 @@ bool ScriptUIProxy::IsFieldFocused(GameObject* go) const
 
 void ScriptUIProxy::SetFieldFocused(GameObject* go, bool focused) const
 {
-    if (auto* f = ObjectComponent<UIInputField>(go)) f->focused = focused;
+    if (auto* f = ObjectComponent<UIInputField>(go)) {
+        f->focused = focused;
+    }
 }
 
 
@@ -659,28 +726,36 @@ float ScriptUIProxy::GetGroupAlpha(GameObject* go) const
 
 void ScriptUIProxy::SetGroupAlpha(GameObject* go, float alpha) const
 {
-    if (auto* g = ObjectComponent<UICanvasGroup>(go))
+    if (auto* g = ObjectComponent<UICanvasGroup>(go)) {
         g->alpha = std::clamp(alpha, 0.0f, 1.0f);
+    }
 }
 
 
 void ScriptUIProxy::SetGroupInteractable(GameObject* go, bool interactable) const
 {
-    if (auto* g = ObjectComponent<UICanvasGroup>(go)) g->interactable = interactable;
+    if (auto* g = ObjectComponent<UICanvasGroup>(go)) {
+        g->interactable = interactable;
+    }
 }
 
 
 void ScriptUIProxy::SetGroupBlocksRaycasts(GameObject* go, bool blocks) const
 {
-    if (auto* g = ObjectComponent<UICanvasGroup>(go)) g->blocksRaycasts = blocks;
+    if (auto* g = ObjectComponent<UICanvasGroup>(go)) {
+        g->blocksRaycasts = blocks;
+    }
 }
 
 
 void ScriptUIProxy::SetFocus(GameObject* go) const
 {
-    if (!go || !go->IsValid()) return;
-    if (auto* canvas = OwningCanvas(go))
+    if (!go || !go->IsValid()) {
+        return;
+    }
+    if (auto* canvas = OwningCanvas(go)) {
         canvas->focusedObject = { go->GetID() };
+    }
 }
 
 
@@ -689,7 +764,9 @@ GameObject* ScriptUIProxy::GetFocus() const
     const ScriptSceneProxy sceneProxy{ script };
     GameObject* canvasGO = sceneProxy.FindObjectOfType<UICanvas>();
     const auto* canvas = ObjectComponent<UICanvas>(canvasGO);
-    if (!canvas || !canvas->focusedObject.IsValid()) return nullptr;
+    if (!canvas || !canvas->focusedObject.IsValid()) {
+        return nullptr;
+    }
     return canvas->focusedObject.Resolve(sceneProxy);
 }
 
@@ -703,8 +780,12 @@ bool ScriptUIProxy::IsFocused(GameObject* go) const
 
 void ScriptUIProxy::ClearFocus(GameObject* go) const
 {
-    if (!go || !go->IsValid()) return;
-    if (auto* canvas = OwningCanvas(go)) canvas->focusedObject = {};
+    if (!go || !go->IsValid()) {
+        return;
+    }
+    if (auto* canvas = OwningCanvas(go)) {
+        canvas->focusedObject = {};
+    }
 }
 
 
@@ -725,7 +806,9 @@ bool ScriptUIProxy::WasDropped(GameObject* go) const
 GameObject* ScriptUIProxy::GetDropTarget(GameObject* go) const
 {
     const auto* d = ObjectComponent<UIDragSource>(go);
-    if (!d || !d->droppedOn.IsValid()) return nullptr;
+    if (!d || !d->droppedOn.IsValid()) {
+        return nullptr;
+    }
     const ScriptSceneProxy sceneProxy{ script };
     return d->droppedOn.Resolve(sceneProxy);
 }
@@ -741,7 +824,9 @@ bool ScriptUIProxy::WasReceived(GameObject* go) const
 GameObject* ScriptUIProxy::GetReceivedFrom(GameObject* go) const
 {
     const auto* t = ObjectComponent<UIDropTarget>(go);
-    if (!t || !t->receivedFrom.IsValid()) return nullptr;
+    if (!t || !t->receivedFrom.IsValid()) {
+        return nullptr;
+    }
     const ScriptSceneProxy sceneProxy{ script };
     return t->receivedFrom.Resolve(sceneProxy);
 }
@@ -763,7 +848,9 @@ bool ScriptUIProxy::IsDropHovered(GameObject* go) const
 
 void ScriptUIProxy::SetVisibleCharacters(GameObject* go, int count) const
 {
-    if (auto* t = ObjectComponent<UIText>(go)) t->visibleCharacters = count;
+    if (auto* t = ObjectComponent<UIText>(go)) {
+        t->visibleCharacters = count;
+    }
 }
 
 
@@ -777,7 +864,9 @@ int ScriptUIProxy::GetVisibleCharacters(GameObject* go) const
 int ScriptUIProxy::GetCharacterCount(GameObject* go) const
 {
     const auto* t = ObjectComponent<UIText>(go);
-    if (!t) return 0;
+    if (!t) {
+        return 0;
+    }
     return static_cast<int>(UITextVisibleLength(t->text, t->richText));
 }
 
@@ -791,8 +880,9 @@ void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vec
 void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to,
                                       float duration, UIEasingType easing, bool loop, bool pingPong) const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script))
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
         anim->PlayColor(from, to, duration, easing, loop, pingPong);
+    }
 }
 
 
@@ -805,8 +895,9 @@ void ScriptUIAnimatorProxy::PlayPosition(const math::Vector2& from, const math::
 void ScriptUIAnimatorProxy::PlayPosition(const math::Vector2& from, const math::Vector2& to,
                                          float duration, UIEasingType easing, bool loop, bool pingPong) const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script))
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
         anim->PlayPosition(from, to, duration, easing, loop, pingPong);
+    }
 }
 
 
@@ -819,40 +910,51 @@ void ScriptUIAnimatorProxy::PlayScale(const math::Vector2& from, const math::Vec
 void ScriptUIAnimatorProxy::PlayScale(const math::Vector2& from, const math::Vector2& to,
                                       float duration, UIEasingType easing, bool loop, bool pingPong) const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script))
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
         anim->PlayScale(from, to, duration, easing, loop, pingPong);
+    }
 }
 
 
 void ScriptUIAnimatorProxy::StopColor() const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopColor();
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
+        anim->StopColor();
+    }
 }
 
 
 void ScriptUIAnimatorProxy::StopPosition() const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopPosition();
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
+        anim->StopPosition();
+    }
 }
 
 
 void ScriptUIAnimatorProxy::StopScale() const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopScale();
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
+        anim->StopScale();
+    }
 }
 
 
 void ScriptUIAnimatorProxy::StopAll() const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopAll();
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
+        anim->StopAll();
+    }
 }
 
 
 bool ScriptUIAnimatorProxy::IsPlaying() const
 {
-    if (auto* anim = SelfComponent<UIAnimator>(script)) return anim->IsPlaying();
+    if (auto* anim = SelfComponent<UIAnimator>(script)) {
+        return anim->IsPlaying();
+    }
     return false;
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

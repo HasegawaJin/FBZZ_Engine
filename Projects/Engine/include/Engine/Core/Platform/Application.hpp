@@ -32,7 +32,7 @@ public:
     FBZZ_ENGINE_API bool Init();
     /// @brief Standalone モード用: ウィンドウ設定を外部から指定して初期化する。
     /// @note ProjectSettings を Application::Init() より前に読み込んでウィンドウを正しいサイズで生成するため、Window::Config を受け取るオーバーロードを別途用意する。
-    /// @param preferredBackend プロジェクト設定で指定された描画バックエンド。ただしコマンドライン (--renderer=dx11 / dx12) が指定されていればそちらを優先する。
+    /// @param[in] preferredBackend プロジェクト設定で指定された描画バックエンド。ただしコマンドライン (--renderer=dx11 / dx12) が指定されていればそちらを優先する。
     FBZZ_ENGINE_API bool Init(const Window::Config& windowConfig,
               renderer::RendererBackend preferredBackend = renderer::RendererBackend::DX12);
     FBZZ_ENGINE_API void Shutdown();
@@ -80,15 +80,13 @@ private:
     std::unique_ptr<renderer::IRenderer>      m_renderer;
     std::unique_ptr<renderer::IImGuiRenderer> m_imguiRenderer;
     std::unique_ptr<scene::SceneManager>      m_sceneManager;
-    /// @note AudioManager は IAudioDevice を非所有参照するため、Device を先に宣言して後から破棄する。
-    std::unique_ptr<audio::IAudioDevice>      m_audioDevice;
+    std::unique_ptr<audio::IAudioDevice>      m_audioDevice; ///< AudioManager は IAudioDevice を非所有参照するため、Device を先に宣言して後から破棄する。
     std::unique_ptr<audio::AudioManager>      m_audioManager;
-    /// @note ストアは Window / Renderer に依存しないため、コンストラクタで作る。Get() で取り出した直後から使えると呼び出し側の順序制約が減る。
-    std::unique_ptr<util::SaveStore>          m_saveStore;
+    std::unique_ptr<util::SaveStore>          m_saveStore; ///< ストアは Window / Renderer に依存しないため、コンストラクタで作る。Get() で取り出した直後から使えると呼び出し側の順序制約が減る。
     std::unique_ptr<util::SaveStore>          m_configStore;
     renderer::RenderSettings*                 m_activeRenderSettings = nullptr;
     bool                                      m_editorHosted = false;
     MemorySystem                         m_memorySystem;
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

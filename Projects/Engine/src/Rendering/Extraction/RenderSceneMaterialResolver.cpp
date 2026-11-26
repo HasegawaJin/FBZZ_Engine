@@ -51,11 +51,15 @@ renderer::GeometryMaterialInput RenderMaterialResolver::ExtractCapabilities(cons
     const asset::MaterialAsset::AuthoringSnapshotPtr& snapshot)
 {
     const auto* material = snapshot ? &snapshot->Data() : nullptr;
-    if (!material) return ExtractGeometryMaterial(slot, nullptr, false);
+    if (!material) {
+        return ExtractGeometryMaterial(slot, nullptr, false);
+    }
     const bool sharedRoute = slot.paramOverrides.empty() && !slot.hasBlendModeOverride;
     if (sharedRoute) {
         const auto cached = m_geometryDefaults.find(snapshot);
-        if (cached != m_geometryDefaults.end()) return cached->second;
+        if (cached != m_geometryDefaults.end()) {
+            return cached->second;
+        }
     }
     auto found = m_shaderCapabilities.find(material->shaderPath);
     if (found == m_shaderCapabilities.end()) {
@@ -64,7 +68,9 @@ renderer::GeometryMaterialInput RenderMaterialResolver::ExtractCapabilities(cons
             IsGBufferEquivalentShader(material->shaderPath)).first;
     }
     const auto input = ExtractGeometryMaterial(slot, material, found->second);
-    if (sharedRoute) m_geometryDefaults.emplace(snapshot, input);
+    if (sharedRoute) {
+        m_geometryDefaults.emplace(snapshot, input);
+    }
     return input;
 }
 
@@ -74,7 +80,9 @@ void RenderMaterialResolver::RefreshCapabilitiesEpoch()
     const auto reset = m_resources ? m_resources->GetResetVersion() : 0;
     const auto shader = m_resources ? m_resources->GetShaderVersion() : 0;
     const auto assets = asset::AssetManager::GetAssetGeneration();
-    if (m_resourceOwner == owner && m_resetVersion == reset && m_shaderVersion == shader && m_assetGeneration == assets) return;
+    if (m_resourceOwner == owner && m_resetVersion == reset && m_shaderVersion == shader && m_assetGeneration == assets) {
+        return;
+    }
     m_resourceOwner = owner; m_resetVersion = reset; m_shaderVersion = shader;
     m_assetGeneration = assets;
     m_shaderCapabilities.clear(); m_geometryDefaults.clear();
@@ -87,11 +95,15 @@ const PreparedMaterialParams* RenderMaterialResolver::Prepare(MaterialComponent&
     const auto slotSnapshot = slot.ReadAuthoring();
     const auto handle = slot.GetMaterialAsset();
     const auto snapshot = asset::ReadMaterialAuthoring(handle);
-    if (!snapshot) return nullptr;
+    if (!snapshot) {
+        return nullptr;
+    }
     const auto& values = snapshot->Data();
     if (values.shaderPath.empty() || values.renderPath != asset::RenderPath::Auto
         || (skinned && values.meshType == asset::MeshType::Surface)
-        || (!skinned && values.meshType == asset::MeshType::Skinned)) return nullptr;
+        || (!skinned && values.meshType == asset::MeshType::Skinned)) {
+        return nullptr;
+    }
     auto [found, inserted] = m_prepared.try_emplace(snapshot);
     auto& cached = found->second;
     if (inserted || cached.prepared.resourceOwner != resources.GetInstanceId()
@@ -112,15 +124,17 @@ const PreparedMaterialParams* RenderMaterialResolver::Prepare(MaterialComponent&
             asset::InitDefaultMaterialParams(*candidate.descriptor, candidate.bytes);
             asset::ApplyMaterialAssetParams(values, *candidate.descriptor, candidate.bytes);
         }
-        /// @note シェーダーのロード中に起こる再入編集や資源世代の変更を再照合し、古いレイアウトの公開を防ぐ。
+        // シェーダーのロード中に起こる再入編集や資源世代の変更を再照合し、古いレイアウトの公開を防ぐ。
         if (candidate.resourceOwner != resources.GetInstanceId() || candidate.resetVersion != resources.GetResetVersion()
             || candidate.shaderVersion != resources.GetShaderVersion() || asset::ReadMaterialAuthoring(handle) != snapshot
-            || component.SlotAt(slotIndex).ReadAuthoring() != slotSnapshot || component.SlotAt(slotIndex).GetMaterialAsset() != handle)
+            || component.SlotAt(slotIndex).ReadAuthoring() != slotSnapshot || component.SlotAt(slotIndex).GetMaterialAsset() != handle) {
             return nullptr;
+        }
         cached.prepared = std::move(candidate); cached.packedVariants.clear(); cached.synchronized.clear();
         cached.copyPlan.reset();
-        if (cached.prepared.standardDescriptorVerified && cached.prepared.descriptor)
+        if (cached.prepared.standardDescriptorVerified && cached.prepared.descriptor) {
             cached.copyPlan.emplace(*cached.prepared.descriptor);
+        }
         cached.hasTextureRequests = std::any_of(values.textures.begin(), values.textures.end(),
             [](const auto& entry) { return !entry.second.empty(); });
     }
@@ -130,10 +144,14 @@ const PreparedMaterialParams* RenderMaterialResolver::Prepare(MaterialComponent&
 bool RenderMaterialResolver::CopySynchronized(const MaterialSlot& slot, renderer::ResourceManager& resources, bool skinned,
     float screenPixels, renderer::RenderMaterial& output, bool shareTexturedDefaults) const
 {
-    if (!CanShareSynchronization(slot)) return false;
+    if (!CanShareSynchronization(slot)) {
+        return false;
+    }
     const auto snapshot = asset::ReadMaterialAuthoring(slot.GetMaterialAsset());
     const auto found = m_prepared.find(snapshot);
-    if (found == m_prepared.end() || (found->second.hasTextureRequests && !shareTexturedDefaults)) return false;
+    if (found == m_prepared.end() || (found->second.hasTextureRequests && !shareTexturedDefaults)) {
+        return false;
+    }
     const uint32_t textureRequest = found->second.hasTextureRequests ? std::bit_cast<uint32_t>(screenPixels) : 0;
     for (const auto& entry : found->second.synchronized) {
         if (entry.skinned == skinned && entry.textureRequest == textureRequest
@@ -149,15 +167,21 @@ bool RenderMaterialResolver::CopySynchronized(const MaterialSlot& slot, renderer
 void RenderMaterialResolver::RememberSynchronized(const MaterialSlot& slot, renderer::ResourceManager& resources, bool skinned,
     float screenPixels, const renderer::RenderMaterial& material, bool shareTexturedDefaults)
 {
-    if (!material.valid || !material.paramsBuffer.IsValid() || !CanShareSynchronization(slot)) return;
+    if (!material.valid || !material.paramsBuffer.IsValid() || !CanShareSynchronization(slot)) {
+        return;
+    }
     const auto snapshot = asset::ReadMaterialAuthoring(slot.GetMaterialAsset());
     const auto found = m_prepared.find(snapshot);
     if (found == m_prepared.end() || material.shader != found->second.prepared.shader
-        || (found->second.hasTextureRequests && !shareTexturedDefaults)) return;
+        || (found->second.hasTextureRequests && !shareTexturedDefaults)) {
+        return;
+    }
     auto& cached = found->second;
-    /// @note 上限を超える投影サイズは通常経路で処理し、キャッシュの都合で要求解像度を丸めない。
+    // 上限を超える投影サイズは通常経路で処理し、キャッシュの都合で要求解像度を丸めない。
     constexpr size_t MAXIMUM_SYNCHRONIZED_VARIANTS = 32;
-    if (cached.synchronized.size() >= MAXIMUM_SYNCHRONIZED_VARIANTS) return;
+    if (cached.synchronized.size() >= MAXIMUM_SYNCHRONIZED_VARIANTS) {
+        return;
+    }
     cached.synchronized.push_back({material, resources.GetShaderVersion(), resources.GetResetVersion(),
         cached.hasTextureRequests ? std::bit_cast<uint32_t>(screenPixels) : 0, skinned});
 }
@@ -169,21 +193,29 @@ bool RenderMaterialResolver::CopyPacked(const MaterialSlot& slot, const renderer
     copyPlan = nullptr; layout = nullptr;
     const auto snapshot = asset::ReadMaterialAuthoring(slot.GetMaterialAsset());
     const auto found = m_prepared.find(snapshot);
-    if (found == m_prepared.end()) return false;
+    if (found == m_prepared.end()) {
+        return false;
+    }
     const auto shaderVersion = resources.GetShaderVersion();
     for (const auto& packed : found->second.packedVariants) {
-        if (packed.shaderVersion != shaderVersion || packed.shader != source.shader || packed.sourceBytes != source.paramData) continue;
+        if (packed.shaderVersion != shaderVersion || packed.shader != source.shader || packed.sourceBytes != source.paramData) {
+            continue;
+        }
         output.gbufferParams = packed.params; output.directGBufferParams = packed.direct;
         return true;
     }
     const auto& cached = found->second;
     const auto& prepared = cached.prepared;
     const auto vertex = output.shaderCapabilities.vertex;
-    if (cached.copyPlan && prepared.descriptor && prepared.shader == source.shader
-        && prepared.resourceOwner == resources.GetInstanceId() && prepared.resetVersion == resources.GetResetVersion()
-        && prepared.shaderVersion == shaderVersion
-        && (vertex == renderer::ShaderVertexContract::STANDARD_SURFACE || vertex == renderer::ShaderVertexContract::STANDARD_SKINNED)) {
-        /// @note ポインターはこの抽出のキャッシュを参照し、コールバックを挟まないレイアウト照合にだけ使う。
+    const bool matchingCopyPlan = cached.copyPlan && prepared.descriptor && prepared.shader == source.shader;
+    if (!matchingCopyPlan) {
+        return false;
+    }
+    const bool currentShaderLayout = prepared.resourceOwner == resources.GetInstanceId()
+        && prepared.resetVersion == resources.GetResetVersion() && prepared.shaderVersion == shaderVersion;
+    if (currentShaderLayout && (vertex == renderer::ShaderVertexContract::STANDARD_SURFACE
+        || vertex == renderer::ShaderVertexContract::STANDARD_SKINNED)) {
+        // ポインターはこの抽出のキャッシュを参照し、コールバックを挟まないレイアウト照合にだけ使う。
         copyPlan = &*cached.copyPlan; layout = prepared.descriptor.get();
     }
     return false;
@@ -194,11 +226,15 @@ void RenderMaterialResolver::RememberPacked(const MaterialSlot& slot, const rend
 {
     const auto snapshot = asset::ReadMaterialAuthoring(slot.GetMaterialAsset());
     const auto found = m_prepared.find(snapshot);
-    if (found == m_prepared.end()) return;
+    if (found == m_prepared.end()) {
+        return;
+    }
     auto& variants = found->second.packedVariants;
-    /// @note 固有上書きが大量にあるassetは通常経路へ戻し、同値共有のための追加メモリをasset当たり32種類へ制限する。
+    // 固有上書きが大量にあるassetは通常経路へ戻し、同値共有のための追加メモリをasset当たり32種類へ制限する。
     constexpr size_t MAXIMUM_PACKED_VARIANTS = 32;
-    if (variants.size() >= MAXIMUM_PACKED_VARIANTS) return;
+    if (variants.size() >= MAXIMUM_PACKED_VARIANTS) {
+        return;
+    }
     variants.push_back({source.shader, shaderVersion, source.paramData, output.gbufferParams, output.directGBufferParams});
 }
 

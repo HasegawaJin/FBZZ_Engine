@@ -12,7 +12,9 @@ public:
     std::unique_ptr<ClothAsset> Import(const std::string& path, renderer::ResourceManager*) override
     {
         auto result = std::make_unique<ClothAsset>();
-        if (!LoadClothAssetFromFile(path, *result)) return nullptr;
+        if (!LoadClothAssetFromFile(path, *result)) {
+            return nullptr;
+        }
         return result;
     }
     std::span<const std::string_view> SupportedExtensions() const override

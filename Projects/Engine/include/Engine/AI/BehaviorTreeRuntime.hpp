@@ -20,16 +20,16 @@ namespace fbzz::ai {
 /// @brief 走査時に触る最小限。8 バイト。
 struct BTNode {
     BTNodeType     type       = BTNodeType::Sequence;  ///< @note uint16
-    std::uint16_t  firstChild = 0;   ///< @note 最初の直接の子。次の兄弟は subtreeEnd[child]。
+    std::uint16_t  firstChild = 0; ///< 最初の直接の子。次の兄弟は subtreeEnd[child]。
     std::uint16_t  childCount = 0;
-    std::uint16_t  paramIndex = 0;   ///< @note params[] への添字
+    std::uint16_t  paramIndex = 0; ///< params[] への添字
 };
 
 /// @brief ノードが実行されるときだけ引くパラメータ。BTNodeDef からキー解決済み。
 struct BTNodeParams {
     AbortMode      abortMode = AbortMode::None;
-    BlackboardKey  key       = kInvalidBlackboardKey;   ///< @note keyName の解決結果
-    BlackboardKey  moveKey   = kInvalidBlackboardKey;   ///< @note moveTargetKey の解決結果
+    BlackboardKey  key       = kInvalidBlackboardKey; ///< keyName の解決結果
+    BlackboardKey  moveKey   = kInvalidBlackboardKey; ///< moveTargetKey の解決結果
     BTCompareOp    compareOp = BTCompareOp::Equal;
     BlackboardType valueType = BlackboardType::Bool;
     BTParallelPolicy successPolicy = BTParallelPolicy::RequireAll;
@@ -52,14 +52,13 @@ struct BTNodeParams {
     int           valueInt     = 0;
     float         valueFloat   = 0.0f;
     math::Vector3 valueVector3 = math::Vector3::ZERO;
-    std::string   valueString;   ///< @note SetBlackboard(String) の値
+    std::string   valueString; ///< SetBlackboard(String) の値
 
-    /// @note animatorTrigger/soundPath/scriptMethod を別フィールドにすると未使用の std::string が残るため、種別ごとに1つしか使わない文字列をここへまとめる。
-    std::string   text;
+    std::string   text; ///< animatorTrigger/soundPath/scriptMethod を別フィールドにすると未使用の std::string が残るため、種別ごとに1つしか使わない文字列をここへまとめる。
 
     std::vector<float> childWeights;
 
-    int authoringId = 0;   ///< @note エディタの実行中ハイライトを逆引きするための元 ID。
+    int authoringId = 0; ///< エディタの実行中ハイライトを逆引きするための元 ID。
 };
 
 /// @brief observerAborts の中断候補。コンパイル時に事前計算する。
@@ -68,30 +67,30 @@ struct BTAbortCandidate {
     std::uint16_t node = 0;
     AbortMode     mode = AbortMode::None;
 
-    std::uint16_t selfLo = 0;   ///< @note 自分のサブツリー [selfLo, selfHi)
+    std::uint16_t selfLo = 0; ///< 自分のサブツリー [selfLo, selfHi)
     std::uint16_t selfHi = 0;
 
-    std::uint16_t lowLo = 0;   ///< @note 自分より低優先度の領域 [lowLo, lowHi)
+    std::uint16_t lowLo = 0; ///< 自分より低優先度の領域 [lowLo, lowHi)
     std::uint16_t lowHi = 0;
 };
 
 struct BehaviorTreeRuntime {
     std::string sourcePath;
 
-    std::vector<BTNode>       nodes;   ///< @note DFS pre-order。nodes[0] がルート
+    std::vector<BTNode>       nodes; ///< DFS pre-order。nodes[0] がルート
     std::vector<BTNodeParams> params;
 
     std::vector<std::uint16_t> parent;      ///< @note parent[0] == kInvalidNode
-    std::vector<std::uint16_t> subtreeEnd;  ///< @note 部分木は [i, subtreeEnd[i])
+    std::vector<std::uint16_t> subtreeEnd; ///< 部分木は [i, subtreeEnd[i])
 
     std::vector<BlackboardDef> blackboard;
-    std::vector<std::string> keyNames;   ///< @note ScriptAIProxy が文字列でキーを引くためだけの表。tick ループには乗らない。
+    std::vector<std::string> keyNames; ///< ScriptAIProxy が文字列でキーを引くためだけの表。tick ループには乗らない。
 
-    std::vector<BTAbortCandidate> abortCandidates;   ///< @note node index 昇順 = 優先度の高い順。
+    std::vector<BTAbortCandidate> abortCandidates; ///< node index 昇順 = 優先度の高い順。
 
     std::vector<int> authoringIdOf;   ///< @note nodeIndex -> BTNodeDef::id
 
-    std::vector<std::string> compileWarnings;   ///< @note コンパイル時に解決できなかった keyName など。保存は通っているが実行時に効かない。
+    std::vector<std::string> compileWarnings; ///< コンパイル時に解決できなかった keyName など。保存は通っているが実行時に効かない。
 
     [[nodiscard]] bool Empty() const { return nodes.empty(); }
     [[nodiscard]] std::size_t NodeCount() const { return nodes.size(); }
@@ -108,4 +107,4 @@ struct BehaviorTreeRuntime {
                                        BehaviorTreeRuntime& out,
                                        std::string* outError = nullptr);
 
-} /// @note namespace fbzz::ai
+} // namespace fbzz::ai

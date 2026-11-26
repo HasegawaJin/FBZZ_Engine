@@ -119,15 +119,21 @@ bool ReferenceSceneTerrain(scene::Scene& queryScene,const math::Vector3& referen
 {
     bool found=false;scene::TerrainSurfaceSample best;
     for (auto& object:queryScene.GameObjects()) {
-        if (!object.activeInHierarchy()) continue;
+        if (!object.activeInHierarchy()) {
+            continue;
+        }
         const auto* terrain=object.GetComponent<scene::TerrainComponent>();
-        if (!terrain || !terrain->enabled) continue;
+        if (!terrain || !terrain->enabled) {
+            continue;
+        }
         scene::TerrainSurfaceSample sample;
         const bool hit=ceiling ? scene::TrySampleTerrainCeilingWorld(*terrain,object.transform,reference,distance,sample)
             : scene::TrySampleTerrainFloorWorld(*terrain,object.transform,reference,distance,sample);
         if (hit && (!found || (ceiling ? sample.position.y<best.position.y : sample.position.y>best.position.y))) {best=sample;found=true;}
     }
-    if (!found)return false;
+    if (!found) {
+        return false;
+    }
     out=best;return true;
 }
 void ExpectSceneTerrainEquivalent(scene::Scene& queryScene,scene::Script& caller,const math::Vector3& reference)
@@ -484,7 +490,7 @@ TEST_F(ManagedServicesBridgeTest, CameraDirectXDepthRoundTripsAndDistanceDepthSt
     EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_CAMERA, 3, false, 0, {1, 1}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
     object.transform.worldPosition = {std::numeric_limits<float>::max(), 0, 0};
     ASSERT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_CAMERA, 19, true, 0, {0, 0, 10}), scene::ManagedBridgeStatus::OK);
-    /// @note TryWorldToViewportPoint は画面外でも有限の投影結果なら成功する。
+    // TryWorldToViewportPoint は画面外でも有限の投影結果なら成功する。
     EXPECT_EQ(m_result.integer, 1); ASSERT_EQ(m_result.values.size(), 3u);
     object.transform.worldPosition.y = std::numeric_limits<float>::max();
     ASSERT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_CAMERA, 19, true, 0, {0, 0, 10}), scene::ManagedBridgeStatus::OK);
@@ -549,7 +555,7 @@ TEST_F(ManagedServicesBridgeTest, MaterialNeverFallsBackResizesOrAcceptsUnknownS
     ASSERT_EQ(Run(target, op, 4, false, 1, {1.f}), scene::ManagedBridgeStatus::OK); EXPECT_TRUE(material.RawSlotAt(1).visible);
     ASSERT_EQ(Run(target, op, 24, false, 1, {}, {"guid:11111111111111111111111111111111"}), scene::ManagedBridgeStatus::OK);
     EXPECT_EQ(m_result.integer, 0); EXPECT_EQ(material.RawSlotAt(1).GetMaterialPath(), "original.mat"); EXPECT_FLOAT_EQ(material.RawSlotAt(1).Authoring().paramOverrides.at("glow")[0], 4.f);
-    /// @note この CPU fixture は AssetManager を持たない。未割当 slot の拒否を検証し、共有 path 変更の検証前に旧 path を戻す。
+    // この CPU fixture は AssetManager を持たない。未割当 slot の拒否を検証し、共有 path 変更の検証前に旧 path を戻す。
     material.RawSlotAt(1).SetMaterialPath("");
     ASSERT_EQ(Run(target, op, 7, false, 1, {2.f}, {"glow"}), scene::ManagedBridgeStatus::OK);
     EXPECT_EQ(m_result.integer, 0); EXPECT_FLOAT_EQ(material.RawSlotAt(1).Authoring().paramOverrides.at("glow")[0], 4.f);

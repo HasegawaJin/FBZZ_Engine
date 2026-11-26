@@ -50,8 +50,7 @@ struct WaterPatchGrid {
 using WaterPatchGridSlots = std::array<std::weak_ptr<WaterPatchGrid>, 6>;
 
 struct WaterMesh {
-    /// @note 波の変位を含める前のローカル AABB を持つ。
-    std::vector<renderer::RenderWaterPatch> chunks;
+    std::vector<renderer::RenderWaterPatch> chunks; ///< 波の変位を含める前のローカル AABB を持つ。
     std::shared_ptr<WaterPatchGrid> patchGrid;
     std::shared_ptr<const std::vector<renderer::WaterSurfaceCluster>> surfaceClusters;
     renderer::ResourceHandle<renderer::BufferTag> surfaceClusterIndices;
@@ -174,4 +173,4 @@ void UpdateWaterTextures(WaterTextures& textures, const WaterComponent& water, c
 void UpdateRippleState(WaterRippleState& state, const WaterComponent& water,
     const Transform& transform, renderer::ResourceManager& resources);
 
-} /// @note namespace fbzz::scene::water_render_detail
+} // namespace fbzz::scene::water_render_detail

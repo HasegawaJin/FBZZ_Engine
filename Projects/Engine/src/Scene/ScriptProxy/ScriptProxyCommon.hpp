@@ -22,4 +22,4 @@ T* ObjectComponent(GameObject* go)
     return go && go->IsValid() ? go->GetComponent<T>() : nullptr;
 }
 
-} /// @note namespace fbzz::scene::script_proxy_detail
+} // namespace fbzz::scene::script_proxy_detail

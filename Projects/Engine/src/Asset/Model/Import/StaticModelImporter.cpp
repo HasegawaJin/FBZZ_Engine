@@ -19,8 +19,9 @@ std::unique_ptr<Model> ImportStaticModel(const aiScene* scene,
         const aiMesh* src = scene->mMeshes[mi];
 
         std::vector<renderer::Vertex> vertices(src->mNumVertices);
-        for (uint32_t i = 0; i < src->mNumVertices; ++i)
+        for (uint32_t i = 0; i < src->mNumVertices; ++i) {
             vertices[i] = ImportVertex(src, i, unitScale);
+        }
 
         auto indices = ImportIndices(src);
 
@@ -40,13 +41,13 @@ std::unique_ptr<Model> ImportStaticModel(const aiScene* scene,
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
-    /// @note aiProcess_PreTransformVertices で階層は既に「ルート 1 個に全メッシュ」へ潰れており、
-    /// @note ImportModelNodes を呼んでも同じ結果になる。配置側 (SpawnModelAssetHierarchy) に
-    /// @note 「nodes が空なら別処理」という分岐を持たせないため、そのまま 1 ノードとして表現する。
-    /// @note DCC の階層を残したい場合は STATIC_ASSIMP_FLAGS から PreTransformVertices を外し、
-    /// @note ImportModelNodes に差し替える (頂点にベイクされた変換はノードの TRS へ移る)。
+    // aiProcess_PreTransformVertices で階層は既に「ルート 1 個に全メッシュ」へ潰れており、
+    // ImportModelNodes を呼んでも同じ結果になる。配置側 (SpawnModelAssetHierarchy) に
+    // 「nodes が空なら別処理」という分岐を持たせないため、そのまま 1 ノードとして表現する。
+    // DCC の階層を残したい場合は STATIC_ASSIMP_FLAGS から PreTransformVertices を外し、
+    // ImportModelNodes に差し替える (頂点にベイクされた変換はノードの TRS へ移る)。
     BuildFlatModelNode(*model, {});
     return model;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -31,7 +31,7 @@ class Script;
 /// @note Play の終わりでスクリプト DLL ごと作り直されるため、持ち越すとハンドルの
 /// @note        持ち主が消えて誰も解放できなくなる。
 struct SynthClip {
-    uint32_t id = 0;
+    uint32_t id = 0; ///< 音声操作で照合する再生ハンドルの識別番号。
     [[nodiscard]] bool IsValid() const { return id != 0; }
 };
 
@@ -40,22 +40,22 @@ class AudioLoop {
 public:
     [[nodiscard]] FBZZ_ENGINE_API bool IsValid() const;
 private:
-    EntityID m_source = EntityID::INVALID;
-    std::weak_ptr<audio::VoiceLifetime> m_lifetime;
-    const Script* m_owner = nullptr;
+    EntityID m_source = EntityID::INVALID; ///< 再生を開始したシーンオブジェクトの Entity ID。
+    std::weak_ptr<audio::VoiceLifetime> m_lifetime; ///< 再生中か確認する音声の生存状態への弱参照。
+    const Script* m_owner = nullptr; ///< このハンドルを発行した Script を照合する非所有参照。
     friend struct ScriptAudioProxy;
 };
 
 struct AudioLoopSettings {
-    std::string label = "Loop";
-    std::string bus = "SE";
-    float spatialBlend = 1.0f;
-    float minDistance = 2.0f;
-    float maxDistance = 22.0f;
+    std::string label = "Loop"; ///< 生成するループ音声を識別する表示名。
+    std::string bus = "SE"; ///< 生成する音声を送るミキサーバス名。
+    float spatialBlend = 1.0f; ///< 非空間音声と 3D 音声を混ぜる係数。
+    float minDistance = 2.0f; ///< 3D 音声の距離減衰が始まる距離 [m]。
+    float maxDistance = 22.0f; ///< 3D 音声の距離減衰を評価する最遠距離 [m]。
 };
 
 struct ScriptAudioProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 音声操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief 独立したループ音を開始・更新する。同一クリップの更新では再生位置を戻さない。
     /// @note 主 AudioSource は不要。音源は所有 GameObject に追従し、名前で共有しない。
@@ -107,7 +107,7 @@ struct ScriptAudioProxy {
     FBZZ_ENGINE_API void  Set3DDistances(float minDistance, float maxDistance, float rolloff = 1.0f) const;
     /// @note  主 voice を止めずに 1 度だけ重ねて鳴らす。同じフレームに何度呼んでも
     /// @note  すべて鳴る (被弾が同時多発しても取りこぼさない)。
-    /// @param volumeScale AudioSource の volume に掛ける倍率。強弱を付ける用。
+    /// @param[in] volumeScale AudioSource の volume に掛ける倍率。強弱を付ける用。
     FBZZ_ENGINE_API void  PlayOneShot(std::string_view clipPath, float volumeScale = 1.0f) const;
     FBZZ_ENGINE_API void  PlayOneShot(const AudioClipRef& clip, float volumeScale = 1.0f) const;
     /// @}
@@ -129,7 +129,7 @@ struct ScriptAudioProxy {
     /// @note  常に 1 本だけ鳴る専用スロット。AudioSource を経由しないので
     /// @note  シーンにオブジェクトを置かなくても切り替えられる。
     /// @{
-    /// @param fadeSeconds 0 より大きいと、鳴っていた曲を消しながら新しい曲を
+    /// @param[in] fadeSeconds 0 より大きいと、鳴っていた曲を消しながら新しい曲を
     /// @note         立ち上げる (クロスフェード)。場面転換で音が途切れない。
     FBZZ_ENGINE_API void PlayBGM(std::string_view clipPath, bool loop = true, float fadeSeconds = 0.0f) const;
     FBZZ_ENGINE_API void PlayBGM(const AudioClipRef& clip, bool loop = true, float fadeSeconds = 0.0f) const;
@@ -192,4 +192,4 @@ struct ScriptAudioProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

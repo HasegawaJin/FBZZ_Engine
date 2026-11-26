@@ -19,16 +19,11 @@ struct ActiveFlowField;
 
 /// @note 環境流。雲・水面・草・粒子がこの 1 本を読む。
 struct SceneEnvironment {
-    /// @note 環境流を使うか。false ならコンポーネント固有の設定 (雲の windDirection 等) へ戻る。
-    bool          enabled = false;
-    /// @note 流れの向き。正規化していなくてよい (読む側が正規化する)。
-    math::Vector3 direction = { 0.7071f, 0.0f, 0.7071f };
-    /// @note 流速 [m/s]。
-    float         speed = 0.0f;
-    /// @note 乱れの強さ [m/s]。カールノイズの振幅として効く。
-    float         turbulence = 0.0f;
-    /// @note 乱れの脈動の速さ [1/s]。カールノイズの時間スクロール速度。
-    float         pulseFrequency = 1.0f;
+    bool          enabled = false; ///< 環境流を使うか。false ならコンポーネント固有の設定 (雲の windDirection 等) へ戻る。
+    math::Vector3 direction = { 0.7071f, 0.0f, 0.7071f }; ///< 流れの向き。正規化していなくてよい (読む側が正規化する)。
+    float         speed = 0.0f; ///< 流速 [m/s]。
+    float         turbulence = 0.0f; ///< 乱れの強さ [m/s]。カールノイズの振幅として効く。
+    float         pulseFrequency = 1.0f; ///< 乱れの脈動の速さ [1/s]。カールノイズの時間スクロール速度。
 
     FBZZ_ENGINE_API void Reflect(IReflector& r);
 };
@@ -42,4 +37,4 @@ struct SceneEnvironment {
 /// @note 同じ値がここでも場の形になっていないと、«風は吹いているのに粒子が動かない» になる。
 FBZZ_ENGINE_API void AppendEnvironmentFlow(const AmbientWind& wind, std::vector<ActiveFlowField>& out);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

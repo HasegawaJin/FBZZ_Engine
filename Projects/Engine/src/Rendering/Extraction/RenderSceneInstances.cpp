@@ -30,7 +30,7 @@ void ExtractRenderInstances(RenderPassContext& context, renderer::RenderScene& s
     bool collectInstancePhases = false;
     if (profiler::Profiler::IsEnabled()) {
         const auto requestedFilter = profiler::Profiler::GetRequestedCaptureFilter();
-        /// @note 明示的な診断フィルターのときだけ工程の時刻を取得し、サンプルは現フレームの適用済みフィルターで選別する。
+        // 明示的な診断フィルターのときだけ工程の時刻を取得し、サンプルは現フレームの適用済みフィルターで選別する。
         collectInstancePhases = requestedFilter.scope == "RenderSceneExtractor::Instances"
             && (requestedFilter.category.empty() || requestedFilter.category == "General");
     }
@@ -52,12 +52,16 @@ void ExtractRenderInstances(RenderPassContext& context, renderer::RenderScene& s
         detail::RenderPhaseTimer<> ownerTimer(ownerNs, collectInstancePhases);
         auto* owner = context.scene.GetGameObject(entity);
         const auto* component = context.scene.GetComponent<InstancedMeshComponent>(entity);
-        if (!owner || !owner->activeInHierarchy() || !component || !component->m_enabled) continue;
+        if (!owner || !owner->activeInHierarchy() || !component || !component->m_enabled) {
+            continue;
+        }
         ownerTimer.Finish();
         detail::RenderPhaseTimer<> definitionTimer(definitionNs, collectInstancePhases);
         const auto* definition = asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
         definitionTimer.Finish();
-        if (!definition) continue;
+        if (!definition) {
+            continue;
+        }
         renderer::RenderInstanceInput input;
         detail::RenderPhaseTimer<> snapshotTimer(snapshotNs, collectInstancePhases);
         input.data = component->Snapshot(*definition);
@@ -76,7 +80,9 @@ void ExtractRenderInstances(RenderPassContext& context, renderer::RenderScene& s
     }
     if (context.uiOptions) for (const auto& preview : context.uiOptions->instancePreviews) {
         const auto* definition = asset::ResolveMeshInstanceDefinition(preview.definition);
-        if (!definition || !preview.data || preview.data->placements.size() > 384) continue;
+        if (!definition || !preview.data || preview.data->placements.size() > 384) {
+            continue;
+        }
         renderer::RenderInstanceInput input;
         input.data = preview.data; input.world = preview.world;
         input.identity = {context.scene.GetRenderSceneGeneration() ^ (1ull << 63), preview.identity};
@@ -87,7 +93,9 @@ void ExtractRenderInstances(RenderPassContext& context, renderer::RenderScene& s
         detail::RenderPhaseTimer<> setSnapshotTimer(setSnapshotNs, collectInstancePhases);
         const auto& definition = *sourceView.definition;
         auto input = std::move(sourceView.input);
-        if (!input.data || input.data->placements.empty()) continue;
+        if (!input.data || input.data->placements.empty()) {
+            continue;
+        }
         input.lodCount = static_cast<uint32_t>(definition.LodHeights().size());
         std::copy(definition.LodHeights().begin(), definition.LodHeights().end(), input.lodHeights.begin());
         math::Vector3 boundsCenter{}; float boundsRadius=-1, windBounds=0;
@@ -120,22 +128,28 @@ void ExtractRenderInstances(RenderPassContext& context, renderer::RenderScene& s
             detail::RenderPhaseTimer<> boundsTimer(meshAndBoundsNs, collectInstancePhases);
             const auto partBoundsCenter=mesh->boundsCenter; const float partBoundsRadius=mesh->boundsRadius;
             const auto centerOffset=partBoundsCenter-boundsCenter; const float centerDistance=centerOffset.Length();
-            /// @note 包囲球を箱へ変換せずに合成し、過大な境界で LOD の簡略化が遅れるのを防ぐ。
+            // 包囲球を箱へ変換せずに合成し、過大な境界で LOD の簡略化が遅れるのを防ぐ。
             if (boundsRadius<0 || partBoundsRadius>=centerDistance+boundsRadius) { boundsCenter=partBoundsCenter; boundsRadius=partBoundsRadius; }
             else if (centerDistance+partBoundsRadius>boundsRadius) {
                 const float mergedRadius=(boundsRadius+centerDistance+partBoundsRadius)*0.5f;
-                if (centerDistance>0.00001f) boundsCenter+=centerOffset*((mergedRadius-boundsRadius)/centerDistance);
+                if (centerDistance>0.00001f) {
+                    boundsCenter+=centerOffset*((mergedRadius-boundsRadius)/centerDistance);
+                }
                 boundsRadius=mergedRadius;
             }
             input.parts.push_back(std::move(part));
         }
-        if (input.parts.empty()) continue;
-        if (sourceView.owner) input.world = sourceView.owner->transform.GetWorldMatrix();
+        if (input.parts.empty()) {
+            continue;
+        }
+        if (sourceView.owner) {
+            input.world = sourceView.owner->transform.GetWorldMatrix();
+        }
         input.localBoundsCenter=boundsCenter; input.localBoundsRadius=boundsRadius + windBounds;
         snapshot.instances.push_back(std::move(input));
     }
     if (collectInstancePhases) {
-        /// @note Definition・Snapshot・Owner は SetSnapshot の内訳で重複し、上位スコープの自己時間は求められない。
+        // Definition・Snapshot・Owner は SetSnapshot の内訳で重複し、上位スコープの自己時間は求められない。
         profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::SetSnapshot", "General"}, static_cast<double>(setSnapshotNs) / 1000000.0);
         profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::MeshAndBounds", "General"}, static_cast<double>(meshAndBoundsNs) / 1000000.0);
         profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::Material", "General"}, static_cast<double>(materialNs) / 1000000.0);

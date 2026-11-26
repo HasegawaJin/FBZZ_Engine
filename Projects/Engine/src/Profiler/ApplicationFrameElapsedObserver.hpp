@@ -49,7 +49,9 @@ public:
     /// @return 次のフレーム境界用に予約したセッション ID。使い切った場合は 0。
     uint64_t Arm()
     {
-        if (m_nextSession == (std::numeric_limits<uint64_t>::max)()) return 0;
+        if (m_nextSession == (std::numeric_limits<uint64_t>::max)()) {
+            return 0;
+        }
         m_pendingSession = ++m_nextSession;
         m_stopPending = false;
         return m_pendingSession;
@@ -67,7 +69,9 @@ public:
             m_session = m_pendingSession; m_pendingSession = 0;
             m_active = true; m_open = false; m_havePrevious = false; m_ordinal = 0; m_latest = {};
         }
-        if (!m_active) return;
+        if (!m_active) {
+            return;
+        }
         if (m_open) {
             m_current.boundary = ApplicationFrameElapsedBoundary::REPLACED_BEGIN;
             Publish(); m_havePrevious = false;
@@ -77,12 +81,18 @@ public:
         m_current.applicationFrameSerial = serial;
         m_current.beginMode = mode;
         m_startMs = startMs;
-        if (!std::isfinite(startMs)) m_current.boundary = ApplicationFrameElapsedBoundary::INVALID_CLOCK;
+        if (!std::isfinite(startMs)) {
+            m_current.boundary = ApplicationFrameElapsedBoundary::INVALID_CLOCK;
+        }
         if (m_havePrevious && serial > m_previousSerial) {
             const double interval = startMs - m_previousStartMs;
             m_current.wallFrameIntervalAvailable = std::isfinite(interval) && interval >= 0.0;
-            if (m_current.wallFrameIntervalAvailable) m_current.wallFrameIntervalMs = interval;
-            else m_current.boundary = ApplicationFrameElapsedBoundary::INVALID_CLOCK;
+            if (m_current.wallFrameIntervalAvailable) {
+                m_current.wallFrameIntervalMs = interval;
+            }
+            else {
+                m_current.boundary = ApplicationFrameElapsedBoundary::INVALID_CLOCK;
+            }
         }
         m_havePrevious = std::isfinite(startMs);
         m_previousStartMs = startMs; m_previousSerial = serial;
@@ -91,16 +101,22 @@ public:
     void MarkAborted() { if (m_open) m_current.boundary = ApplicationFrameElapsedBoundary::WINDOW_CLOSE; }
     void End(double endMs, ApplicationFrameElapsedModeWitness mode)
     {
-        if (!m_open) return;
+        if (!m_open) {
+            return;
+        }
         m_current.endMode = mode; m_current.endModeAvailable = true;
         const double elapsed = endMs - m_startMs;
         m_current.cpuFrameElapsedAvailable = std::isfinite(m_startMs) && std::isfinite(endMs)
             && std::isfinite(elapsed) && elapsed >= 0.0;
-        if (m_current.cpuFrameElapsedAvailable) m_current.cpuFrameElapsedMs = elapsed;
+        if (m_current.cpuFrameElapsedAvailable) {
+            m_current.cpuFrameElapsedMs = elapsed;
+        }
         else if (m_current.boundary == ApplicationFrameElapsedBoundary::NORMAL)
             m_current.boundary = ApplicationFrameElapsedBoundary::INVALID_CLOCK;
         Publish();
-        if (!m_latest.complete) m_havePrevious = false;
+        if (!m_latest.complete) {
+            m_havePrevious = false;
+        }
     }
 private:
     void Publish()
@@ -125,4 +141,4 @@ FBZZ_ENGINE_API void RequestStopApplicationFrameElapsedObserver();
 [[nodiscard]] FBZZ_ENGINE_API ApplicationFrameElapsedSnapshot ReadApplicationFrameElapsedObserver();
 FBZZ_ENGINE_API void MarkApplicationFrameElapsedAborted();
 
-} /// @note namespace fbzz::profiler::detail
+} // namespace fbzz::profiler::detail

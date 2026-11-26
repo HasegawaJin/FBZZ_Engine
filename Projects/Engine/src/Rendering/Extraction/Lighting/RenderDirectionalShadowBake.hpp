@@ -14,4 +14,4 @@ void PrepareDirectionalShadowBakeForRender(RenderPassContext& context, EntityID 
     const renderer::ShadowBounds& sceneBounds, const math::Vector3& lightDirection,
     float shadowBias, const renderer::PreparedShadows& shadows);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

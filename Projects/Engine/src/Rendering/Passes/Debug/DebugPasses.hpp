@@ -18,28 +18,28 @@ struct RenderPassContext;
 class GameObject;
 
 /// @brief 描き先 1 枚へ ReadWrite で線を重ねるデバッグパスの共通部。
-/// @param target グラフ上の描き先。深度なしの線はトーンマップ後の LDR 終端 (UpscaleSrc / Output)、
-/// @note シーン深度で遮蔽させたいものは "HDR"。
 /// @note 表示の入り切りは IsEnabled に置く。Execute の早期 return ではグラフに依存が残る。
 /// @see RenderSystem.cpp のデバッグパス登録
 class DebugOverlayPass : public IRenderPass {
 public:
+    /// @brief 描画グラフ上の出力を指定する。
+    /// @param[in] target 深度なしの線はトーンマップ後の終端 (UpscaleSrc または Output)、シーン深度で遮蔽する線は HDR。
     explicit DebugOverlayPass(std::string_view target) : m_target(target) {}
     FBZZ_ENGINE_API void Setup(renderer::PassBuilder& builder, const RenderPassContext& ctx) const override;
 
 protected:
-    std::string m_target;
+    std::string m_target; ///< 線を重ねる描画グラフのリソース名。
 };
 
 /// @brief 選択判定。選択の子孫も選択扱い (エディターが selectedObjects へ子孫を展開する)。
 [[nodiscard]] FBZZ_ENGINE_API bool IsSelectedForDebug(const GameObject& go, const RenderPassContext& ctx);
 
 /// @brief axis に直交する単位ベクトルを 1 本返す。
-/// @param axis 正規化済みであること。
+/// @param[in] axis 正規化済みであること。
 [[nodiscard]] FBZZ_ENGINE_API math::Vector3 DebugPerpendicular(const math::Vector3& axis);
 
 /// @brief axis に直交する円。dashed なら破線。
-/// @param axis 正規化済みであること。
+/// @param[in] axis 正規化済みであること。
 FBZZ_ENGINE_API void DrawDebugCircle(renderer::IRenderer& r, const math::Vector3& center, const math::Vector3& axis,
                      float radius, const math::Vector4& color, bool dashed = false);
 
@@ -48,7 +48,7 @@ FBZZ_ENGINE_API void DrawDebugSphere(renderer::IRenderer& r, const math::Vector3
                      const math::Vector4& color, bool dashed = false);
 
 /// @brief axis 周りの回転の向きを 3/4 周の弧と矢じりで示す。
-/// @param sign 正なら v = Cross(axis, u) の側へ回る (SampleFlow の Vortex と同じ向き)。0 なら描かない。
+/// @param[in] sign 正なら v = Cross(axis, u) の側へ回る (SampleFlow の Vortex と同じ向き)。0 なら描かない。
 FBZZ_ENGINE_API void DrawDebugSwirl(renderer::IRenderer& r, const math::Vector3& center, const math::Vector3& axis,
                     float radius, float sign, const math::Vector4& color);
 
@@ -262,4 +262,4 @@ public:
     FBZZ_ENGINE_API void Execute(renderer::PassResources& resources, RenderPassContext& ctx) override;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

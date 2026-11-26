@@ -14,7 +14,7 @@ class Script;
 class GameObject;
 
 struct ScriptNavigationProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< ナビゲーション操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief NavMesh 上のパスを計算してその目的地へ移動を開始する。
     FBZZ_ENGINE_API void SetDestination(const math::Vector3& worldPos) const;
@@ -68,4 +68,4 @@ struct ScriptNavigationProxy {
     FBZZ_ENGINE_API GameObject* GetDetectedTarget() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

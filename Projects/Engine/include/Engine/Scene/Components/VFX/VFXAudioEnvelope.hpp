@@ -15,31 +15,30 @@
 namespace fbzz::scene {
 
 struct VFXAudioEnvelope {
-    bool enabled = true;
+    bool enabled = true; ///< 音源の音量と、設定されていればピッチへ生存窓のエンベロープを掛ける。
 
     /// @note 窓の進捗 0..1 に対する音量倍率。基準は AudioSourceComponent::volume。
     /// @note 既定は「立ち上がり 10% → 保持 → 消え際 30%」。
     ParticleCurve volumeCurve{
         {{ {0.0f, 0.0f}, {0.1f, 1.0f}, {0.7f, 1.0f}, {1.0f, 0.0f},
            {1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f} }},
-        4, ParticleCurveInterpolation::Linear };
+        4, ParticleCurveInterpolation::Linear }; ///< 生存窓の進捗から音源の基準音量に掛ける倍率を求めるカーブ。
 
-    /// @note ピッチも動かす。チャージ音が上がっていく表現に使う。
-    bool usePitchCurve = false;
+    bool usePitchCurve = false; ///< ピッチも動かす。チャージ音が上がっていく表現に使う。
     ParticleCurve pitchCurve{
         {{ {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f},
            {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f} }},
-        2, ParticleCurveInterpolation::Linear };
+        2, ParticleCurveInterpolation::Linear }; ///< 生存窓の進捗から音源の基準ピッチに掛ける倍率を求めるカーブ。
 
     /// @name ランタイム
     /// @{
     /// @note 捕獲した基準値。VFXLightEnvelope と同じ理由で、掴み直すと
     /// @note «下げた後の音量» を新しい基準にしてしまい、鳴らすたびに小さくなる。
     struct Base {
-        float volume = 1.0f;
-        float pitch  = 1.0f;
+        float volume = 1.0f; ///< 音量カーブの適用前に保存した音源の基準音量。
+        float pitch  = 1.0f; ///< ピッチカーブの適用前に保存した音源の基準ピッチ。
     };
-    VFXCaptured<Base> base;
+    VFXCaptured<Base> base; ///< 初回の音源設定を保持して、エンベロープの積み重ねを防ぐ。
 
     const char* GetTypeName() const { return "VFX Audio Envelope"; }
 

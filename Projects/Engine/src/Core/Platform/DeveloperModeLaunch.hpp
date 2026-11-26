@@ -12,4 +12,4 @@ namespace fbzz::core::detail {
 /// @see https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw CommandLineToArgvW の引数解析と LocalFree で解放する所有権。
 [[nodiscard]] FBZZ_ENGINE_API bool HasDeveloperLaunchFlag(std::wstring_view commandLine);
 
-} /// @note namespace fbzz::core::detail
+} // namespace fbzz::core::detail

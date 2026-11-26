@@ -45,15 +45,16 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 
 math::Vector3 ArbitraryPerpendicular(const math::Vector3& axis)
 {
-    /// @note 反平行時の回転軸を RIGHT 固定にすると、骨軸が RIGHT 近傍を通過する瞬間に
-    /// @note RIGHT -> UP へ切り替わり、腕を振り切る箇所で姿勢が跳ねたり一時停止したように見える。
-    /// @note 軸と最も直交する基底を選ぶことで、不要な特異点と符号反転を減らす。
+    // 反平行時の回転軸を RIGHT 固定にすると、骨軸が RIGHT 近傍を通過する瞬間に
+    // RIGHT -> UP へ切り替わり、腕を振り切る箇所で姿勢が跳ねたり一時停止したように見える。
+    // 軸と最も直交する基底を選ぶことで、不要な特異点と符号反転を減らす。
     const math::Vector3 absoluteAxis{
         std::abs(axis.x), std::abs(axis.y), std::abs(axis.z)
     };
     math::Vector3 basis = math::Vector3::RIGHT;
-    if (absoluteAxis.y <= absoluteAxis.x && absoluteAxis.y <= absoluteAxis.z)
+    if (absoluteAxis.y <= absoluteAxis.x && absoluteAxis.y <= absoluteAxis.z) {
         basis = math::Vector3::UP;
+    }
     else if (absoluteAxis.z <= absoluteAxis.x && absoluteAxis.z <= absoluteAxis.y)
         basis = math::Vector3::FORWARD;
     return math::Vector3::Cross(basis, axis).Normalized();
@@ -69,7 +70,7 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
         return math::Quaternion::FromAxisAngle(ArbitraryPerpendicular(f), math::PI);
     }
 
-    /// @note 小さな回転を Identity へ丸めると、減衰末尾で位置と骨姿勢がずれて段差になる。
+    // 小さな回転を Identity へ丸めると、減衰末尾で位置と骨姿勢がずれて段差になる。
     const math::Vector3 axis = math::Vector3::Cross(f, t);
     const float w = 1.0f + d;
     return math::Quaternion{ axis.x, axis.y, axis.z, w }.Normalized();
@@ -80,11 +81,17 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
 /// @note 線形クランプだけだと最大伸長付近で急に止まり、膝が「ピン」と伸びて見える。
 float ApplySoftIK(float dist, float dMax, float softness)
 {
-    if (softness <= 0.0f || dist <= 0.0f) return dist;
+    if (softness <= 0.0f || dist <= 0.0f) {
+        return dist;
+    }
     const float softLimit = dMax * softness;
-    if (softLimit < math::EPSILON) return dist;
+    if (softLimit < math::EPSILON) {
+        return dist;
+    }
     const float softZone = dMax - softLimit;
-    if (dist <= softZone) return dist;
+    if (dist <= softZone) {
+        return dist;
+    }
     const float excess = dist - softZone;
     return softZone + softLimit * (1.0f - std::exp(-excess / softLimit));
 }
@@ -118,7 +125,7 @@ void BlendTwoBonePositions(const math::Vector3& root,
     const math::Vector3 solvedBend = solvedProjection.NormalizedOr(sourceBend);
     const float bendCosine = math::Clamp(math::Vector3::Dot(sourceBend, solvedBend), -1.0f, 1.0f);
     const float bendSine = math::Vector3::Dot(axis, math::Vector3::Cross(sourceBend, solvedBend));
-    /// @note 反対向きの Pole も円周上で補間し、中間 weight で曲げ方向が消えて膝が反転するのを防ぐ。
+    // 反対向きの Pole も円周上で補間し、中間 weight で曲げ方向が消えて膝が反転するのを防ぐ。
     const float bendAngle = std::abs(bendSine) <= math::EPSILON && bendCosine < 0.0f
         ? math::PI : std::atan2(bendSine, bendCosine);
     const math::Vector3 bend = math::Quaternion::FromAxisAngle(axis, bendAngle * weight) * sourceBend;
@@ -133,11 +140,13 @@ void BlendTwoBonePositions(const math::Vector3& root,
 void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& resources)
 {
     SkinningCB cb{};
-    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
+    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i) {
         cb.boneMatrices[i] = math::Matrix4::Identity();
+    }
 
-    for (size_t i = 0; i < animator.boneMatrices.size(); ++i)
+    for (size_t i = 0; i < animator.boneMatrices.size(); ++i) {
         cb.boneMatrices[i] = animator.boneMatrices[i];
+    }
 
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
@@ -153,26 +162,31 @@ void TranslateDescendantsKeepFkRotation(Scene& scene,
                                         int nodeIndex,
                                         const math::Vector3& worldDelta)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
         return;
+    }
 
     for (int childIdx : skeleton.nodes[static_cast<size_t>(nodeIndex)].children) {
-        if (childIdx < 0 || childIdx >= static_cast<int>(skeleton.nodes.size()))
+        if (childIdx < 0 || childIdx >= static_cast<int>(skeleton.nodes.size())) {
             continue;
-        if (childIdx >= static_cast<int>(smr.nodeEntities.size()))
+        }
+        if (childIdx >= static_cast<int>(smr.nodeEntities.size())) {
             continue;
-        if (childIdx >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        }
+        if (childIdx >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
             continue;
+        }
 
         GameObject* childGo = scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(childIdx)]);
-        if (!childGo)
+        if (!childGo) {
             continue;
+        }
 
-        /// @note ワールド姿勢として組む (local position だと ToeBase 等の子ボーンで
-        /// @note 親基準座標がワールド座標として扱われる)。親は再帰の 1 段上で確定済みだが
-        /// @note 子の world は先行する腰補正を含むため、足首に今回追加した差分だけを足す。
-        /// @note 値をコピーしてから CommitBoneWorldPose へ渡す。参照のまま渡すと
-        /// @note Commit が同じ Transform を書き換え、引数が書き込み途中の値を指す。
+        // ワールド姿勢として組む (local position だと ToeBase 等の子ボーンで
+        // 親基準座標がワールド座標として扱われる)。親は再帰の 1 段上で確定済みだが
+        // 子の world は先行する腰補正を含むため、足首に今回追加した差分だけを足す。
+        // 値をコピーしてから CommitBoneWorldPose へ渡す。参照のまま渡すと
+        // Commit が同じ Transform を書き換え、引数が書き込み途中の値を指す。
         const math::Vector3    fkPosition = childGo->transform.worldPosition;
         const math::Quaternion fkRotation = childGo->transform.worldRotation;
         const math::Vector3    fkScale    = childGo->transform.worldScale;
@@ -257,23 +271,30 @@ std::string CanonicalBoneName(std::string name)
 {
     std::replace(name.begin(), name.end(), '\\', '/');
     const std::string helper = "_$AssimpFbx$_";
-    if (const size_t helperPos = name.find(helper); helperPos != std::string::npos)
+    if (const size_t helperPos = name.find(helper); helperPos != std::string::npos) {
         name = name.substr(0, helperPos);
-    if (const size_t pathPos = name.find_last_of("/|"); pathPos != std::string::npos)
+    }
+    if (const size_t pathPos = name.find_last_of("/|"); pathPos != std::string::npos) {
         name = name.substr(pathPos + 1);
-    if (const size_t namespacePos = name.find_last_of(':'); namespacePos != std::string::npos)
+    }
+    if (const size_t namespacePos = name.find_last_of(':'); namespacePos != std::string::npos) {
         name = name.substr(namespacePos + 1);
+    }
     return name;
 }
 
 int FindHumanoidNode(const asset::Skeleton& skeleton, const std::string& humanoidName)
 {
-    if (humanoidName.empty()) return -1;
-    if (const auto exact = skeleton.nodeMap.find(humanoidName); exact != skeleton.nodeMap.end())
+    if (humanoidName.empty()) {
+        return -1;
+    }
+    if (const auto exact = skeleton.nodeMap.find(humanoidName); exact != skeleton.nodeMap.end()) {
         return exact->second;
+    }
     for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (CanonicalBoneName(skeleton.nodes[i].name) == humanoidName)
+        if (CanonicalBoneName(skeleton.nodes[i].name) == humanoidName) {
             return static_cast<int>(i);
+        }
     }
     return -1;
 }
@@ -289,23 +310,28 @@ bool ResolveLeg(Scene& scene,
     out.mid  = FindHumanoidNode(skeleton, names.mid);
     out.foot = FindHumanoidNode(skeleton, names.foot);
     out.toe  = FindHumanoidNode(skeleton, names.toe);
-    if (out.root < 0 || out.mid < 0 || out.foot < 0) return false;
+    if (out.root < 0 || out.mid < 0 || out.foot < 0) {
+        return false;
+    }
 
     const size_t root = static_cast<size_t>(out.root);
     const size_t mid  = static_cast<size_t>(out.mid);
     const size_t foot = static_cast<size_t>(out.foot);
     if (root >= renderer.nodeEntities.size() || mid >= renderer.nodeEntities.size() ||
         foot >= renderer.nodeEntities.size() || root >= animator.nodeGlobalTransforms.size() ||
-        mid >= animator.nodeGlobalTransforms.size() || foot >= animator.nodeGlobalTransforms.size())
+        mid >= animator.nodeGlobalTransforms.size() || foot >= animator.nodeGlobalTransforms.size()) {
         return false;
+    }
 
     out.rootGo = scene.GetGameObject(renderer.nodeEntities[root]);
     out.midGo  = scene.GetGameObject(renderer.nodeEntities[mid]);
     out.footGo = scene.GetGameObject(renderer.nodeEntities[foot]);
-    if (!out.rootGo || !out.midGo || !out.footGo) return false;
+    if (!out.rootGo || !out.midGo || !out.footGo) {
+        return false;
+    }
 
-    /// @note ここが「このフレームの FK」を凍結する唯一の地点。以降 Solver は Transform を
-    /// @note 読み直さず、このスナップショットだけを入力にする。
+    // ここが「このフレームの FK」を凍結する唯一の地点。以降 Solver は Transform を
+    // 読み直さず、このスナップショットだけを入力にする。
     out.rootFkPosition = out.rootGo->transform.worldPosition;
     out.midFkPosition  = out.midGo->transform.worldPosition;
     out.footFkPosition = out.footGo->transform.worldPosition;
@@ -331,18 +357,22 @@ void ApplyNodeAndDescendantsOffset(const asset::Skeleton& skeleton,
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
         nodeIndex >= static_cast<int>(renderer.nodeEntities.size()) ||
-        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
         return;
+    }
     const GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
-    if (!bone) return;
-    /// @note Commit が同じ Transform を書き換えるため、FK 値はコピーしてから渡す。
+    if (!bone) {
+        return;
+    }
+    // Commit が同じ Transform を書き換えるため、FK 値はコピーしてから渡す。
     const math::Vector3    fkPosition = bone->transform.worldPosition;
     const math::Quaternion fkRotation = bone->transform.worldRotation;
     const math::Vector3    fkScale    = bone->transform.worldScale;
     bone_pose_detail::CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, nodeIndex,
                         fkPosition + worldDelta, fkRotation, fkScale);
-    for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
+    for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children) {
         ApplyNodeAndDescendantsOffset(skeleton, renderer, scene, animator, ownerInv, child, worldDelta);
+    }
 }
 
 /// @note 足首直下の地面を取得し、上下両方向の接地補正量を返す。
@@ -364,26 +394,28 @@ bool QueryFootCorrection(physics::World& world,
     auto supportOffset=leg.physicsSupported ? leg.physicsFootPosition-leg.footFkPosition : math::Vector3::ZERO;
     supportOffset.y=0.0f;
     const float offsetLength=supportOffset.Length();
-    if (offsetLength>chain.maxCorrection && offsetLength>math::EPSILON)
+    if (offsetLength>chain.maxCorrection && offsetLength>math::EPSILON) {
         supportOffset=supportOffset*(chain.maxCorrection/offsetLength);
-    /// @note 接触が瞬断しても目標速度を不連続にしない。大きく転倒した足を無制限に追従しない。
+    }
+    // 接触が瞬断しても目標速度を不連続にしない。大きく転倒した足を無制限に追従しない。
     smoothedSupportOffset=leg.physicsSupportWeight>0.0f
         ? math::Vector3::Lerp(smoothedSupportOffset,supportOffset,alpha) : math::Vector3::ZERO;
     const float smoothedLength = smoothedSupportOffset.Length();
-    if (smoothedLength > chain.maxCorrection && smoothedLength > math::EPSILON)
+    if (smoothedLength > chain.maxCorrection && smoothedLength > math::EPSILON) {
         smoothedSupportOffset = smoothedSupportOffset * (chain.maxCorrection / smoothedLength);
+    }
     leg.physicsFootPosition=leg.footFkPosition+smoothedSupportOffset;
     const auto rayPosition=leg.footFkPosition+smoothedSupportOffset*leg.physicsSupportWeight;
     const math::Vector3 origin = rayPosition +
                                  math::Vector3::UP * (legLength * chain.rayUpRatio);
     bool hasGround = true;
     if (leg.physicsSupported) {
-        /// @note SAT の代表法線を地形の面法線と混同しない。支持中の同じ collider へ照会し、動的支持も含める。
+        // SAT の代表法線を地形の面法線と混同しない。支持中の同じ collider へ照会し、動的支持も含める。
         const auto supportFilter=[&](const physics::ColliderInstance& instance) {
             return !instance.isTrigger && instance.collider==leg.physicsSupportCollider;
         };
         if (!world.Raycast(origin,-math::Vector3::UP,legLength*chain.rayDownRatio,outHit,supportFilter)) {
-            /// @note つま先だけが縁に掛かり足首直下が面外のときは、支持面を足首の XZ へ延長する。
+            // つま先だけが縁に掛かり足首直下が面外のときは、支持面を足首の XZ へ延長する。
             outHit.normal=leg.physicsSupportNormal;
             outHit.point={rayPosition.x,leg.physicsSupportPoint.y
                 -(outHit.normal.x*(rayPosition.x-leg.physicsSupportPoint.x)
@@ -401,7 +433,7 @@ bool QueryFootCorrection(physics::World& world,
     }
     leg.surfaceOffset = chain.footSurfaceOffset;
     leg.surfaceRotation = leg.footFkRotation;
-    /// @note 地面を見失っても形状と直前の法線を保ち、離地時の水平・姿勢補正を重みとともに戻す。
+    // 地面を見失っても形状と直前の法線を保ち、離地時の水平・姿勢補正を重みとともに戻す。
     const auto surfaceNormal = hasGround ? outHit.normal : smoothedSoleNormal;
     leg.physicsShape = rig && rig->TryGetFootPlacement(
         leg.footGo->name, leg.footFkRotation, surfaceNormal, leg.surfaceRotation, leg.surfaceOffset,&smoothedSoleNormal);
@@ -412,7 +444,9 @@ bool QueryFootCorrection(physics::World& world,
     const float raw = outHit.point.y + leg.surfaceOffset - leg.footFkPosition.y;
     const float magnitude = std::abs(raw);
     const float deadZone = leg.physicsShape ? 0.0f : chain.correctionDeadZone;
-    if (magnitude <= deadZone) return true;
+    if (magnitude <= deadZone) {
+        return true;
+    }
 
     const float signedCorrection = raw > 0.0f
         ? magnitude - deadZone
@@ -425,8 +459,9 @@ bool QueryFootCorrection(physics::World& world,
 /// @note 許容距離の手前から接地重みを下げ、補正の出入りで姿勢が跳ねないようにする。
 float FootPlantProximity(float height, float plantDistance)
 {
-    if (plantDistance <= math::EPSILON)
+    if (plantDistance <= math::EPSILON) {
         return height <= math::EPSILON ? 1.0f : 0.0f;
+    }
     const float fullWeightDistance = plantDistance / 3.0f;
     const float fade = math::Clamp01((height - fullWeightDistance) / (plantDistance - fullWeightDistance));
     return 1.0f - fade * fade * (3.0f - 2.0f * fade);
@@ -446,34 +481,38 @@ bool SolveFootLeg(const IKChain& chain,
                   const math::Vector3& hipDelta,
                    const GroundHit* groundHit)
 {
-    /// @note 離地後も接地重みが残る間は水平位置と足裏姿勢を連続的に FK へ戻す。
-    if (effectiveWeight <= math::EPSILON) return false;
+    // 離地後も接地重みが残る間は水平位置と足裏姿勢を連続的に FK へ戻す。
+    if (effectiveWeight <= math::EPSILON) {
+        return false;
+    }
 
-    /// @note ヒップ補正は直前に Transform へ書き戻されているため、ここでライブ値を読むと
-    /// @note hipDelta が root / foot の両方へ二重に加算される。ResolveLeg の FK スナップショットを使う。
+    // ヒップ補正は直前に Transform へ書き戻されているため、ここでライブ値を読むと
+    // hipDelta が root / foot の両方へ二重に加算される。ResolveLeg の FK スナップショットを使う。
     const math::Vector3 rootFk = leg.rootFkPosition;
     const math::Vector3 midFk  = leg.midFkPosition;
     const math::Vector3 footFk = leg.footFkPosition;
     const math::Vector3 root   = rootFk + hipDelta;
     math::Vector3 target = footFk + math::Vector3{ 0.0f, correction, 0.0f };
-    /// @note 接地中の水平位置を物理から戻し、腰・膝も同じ足目標へ解く。FK の末端だけで接触面を引っ張らない。
+    // 接地中の水平位置を物理から戻し、腰・膝も同じ足目標へ解く。FK の末端だけで接触面を引っ張らない。
     if (leg.physicsShape && leg.physicsSupportWeight>0.0f) {
         target.x=math::Lerp(target.x,leg.physicsFootPosition.x,leg.physicsSupportWeight);
         target.z=math::Lerp(target.z,leg.physicsFootPosition.z,leg.physicsSupportWeight);
     }
     const math::Vector3 rootToTarget = target - root;
     const float rawDistance = rootToTarget.Length();
-    if (rawDistance <= math::EPSILON) return false;
+    if (rawDistance <= math::EPSILON) {
+        return false;
+    }
 
     const float maxDistance = leg.upperLength + leg.lowerLength;
     const float minDistance = math::Abs(leg.upperLength - leg.lowerLength) + math::EPSILON;
-    /// @note FK の脚長を維持し、足の目標だけを到達可能域へ制限する。腰の上下限を超えて追従しない。
+    // FK の脚長を維持し、足の目標だけを到達可能域へ制限する。腰の上下限を超えて追従しない。
     const float distance = math::Clamp(rawDistance, minDistance, maxDistance - math::EPSILON);
     const math::Vector3 axis = rootToTarget * (1.0f / rawDistance);
     const math::Vector3 effectiveTarget = root + axis * distance;
 
-    /// @note FK 曲げ方向を常に計算する。autoPole で完全上書きすると膝が常に同じ方向を向き
-    /// @note 固定化して見えるため、FK 方向を優先し逆半球になる場合のみ preferred で補正する。
+    // FK 曲げ方向を常に計算する。autoPole で完全上書きすると膝が常に同じ方向を向き
+    // 固定化して見えるため、FK 方向を優先し逆半球になる場合のみ preferred で補正する。
     const math::Vector3 fkBendRaw = (midFk + hipDelta) - root;
     const math::Vector3 fkBend    = fkBendRaw - axis * math::Vector3::Dot(fkBendRaw, axis);
 
@@ -486,17 +525,17 @@ bool SolveFootLeg(const IKChain& chain,
             preferredDirection - axis * math::Vector3::Dot(preferredDirection, axis);
         if (fkBend.LengthSq() > math::EPSILON * math::EPSILON &&
             preferredBend.LengthSq() > math::EPSILON * math::EPSILON) {
-            /// @note fkBend の信頼度は sin²θ = |fkBend|²/|fkBendRaw|²。膝が axis とほぼ平行になる
-            /// @note スイング相では fkBend がほぼゼロで正規化後の方向が任意になるため、
-            /// @note ハードな閾値ではなく信頼度ウェイトで FK と preferred をブレンドする。
+            // fkBend の信頼度は sin²θ = |fkBend|²/|fkBendRaw|²。膝が axis とほぼ平行になる
+            // スイング相では fkBend がほぼゼロで正規化後の方向が任意になるため、
+            // ハードな閾値ではなく信頼度ウェイトで FK と preferred をブレンドする。
             const float fkBendRawSq = fkBendRaw.LengthSq();
             const float sinSq   = fkBendRawSq > math::EPSILON * math::EPSILON
                                   ? fkBend.LengthSq() / fkBendRawSq : 0.0f;
-            /// @note sin²θ > 0.04 (≒ θ > 11.5°) で FK を完全に信頼し、それ未満は preferred へ漸近。
+            // sin²θ > 0.04 (≒ θ > 11.5°) で FK を完全に信頼し、それ未満は preferred へ漸近。
             const float fkWeight = math::Clamp01(sinSq / 0.04f);
             const float agreement = math::Vector3::Dot(
                 fkBend.Normalized(), preferredBend.Normalized());
-            /// @note 半球境界では重みとその傾きを 0 にし、小さな FK 変化で膝の解を切り替えない。
+            // 半球境界では重みとその傾きを 0 にし、小さな FK 変化で膝の解を切り替えない。
             const float agreementWeight = math::Clamp01(agreement);
             const float blendWeight = fkWeight * agreementWeight * agreementWeight * (3.0f - 2.0f * agreementWeight);
             bendRaw = fkBend * blendWeight + preferredBend * (1.0f - blendWeight);
@@ -505,8 +544,9 @@ bool SolveFootLeg(const IKChain& chain,
                 ? preferredBend : fkBend;
         }
     }
-    if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON)
+    if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON) {
         bendRaw = fkBend;
+    }
     const math::Vector3 bend = bendRaw.LengthSq() > math::EPSILON * math::EPSILON
         ? bendRaw.Normalized() : ArbitraryPerpendicular(axis);
     const float cosine = math::Clamp(
@@ -544,11 +584,12 @@ bool SolveFootLeg(const IKChain& chain,
         leg.foot >= static_cast<int>(skeleton.nodes.size()) ||
         leg.root >= static_cast<int>(animator.nodeGlobalTransforms.size()) ||
         leg.mid >= static_cast<int>(animator.nodeGlobalTransforms.size()) ||
-        leg.foot >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        leg.foot >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
         return false;
+    }
 
-    /// @note 腿 → 脛 → 足首の順に確定させる。Commit は local を親のワールド姿勢から逆算するため、
-    /// @note 親を先に書かないと子の local が古い親基準で求まる。
+    // 腿 → 脛 → 足首の順に確定させる。Commit は local を親のワールド姿勢から逆算するため、
+    // 親を先に書かないと子の local が古い親基準で求まる。
     const math::Vector3 rootScale = leg.rootGo->transform.worldScale;
     const math::Vector3 midScale  = leg.midGo->transform.worldScale;
     const math::Vector3 footScale = leg.footGo->transform.worldScale;
@@ -576,7 +617,7 @@ bool SolveFootPlace(IKChain& chain,
                     float deltaTime,
                     IKBodyState& bodyState)
 {
-    /// @note Inspector の直接入力と旧保存データも SDK と同じ有限範囲に収める。
+    // Inspector の直接入力と旧保存データも SDK と同じ有限範囲に収める。
     auto bounded = [](float value, float fallback, float maximum) {
         return std::isfinite(value) ? std::clamp(value, 0.0f, maximum) : fallback;
     };
@@ -597,12 +638,14 @@ bool SolveFootPlace(IKChain& chain,
     LegNodes right;
     const bool hasLeft  = ResolveLeg(scene, skeleton, renderer, animator, leftNames, left);
     const bool hasRight = ResolveLeg(scene, skeleton, renderer, animator, rightNames, right);
-    if (!hasLeft && !hasRight) return false;
+    if (!hasLeft && !hasRight) {
+        return false;
+    }
 
     const float effectiveWeight = math::Clamp01(
         chain.weight * (chain.useAnimatorIKWeight ? stateWeight : 1.0f));
     if (effectiveWeight <= math::EPSILON) {
-        /// @note ジャンプへ遷移したフレームで平滑化残量を適用すると、片脚だけ旧Pole方向へねじれる。
+        // ジャンプへ遷移したフレームで平滑化残量を適用すると、片脚だけ旧Pole方向へねじれる。
         chain.smoothedLeft = 0.0f;
         chain.smoothedRight = 0.0f;
         chain.smoothedHip = 0.0f;
@@ -649,7 +692,7 @@ bool SolveFootPlace(IKChain& chain,
     const float rightPoseWeight = leftHasGround ? FootPlantProximity(rightSoleY - leftSoleY, plantDistance) : 1.0f;
     const float leftGroundWeight = leftHasGround ? FootPlantProximity(leftSoleY - leftHit.point.y, plantDistance) : 0.0f;
     const float rightGroundWeight = rightHasGround ? FootPlantProximity(rightSoleY - rightHit.point.y, plantDistance) : 0.0f;
-    /// @note 坂や下り段差では支持側を基準に低い地面へ届かせる。両足が浮く間は支持を作らない。
+    // 坂や下り段差では支持側を基準に低い地面へ届かせる。両足が浮く間は支持を作らない。
     const float leftTargetWeight = leftHasGround
         ? leftPoseWeight * std::max(leftGroundWeight, rightPoseWeight * rightGroundWeight) : 0.0f;
     const float rightTargetWeight = rightHasGround
@@ -660,10 +703,12 @@ bool SolveFootPlace(IKChain& chain,
     bodyState.rightFootGrounded = chain.runtimeRightGrounded = rightGrounded;
     chain.leftPlantWeight = math::Lerp(chain.leftPlantWeight, leftTargetWeight, alpha);
     chain.rightPlantWeight = math::Lerp(chain.rightPlantWeight, rightTargetWeight, alpha);
-    if (!leftGrounded && chain.leftPlantWeight <= math::EPSILON)
+    if (!leftGrounded && chain.leftPlantWeight <= math::EPSILON) {
         chain.smoothedLeftSupportOffset = math::Vector3::ZERO;
-    if (!rightGrounded && chain.rightPlantWeight <= math::EPSILON)
+    }
+    if (!rightGrounded && chain.rightPlantWeight <= math::EPSILON) {
         chain.smoothedRightSupportOffset = math::Vector3::ZERO;
+    }
     chain.smoothedLeft = std::clamp(math::Lerp(
         chain.smoothedLeft, leftGrounded ? leftRaw : 0.0f, alpha), -chain.maxCorrection, chain.maxCorrection);
     chain.smoothedRight = std::clamp(math::Lerp(
@@ -675,9 +720,15 @@ bool SolveFootPlace(IKChain& chain,
     chain.runtimeHipLimited = false;
     if (chain.adjustHip && chain.hipWeight > 0.0f) {
         float lowestCorrection = std::numeric_limits<float>::max();
-        if (leftGrounded) lowestCorrection = std::min(lowestCorrection, chain.smoothedLeft * leftTargetWeight);
-        if (rightGrounded) lowestCorrection = std::min(lowestCorrection, chain.smoothedRight * rightTargetWeight);
-        if (!leftGrounded && !rightGrounded) lowestCorrection = 0.0f;
+        if (leftGrounded) {
+            lowestCorrection = std::min(lowestCorrection, chain.smoothedLeft * leftTargetWeight);
+        }
+        if (rightGrounded) {
+            lowestCorrection = std::min(lowestCorrection, chain.smoothedRight * rightTargetWeight);
+        }
+        if (!leftGrounded && !rightGrounded) {
+            lowestCorrection = 0.0f;
+        }
         const float reserve = chain.hipBendReserve * effectiveWeight * std::max(leftTargetWeight, rightTargetWeight);
         const float requested = (lowestCorrection * effectiveWeight - reserve) * chain.hipWeight;
         const float lower = -chain.maxHipLowering * effectiveWeight;
@@ -685,7 +736,7 @@ bool SolveFootPlace(IKChain& chain,
         const float hipTarget = std::clamp(requested, lower, upper);
         chain.runtimeHipTarget = hipTarget;
         chain.runtimeHipLimited = std::abs(requested - hipTarget) > math::EPSILON;
-        /// @note 上限を縮めたフレームから制限を守る。平滑化の履歴で旧上限を超過させない。
+        // 上限を縮めたフレームから制限を守る。平滑化の履歴で旧上限を超過させない。
         chain.smoothedHip = std::clamp(math::Lerp(chain.smoothedHip, hipTarget, alpha), lower, upper);
         chain.smoothedTerrainOnlyHip = std::clamp(
             math::Lerp(chain.smoothedTerrainOnlyHip, lowestCorrection * effectiveWeight * chain.hipWeight, alpha), lower, upper);
@@ -704,8 +755,8 @@ bool SolveFootPlace(IKChain& chain,
     }
     bodyState.appliedHipOffset = chain.runtimeAppliedHip = hipDelta.y;
 
-    /// @note 地形傾斜メトリクス: 両足のうち大きいほうの補正量を Spine auto-weight の駆動値にする。
-    /// @note 平地ではほぼ 0 だが坂道では足高さ差に応じて増加するため weight 変調に適している。
+    // 地形傾斜メトリクス: 両足のうち大きいほうの補正量を Spine auto-weight の駆動値にする。
+    // 平地ではほぼ 0 だが坂道では足高さ差に応じて増加するため weight 変調に適している。
     bodyState.terrainSlopeMetric = std::max(
         std::abs(chain.smoothedLeft) * chain.leftPlantWeight,
         std::abs(chain.smoothedRight) * chain.rightPlantWeight);
@@ -738,12 +789,15 @@ void WriteSolvedPose(const asset::Skeleton& skeleton,
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
         nodeIndex >= static_cast<int>(renderer.nodeEntities.size()) ||
-        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
         return;
+    }
     const GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
-    if (!bone) return;
+    if (!bone) {
+        return;
+    }
 
-    /// @note Commit がこの Transform を書き換えるため、スケールはコピーしてから渡す。
+    // Commit がこの Transform を書き換えるため、スケールはコピーしてから渡す。
     const math::Vector3 boneScale = bone->transform.worldScale;
     bone_pose_detail::CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, nodeIndex,
                         position, rotation, boneScale);
@@ -770,10 +824,13 @@ void ApplyRigidSubtree(const asset::Skeleton& skeleton,
                        IKBodyState& bodyState)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
-        nodeIndex >= static_cast<int>(renderer.nodeEntities.size()))
+        nodeIndex >= static_cast<int>(renderer.nodeEntities.size())) {
         return;
+    }
     const GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
-    if (!bone) return;
+    if (!bone) {
+        return;
+    }
 
     const size_t index = static_cast<size_t>(nodeIndex);
     const bool hasPriorPose = index < bodyState.hasSolvedPose.size() && bodyState.hasSolvedPose[index];
@@ -806,7 +863,9 @@ bool ResolveChainNodes(const asset::Skeleton& skeleton,
     outNodes.reserve(boneNames.size());
     for (const auto& boneName : boneNames) {
         const int nodeIndex = FindHumanoidNode(skeleton, boneName);
-        if (nodeIndex < 0) return false;
+        if (nodeIndex < 0) {
+            return false;
+        }
         outNodes.push_back(nodeIndex);
     }
     return !outNodes.empty();
@@ -821,11 +880,14 @@ math::Quaternion ClampedFromToRotation(const math::Vector3& from,
     const math::Vector3 target = to.Normalized();
     const float cosine = math::Clamp(math::Vector3::Dot(source, target), -1.0f, 1.0f);
     const float angle = std::acos(cosine);
-    if (angle <= maxAngleRadians) return FromToRotation(source, target);
+    if (angle <= maxAngleRadians) {
+        return FromToRotation(source, target);
+    }
 
     math::Vector3 axis = math::Vector3::Cross(source, target);
-    if (axis.LengthSq() <= math::EPSILON * math::EPSILON)
+    if (axis.LengthSq() <= math::EPSILON * math::EPSILON) {
         axis = ArbitraryPerpendicular(source);
+    }
     return math::Quaternion::FromAxisAngle(axis.Normalized(), maxAngleRadians);
 }
 
@@ -842,15 +904,22 @@ bool SolveLookAt(IKChain& chain,
                   LookAtFrameState& frameState)
 {
     if (chain.boneNames.size() != 1 ||
-        chain.lookAtAxis.LengthSq() <= math::EPSILON * math::EPSILON)
+        chain.lookAtAxis.LengthSq() <= math::EPSILON * math::EPSILON) {
         return false;
+    }
     GameObject* target = scene.GetGameObject(chain.targetEntity);
-    if (!target) return false;
+    if (!target) {
+        return false;
+    }
 
     const int nodeIndex = FindHumanoidNode(skeleton, chain.boneNames[0]);
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(renderer.nodeEntities.size())) return false;
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(renderer.nodeEntities.size())) {
+        return false;
+    }
     GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
-    if (!bone) return false;
+    if (!bone) {
+        return false;
+    }
 
     const size_t index = static_cast<size_t>(nodeIndex);
     const bool hasPriorPose = index < bodyState.hasSolvedPose.size() && bodyState.hasSolvedPose[index];
@@ -867,7 +936,9 @@ bool SolveLookAt(IKChain& chain,
     }
     const math::Vector3 desiredDirection =
         target->transform.worldPosition + chain.targetOffset - sourcePosition;
-    if (desiredDirection.LengthSq() <= math::EPSILON * math::EPSILON) return false;
+    if (desiredDirection.LengthSq() <= math::EPSILON * math::EPSILON) {
+        return false;
+    }
 
     const math::Vector3 currentAxis =
         (frameState.sourceRotation * chain.lookAtAxis.Normalized()).Normalized();
@@ -877,7 +948,7 @@ bool SolveLookAt(IKChain& chain,
         (ClampedFromToRotation(currentAxis, desiredDirection.Normalized(), maxAngle) *
          frameState.sourceRotation).Normalized();
 
-    /// @note Up 軸のロールをワールド Up へ寄せ、注視中の首・頭の横倒しを抑える。
+    // Up 軸のロールをワールド Up へ寄せ、注視中の首・頭の横倒しを抑える。
     if (chain.lookAtUpAxis.LengthSq() > math::EPSILON * math::EPSILON) {
         const math::Vector3 lookDirection = desiredDirection.Normalized();
         const math::Vector3 currentUp =
@@ -925,16 +996,23 @@ bool SolveSpine(IKChain& chain,
                 float stateWeight,
                 IKBodyState& bodyState)
 {
-    if (chain.boneNames.size() < 2) return false;
+    if (chain.boneNames.size() < 2) {
+        return false;
+    }
     GameObject* target = scene.GetGameObject(chain.targetEntity);
-    if (!target) return false;
+    if (!target) {
+        return false;
+    }
 
     std::vector<int> nodes;
-    if (!ResolveChainNodes(skeleton, chain.boneNames, nodes)) return false;
+    if (!ResolveChainNodes(skeleton, chain.boneNames, nodes)) {
+        return false;
+    }
     const size_t count = nodes.size();
     for (size_t i = 1; i < count; ++i) {
-        if (skeleton.nodes[static_cast<size_t>(nodes[i])].parentIndex != nodes[i - 1])
+        if (skeleton.nodes[static_cast<size_t>(nodes[i])].parentIndex != nodes[i - 1]) {
             return false;
+        }
     }
     std::vector<GameObject*> bones(count, nullptr);
     std::vector<math::Vector3> sourcePositions(count);
@@ -944,9 +1022,13 @@ bool SolveSpine(IKChain& chain,
 
     for (size_t i = 0; i < count; ++i) {
         const int nodeIndex = nodes[i];
-        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(renderer.nodeEntities.size())) return false;
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(renderer.nodeEntities.size())) {
+            return false;
+        }
         bones[i] = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
-        if (!bones[i]) return false;
+        if (!bones[i]) {
+            return false;
+        }
         const size_t index = static_cast<size_t>(nodeIndex);
         const bool hasPriorPose = index < bodyState.hasSolvedPose.size() && bodyState.hasSolvedPose[index];
         sourcePositions[i] = hasPriorPose
@@ -957,7 +1039,9 @@ bool SolveSpine(IKChain& chain,
             : bones[i]->transform.worldRotation;
         if (i > 0) {
             lengths[i - 1] = (sourcePositions[i] - sourcePositions[i - 1]).Length();
-            if (lengths[i - 1] <= math::EPSILON) return false;
+            if (lengths[i - 1] <= math::EPSILON) {
+                return false;
+            }
             totalLength += lengths[i - 1];
         }
     }
@@ -969,8 +1053,9 @@ bool SolveSpine(IKChain& chain,
 
     if (rootToTarget >= totalLength) {
         const math::Vector3 direction = (targetPosition - rootPosition).Normalized();
-        for (size_t i = 1; i < count; ++i)
+        for (size_t i = 1; i < count; ++i) {
             solved[i] = solved[i - 1] + direction * lengths[i - 1];
+        }
     } else {
         constexpr int MAX_ITERATIONS = 12;
         constexpr float TOLERANCE_SQ = 0.000001f;
@@ -985,12 +1070,14 @@ bool SolveSpine(IKChain& chain,
                 const math::Vector3 direction = (solved[i] - solved[i - 1]).Normalized();
                 solved[i] = solved[i - 1] + direction * lengths[i - 1];
             }
-            if ((solved.back() - targetPosition).LengthSq() <= TOLERANCE_SQ) break;
+            if ((solved.back() - targetPosition).LengthSq() <= TOLERANCE_SQ) {
+                break;
+            }
         }
     }
 
-    /// @note spineAutoWeight が有効なとき、地形傾斜に応じて spineFlatWeight ↔ chain.weight を補間する。
-    /// @note 平地では低 weight で FK をほぼ維持し、坂道で自動的に補正量を増やすため。
+    // spineAutoWeight が有効なとき、地形傾斜に応じて spineFlatWeight ↔ chain.weight を補間する。
+    // 平地では低 weight で FK をほぼ維持し、坂道で自動的に補正量を増やすため。
     float effectiveChainWeight = chain.weight;
     if (chain.spineAutoWeight && chain.spineSlopeRampMeters > math::EPSILON) {
         const float slopeFactor =
@@ -1001,13 +1088,15 @@ bool SolveSpine(IKChain& chain,
     const float weight = math::Clamp01(effectiveChainWeight * stateWeight);
     std::vector<math::Vector3> finalPositions(count);
     std::vector<math::Quaternion> finalRotations(count);
-    for (size_t i = 0; i < count; ++i)
+    for (size_t i = 0; i < count; ++i) {
         finalPositions[i] = math::Vector3::Lerp(sourcePositions[i], solved[i], weight);
-    /// @note FK/IK 位置の単純補間は中間 Weight で節長を縮めるため、Root から再投影する。
+    }
+    // FK/IK 位置の単純補間は中間 Weight で節長を縮めるため、Root から再投影する。
     for (size_t i = 1; i < count; ++i) {
         math::Vector3 direction = finalPositions[i] - finalPositions[i - 1];
-        if (direction.LengthSq() <= math::EPSILON * math::EPSILON)
+        if (direction.LengthSq() <= math::EPSILON * math::EPSILON) {
             direction = sourcePositions[i] - sourcePositions[i - 1];
+        }
         finalPositions[i] = finalPositions[i - 1] + direction.Normalized() * lengths[i - 1];
     }
     for (size_t i = 0; i + 1 < count; ++i) {
@@ -1026,13 +1115,15 @@ bool SolveSpine(IKChain& chain,
                         finalPositions[i], finalRotations[i], bodyState);
     }
 
-    /// @note チェーン外の枝は、最寄りの Spine ボーンの剛体差分で追従させる。
+    // チェーン外の枝は、最寄りの Spine ボーンの剛体差分で追従させる。
     for (size_t i = 0; i < count; ++i) {
         const int nextNode = i + 1 < count ? nodes[i + 1] : -1;
         const math::Quaternion delta =
             (finalRotations[i] * sourceRotations[i].Inverse()).Normalized();
         for (int child : skeleton.nodes[static_cast<size_t>(nodes[i])].children) {
-            if (child == nextNode) continue;
+            if (child == nextNode) {
+                continue;
+            }
             ApplyRigidSubtree(skeleton, renderer, scene, animator, ownerInv, child,
                               sourcePositions[i], finalPositions[i], delta,
                               math::Vector3::ZERO, bodyState);
@@ -1059,9 +1150,13 @@ OrderingHints IKSystem::GetOrder() const
 
 void IKSystem::Update(SystemContext& ctx)
 {
-    /// @note Pause 中に最終姿勢を再び入力へ使うと、腰補正と平滑化が累積する。
-    if (ctx.playing && !ctx.simulating) return;
-    if (!ctx.resources) return;
+    // Pause 中に最終姿勢を再び入力へ使うと、腰補正と平滑化が累積する。
+    if (ctx.playing && !ctx.simulating) {
+        return;
+    }
+    if (!ctx.resources) {
+        return;
+    }
     Scene& scene = ctx.scene;
     physics::World& world = ctx.world;
     renderer::ResourceManager& resources = *ctx.resources;
@@ -1071,12 +1166,16 @@ void IKSystem::Update(SystemContext& ctx)
 
     for (EntityID id : entities) {
         GameObject* go = scene.GetGameObject(id);
-        if (!go || !go->activeInHierarchy()) continue;
+        if (!go || !go->activeInHierarchy()) {
+            continue;
+        }
 
         auto* ik       = go->GetComponent<IKSolverComponent>();
         auto* animator = go->GetComponent<AnimatorComponent>();
         auto* smr      = bone_pose_detail::FindSkinnedMeshRenderer(*go);
-        if (!ik) continue;
+        if (!ik) {
+            continue;
+        }
         ResolveIKTargetReferences(scene, *ik);
         ++ik->runtimeUpdateCount;
         ik->runtimeSolvedChainCount = 0;
@@ -1099,21 +1198,27 @@ void IKSystem::Update(SystemContext& ctx)
                 chain.smoothedLeftSoleNormal=chain.smoothedRightSoleNormal=math::Vector3::UP;
             }
         }
-        if (!ik->enabled || !animator || !smr) continue;
-        if (!smr->model || !smr->model->skeleton) continue;
+        if (!ik->enabled || !animator || !smr) {
+            continue;
+        }
+        if (!smr->model || !smr->model->skeleton) {
+            continue;
+        }
 
         const asset::Skeleton& skeleton = *smr->model->skeleton;
         const math::Matrix4 ownerInv =
             math::Matrix4::Inverse(go->transform.GetWorldMatrix());
         bool anyChainModified = false;
-        /// @note ステートごとの IK Weight をクロスフェードを考慮して取得する。
-        /// @note IKChain::weight に乗算することで、ステート設定を chain ごとの細かい調整と独立させる。
+        // ステートごとの IK Weight をクロスフェードを考慮して取得する。
+        // IKChain::weight に乗算することで、ステート設定を chain ごとの細かい調整と独立させる。
         const float stateIKWeight = animator->GetCurrentIKWeight();
 
-        /// @note order が同じ場合は登録順を維持し、編集時に予測可能な Solver 順序にする。
+        // order が同じ場合は登録順を維持し、編集時に予測可能な Solver 順序にする。
         std::vector<IKChain*> sortedChains;
         sortedChains.reserve(ik->chains.size());
-        for (auto& chain : ik->chains) sortedChains.push_back(&chain);
+        for (auto& chain : ik->chains) {
+            sortedChains.push_back(&chain);
+        }
         std::stable_sort(sortedChains.begin(), sortedChains.end(),
             [](const IKChain* lhs, const IKChain* rhs) { return lhs->order < rhs->order; });
         IKChain* fullBodyBiped = nullptr;
@@ -1144,20 +1249,26 @@ void IKSystem::Update(SystemContext& ctx)
         bodyState.solvedRotations.resize(skeleton.nodes.size(), math::Quaternion::Identity());
         bodyState.hasSolvedPose.resize(skeleton.nodes.size(), false);
 
-        /// @note 位置エフェクターの最大残差を測定し、十分収束した時点で反復を終了する。固定回数
-        /// @note だけでは軽いポーズにも無駄な反復を行い、難しいポーズの失敗も検出できない。
+        // 位置エフェクターの最大残差を測定し、十分収束した時点で反復を終了する。固定回数
+        // だけでは軽いポーズにも無駄な反復を行い、難しいポーズの失敗も検出できない。
         auto calculateEffectorError = [&]() {
             float maximumError = 0.0f;
             for (const IKChain* chain : sortedChains) {
                 if (!chain->enabled || chain->weight <= 0.0f ||
-                    !chain->targetEntity.IsValid()) continue;
+                    !chain->targetEntity.IsValid()) {
+                    continue;
+                }
                 size_t tipNameIndex = 0;
                 if (chain->type == IKSolverType::TwoBone ||
                     chain->type == IKSolverType::HandPlace) {
-                    if (chain->boneNames.size() != 3) continue;
+                    if (chain->boneNames.size() != 3) {
+                        continue;
+                    }
                     tipNameIndex = 2;
                 } else if (chain->type == IKSolverType::FABRIK) {
-                    if (chain->boneNames.size() < 2) continue;
+                    if (chain->boneNames.size() < 2) {
+                        continue;
+                    }
                     tipNameIndex = chain->boneNames.size() - 1;
                 } else {
                     continue;
@@ -1166,11 +1277,15 @@ void IKSystem::Update(SystemContext& ctx)
                 const int tipNode = FindHumanoidNode(
                     skeleton, chain->boneNames[tipNameIndex]);
                 if (tipNode < 0 ||
-                    tipNode >= static_cast<int>(smr->nodeEntities.size())) continue;
+                    tipNode >= static_cast<int>(smr->nodeEntities.size())) {
+                    continue;
+                }
                 const size_t tipIndex = static_cast<size_t>(tipNode);
                 const GameObject* target = scene.GetGameObject(chain->targetEntity);
                 const GameObject* tip = scene.GetGameObject(smr->nodeEntities[tipIndex]);
-                if (!target || !tip) continue;
+                if (!target || !tip) {
+                    continue;
+                }
                 const math::Vector3 tipPosition = bodyState.hasSolvedPose[tipIndex]
                     ? bodyState.solvedPositions[tipIndex]
                     : tip->transform.worldPosition;
@@ -1182,8 +1297,8 @@ void IKSystem::Update(SystemContext& ctx)
             return maximumError;
         };
 
-        /// @note 膝ロックが起きる。骨盤を先に下げることで両脚の可動域を確保する。
-        /// @note Main IK solve: チェーンごとに解析的 2-Bone IK を解く。
+        // 膝ロックが起きる。骨盤を先に下げることで両脚の可動域を確保する。
+        // Main IK solve: チェーンごとに解析的 2-Bone IK を解く。
         const int solverPassCount = fullBodyBiped
             ? std::clamp(fullBodyBiped->fullBodyIterations, 1, 16)
             : 1;
@@ -1223,11 +1338,15 @@ void IKSystem::Update(SystemContext& ctx)
                 static_cast<int>(invocation / sortedChains.size());
             IKChain* chainPtr = sortedChains[invocation % sortedChains.size()];
             IKChain& chain = *chainPtr;
-            if (!chain.enabled || chain.weight <= 0.0f) continue;
-            if (chain.type == IKSolverType::FullBodyBiped) continue;
+            if (!chain.enabled || chain.weight <= 0.0f) {
+                continue;
+            }
+            if (chain.type == IKSolverType::FullBodyBiped) {
+                continue;
+            }
 
-            /// @note 同じ Weight を反復回数分そのまま適用すると、0.6 を4回で実効0.974まで増幅する。
-            /// @note 1-(1-w)^(1/N) を1パス分の合成率に使い、全反復後の実効Weightを w に保つ。
+            // 同じ Weight を反復回数分そのまま適用すると、0.6 を4回で実効0.974まで増幅する。
+            // 1-(1-w)^(1/N) を1パス分の合成率に使い、全反復後の実効Weightを w に保つ。
             float chainStateWeight = solverStateWeight;
             const bool distributesWeight =
                 chain.type == IKSolverType::FABRIK ||
@@ -1244,13 +1363,17 @@ void IKSystem::Update(SystemContext& ctx)
             }
 
             if (chain.type == IKSolverType::FootPlace) {
-                if (solverPass > 0) continue;
+                if (solverPass > 0) {
+                    continue;
+                }
                 const bool modified = SolveFootPlace(
                     chain, scene, world, skeleton, *smr, *animator,
                     ownerInv, go->transform.worldRotation,
                     solverStateWeight, deltaTime, bodyState);
                 anyChainModified |= modified;
-                if (modified) markSolved(chainPtr);
+                if (modified) {
+                    markSolved(chainPtr);
+                }
                 continue;
             }
             if (chain.type == IKSolverType::FABRIK) {
@@ -1258,7 +1381,9 @@ void IKSystem::Update(SystemContext& ctx)
                     chain, scene, skeleton, *smr, *animator,
                     ownerInv, chainStateWeight, bodyState);
                 anyChainModified |= modified;
-                if (modified) markSolved(chainPtr);
+                if (modified) {
+                    markSolved(chainPtr);
+                }
                 continue;
             }
             if (chain.type == IKSolverType::AimAt) {
@@ -1267,20 +1392,28 @@ void IKSystem::Update(SystemContext& ctx)
                     ownerInv, chainStateWeight, deltaTime, bodyState,
                     lookAtFrameStates[invocation % sortedChains.size()]);
                 anyChainModified |= modified;
-                if (modified) markSolved(chainPtr);
+                if (modified) {
+                    markSolved(chainPtr);
+                }
                 continue;
             }
             if (chain.type != IKSolverType::TwoBone &&
-                chain.type != IKSolverType::HandPlace) continue;
-            if (chain.boneNames.size() != 3) continue;
+                chain.type != IKSolverType::HandPlace) {
+                continue;
+            }
+            if (chain.boneNames.size() != 3) {
+                continue;
+            }
 
             const auto itA = skeleton.nodeMap.find(chain.boneNames[0]);
             const auto itB = skeleton.nodeMap.find(chain.boneNames[1]);
             const auto itC = skeleton.nodeMap.find(chain.boneNames[2]);
-            /// @note 回復可能なリグ設定ミスでEditor全体を停止させず、診断値を未収束として残す。
+            // 回復可能なリグ設定ミスでEditor全体を停止させず、診断値を未収束として残す。
             if (itA == skeleton.nodeMap.end() ||
                 itB == skeleton.nodeMap.end() ||
-                itC == skeleton.nodeMap.end()) continue;
+                itC == skeleton.nodeMap.end()) {
+                continue;
+            }
 
             const int    nodeA = itA->second;
             const int    nodeB = itB->second;
@@ -1294,18 +1427,24 @@ void IKSystem::Update(SystemContext& ctx)
                 nC >= smr->nodeEntities.size()              ||
                 nA >= animator->nodeGlobalTransforms.size() ||
                 nB >= animator->nodeGlobalTransforms.size() ||
-                nC >= animator->nodeGlobalTransforms.size()) continue;
+                nC >= animator->nodeGlobalTransforms.size()) {
+                continue;
+            }
 
             GameObject* targetGO = scene.GetGameObject(chain.targetEntity);
-            if (!targetGO) continue;
+            if (!targetGO) {
+                continue;
+            }
 
             GameObject* boneGoA = scene.GetGameObject(smr->nodeEntities[nA]);
             GameObject* boneGoB = scene.GetGameObject(smr->nodeEntities[nB]);
             GameObject* boneGoC = scene.GetGameObject(smr->nodeEntities[nC]);
-            if (!boneGoA || !boneGoB || !boneGoC) continue;
+            if (!boneGoA || !boneGoB || !boneGoC) {
+                continue;
+            }
 
-            /// @note FK ポーズの位置。骨長は必ず FK 基準から計算し、IK 解の前後で骨長が
-            /// @note 揺れないよう入力ポーズの骨間距離を基準にする。
+            // FK ポーズの位置。骨長は必ず FK 基準から計算し、IK 解の前後で骨長が
+            // 揺れないよう入力ポーズの骨間距離を基準にする。
             const math::Vector3 pA_fk = boneGoA->transform.worldPosition;
             const math::Vector3 pB_fk = boneGoB->transform.worldPosition;
             const math::Vector3 pC_fk = boneGoC->transform.worldPosition;
@@ -1316,14 +1455,16 @@ void IKSystem::Update(SystemContext& ctx)
             const math::Vector3 pCSource = bodyState.hasSolvedPose[nC]
                 ? bodyState.solvedPositions[nC] : pC_fk;
 
-            /// @note 骨長は FK 位置から計算する。
+            // 骨長は FK 位置から計算する。
             const float LA = (pBSource - pA).Length();
             const float LB = (pCSource - pBSource).Length();
-            if (LA < math::EPSILON || LB < math::EPSILON) continue;
+            if (LA < math::EPSILON || LB < math::EPSILON) {
+                continue;
+            }
             const float totalLength = LA + LB;
 
-            /// @note TwoBone はターゲット GameObject と任意オフセットをゴールにする。FootPlace
-            /// @note 固有の地形判定は混ぜず、汎用チェーンの入力を部位非依存に保つ。
+            // TwoBone はターゲット GameObject と任意オフセットをゴールにする。FootPlace
+            // 固有の地形判定は混ぜず、汎用チェーンの入力を部位非依存に保つ。
             const math::Vector3 pT = targetGO->transform.worldPosition + chain.targetOffset;
 
             math::Vector3 pP     = math::Vector3::ZERO;
@@ -1332,27 +1473,31 @@ void IKSystem::Update(SystemContext& ctx)
             bool          hasAutoPoleDir = false;
             if (hasPole) {
                 GameObject* poleGO = scene.GetGameObject(chain.poleEntity);
-                if (poleGO) pP = poleGO->transform.worldPosition;
-                else        hasPole = false;
+                if (poleGO) {
+                    pP = poleGO->transform.worldPosition;
+                }
+                else {
+                    hasPole = false;
+                }
             }
 
-            /// @note ゴール距離の決定。
-            /// @note 1) Soft IK で D_max への漸近を滑らかにする。
-            /// @note 2) D_max で固くクランプ
-            /// @note 3) 三角形成立に必要な最小距離でクランプ
+            // ゴール距離の決定。
+            // 1) Soft IK で D_max への漸近を滑らかにする。
+            // 2) D_max で固くクランプ
+            // 3) 三角形成立に必要な最小距離でクランプ
             const float D_max = totalLength * math::Clamp(chain.maxExtension, 0.5f, 1.0f);
 
             const math::Vector3 vecAT    = pT - pA;
             const float         vecATLen = vecAT.Length();
 
-            /// @note C: Soft IK を適用し、D_max に近づくほど段階的に減速する。
+            // C: Soft IK を適用し、D_max に近づくほど段階的に減速する。
             float D = ApplySoftIK(vecATLen, D_max, chain.softness);
 
             const float dMin = math::Abs(LA - LB) + math::EPSILON;
             D = math::Clamp(D, dMin, D_max - math::EPSILON);
 
-            /// @note 関節の屈曲角から到達距離を逆算し、肘・膝の過伸展と逆折れを防ぐ。0 度を
-            /// @note 完全伸展として余弦定理 D^2=LA^2+LB^2+2*LA*LB*cos(theta) を使う。
+            // 関節の屈曲角から到達距離を逆算し、肘・膝の過伸展と逆折れを防ぐ。0 度を
+            // 完全伸展として余弦定理 D^2=LA^2+LB^2+2*LA*LB*cos(theta) を使う。
             const float minBend = math::Clamp(
                 std::min(chain.minBendAngleDegrees, chain.maxBendAngleDegrees),
                 0.0f, 179.0f) * (math::PI / 180.0f);
@@ -1367,13 +1512,14 @@ void IKSystem::Update(SystemContext& ctx)
             D = math::Clamp(constrainedDistance, dMin, D_max - math::EPSILON);
 
             math::Vector3 axisAT = math::Vector3::FORWARD;
-            if (vecATLen > math::EPSILON)
+            if (vecATLen > math::EPSILON) {
                 axisAT = vecAT * (1.0f / vecATLen);
+            }
 
-            /// @note Auto Pole: axisAT 確定後、Owner 回転込みの指定方向または FK の曲げ方向から
-            /// @note 膝の曲げ方向を毎フレーム算出する。Player のように見た目を 180 度回転して
-            /// @note 使う場合、FK 曲げ方向だけではキャラクターの前後と一致せず膝が背面へ折れる
-            /// @note ことがある (poleEntity が有効なら hasPole=true のままで Auto には入らない)。
+            // Auto Pole: axisAT 確定後、Owner 回転込みの指定方向または FK の曲げ方向から
+            // 膝の曲げ方向を毎フレーム算出する。Player のように見た目を 180 度回転して
+            // 使う場合、FK 曲げ方向だけではキャラクターの前後と一致せず膝が背面へ折れる
+            // ことがある (poleEntity が有効なら hasPole=true のままで Auto には入らない)。
             if (!hasPole && chain.autoPole) {
                 math::Vector3 bendRaw = math::Vector3::ZERO;
                 if (chain.autoPoleLocalDirection.LengthSq() > math::EPSILON * math::EPSILON) {
@@ -1394,12 +1540,12 @@ void IKSystem::Update(SystemContext& ctx)
 
             const math::Vector3 pTEffective = pA + (axisAT * D);
 
-            /// @note コサイン定理で Root ボーンの曲げ角を求める。
+            // コサイン定理で Root ボーンの曲げ角を求める。
             const float cosA =
                 math::Clamp((LA * LA + D * D - LB * LB) / (2.0f * LA * D), -1.0f, 1.0f);
             const float sinA = std::sqrt(math::Max(0.0f, 1.0f - cosA * cosA));
 
-            /// @note 曲げ方向。Pole 指定があれば Pole 側、なければ FK の曲げ方向を維持する。
+            // 曲げ方向。Pole 指定があれば Pole 側、なければ FK の曲げ方向を維持する。
             math::Vector3 bendDir;
             if (hasAutoPoleDir) {
                 bendDir = autoPoleDir;
@@ -1436,7 +1582,7 @@ void IKSystem::Update(SystemContext& ctx)
                 (pBSource - pA).Normalized(), (pB_final - pA).Normalized(), maxJointCorrection);
             const math::Quaternion deltaB = ClampedFromToRotation(
                 (pCSource - pBSource).Normalized(), (pC_final - pB_final).Normalized(), maxJointCorrection);
-            /// @note 反復ごとの角度上限で目標から外れる場合も、位置を同じ回転から組み直して骨長を維持する。
+            // 反復ごとの角度上限で目標から外れる場合も、位置を同じ回転から組み直して骨長を維持する。
             pB_final = pA + deltaA * (pBSource - pA);
             pC_final = pB_final + deltaB * (pCSource - pBSource);
             const math::Quaternion rotA_final =
@@ -1491,8 +1637,9 @@ void IKSystem::Update(SystemContext& ctx)
         ik->runtimeRightFootGrounded = bodyState.rightFootGrounded;
         ik->runtimeHipOffset = bodyState.appliedHipOffset;
         ik->runtimeSkinningUploaded = anyChainModified && animator->skinningBuffer.IsValid();
-        if (ik->runtimeSkinningUploaded)
+        if (ik->runtimeSkinningUploaded) {
             UploadBoneMatrices(*animator, resources);
+        }
     }
 }
 

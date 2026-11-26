@@ -34,10 +34,10 @@ toml::table SerializeCollider(const ColliderComponent& col)
     colTbl.insert("center",    Vec3ToArr(col.center));
     colTbl.insert("isTrigger", col.isTrigger);
 
-    /// @note パスはドキュメントの書き出し時に guid: 参照へ変換する。
+    // パスはドキュメントの書き出し時に guid: 参照へ変換する。
     colTbl.insert("physicsMaterial", col.physicsMaterialPath);
 
-    /// @note 共有 .physmat を解決できないときは、最後に解決した値を復元する。
+    // 共有 .physmat を解決できないときは、最後に解決した値を復元する。
     toml::table matTbl;
     matTbl.insert("restitution",      (double)col.material.restitution);
     matTbl.insert("staticFriction",   (double)col.material.staticFriction);
@@ -47,7 +47,7 @@ toml::table SerializeCollider(const ColliderComponent& col)
     matTbl.insert("frictionCombine",    (int64_t)col.material.frictionCombine);
     colTbl.insert("material", std::move(matTbl));
 
-    /// @note 保存と復元でスケールが重ならないよう、形状寸法はコンポーネントが持つ値を使う。
+    // 保存と復元でスケールが重ならないよう、形状寸法はコンポーネントが持つ値を使う。
     return colTbl;
 }
 
@@ -65,8 +65,8 @@ void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
         col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
         col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
 
-        /// @note 既定は選択制にする前の固定規則 (反発 = Minimum / 摩擦 = GeometricMean)。
-        /// @note これにより合成規則を持たない既存シーンの挙動が変わらない。
+        // 既定は選択制にする前の固定規則 (反発 = Minimum / 摩擦 = GeometricMean)。
+        // これにより合成規則を持たない既存シーンの挙動が変わらない。
         const auto restitutionCombine = (*matTbl)["restitutionCombine"].value_or(
             (int64_t)physics::PhysicsMaterialCombine::Minimum);
         const auto frictionCombine = (*matTbl)["frictionCombine"].value_or(
@@ -77,7 +77,7 @@ void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
             static_cast<physics::PhysicsMaterialCombine>(frictionCombine);
     }
 
-    /// @note 編集中の Inspector にも共有マテリアルの値を表示するため、読み込み時に解決する。
+    // 編集中の Inspector にも共有マテリアルの値を表示するため、読み込み時に解決する。
     col.ResolvePhysicsMaterial();
 }
 
@@ -85,8 +85,9 @@ void ReadAabbCollider(const toml::table& colTbl, AabbColliderComponent& col)
 {
     ReadColliderCommon(colTbl, col);
     math::Vector3 halfExtents = { 0.5f, 0.5f, 0.5f };
-    if (auto* shapeTbl = colTbl["shape"].as_table())
+    if (auto* shapeTbl = colTbl["shape"].as_table()) {
         halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
+    }
     col.size = halfExtents * 2.0f;
     col.collider = std::make_unique<physics::AABBCollider>(halfExtents);
 }
@@ -95,8 +96,9 @@ void ReadBoxCollider(const toml::table& colTbl, BoxColliderComponent& col)
 {
     ReadColliderCommon(colTbl, col);
     math::Vector3 halfExtents = { 0.5f, 0.5f, 0.5f };
-    if (auto* shapeTbl = colTbl["shape"].as_table())
+    if (auto* shapeTbl = colTbl["shape"].as_table()) {
         halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
+    }
     col.size = halfExtents * 2.0f;
     col.collider = std::make_unique<physics::OBBCollider>(halfExtents);
 }
@@ -105,8 +107,9 @@ void ReadSphereCollider(const toml::table& colTbl, SphereColliderComponent& col)
 {
     ReadColliderCommon(colTbl, col);
     float radius = 0.5f;
-    if (auto* shapeTbl = colTbl["shape"].as_table())
+    if (auto* shapeTbl = colTbl["shape"].as_table()) {
         radius = (float)(*shapeTbl)["radius"].value_or(0.5);
+    }
     col.radius = radius;
     col.collider = std::make_unique<physics::SphereCollider>(radius);
 }
@@ -166,10 +169,14 @@ void RetireLegacyBuoyancyVolume(const toml::table& goTbl, GameObject& go)
 {
     constexpr int64_t LEGACY_BUOYANCY_TYPE = 2;
     const auto* volTbl = goTbl["VolumeComponent"].as_table();
-    if (!volTbl || (*volTbl)["type"].value_or((int64_t)0) != LEGACY_BUOYANCY_TYPE) return;
+    if (!volTbl || (*volTbl)["type"].value_or((int64_t)0) != LEGACY_BUOYANCY_TYPE) {
+        return;
+    }
 
     auto* volume = go.GetComponent<VolumeComponent>();
-    if (!volume) return;
+    if (!volume) {
+        return;
+    }
     volume->enabled = false;
     core::Logger::Warn("Buoyancy Volume は廃止。水面の浮力は WaterComponent が持つ "
                        "(Docs/design/buoyancy.md): %s", go.name.c_str());
@@ -252,9 +259,9 @@ void WritePhysicsComponents(GameObject& go, toml::table& goTbl)
         toml::table rbTbl;
         rbTbl.insert("enabled",                rb->enabled);
         rbTbl.insert("poseDriven",             rb->poseDriven);
-        /// @note 質量の決め方。未記載の既存シーンは Manual として読まれる (従来どおり)。
+        // 質量の決め方。未記載の既存シーンは Manual として読まれる (従来どおり)。
         rbTbl.insert("massMode",               (int64_t)rb->massMode);
-        /// @note 媒質との結合係数 [1/s]。未記載の既存シーンは 0 = 流れを受けない。
+        // 媒質との結合係数 [1/s]。未記載の既存シーンは 0 = 流れを受けない。
         rbTbl.insert("flowCoupling",           (double)rb->flowCoupling);
         rbTbl.insert("mass",                   (double)body.GetMass());
         rbTbl.insert("isStatic",               body.m_isStatic);
@@ -348,8 +355,9 @@ void ReadRigidBody(GameObject& go, const toml::table& object)
         rb.massMode = static_cast<MassMode>(
             (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
         rb.flowCoupling = (float)(*rbTbl)["flowCoupling"].value_or(0.0);
-        if (!rb.rigidBody)
+        if (!rb.rigidBody) {
             rb.rigidBody = std::make_unique<physics::RigidBody>();
+        }
 
         rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
         rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));

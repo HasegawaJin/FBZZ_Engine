@@ -22,7 +22,7 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
 {
     auto asset = std::make_unique<TextureAsset>();
 
-    /// @note 元画像パスを確定する。".meta" を直接渡された場合も元画像へ解決する。
+    // 元画像パスを確定する。".meta" を直接渡された場合も元画像へ解決する。
     std::string sourcePath;
     if (!TexDescSerializer::ResolveSourcePath(absPath, sourcePath) || sourcePath.empty()) {
         FBZZ_LOG_WARN("ImageImporter: source resolution failed [%s]", absPath.c_str());
@@ -30,13 +30,13 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     }
     asset->sourcePath = sourcePath;
 
-    /// @note 元画像の隣にある "<画像>.meta" サイドカーがあればインポート設定を読む。
-    ///       無ければファイル名からタイプを推定してデフォルト設定を適用する。
+    // 元画像の隣にある "<画像>.meta" サイドカーがあればインポート設定を読む。
+    //       無ければファイル名からタイプを推定してデフォルト設定を適用する。
     const std::string metaPath = sourcePath + ".meta";
     bool settingsLoaded = false;
     if (util::FileSystem::Exists(metaPath)) {
-        /// @note guid のみの .meta ([texture] セクションなし) は false が返り、デフォルト設定に落ちる。
-        ///       破損 TOML の警告は TexDescSerializer 側が出すためここでは扱わない。
+        // guid のみの .meta ([texture] セクションなし) は false が返り、デフォルト設定に落ちる。
+        //       破損 TOML の警告は TexDescSerializer 側が出すためここでは扱わない。
         TexDescSerializer ser;
         settingsLoaded = ser.Load(metaPath, *asset);
     }
@@ -45,9 +45,9 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
         asset->settings = DefaultSettingsForType(guessed);
     }
 
-    /// @note GPU テクスチャロード (キャッシュキーは常に元画像パスで安定させる)
-    /// @note 固定印を付けない。同期 `Load<TextureAsset>` の固定は AssetStore 側のスロットが持ち、
-    ///       非同期経路 (AssetStreamer::CompleteNow) が同じ importer で読んだものは後で解放できる。
+    // GPU テクスチャロード (キャッシュキーは常に元画像パスで安定させる)
+    // 固定印を付けない。同期 `Load<TextureAsset>` の固定は AssetStore 側のスロットが持ち、
+    //       非同期経路 (AssetStreamer::CompleteNow) が同じ importer で読んだものは後で解放できる。
     if (resources) {
         asset->gpuHandle = resources->LoadTextureUnpinned(asset->sourcePath,
                                                            asset->settings.flipGreen);
@@ -62,4 +62,4 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     return asset;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -66,7 +66,7 @@ TEST(FluidLiquid3DTest, VolumetricSolveSpreadsInDepthAndStaysOnTheFloor)
 TEST(FluidLiquid3DTest, FlatSolveKeepsDepthAtZero)
 {
     fluid::FluidRecipe recipe = SplashRecipe();
-    /// @note 2D では奥行きの速度を見ない
+    // 2D では奥行きの速度を見ない
     recipe.sources[0].velocity.z = 3.0f;
     fluid::FluidLiquidSolver solver;
     solver.Reset(recipe);
@@ -99,7 +99,7 @@ TEST(FluidLiquid3DTest, PackedVolumeMarksLiquidOnlyWhereParticlesAre)
 /// @brief Particles carry their source color key into the volume.
 TEST(FluidLiquid3DTest, ParticlesCarryTheirSourceColorKeyIntoTheVolume)
 {
-    /// @note 鍵 0 と鍵 1 の発生源を左右に離して置く。混ざる前なら、左の液は B = 0・右の液は B = 1。
+    // 鍵 0 と鍵 1 の発生源を左右に離して置く。混ざる前なら、左の液は B = 0・右の液は B = 1。
     fluid::FluidRecipe recipe = SplashRecipe();
     recipe.liquid.maxParticles = 800;
     recipe.sources[0].center.x = -0.5f;
@@ -131,7 +131,9 @@ TEST(FluidLiquid3DTest, ParticlesCarryTheirSourceColorKeyIntoTheVolume)
         for (int y = 0; y < 16; ++y)
             for (int x = 0; x < 16; ++x) {
                 const auto& cell = volume.medium[static_cast<std::size_t>(x + 16 * (y + 16 * z))];
-                if (cell.w != 1.0f) continue;
+                if (cell.w != 1.0f) {
+                    continue;
+                }
                 if (x <= 5) {
                     ++leftCells;
                     separated &= cell.z < 1.0e-6f;

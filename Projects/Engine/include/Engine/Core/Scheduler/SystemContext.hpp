@@ -19,9 +19,8 @@ struct SystemContext {
     float                       dt;
     float                       fixedDt;      ///< 固定ステップの実行中に Scheduler が設定する秒数。
     bool                        simulating;
-    /// @note Pause 中も Play セッションと Script のライフサイクルは続く。simulating だけが false になる。
-    bool                        playing = false;
+    bool                        playing = false; ///< Pause 中も Play セッションと Script のライフサイクルは続く。simulating だけが false になる。
     float                       interpolationAlpha = 0.0f; ///< 固定ステップ間の描画補間係数 [0, 1]
 };
 
-} /// @note namespace fbzz
+} // namespace fbzz

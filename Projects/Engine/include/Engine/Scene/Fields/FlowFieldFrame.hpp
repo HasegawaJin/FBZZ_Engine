@@ -19,7 +19,7 @@ namespace fbzz::scene {
 /// @brief 方向と速さだけを自分のシェーダーへ渡すので 1 本ぶんへ畳んだ値を受け取る。
 struct AmbientWind {
     bool          active = false;
-    math::Vector3 direction = { 0.7071f, 0.0f, 0.7071f }; ///< @brief 正規化済み
+    math::Vector3 direction = { 0.7071f, 0.0f, 0.7071f }; ///< 正規化済み
     float         speed = 0.0f;      ///< @brief [m/s]
     float         turbulence = 0.0f; ///< @brief [m/s]
     float         pulseFrequency = 1.0f;
@@ -36,12 +36,11 @@ struct FlowFieldFrame {
     /// @brief fields の先頭からシーンに置いた FlowField が並ぶ本数。残りは ambient を場の形にした環境流。
     /// @note 環境流を別経路 (AmbientWind) で受け取る消費者が二重に足さないための境界。
     size_t                       sceneFieldCount = 0;
-    /// @brief 埋めたフレーム番号 (Time::frameCount)。未収集は kNeverFilled。
-    uint64_t                     frame = kNeverFilled;
+    uint64_t                     frame = kNeverFilled; ///< 埋めたフレーム番号 (Time::frameCount)。未収集は kNeverFilled。
 
     /// @brief 一度も収集していないことを表す番号。
     /// @note 0 にすると «起動直後の frameCount 0» と区別が付かない。
     static constexpr uint64_t kNeverFilled = ~static_cast<uint64_t>(0);
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -93,10 +93,8 @@ private:
     uint64_t m_resourceOwner = 0, m_resetVersion = 0, m_shaderVersion = 0;
     int m_assetGeneration = -1;
     std::unordered_map<std::string, bool> m_shaderCapabilities;
-    /// @note 追加ローブまたはブレンドにスロット固有の上書きがある場合は共有しない。
-    std::unordered_map<asset::MaterialAsset::AuthoringSnapshotPtr, renderer::GeometryMaterialInput> m_geometryDefaults;
-    /// @note 同一ハンドルへの差し替えを区別し、コールバックの間も既定値を所有する。
-    std::unordered_map<asset::MaterialAsset::AuthoringSnapshotPtr, CachedMaterial> m_prepared;
+    std::unordered_map<asset::MaterialAsset::AuthoringSnapshotPtr, renderer::GeometryMaterialInput> m_geometryDefaults; ///< 追加ローブまたはブレンドにスロット固有の上書きがある場合は共有しない。
+    std::unordered_map<asset::MaterialAsset::AuthoringSnapshotPtr, CachedMaterial> m_prepared; ///< 同一ハンドルへの差し替えを区別し、コールバックの間も既定値を所有する。
 };
 
 }

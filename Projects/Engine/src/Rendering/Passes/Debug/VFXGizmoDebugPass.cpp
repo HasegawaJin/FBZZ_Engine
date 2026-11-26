@@ -23,9 +23,13 @@ void DrawEmitterShapes(RenderPassContext& ctx)
     constexpr math::Vector4 kVelocityColor = { 1.00f, 0.72f, 0.30f, 1.0f };
 
     for (auto& object : ctx.scene.GameObjects()) {
-        if (!object.activeInHierarchy()) continue;
+        if (!object.activeInHierarchy()) {
+            continue;
+        }
         const auto* emitter = object.GetComponent<ParticleEmitter>();
-        if (emitter == nullptr || !emitter->settings.enabled) continue;
+        if (emitter == nullptr || !emitter->settings.enabled) {
+            continue;
+        }
         const math::Vector3 origin = object.transform.worldPosition
             + object.transform.worldRotation * emitter->settings.emitPosition;
 
@@ -35,7 +39,7 @@ void DrawEmitterShapes(RenderPassContext& ctx)
                                         (std::max)(emitter->settings.sphereRadius, 0.001f), kShapeColor);
             break;
         case ParticleEmitterShape::Cone: {
-            /// @note SpawnParticle は +Y をコーン軸に取る。
+            // SpawnParticle は +Y をコーン軸に取る。
             const math::Vector3 axis = object.transform.worldRotation * math::Vector3{ 0.0f, 1.0f, 0.0f };
             constexpr float kDeg2Rad = 3.14159265f / 180.0f;
             const float height = (std::max)(emitter->settings.coneRadius, 0.5f);
@@ -55,10 +59,12 @@ void DrawEmitterShapes(RenderPassContext& ctx)
             break;
         }
 
-        /// @note 初速は 1 秒後の到達点を先端にする (長さがそのまま秒速)。
+        // 初速は 1 秒後の到達点を先端にする (長さがそのまま秒速)。
         const math::Vector3 velocity = object.transform.worldRotation * emitter->settings.emitVelocity;
         const float speed = velocity.Length();
-        if (speed <= 1.0e-4f) continue;
+        if (speed <= 1.0e-4f) {
+            continue;
+        }
         renderer::DebugDraw::Arrow(ctx.renderer, origin, origin + velocity,
                                    (std::min)(speed * 0.18f, 0.4f),
                                    (std::min)(speed * 0.06f, 0.12f), kVelocityColor);

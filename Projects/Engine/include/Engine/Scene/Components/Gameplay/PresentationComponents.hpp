@@ -30,14 +30,11 @@ namespace fbzz::scene {
 /// @note 始める (次フレームで焼き直す)。所有者は常に 1 つなので shared_ptr の参照カウントは不要。
 struct DoubleBufferedMesh {
     std::unique_ptr<renderer::Mesh> slots[2];
-    /// @note 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
-    std::size_t signature = 0;
-    /// @note 頂点生成に使った全値を順序付きで保持する。candidate は毎更新の比較用領域を再利用する。
-    std::vector<float> geometryInputs;
+    std::size_t signature = 0; ///< 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
+    std::vector<float> geometryInputs; ///< 頂点生成に使った全値を順序付きで保持する。candidate は毎更新の比較用領域を再利用する。
     std::vector<float> candidateInputs;
     bool geometryValid = false;
-    /// @note 今 slots のどちらを描いているか。
-    std::uint32_t current = 0;
+    std::uint32_t current = 0; ///< 今 slots のどちらを描いているか。
 
     DoubleBufferedMesh() = default;
     FBZZ_ENGINE_API ~DoubleBufferedMesh();
@@ -51,7 +48,9 @@ struct DoubleBufferedMesh {
     DoubleBufferedMesh(const DoubleBufferedMesh&) {}
     DoubleBufferedMesh& operator=(const DoubleBufferedMesh& other)
     {
-        if (this != &other) Reset();
+        if (this != &other) {
+            Reset();
+        }
         return *this;
     }
 
@@ -177,11 +176,9 @@ struct LineRendererComponent {
     float endWidth = 0.05f;
     LineSpace space = LineSpace::Local;
     bool loop = false;
-    /// @note Ribbon のときだけ意味を持つ。Tube は形が視点に依存しない。
-    bool billboard = true;
+    bool billboard = true; ///< Ribbon のときだけ意味を持つ。Tube は形が視点に依存しない。
     LineShape shape = LineShape::Ribbon;
-    /// @note Tube の円周分割数。小さいと角が見え、大きくしても遠目には変わらない。
-    int radialSegments = 8;
+    int radialSegments = 8; ///< Tube の円周分割数。小さいと角が見え、大きくしても遠目には変わらない。
     int sortingLayer = 0;
     int orderInLayer = 0;
     DoubleBufferedMesh runtimeMesh;
@@ -192,8 +189,9 @@ struct LineRendererComponent {
         r.Field("enabled", enabled);
         ReflectControlPointSourceMode(r, "pointSourceMode", pointSourceMode);
         ReflectControlPointRuntimeMode(r, "pointRuntimeMode", pointRuntimeMode);
-        if (pointSourceMode == ControlPointSourceMode::INLINE)
+        if (pointSourceMode == ControlPointSourceMode::INLINE) {
             r.ListField("points", points);
+        }
         ReflectLineControlPointBindings(r, pointBindings);
         ReflectLineControlPointValues(r, "bakedPoints", bakedPoints);
         ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);

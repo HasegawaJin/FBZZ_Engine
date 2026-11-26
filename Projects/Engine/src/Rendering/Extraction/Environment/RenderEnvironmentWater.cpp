@@ -27,10 +27,13 @@ namespace {
 float ReadBoundedMaterialFloat(const asset::MaterialAssetAuthoring* material, const char* key,
     float fallback, float minimum, float maximum)
 {
-    if (!material) return fallback;
-    const auto found = material->params.find(key);
-    if (found == material->params.end() || found->second.empty() || !std::isfinite(found->second[0]))
+    if (!material) {
         return fallback;
+    }
+    const auto found = material->params.find(key);
+    if (found == material->params.end() || found->second.empty() || !std::isfinite(found->second[0])) {
+        return fallback;
+    }
     return std::clamp(found->second[0], minimum, maximum);
 }
 
@@ -43,7 +46,9 @@ struct WaterWaveSummary {
 WaterWaveSummary SummarizeWaterWaves(const WaterComponent& water)
 {
     WaterWaveSummary result;
-    if (!water.enableGerstnerWaves) return result;
+    if (!water.enableGerstnerWaves) {
+        return result;
+    }
     double totalAmplitude = 0.0;
     double weightedFrequency = 0.0;
     double weightedSpeed = 0.0;
@@ -51,15 +56,19 @@ WaterWaveSummary SummarizeWaterWaves(const WaterComponent& water)
     for (size_t i = 0; i < count; ++i) {
         const auto& wave = water.waves[i];
         if (!std::isfinite(wave.amplitude) || !std::isfinite(wave.wavelength)
-            || wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) continue;
+            || wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) {
+            continue;
+        }
         const double frequency = static_cast<double>(math::TWO_PI) / wave.wavelength;
         totalAmplitude += wave.amplitude;
         weightedFrequency += frequency * wave.amplitude;
         weightedSpeed += std::sqrt(9.8 * frequency) * wave.amplitude;
     }
-    if (totalAmplitude <= math::EPSILON) return result;
+    if (totalAmplitude <= math::EPSILON) {
+        return result;
+    }
 
-    /// @note コースティクスの変位幅を保ちながら、有効な波から周波数と位相速度を求める。
+    // コースティクスの変位幅を保ちながら、有効な波から周波数と位相速度を求める。
     result.amplitude = static_cast<float>(std::clamp(totalAmplitude * 0.12, 0.015, 0.18));
     result.frequency = static_cast<float>(weightedFrequency / totalAmplitude);
     result.speed = static_cast<float>(weightedSpeed / totalAmplitude) * water.WaveSpeedMultiplier();
@@ -70,7 +79,9 @@ bool GetWaterYaw(const Transform& transform, float& cosYaw, float& sinYaw)
 {
     const math::Vector3 forward = transform.worldRotation * math::Vector3::FORWARD;
     const float horizontalLength = std::sqrt(forward.x * forward.x + forward.z * forward.z);
-    if (!std::isfinite(horizontalLength) || horizontalLength <= 1.0e-6f) return false;
+    if (!std::isfinite(horizontalLength) || horizontalLength <= 1.0e-6f) {
+        return false;
+    }
     cosYaw = forward.z / horizontalLength;
     sinYaw = forward.x / horizontalLength;
     return std::isfinite(cosYaw) && std::isfinite(sinYaw);
@@ -83,15 +94,19 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
     renderer::RenderUnderwaterInput best{};
     const float time = Time::time;
 
-    /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
+    // 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
     for (const EntityID waterId : context.scene.GetEntities<WaterComponent>()) {
         const GameObject* waterObject = context.scene.GetGameObject(waterId);
         auto* waterPtr = context.scene.GetComponent<WaterComponent>(waterId);
         if (!waterObject || !waterPtr || !waterPtr->enabled
             || WaterSurfaceZoneOwner(*waterPtr, WaterSurfaceReadView::SIMULATION).IsValid()
-            || !waterObject->activeInHierarchy()) continue;
+            || !waterObject->activeInHierarchy()) {
+            continue;
+        }
         const uint32_t layer = static_cast<uint32_t>(waterObject->layer);
-        if (layer >= 32u || (context.cullingMask & (1u << layer)) == 0u) continue;
+        if (layer >= 32u || (context.cullingMask & (1u << layer)) == 0u) {
+            continue;
+        }
         WaterComponent& water = *waterPtr;
         const Transform& transform = WaterSurfaceTransform(water, waterObject->transform,
             WaterSurfaceReadView::SIMULATION);
@@ -99,10 +114,12 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
         WaterSurfaceHeightSample sample;
         if (!TrySampleWaterSurfaceHeightWorld(water, transform, context.camera.m_position, time, sample,
                 WaterSurfaceReadView::SIMULATION)
-            || !sample.underwater || sample.depth <= best.depth) continue;
+            || !sample.underwater || sample.depth <= best.depth) {
+            continue;
+        }
         const float depth = sample.depth;
 
-        /// @note 視覚パラメータは fzmat から読む。未設定時は WaterComponent のデフォルト値と揃えた定数を使う。
+        // 視覚パラメータは fzmat から読む。未設定時は WaterComponent のデフォルト値と揃えた定数を使う。
         asset::MaterialAsset::AuthoringSnapshotPtr matAuthoringSnapshot;
         const asset::MaterialAssetAuthoring* material = nullptr;
         if (!water.materialPath.empty()) {
@@ -113,16 +130,23 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
             }
         }
         auto getF = [material](const char* name, float def) -> float {
-            if (!material) return def;
+            if (!material) {
+                return def;
+            }
             auto it = material->params.find(name);
-            if (it != material->params.end() && !it->second.empty()) return it->second[0];
+            if (it != material->params.end() && !it->second.empty()) {
+                return it->second[0];
+            }
             return def;
         };
         auto getF3 = [material](const char* name, math::Vector3 def) -> math::Vector3 {
-            if (!material) return def;
+            if (!material) {
+                return def;
+            }
             auto it = material->params.find(name);
-            if (it != material->params.end() && it->second.size() >= 3)
+            if (it != material->params.end() && it->second.size() >= 3) {
                 return { it->second[0], it->second[1], it->second[2] };
+            }
             return def;
         };
 
@@ -137,7 +161,9 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
             && !WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
         float cosYaw = 1.0f;
         float sinYaw = 0.0f;
-        if (optics.enabled && boundedRectangle && !GetWaterYaw(transform, cosYaw, sinYaw)) continue;
+        if (optics.enabled && boundedRectangle && !GetWaterYaw(transform, cosYaw, sinYaw)) {
+            continue;
+        }
         best.enabled = true;
         best.depth = depth;
         best.opticalEnabled = optics.enabled;
@@ -185,22 +211,30 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
 renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& context)
 {
     renderer::RenderCausticsInput result{};
-    /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
+    // 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
     for (const EntityID waterId : context.scene.GetEntities<WaterComponent>()) {
         const GameObject* waterObject = context.scene.GetGameObject(waterId);
         const auto* waterPtr = context.scene.GetComponent<WaterComponent>(waterId);
         if (!waterObject || !waterPtr || !waterPtr->enabled
             || WaterSurfaceZoneOwner(*waterPtr, WaterSurfaceReadView::SIMULATION).IsValid()
-            || !waterObject->activeInHierarchy()) continue;
+            || !waterObject->activeInHierarchy()) {
+            continue;
+        }
         const uint32_t layer = static_cast<uint32_t>(waterObject->layer);
-        if (layer >= 32u || (context.cullingMask & (1u << layer)) == 0u) continue;
+        if (layer >= 32u || (context.cullingMask & (1u << layer)) == 0u) {
+            continue;
+        }
         const WaterComponent& water = *waterPtr;
         const Transform& transform = WaterSurfaceTransform(water, waterObject->transform,
             WaterSurfaceReadView::SIMULATION);
-        /// @note 旧Causticsは矩形マスクだけを持ち、Splineの輪郭外へ光を漏らすため対象にしない。
+        // 旧Causticsは矩形マスクだけを持ち、Splineの輪郭外へ光を漏らすため対象にしない。
         if (WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION) != WaterSurfaceShape::RECTANGLE
-            || UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) continue;
-        if (!IsWaterSurfaceSupported(water, transform, WaterSurfaceReadView::SIMULATION)) continue;
+            || UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
+            continue;
+        }
+        if (!IsWaterSurfaceSupported(water, transform, WaterSurfaceReadView::SIMULATION)) {
+            continue;
+        }
 
         asset::MaterialAsset::AuthoringSnapshotPtr matAuthoringSnapshot;
         const asset::MaterialAssetAuthoring* material = nullptr;
@@ -213,40 +247,58 @@ renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& context)
         }
 
         auto getF = [material](const char* name, float def) -> float {
-            if (!material) return def;
+            if (!material) {
+                return def;
+            }
             const auto it = material->params.find(name);
-            if (it != material->params.end() && !it->second.empty()) return it->second[0];
+            if (it != material->params.end() && !it->second.empty()) {
+                return it->second[0];
+            }
             return def;
         };
         auto getTex = [material](const char* name) -> std::string {
-            if (!material) return {};
+            if (!material) {
+                return {};
+            }
             const auto it = material->textures.find(name);
-            if (it != material->textures.end()) return it->second;
+            if (it != material->textures.end()) {
+                return it->second;
+            }
             return {};
         };
 
         const asset::WaterOpticalSettings optics = (material ? asset::ResolveWaterOpticalSettings(*material) : asset::WaterOpticalSettings{});
 
         const float enableCaustics  = getF("enableCaustics", 0.0f);
-        if (enableCaustics < 0.5f) continue;
+        if (enableCaustics < 0.5f) {
+            continue;
+        }
 
         const float intensity = getF("causticsIntensity", 1.0f);
-        if (intensity <= 0.0f) continue;
+        if (intensity <= 0.0f) {
+            continue;
+        }
 
         float totalAmp = 0.0f;
         float weightedWaveFreq = 0.0f;
         for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i) {
             const auto& wave = water.waves[i];
-            if (wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) continue;
+            if (wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) {
+                continue;
+            }
             totalAmp += wave.amplitude;
             weightedWaveFreq += (math::TWO_PI / wave.wavelength) * wave.amplitude;
         }
 
-        /// @note 複数水面は最も強い設定を代表値として扱う。1 回のフルスクリーン加算で済ませるため、代表水面のみを投影元にする。
-        if (result.enabled && intensity <= result.intensity) continue;
+        // 複数水面は最も強い設定を代表値として扱う。1 回のフルスクリーン加算で済ませるため、代表水面のみを投影元にする。
+        if (result.enabled && intensity <= result.intensity) {
+            continue;
+        }
         float cosYaw = 1.0f;
         float sinYaw = 0.0f;
-        if (!GetWaterYaw(transform, cosYaw, sinYaw)) continue;
+        if (!GetWaterYaw(transform, cosYaw, sinYaw)) {
+            continue;
+        }
 
         result.enabled     = true;
         result.intensity   = intensity;

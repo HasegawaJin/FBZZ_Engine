@@ -40,36 +40,49 @@ void ExtractObjectMasks(RenderPassContext& context, renderer::RenderScene& snaps
             [&snapshot](const auto& request) { return renderer::IsObjectMaskRequestLive(request, snapshot.frameStamp); })) {
         firstObjectByEntity.assign(context.scene.EntitySlotCount(), NO_OBJECT);
         nextObjectWithSameEntity.assign(snapshot.Objects().size(), NO_OBJECT);
-        /// @note 同一 Entity に静的・スキンド両方がある場合も、元の描画物体順で全候補を保持する。
+        // 同一 Entity に静的・スキンド両方がある場合も、元の描画物体順で全候補を保持する。
         for (size_t remainingObjects = snapshot.Objects().size(); remainingObjects > 0; --remainingObjects) {
             const uint32_t objectIndex = static_cast<uint32_t>(remainingObjects - 1);
             const auto entityIndex = snapshot.Objects()[objectIndex].sourceIndex;
-            if (entityIndex >= firstObjectByEntity.size()) continue;
+            if (entityIndex >= firstObjectByEntity.size()) {
+                continue;
+            }
             nextObjectWithSameEntity[objectIndex] = firstObjectByEntity[entityIndex];
             firstObjectByEntity[entityIndex] = objectIndex;
         }
     }
     for (const auto& request : context.settings.objectMaskRequests) {
-        if (!renderer::IsObjectMaskRequestLive(request, snapshot.frameStamp)) continue;
+        if (!renderer::IsObjectMaskRequestLive(request, snapshot.frameStamp)) {
+            continue;
+        }
         ++snapshot.liveMaskRequests;
         auto* root = context.scene.GetGameObject({ request.id.index, request.id.generation });
-        if (!root) continue;
+        if (!root) {
+            continue;
+        }
         renderer::RenderMaskGroup group;
         group.payload = { request.color[0], request.color[1], request.color[2], std::clamp(request.value, 0.02f, 1.0f) };
         group.visibleOnly = request.visibleOnly;
         const auto collect = [&](const auto& self, GameObject& owner) -> void {
-            if (!ShouldRenderGameObject(owner, context.cullingMask)) return;
+            if (!ShouldRenderGameObject(owner, context.cullingMask)) {
+                return;
+            }
             const EntityID entity = owner.GetID();
-            if (entity.index >= firstObjectByEntity.size()) return;
+            if (entity.index >= firstObjectByEntity.size()) {
+                return;
+            }
             for (uint32_t objectIndex = firstObjectByEntity[entity.index]; objectIndex != NO_OBJECT;
                  objectIndex = nextObjectWithSameEntity[objectIndex]) {
                 const auto& object = snapshot.Objects()[objectIndex];
-                if (object.sourceIndex == entity.index && object.sourceGeneration == entity.generation)
+                if (object.sourceIndex == entity.index && object.sourceGeneration == entity.generation) {
                     group.objectIndices.push_back(objectIndex);
+                }
             }
             if (request.includeChildren) {
                 for (int childIndex = 0; childIndex < owner.GetChildCount(); ++childIndex)
-                    if (auto* child = owner.GetChild(childIndex)) self(self, *child);
+                    if (auto* child = owner.GetChild(childIndex)) {
+                        self(self, *child);
+                    }
             }
         };
         collect(collect, *root);
@@ -128,7 +141,7 @@ void ExtractRenderScene(RenderPassContext& context, RenderFrameGeometryCache* fr
     FBZZ_PROFILE_SCOPE("RenderSystem::ExtractRenderScene");
     material_demand_detail::ExtractionDepthScope extractionDepth;
     renderer::material_transfer_detail::MaterialTransferPayloadScope materialTransferPayloads(context.resources);
-    /// @note 抽出開始時の資源フレームとリセット版を基準に、材質 callback 後の資源状態を照合する。
+    // 抽出開始時の資源フレームとリセット版を基準に、材質 callback 後の資源状態を照合する。
     const uint64_t resourceFrame = context.resources.FrameStamp();
     context.frameStamp = resourceFrame;
     context.time = Time::time;
@@ -140,29 +153,38 @@ void ExtractRenderScene(RenderPassContext& context, RenderFrameGeometryCache* fr
 
     const uint64_t resourceResetVersion = context.resources.GetResetVersion();
     const bool rayTracingInputs = CurrentRayMaterialInputs(context);
-    /// @note 同一フレームの姿勢はビュー間で共有できる。ビュー固有の材質・選択・変形入力は別に持つ。
+    // 同一フレームの姿勢はビュー間で共有できる。ビュー固有の材質・選択・変形入力は別に持つ。
     auto [snapshot, skinnedObjects] =
         AcquireFrameGeometry(context, frameGeometry, rayTracingInputs, resourceResetVersion);
-    /// @note このビューの変形結果を先に解決し、材質の需要判定が実際に描く形状を参照できるようにする。
+    // このビューの変形結果を先に解決し、材質の需要判定が実際に描く形状を参照できるようにする。
     auto preparedItemIndices = RefreshViewMeshInputs(context, *snapshot, rayTracingInputs, skinnedObjects);
     auto [omittedItemIndices, selectedOrdinals] = ResolveViewMaterials(context, *snapshot, selection, rayTracingInputs,
         materialDemandTrace, materialResolver);
     ExtractObjectMasks(context, *snapshot);
     ExtractSceneEffects(context, *snapshot);
-    /// @note 材質・環境の callback 後に、資源の状態が変わって省略した材質が必要になっていないか再確認する。
+    // 材質・環境の callback 後に、資源の状態が変わって省略した材質が必要になっていないか再確認する。
     RepairViewMaterialBindings(context, *snapshot, omittedItemIndices,
         resourceFrame, resourceResetVersion, materialDemandTrace);
     RefreshPreparedMeshOutputs(*snapshot, preparedItemIndices);
 
     if (!context.scene.GetEntities<WaterfallPart>().empty()) {
         const auto objects = snapshot->Objects();
-        for (std::uint32_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex)
-            if (objects[objectIndex].waterfallFarIndexStart != 0) snapshot->waterfallObjects.push_back(objectIndex);
+        // 遠景用の下位メッシュを持つ滝だけを、後段の描画切り替えへ渡す。
+        for (std::uint32_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+            if (objects[objectIndex].waterfallFarIndexStart == 0) {
+                continue;
+            }
+            snapshot->waterfallObjects.push_back(objectIndex);
+        }
     }
-    if (!omittedItemIndices.empty() || !preparedItemIndices.empty()) RetainSpatialUpdateForCompletion(*snapshot);
+
+    const bool hasPendingViewGeometry = !omittedItemIndices.empty() || !preparedItemIndices.empty();
+    if (hasPendingViewGeometry) {
+        RetainSpatialUpdateForCompletion(*snapshot);
+    }
     RecordPreparedSnapshotItems(snapshot, std::move(preparedItemIndices));
     snapshot->selection.Publish(std::move(selectedOrdinals));
-    /// @note 公開先は const の共有参照。以降の描画パスは同じ抽出結果を読む。
+    // 公開先は const の共有参照。以降の描画パスは同じ抽出結果を読む。
     context.renderScene = std::move(snapshot);
     material_demand_detail::RetainPendingBindings(context, context.renderScene, std::move(omittedItemIndices));
     materialDemandTrace.Complete(context);

@@ -19,4 +19,4 @@ public:
     AssetSession& operator=(const AssetSession&) = delete;
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

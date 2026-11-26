@@ -18,40 +18,37 @@
 namespace fbzz::scene {
 
 struct PostProcessVolumeComponent {
-    bool enabled = true;
+    bool enabled = true; ///< このボリュームをビューのポストプロセス合成に含める。
 
     /// @note 適用するプロファイル (.fzdata)。未アサインのボリュームは何もしない。
     /// @note インライン設定を持たせないのは、複数のボリューム / シーンで同じルックを使うと
     /// @note フィールドが複製され調整が全箇所に及ぶため。プロファイル参照に一本化し、
     /// @note 「今どちらが効いているか」を確かめるコストを無くす。
-    asset::Asset<asset::PostProcessProfile> profile;
+    asset::Asset<asset::PostProcessProfile> profile; ///< 合成するプロファイルへの参照。未設定や解決失敗時は適用しない。
 
-    /// @note true: 距離に関係なく常時適用 / false: influenceRadius の球内でのみ適用
-    bool isGlobal = true;
+    bool isGlobal = true; ///< true: 距離に関係なく常時適用 / false: influenceRadius の球内でのみ適用
 
     /// @note 合成順序。小さいものから順にブレンドするため、大きいほど後勝ちで強く出る。
     /// @note 「屋外(全体) → 洞窟(局所) → ボス演出(最優先)」のような重ね方を決定的にするため。
     /// @note 順序が View の走査順に依存すると、GameObject を作り直しただけで見た目が変わる。
-    int priority = 0;
+    int priority = 0; ///< ボリュームの合成順。大きい値ほど後で適用する。
 
-    /// @note このボリューム自体の効き具合 (0=無効, 1=完全適用)
-    float blendWeight = 1.0f;
+    float blendWeight = 1.0f; ///< このボリューム自体の効き具合 (0=無効, 1=完全適用)
 
-    /// @note isGlobal=false 時の球影響半径 [m]
-    float influenceRadius = 10.0f;
+    float influenceRadius = 10.0f; ///< isGlobal=false 時の球影響半径 [m]
 
     /// @note 境界の内側でこの距離だけかけて 0 へフェードする [m]
     /// @note 半径の内外で 0/1 に切り替わると、境界をまたいだ瞬間にルックが飛んで見える。
-    float blendDistance = 2.0f;
+    float blendDistance = 2.0f; ///< 球の境界から内側へ影響が強くなる距離（ワールド m）。
 
     const char* GetTypeName() const { return "PostProcessVolume"; }
 
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
-        /// @note DataAssetRef の Field オーバーロードにより、Inspector には
-        /// @note .fzdata のドラッグ&ドロップスロットが出る。
-        /// @note シリアライズ時は path 文字列として保存され、GuidRefCodec が guid: へ変換する。
+        // DataAssetRef の Field オーバーロードにより、Inspector には
+        // .fzdata のドラッグ&ドロップスロットが出る。
+        // シリアライズ時は path 文字列として保存され、GuidRefCodec が guid: へ変換する。
         r.BeginField("profile", "Profile");
         r.Field("profile", profile.ref);
         r.EndField();

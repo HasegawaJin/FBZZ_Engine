@@ -13,36 +13,34 @@
 namespace fbzz::asset {
 struct Skeleton;
 struct ClothSkinBone {
-    std::string name;
-    math::Matrix4 inverseBind = math::Matrix4::Identity();
+    std::string name; ///< 変形先の骨格ノードを照合するスキニング骨の名前。
+    math::Matrix4 inverseBind = math::Matrix4::Identity(); ///< バインド姿勢で頂点を対応する骨空間へ変換する逆バインド行列。
 };
 /// @note position はスキニング前の元頂点座標。ウェイトは非負・正規化済み、正ウェイトのボーンは重複しない。
 struct ClothSkinWeight {
-    math::Vector3 position{};
-    std::array<uint32_t, 4> boneIndices{};
-    std::array<float, 4> weights{};
+    math::Vector3 position{}; ///< スキニングで変形を加える、バインド時の布の位置。
+    std::array<uint32_t, 4> boneIndices{}; ///< この位置に影響を与える skinBones の添字。最大 4 骨。
+    std::array<float, 4> weights{}; ///< boneIndices と同じ並びで保持する骨の影響重み。
 };
 /// @note 三角形の重心座標と、辺方向・面内直交方向・法線方向のローカル [m] オフセット。
 struct ClothRenderBinding {
-    std::array<uint32_t, 3> particles{};
-    math::Vector3 barycentric{1, 0, 0};
-    math::Vector3 offset{};
+    std::array<uint32_t, 3> particles{}; ///< 描画頂点を復元する三角形のソルバー粒子の添字。
+    math::Vector3 barycentric{1, 0, 0}; ///< particles の 3 点を補間する重心座標。
+    math::Vector3 offset{}; ///< 粒子三角形から補間した位置に追加する描画頂点のオフセット。
 };
 /// @note ローカル座標 [m]。同位置でも別の質点 ID は溶接しない。三角形は描画頂点を参照する。
 /// @see Docs/design/cloth.md
 struct ClothAsset {
-    std::vector<renderer::Vertex> vertices;
-    std::vector<uint32_t> indices;
-    std::vector<math::Vector3> particles;
-    std::vector<uint32_t> renderToParticle;
-    /// @note renderBindings 使用時は物理三角形を独立して保存し、renderToParticle は空にする。
-    std::vector<uint32_t> simulationIndices;
-    std::vector<ClothRenderBinding> renderBindings;
-    std::vector<uint32_t> pins;
-    std::vector<ClothSkinBone> skinBones;
-    std::vector<ClothSkinWeight> skinWeights;
-    /// @note 読み込みごとに更新し、ホットリロード時にソルバーを再構築する。ファイルには保存しない。
-    uint64_t revision = 0;
+    std::vector<renderer::Vertex> vertices; ///< 布の描画メッシュの元頂点列。
+    std::vector<uint32_t> indices; ///< vertices を参照する描画用の三角形インデックス列。
+    std::vector<math::Vector3> particles; ///< 布ソルバーへ渡す初期の粒子位置列。
+    std::vector<uint32_t> renderToParticle; ///< 描画頂点の添字から対応するソルバー粒子の添字を引く表。
+    std::vector<uint32_t> simulationIndices; ///< renderBindings 使用時は物理三角形を独立して保存し、renderToParticle は空にする。
+    std::vector<ClothRenderBinding> renderBindings; ///< 描画頂点をソルバー粒子三角形の変形へ対応付ける表。
+    std::vector<uint32_t> pins; ///< ソルバーで固定する初期粒子の添字列。
+    std::vector<ClothSkinBone> skinBones; ///< 布のスキニング入力に使う骨と逆バインドの列。
+    std::vector<ClothSkinWeight> skinWeights; ///< スキニングする位置ごとの骨番号と重み列。
+    uint64_t revision = 0; ///< 読み込みごとに更新し、ホットリロード時にソルバーを再構築する。ファイルには保存しない。
 };
 
 /// @return 不正な面、未使用質点、範囲外の対応・固定点、非有限値なら false。

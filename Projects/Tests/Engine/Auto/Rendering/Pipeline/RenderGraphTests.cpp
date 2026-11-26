@@ -131,8 +131,8 @@ TEST_F(RenderGraphTest, ExecutesLivePassesInRegistrationOrder)
 /// @brief Keeps relative order of existing passes when another is inserted.
 TEST_F(RenderGraphTest, KeepsRelativeOrderOfExistingPassesWhenAnotherIsInserted)
 {
-    /// @note 「追加順 = 優先度」の約束。ここが崩れると、パスを 1 本足しただけで
-    ///       無関係なパスの相対順序が入れ替わり、絵が静かに変わる。
+    // 「追加順 = 優先度」の約束。ここが崩れると、パスを 1 本足しただけで
+    // 無関係なパスの相対順序が入れ替わり、絵が静かに変わる。
     const auto orderWith = [](bool withExtra) {
         RG graph;
         graph.DeclareResource("HDR", TransientRT());
@@ -158,8 +158,8 @@ TEST_F(RenderGraphTest, KeepsRelativeOrderOfExistingPassesWhenAnotherIsInserted)
 /// @brief Produces identical order across repeated plans.
 TEST_F(RenderGraphTest, ProducesIdenticalOrderAcrossRepeatedPlans)
 {
-    /// @note producer / readersSinceLastWrite / byName が unordered_map を経由するので、
-    ///       実装が «たまたま» 決まった順に依存していると、ここで揺れる。
+    // producer / readersSinceLastWrite / byName が unordered_map を経由するので、
+    // 実装が «たまたま» 決まった順に依存していると、ここで揺れる。
     RG graph;
     graph.DeclareResource("A", TransientRT());
     graph.DeclareResource("B", TransientRT());
@@ -182,8 +182,8 @@ TEST_F(RenderGraphTest, ProducesIdenticalOrderAcrossRepeatedPlans)
 /// @brief Does not deadlock when a pass reads and writes the same resource.
 TEST_F(RenderGraphTest, DoesNotDeadlockWhenAPassReadsAndWritesTheSameResource)
 {
-    /// @note ReadWrite は RAW と WAR の両方の辺を張るが、自分自身への辺は張ってはいけない。
-    ///       張ると indegree が 0 に戻らず、そのパスが実行順から丸ごと落ちる。
+    // ReadWrite は RAW と WAR の両方の辺を張るが、自分自身への辺は張ってはいけない。
+    // 張ると indegree が 0 に戻らず、そのパスが実行順から丸ごと落ちる。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Output", ImportedRT());
@@ -203,7 +203,7 @@ TEST_F(RenderGraphTest, DoesNotDeadlockWhenAPassReadsAndWritesTheSameResource)
 /// @brief Orders overwriting pass after every reader of the previous generation.
 TEST_F(RenderGraphTest, OrdersOverwritingPassAfterEveryReaderOfThePreviousGeneration)
 {
-    /// @note WAR: HDR を読む Bloom / SSAO を追い越して HDR を上書きしてはいけない。
+    // WAR: HDR を読む Bloom / SSAO を追い越して HDR を上書きしてはいけない。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Output", ImportedRT());
@@ -247,7 +247,7 @@ TEST_F(RenderGraphTest, CullsPassesThatNoOutputDependsOn)
 /// @brief Keeps passes that opted out of culling even when unreachable.
 TEST_F(RenderGraphTest, KeepsPassesThatOptedOutOfCullingEvenWhenUnreachable)
 {
-    /// @note 外部副作用だけが目的のパス (IBL の BRDF LUT 焼き付けなど) の受け皿。
+    // 外部副作用だけが目的のパス (IBL の BRDF LUT 焼き付けなど) の受け皿。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Output", ImportedRT());
@@ -282,8 +282,8 @@ TEST_F(RenderGraphTest, KeepsEveryPassWhenNoOutputIsDeclared)
 /// @brief Rejects plan when no live pass writes a required output.
 TEST_F(RenderGraphTest, RejectsPlanWhenNoLivePassWritesARequiredOutput)
 {
-    /// @note 実際に起きた不具合の回帰。Composite の «出力先を LDR にするか Output にするか» の
-    ///       判定が RenderSystem 側とパス側で食い違うと、Output を誰も書かないフレームになる。
+    // 実際に起きた不具合の回帰。Composite の «出力先を LDR にするか Output にするか» の
+    // 判定が RenderSystem 側とパス側で食い違うと、Output を誰も書かないフレームになる。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("LDR", TransientRT());
@@ -318,8 +318,8 @@ TEST_F(RenderGraphTest, RejectsPlanWhenAReadResourceHasNoProducerAndIsNotImporte
 /// @brief Ignores unresolved reads of passes that get culled.
 TEST_F(RenderGraphTest, IgnoresUnresolvedReadsOfPassesThatGetCulled)
 {
-    /// @note 申告を契約にするのは «実際に実行されるパス» だけ。刈られるパスの申告漏れで
-    ///       Plan 全体を落とすと、設定を 1 つ切った途端に画面が出なくなる。
+    // 申告を契約にするのは «実際に実行されるパス» だけ。刈られるパスの申告漏れで
+    // Plan 全体を落とすと、設定を 1 つ切った途端に画面が出なくなる。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Missing", TransientRT());
@@ -349,7 +349,7 @@ TEST_F(RenderGraphTest, AllowsReadingAnImportedResourceWithoutAnyProducer)
 /// @brief Schedules producer before consumer even when registered later.
 TEST_F(RenderGraphTest, SchedulesProducerBeforeConsumerEvenWhenRegisteredLater)
 {
-    /// @note 登録順は正しいトポロジカル順でなくてよい。依存が順序を決める。
+    // 登録順は正しいトポロジカル順でなくてよい。依存が順序を決める。
     RG graph;
     graph.DeclareResource("Shadow", TransientRT());
     graph.DeclareResource("Output", ImportedRT());
@@ -365,8 +365,8 @@ TEST_F(RenderGraphTest, SchedulesProducerBeforeConsumerEvenWhenRegisteredLater)
 /// @brief Culls independently of registration order.
 TEST_F(RenderGraphTest, CullsIndependentlyOfRegistrationOrder)
 {
-    /// @note 生存判定も «後ろから前へ 1 回» の走査ではなく、出力から辿れるかで決まる。
-    ///       消費者より後ろに登録された生産者が刈られてはいけない。
+    // 生存判定も «後ろから前へ 1 回» の走査ではなく、出力から辿れるかで決まる。
+    // 消費者より後ろに登録された生産者が刈られてはいけない。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Unused", TransientRT());
@@ -385,8 +385,8 @@ TEST_F(RenderGraphTest, CullsIndependentlyOfRegistrationOrder)
 /// @brief Rejects plan when passes form a cycle.
 TEST_F(RenderGraphTest, RejectsPlanWhenPassesFormACycle)
 {
-    /// @note 並べ替えができるようになった以上、循環は本当に作れる。
-    ///       無限ループにならず false を返すこと。
+    // 並べ替えができるようになった以上、循環は本当に作れる。
+    // 無限ループにならず false を返すこと。
     RG graph;
     graph.DeclareResource("Encoded", TransientRT());
     graph.DeclareResource("Decoded", TransientRT());
@@ -406,9 +406,9 @@ TEST_F(RenderGraphTest, RejectsPlanWhenPassesFormACycle)
 /// @brief Linearises mutually dependent passes by write generation.
 TEST_F(RenderGraphTest, LinearisesMutuallyDependentPassesByWriteGeneration)
 {
-    /// @note 相互参照«に見える»構成でも循環にはならない。依存辺は必ず自分より前に登録された
-    ///       パスへ向かうので、A→B と B→A が同時に張られることが構造的に起きないため。
-    ///       「循環でグラフが止まる」を心配しなくてよい根拠をここに固定する。
+    // 相互参照«に見える»構成でも循環にはならない。依存辺は必ず自分より前に登録された
+    // パスへ向かうので、A→B と B→A が同時に張られることが構造的に起きないため。
+    // 「循環でグラフが止まる」を心配しなくてよい根拠をここに固定する。
     RG graph;
     graph.DeclareResource("A", TransientRT());
     graph.DeclareResource("B", TransientRT());
@@ -464,8 +464,8 @@ TEST_F(RenderGraphTest, FallsBackToRegistrationOrderWhenDependenciesLeaveTheChoi
 /// @brief Interleaves chains to shorten lifetimes under minimize lifetimes.
 TEST_F(RenderGraphTest, InterleavesChainsToShortenLifetimesUnderMinimizeLifetimes)
 {
-    /// @note A は UseA で死ぬ。先に UseA まで走らせてしまえば、B を作る時点で A は既に居ない。
-    ///       登録順のままだと A と B が同時に生きる区間ができる。
+    // A は UseA で死ぬ。先に UseA まで走らせてしまえば、B を作る時点で A は既に居ない。
+    // 登録順のままだと A と B が同時に生きる区間ができる。
     RG graph;
     BuildTwoIndependentChains(graph);
     graph.SetSchedulePolicy(RG::SchedulePolicy::MinimizeLifetimes);
@@ -479,8 +479,8 @@ TEST_F(RenderGraphTest, InterleavesChainsToShortenLifetimesUnderMinimizeLifetime
 /// @brief Keeps write generation order regardless of policy.
 TEST_F(RenderGraphTest, KeepsWriteGenerationOrderRegardlessOfPolicy)
 {
-    /// @note 同じリソースへの書き込み順は «意図» なので、どの方針でも動かしてはいけない。
-    ///       Sky は Geometry の上に描く。入れ替わったら絵が変わる。
+    // 同じリソースへの書き込み順は «意図» なので、どの方針でも動かしてはいけない。
+    // Sky は Geometry の上に描く。入れ替わったら絵が変わる。
     const auto orderUnder = [](RG::SchedulePolicy policy) {
         RG graph;
         graph.DeclareResource("HDR", TransientRT());
@@ -509,7 +509,7 @@ TEST_F(RenderGraphTest, KeepsWriteGenerationOrderRegardlessOfPolicy)
 /// @brief Agrees between policies when the order is fully constrained.
 TEST_F(RenderGraphTest, AgreesBetweenPoliciesWhenTheOrderIsFullyConstrained)
 {
-    /// @note 依存が一本道なら方針は結果に影響しない。
+    // 依存が一本道なら方針は結果に影響しない。
     const auto orderUnder = [](RG::SchedulePolicy policy) {
         RG graph;
         graph.DeclareResource("A", TransientRT());
@@ -557,7 +557,7 @@ TEST_F(RenderGraphTest, DescribesExecutionOrderCulledPassesAndLifetimes)
 /// @brief Omits timing from the description so diffs stay stable.
 TEST_F(RenderGraphTest, OmitsTimingFromTheDescriptionSoDiffsStayStable)
 {
-    /// @note 計測値が混ざるとフレームごとに差分が出て、順序の変化が埋もれる。
+    // 計測値が混ざるとフレームごとに差分が出て、順序の変化が埋もれる。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Output", ImportedRT());
@@ -571,7 +571,7 @@ TEST_F(RenderGraphTest, OmitsTimingFromTheDescriptionSoDiffsStayStable)
     ASSERT_TRUE(graph.Execute());
     const std::string second = graph.DescribeLastPlan();
 
-    /// @note 2 回実行すれば計測値は必ず違う。それでもテキストが一致することが «入っていない» 証拠。
+    // 2 回実行すれば計測値は必ず違う。それでもテキストが一致することが «入っていない» 証拠。
     EXPECT_EQ(first, second);
 }
 
@@ -599,8 +599,8 @@ TEST_F(RenderGraphTest, InvokesCallbacksOfLivePassesOnlyAndInExecutionOrder)
 /// @brief Reuses an injected plan instead of replanning.
 TEST_F(RenderGraphTest, ReusesAnInjectedPlanInsteadOfReplanning)
 {
-    /// @note RenderPipeline がトポロジ不変フレームで Plan をスキップする経路。
-    ///       注入したプランがそのまま実行順として使われること。
+    // RenderPipeline がトポロジ不変フレームで Plan をスキップする経路。
+    // 注入したプランがそのまま実行順として使われること。
     RG source;
     source.DeclareResource("HDR", TransientRT());
     source.DeclareResource("Output", ImportedRT());
@@ -625,8 +625,8 @@ TEST_F(RenderGraphTest, ReusesAnInjectedPlanInsteadOfReplanning)
 /// @brief Clears profiles when a plan is injected.
 TEST_F(RenderGraphTest, ClearsProfilesWhenAPlanIsInjected)
 {
-    /// @note profiles は Execute が毎回書き直す。注入元の計測値が混ざると
-    ///       AnalysisPanel が «実行していないフレームの時間» を表示する。
+    // profiles は Execute が毎回書き直す。注入元の計測値が混ざると
+    // AnalysisPanel が «実行していないフレームの時間» を表示する。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Output", ImportedRT());

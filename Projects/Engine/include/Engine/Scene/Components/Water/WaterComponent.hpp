@@ -69,18 +69,15 @@ enum class WaterRippleDirectionMode { MATERIAL, SCENE_WIND, MANUAL };
 /// @brief 生成海面または共有波アセットに重ねる水面ごとの設定。
 /// @note 角度はワールド XZ 平面で +X から +Z へ向かう進行方向 [°]。
 struct WaterWaveAuthoring {
-    WaterSeaPreset preset = WaterSeaPreset::AUTHORED;
-    bool overrideHeading = false;
-    float headingDegrees = 0.0f;
-    /// @note 全角幅。負値では元の角幅を使う。
-    float spreadDegrees = -1.0f;
-    float secondaryHeadingDegrees = 60.0f;
-    /// @note 第 2 波群の相対振幅。0 で無効。
-    float secondaryStrength = 0.0f;
-    /// @note Gerstner うねりの時間倍率。0 では初期位相を参照する。
-    float speedMultiplier = 1.0f;
-    WaterRippleDirectionMode rippleMode = WaterRippleDirectionMode::MATERIAL;
-    float rippleHeadingDegrees = 0.0f;
+    WaterSeaPreset preset = WaterSeaPreset::AUTHORED; ///< 波の元設定。AUTHORED は材質または波アセットの波を使う。
+    bool overrideHeading = false; ///< 主波群の進行方向を headingDegrees で上書きする。
+    float headingDegrees = 0.0f; ///< 主波群の進行方向（ワールド XZ、+X から +Z への度）。
+    float spreadDegrees = -1.0f; ///< 全角幅。負値では元の角幅を使う。
+    float secondaryHeadingDegrees = 60.0f; ///< 第 2 波群の進行方向（ワールド XZ、+X から +Z への度）。
+    float secondaryStrength = 0.0f; ///< 第 2 波群の相対振幅。0 で無効。
+    float speedMultiplier = 1.0f; ///< Gerstner うねりの時間倍率。0 では初期位相を参照する。
+    WaterRippleDirectionMode rippleMode = WaterRippleDirectionMode::MATERIAL; ///< シェーディングのさざ波方向を材質・流れまたは手動角度から選ぶ。
+    float rippleHeadingDegrees = 0.0f; ///< 手動指定のさざ波の進行方向（ワールド XZ、度）。
 
     void Reflect(IReflector& r)
     {
@@ -130,29 +127,23 @@ inline constexpr float kWaterSurfaceFlowReference = 4.0f;
 /// @note スロットへ新しい実体を差し込むため、古いポインタは黙って別の場を指す。
 /// @see Docs/design/water-waves.md 「流れの場が水面に出る 3 つの道」
 struct WaterSurfaceFlow {
-    FlowFieldType kind   = FlowFieldType::Vortex; ///< @brief 型。CB へは float として渡る
-    math::Vector2 center = math::Vector2::ZERO;   ///< @brief ワールド XZ [m] (Baked は場の中心)
-    float         radius = 0.0f;                  ///< @brief 影響半径 [m]。0 なら形にも質感にも出ない
-    /// @brief 形の変位 [m]。穴は負、盛り上がりは正、形を持たない型は 0。Baked では上限値 (負)。
-    float         height = 0.0f;
-    /// @brief 流速 [m/s]。Vortex は符号が回る向き (軸 y の符号)、Baked だけ焼いた値に掛ける無次元の倍率。
-    float         speed  = 0.0f;
-    /// @brief 距離減衰の指数。FlowFieldSettings::falloffPower をそのまま持つ。
-    float         falloffPower = 2.0f;
-    math::Vector2 direction = math::Vector2::ZERO; ///< @brief Uniform の XZ 向き (正規化)
-    /// @brief さざ波と泡のムラへ回す強さ [0,1]。Uniform / Curl だけが持つ。
-    float         chop = 0.0f;
-    /// @note 局所うねりと螺旋渦の波長 [m] と近景メッシュの帯域係数。
-    float         swellWavelength = 0.0f;
-    float         swellNearFade = 1.0f;
+    FlowFieldType kind   = FlowFieldType::Vortex; ///< 型。CB へは float として渡る
+    math::Vector2 center = math::Vector2::ZERO; ///< ワールド XZ [m] (Baked は場の中心)
+    float         radius = 0.0f; ///< 影響半径 [m]。0 なら形にも質感にも出ない
+    float         height = 0.0f; ///< 形の変位 [m]。穴は負、盛り上がりは正、形を持たない型は 0。Baked では上限値 (負)。
+    float         speed  = 0.0f; ///< 流速 [m/s]。Vortex は符号が回る向き (軸 y の符号)、Baked だけ焼いた値に掛ける無次元の倍率。
+    float         falloffPower = 2.0f; ///< 距離減衰の指数。FlowFieldSettings::falloffPower をそのまま持つ。
+    math::Vector2 direction = math::Vector2::ZERO; ///< Uniform の XZ 向き (正規化)
+    float         chop = 0.0f; ///< さざ波と泡のムラへ回す強さ [0,1]。Uniform / Curl だけが持つ。
+    float         swellWavelength = 0.0f; ///< 局所うねりと螺旋渦の波長 [m] と近景メッシュの帯域係数。
+    float         swellNearFade = 1.0f; ///< 局所うねりの頂点変位に掛ける、格子の分解能に応じた倍率。
 
     /// @name Baked 型のときだけ使う
     /// @{
-    const fluid::VectorFieldAsset* vectorField = nullptr; ///< @brief 非所有。今フレームだけ有効
-    math::Quaternion inverseRotation{};                   ///< @brief ワールド → 場のローカル
-    math::Vector3    extents = { 1.0f, 1.0f, 1.0f };      ///< @brief 場を貼る箱の半径 [m]
-    /// @brief 水面の基準面 Y − 場の中心 Y [m]。標本化する高さを «波を乗せる前» に固定するため。
-    float            planeOffsetY = 0.0f;
+    const fluid::VectorFieldAsset* vectorField = nullptr; ///< 非所有。今フレームだけ有効
+    math::Quaternion inverseRotation{}; ///< ワールド → 場のローカル
+    math::Vector3    extents = { 1.0f, 1.0f, 1.0f }; ///< 場を貼る箱の半径 [m]
+    float            planeOffsetY = 0.0f; ///< 水面の基準面 Y − 場の中心 Y [m]。標本化する高さを «波を乗せる前» に固定するため。
     /// @}
 };
 
@@ -174,206 +165,152 @@ inline constexpr float kWaterRippleHeightScale = 0.5f;
 /// @note GameView で寿命が 2 回進み、さらに CPU 側の GetSurfaceHeightAt が読めない。
 /// @see Docs/design/water-waves.md 「波紋の帯分け」
 struct WaterRipple {
-    math::Vector2 center    = math::Vector2::ZERO; ///< @brief ワールド XZ [m]
-    float         radius    = 0.0f;                ///< @brief 今の輪の半径 [m]
-    float         width     = 0.25f;               ///< @brief 輪の太さ [m]
-    float         amplitude = 0.0f;                ///< @brief 強さ [0,1]
-    float         speed     = 1.2f;                ///< @brief 広がる速さ [m/s]
-    float         decayRate = 1.3f;                ///< @brief 減衰 [1/s]
-    /// @brief 頂点グリッドで刻めるか [0,1]。高さにだけ掛ける (法線は全部書く)。
-    float         meshFade  = 0.0f;
-    /// @brief この半径を超えたら捨てる [m]。水面の広さから WaterSystem が決める。
-    float         maxRadius = 0.0f;
+    math::Vector2 center    = math::Vector2::ZERO; ///< ワールド XZ [m]
+    float         radius    = 0.0f; ///< 今の輪の半径 [m]
+    float         width     = 0.25f; ///< 輪の太さ [m]
+    float         amplitude = 0.0f; ///< 強さ [0,1]
+    float         speed     = 1.2f; ///< 広がる速さ [m/s]
+    float         decayRate = 1.3f; ///< 減衰 [1/s]
+    float         meshFade  = 0.0f; ///< 頂点グリッドで刻めるか [0,1]。高さにだけ掛ける (法線は全部書く)。
+    float         maxRadius = 0.0f; ///< この半径を超えたら捨てる [m]。水面の広さから WaterSystem が決める。
 };
 
 /// @brief WaterComponent — シーン上の水面 1 面分。
 struct WaterComponent {
     /// @name ジオメトリ
     /// @{
-    uint32_t resolutionX = 64;
-    uint32_t resolutionZ = 64;
-    float    extentX     = 100.0f;
-    float    extentZ     = 100.0f;
-    /// @brief 描画、物理照会、水域の所属判定で共有する平面形状。
-    WaterSurfaceShape surfaceShape = WaterSurfaceShape::RECTANGLE;
-    /// @brief 湖の輪郭および川の中心線を表す安定 ID 付きのローカル制御点。
-    std::vector<WaterSplinePoint> splinePoints;
-    std::vector<WaterLakeIslandPoint> lakeIslandPoints;
-    /// @brief 位置の取得元として、直接指定の数値点または順序付き TargetPoint 参照を選ぶ。
-    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
-    /// @brief 現在の TargetPoint の解決値か、直近に明示ベイクした所有者ローカル座標かを選ぶ。
-    ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE;
-    /// @brief TargetPoint の順序付き参照。ID と水の属性はこの所有者で設定する。
-    std::vector<WaterControlPointBinding> pointBindings;
-    /// @brief POINT_OBJECTS で指定した湖の輪郭に使う所有者ローカルの Y 座標。
-    float lakePlaneHeight = 0.0f;
-    /// @brief 直近に明示ベイクした所有者ローカルの水面制御点。
-    std::vector<WaterSplinePoint> bakedSplinePoints;
-    /// @brief 直近の明示的な静的ベイクで記録した取得元の署名。
-    std::uint64_t bakedInputSignature = 0;
-    /// @brief 直近の明示的な静的ベイクで使用した取得元のモード。
-    ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
-    /// @brief 直近の明示的な静的ベイクとともに記録した水面の解釈。
-    WaterSurfaceShape bakedSurfaceShape = WaterSurfaceShape::RECTANGLE;
-    /// @brief 直近の明示的な静的ベイクで記録した湖の平面。
-    float bakedLakePlaneHeight = 0.0f;
-    /// @brief 直近の明示的な静的ベイクを解釈するときのアダプター版。
-    std::uint32_t bakedAdapterVersion = 0;
-    /// @brief bakedSplinePoints に明示ベイクした数値スナップショットがあるか。
-    bool bakeValid = false;
-    /// @brief 区間当たりの Catmull-Rom サンプル数。数値スナップショットの生成時に上限を適用する。
-    std::uint32_t splineSamplesPerSegment = 8;
-    /// @brief 共有の細分化スプラインメッシュで目標とする最大辺長 [ワールド m]。
-    float splineMeshCellSize = 2.0f;
+    uint32_t resolutionX = 64; ///< 矩形水面のローカル X 方向の格子分割数。
+    uint32_t resolutionZ = 64; ///< 矩形水面のローカル Z 方向の格子分割数。
+    float    extentX     = 100.0f; ///< 有限矩形水面のローカル X 方向の全幅（m）。
+    float    extentZ     = 100.0f; ///< 有限矩形水面のローカル Z 方向の全幅（m）。
+    WaterSurfaceShape surfaceShape = WaterSurfaceShape::RECTANGLE; ///< 描画、物理照会、水域の所属判定で共有する平面形状。
+    std::vector<WaterSplinePoint> splinePoints; ///< 湖の輪郭および川の中心線を表す安定 ID 付きのローカル制御点。
+    std::vector<WaterLakeIslandPoint> lakeIslandPoints; ///< スプライン湖の水面から除く島の輪郭点。
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE; ///< 位置の取得元として、直接指定の数値点または順序付き TargetPoint 参照を選ぶ。
+    ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE; ///< 現在の TargetPoint の解決値か、直近に明示ベイクした所有者ローカル座標かを選ぶ。
+    std::vector<WaterControlPointBinding> pointBindings; ///< TargetPoint の順序付き参照。ID と水の属性はこの所有者で設定する。
+    float lakePlaneHeight = 0.0f; ///< POINT_OBJECTS で指定した湖の輪郭に使う所有者ローカルの Y 座標。
+    std::vector<WaterSplinePoint> bakedSplinePoints; ///< 直近に明示ベイクした所有者ローカルの水面制御点。
+    std::uint64_t bakedInputSignature = 0; ///< 直近の明示的な静的ベイクで記録した取得元の署名。
+    ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE; ///< 直近の明示的な静的ベイクで使用した取得元のモード。
+    WaterSurfaceShape bakedSurfaceShape = WaterSurfaceShape::RECTANGLE; ///< 直近の明示的な静的ベイクとともに記録した水面の解釈。
+    float bakedLakePlaneHeight = 0.0f; ///< 直近の明示的な静的ベイクで記録した湖の平面。
+    std::uint32_t bakedAdapterVersion = 0; ///< 直近の明示的な静的ベイクを解釈するときのアダプター版。
+    bool bakeValid = false; ///< bakedSplinePoints に明示ベイクした数値スナップショットがあるか。
+    std::uint32_t splineSamplesPerSegment = 8; ///< 区間当たりの Catmull-Rom サンプル数。数値スナップショットの生成時に上限を適用する。
+    float splineMeshCellSize = 2.0f; ///< 共有の細分化スプラインメッシュで目標とする最大辺長 [ワールド m]。
     /// @brief チャンク分割数。水面を chunkCount×chunkCount のサブメッシュに分割し、
     /// @brief チャンク単位でフラスタムカリングする。
-    uint32_t chunkCount = 4;
-    /// @brief 各ビューのカメラ付近へ頂点を寄せ、有限矩形の外周を維持する。
-    bool cameraFocusedGrid = false;
-    /// @brief カメラ付近の目標頂点間隔 [m]。ワールド単位で、均一格子より粗くはしない。
-    float nearCellSize = 2.0f;
-    /// @note 旧格子の設定を保持したまま、共有パッチのビュー別 LOD を選ぶ。
-    bool adaptivePatchLod = false;
-    uint32_t lodPatchResolution = 16;
-    uint32_t lodMaxDepth = 9;
-    uint32_t lodMaxPatches = 1024;
-    /// @note 投影された格子セル幅の目標 [pixel]。幾何学的な高さ誤差の保証ではない。
-    float lodTargetPixels = 8.0f;
-    float lodNearDistance = 256.0f;
-    float lodNearCellSize = 2.0f;
-    bool lodMorphEnabled = false;
-    float lodMorphTransitionWidth = 0.25f;
+    uint32_t chunkCount = 4; ///< 有限矩形の各軸に沿って作る描画チャンクの数。
+    bool cameraFocusedGrid = false; ///< 各ビューのカメラ付近へ頂点を寄せ、有限矩形の外周を維持する。
+    float nearCellSize = 2.0f; ///< カメラ付近の目標頂点間隔 [m]。ワールド単位で、均一格子より粗くはしない。
+    bool adaptivePatchLod = false; ///< 旧格子の設定を保持したまま、共有パッチのビュー別 LOD を選ぶ。
+    uint32_t lodPatchResolution = 16; ///< 適応 LOD の共有パッチ 1 辺に置く格子セルの数。
+    uint32_t lodMaxDepth = 9; ///< 適応 LOD の四分木で許す分割の深さ。
+    uint32_t lodMaxPatches = 1024; ///< 1 ビューで使用する適応 LOD パッチの数の上限。
+    float lodTargetPixels = 8.0f; ///< 投影された格子セル幅の目標 [pixel]。幾何学的な高さ誤差の保証ではない。
+    float lodNearDistance = 256.0f; ///< カメラ近傍で格子間隔の目標を適用する距離（ワールド m）。
+    float lodNearCellSize = 2.0f; ///< カメラ近傍で目標とする適応 LOD の格子幅（ワールド m）。
+    bool lodMorphEnabled = false; ///< 適応 LOD 切り替え時に頂点を段階的に隣接レベルへ寄せる。
+    float lodMorphTransitionWidth = 0.25f; ///< 適応 LOD のモーフを行う区間の相対幅。
     /// @note Rectangle の水平水域を延長し、描画・浮力・水中判定を共有する。深さと除外は維持する。
     /// @note 選択した川の端点を受ける任意の Horizon 水面。
-    EntityRef horizonMaterialReceiver;
-    bool horizonMaterialAtStart = false;
-    float horizonMaterialBlendLength = 80.0f; ///< @note 上流側への移行区間の長さ [ワールド m]。
-    bool farOceanEnabled = false;
-    /// @note active view の far clip を包む外周に掛ける余裕率。
-    float farOceanCoverageScale = 1.05f;
-    /// @note 有限水域の外で着水波紋の頂点変位を落とす距離 [world m]。
-    float farOceanRippleFadeDistance = 4.0f;
+    EntityRef horizonMaterialReceiver; ///< 川の端点を受け、材質を混ぜる Horizon 水面の参照。
+    bool horizonMaterialAtStart = false; ///< Horizon との材質移行に川の始点を使う。false は終点。
+    float horizonMaterialBlendLength = 80.0f; ///< 上流側への移行区間の長さ [ワールド m]。
+    bool farOceanEnabled = false; ///< 矩形水面の外側へ遠景の海面を延ばす。
+    float farOceanCoverageScale = 1.05f; ///< active view の far clip を包む外周に掛ける余裕率。
+    float farOceanRippleFadeDistance = 4.0f; ///< 有限水域の外で着水波紋の頂点変位を落とす距離 [world m]。
     /// @}
 
     /// @name 波 (個体ごとの補正と、任意の共有波アセット)
     /// @{
-    bool  enableGerstnerWaves = true;
-    /// @brief .mat の振幅に掛ける倍率。同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるため。
-    float waveAmplitudeScale  = 1.0f;
-    /// @brief 設定時は .mat の波定義・群・広がりを上書きする。未設定なら従来の .mat 波を使う。
-    DataAssetRef wavesAssetRef = { {}, "WaterWavesAsset" };
-    WaterWaveAuthoring waveAuthoring;
+    bool  enableGerstnerWaves = true; ///< 水面の変位と高さの照会に Gerstner 波を適用する。
+    float waveAmplitudeScale  = 1.0f; ///< .mat の振幅に掛ける倍率。同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるため。
+    DataAssetRef wavesAssetRef = { {}, "WaterWavesAsset" }; ///< 設定時は .mat の波定義・群・広がりを上書きする。未設定なら従来の .mat 波を使う。
+    WaterWaveAuthoring waveAuthoring; ///< 共有波の設定に重ねる、この水面固有の波群・方向・再生速度。
     /// @}
 
     /// @name 物理
     /// @{
-    bool  buoyancyEnabled = true;
-    /// @brief 完全に沈んだときの上向き加速度 [m/s^2]。重力 (9.8) を超えると浮く。
-    float buoyancy        = 15.0f;
-    /// @brief 水中での速度減衰 [1/s]。水流があるときは «水に対する» 速度に掛かる。
-    float waterDrag       = 2.0f;
+    bool  buoyancyEnabled = true; ///< この水面に対応する浮力領域を有効にする。
+    float buoyancy        = 15.0f; ///< 完全に沈んだときの上向き加速度 [m/s^2]。重力 (9.8) を超えると浮く。
+    float waterDrag       = 2.0f; ///< 水中での速度減衰 [1/s]。水流があるときは «水に対する» 速度に掛かる。
     /// @brief 水中判定と浮力領域が共有する水面からの深さ [m]。
     /// @note 水面は厚みを持たない板なので、上限が無いと «水面の真下にある洞窟» の中まで浮力が届く。
-    float buoyancyDepth   = 10.0f;
-    /// @brief 水深がこの値 [world m] に達するまで基波の振幅を浅瀬で滑らかに減衰する。0 で無効。
-    float waveAttenuationDepth = 0.0f;
-    /// @brief 剛体が水面を通過したときに波紋としぶきを出す。
-    bool  splashEnabled   = true;
-    /// @brief 水面接触・水中移動・地面接触から作る泡と局所濁りの設定。
-    WaterInteractionSettings interactionSettings;
+    float buoyancyDepth   = 10.0f; ///< 水面より下で浮力と水中照会が作用する深さ（m）。
+    float waveAttenuationDepth = 0.0f; ///< 水深がこの値 [world m] に達するまで基波の振幅を浅瀬で滑らかに減衰する。0 で無効。
+    bool  splashEnabled   = true; ///< 剛体が水面を通過したときに波紋としぶきを出す。
+    WaterInteractionSettings interactionSettings; ///< 水面接触・水中移動・地面接触から作る泡と局所濁りの設定。
     /// @}
 
     /// @name 水の種類
     /// @{
-    std::string materialPath;
+    std::string materialPath; ///< 水面の描画に使う材質アセットの参照。
     /// @}
 
     /// @name 状態フラグ
     /// @{
-    bool enabled   = true;
-    bool meshDirty = true;
-    bool foamDirty = true;
-    bool texDirty  = true;
+    bool enabled   = true; ///< このコンポーネントを描画と水域処理の対象にする。
+    bool meshDirty = true; ///< 描画用の水面メッシュを作り直す必要がある場合に true。
+    bool foamDirty = true; ///< 水面に沿う泡のマスクを更新する必要がある場合に true。
+    bool texDirty  = true; ///< 水面の描画に使用するテクスチャの準備をやり直す場合に true。
     /// @}
 
     /// @name ランタイム (保存しない)
     /// @{
     /// @brief WaterSystem が毎フレーム、波アセットまたは .mat と倍率・環境風から組み立てた基波。
     /// @brief 描画・浮力・水中判定・スクリプトはすべてこれを読む。
-    std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> waves = {};
-    /// @brief 有効な基波の数。0〜16。本体の反復と GPU の波数はこの範囲だけを使う。
-    std::uint32_t waveCount = 4;
-    /// @brief Rectangle の基流速度 [m/s] (ワールド XZ)。Spline は制御点の flowSpeed を使う。
-    math::Vector2 current = math::Vector2::ZERO;
+    std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> waves = {}; ///< 描画と水面照会で共有する、WaterSystem が解決した基波の実行時配列。
+    std::uint32_t waveCount = 4; ///< 有効な基波の数。0〜16。本体の反復と GPU の波数はこの範囲だけを使う。
+    math::Vector2 current = math::Vector2::ZERO; ///< Rectangle の基流速度 [m/s] (ワールド XZ)。Spline は制御点の flowSpeed を使う。
     /// @brief WaterSystem が毎フレーム書く最密区間の頂点間隔 [m]。
     /// @note 描画の帯域制限だけに使う。浮力・水中判定の波高はこの間隔に依存しない。
-    math::Vector2 cellSize = math::Vector2::ZERO;
-    /// @brief 波の «群» の深さ [0,1]。.mat の waveGrouping をそのまま持つ。
-    float waveGrouping = 0.0f;
-    /// @brief 方向広がり [0,1]。.mat の waveSpread をそのまま持つ。0 で «1 波 1 方向»。
-    float waveSpread = 0.0f;
-    /// @note 解決済みの生成中心角と全角幅 [°]。エディター表示用。
-    math::Vector2 waveDirectionDisplay = math::Vector2::ZERO;
-    /// @note 0 では水面の材質または局所流を使う。この値を参照するのはシェーディングのさざ波帯のみ。
-    math::Vector2 rippleDirectionOverride = math::Vector2::ZERO;
-    /// @brief WaterSystem が FlowFieldFrame から毎フレーム選び直す «この水面に効く流れ»。
-    std::array<WaterSurfaceFlow, kWaterSurfaceFlowCount> surfaceFlows = {};
-    int surfaceFlowCount = 0;
-    /// @brief 生きている着水の輪。WaterSystem が寿命を進め、描画と GetSurfaceHeightAt が読む。
-    std::vector<WaterRipple> ripples;
-    /// @note 滝の接触帯を両方の水面照会で固定する。XY はワールド XZ、ZW は半径 [m]。
-    std::array<math::Vector4, 4> waterfallSeams{}, simulationWaterfallSeams{};
-    /// @note 接続した川と Horizon 水面が、ワールド XZ 上で固定した帯を共有する。
-    std::array<math::Vector4, 4> horizonWaveSeams{}, simulationHorizonWaveSeams{};
+    math::Vector2 cellSize = math::Vector2::ZERO; ///< 描画の波長制限に使う XZ 格子間隔の最密値（ワールド m）。
+    float waveGrouping = 0.0f; ///< 波の «群» の深さ [0,1]。.mat の waveGrouping をそのまま持つ。
+    float waveSpread = 0.0f; ///< 方向広がり [0,1]。.mat の waveSpread をそのまま持つ。0 で «1 波 1 方向»。
+    math::Vector2 waveDirectionDisplay = math::Vector2::ZERO; ///< 解決済みの生成中心角と全角幅 [°]。エディター表示用。
+    math::Vector2 rippleDirectionOverride = math::Vector2::ZERO; ///< 0 では水面の材質または局所流を使う。この値を参照するのはシェーディングのさざ波帯のみ。
+    std::array<WaterSurfaceFlow, kWaterSurfaceFlowCount> surfaceFlows = {}; ///< WaterSystem が FlowFieldFrame から毎フレーム選び直す «この水面に効く流れ»。
+    int surfaceFlowCount = 0; ///< surfaceFlows の先頭から有効な流れの数。
+    std::vector<WaterRipple> ripples; ///< 生きている着水の輪。WaterSystem が寿命を進め、描画と GetSurfaceHeightAt が読む。
+    std::array<math::Vector4, 4> waterfallSeams{}; ///< ライブ照会用の滝の接触帯。XY は中心のワールド XZ、ZW は半径（m）。
+    std::array<math::Vector4, 4> simulationWaterfallSeams{}; ///< 固定ステップで公開した滝の接触帯。成分の契約は waterfallSeams と同じ。
+    std::array<math::Vector4, 4> horizonWaveSeams{}; ///< ライブ照会で使う、川と Horizon 水面のワールド XZ 接続帯。
+    std::array<math::Vector4, 4> simulationHorizonWaveSeams{}; ///< 固定ステップで公開した川と Horizon 水面の接続帯。
     /// @brief LiveQuery surface 用に Terrain から作る不変の数値 snapshot。
     /// @note Simulation は別 pointer と減衰閾値を捕捉し、LiveQuery の再構築で固定stepの評価を変えない。
-    std::shared_ptr<const WaterDepthField> depthField;
-    /// @brief シミュレーションと描画が使用する直近の固定ステップの地形水深マッピング。
-    std::shared_ptr<const WaterDepthField> simulationDepthField;
-    /// @brief シミュレーションの水深マッピングと同時に取得した波の減衰しきい値。
-    float simulationWaveAttenuationDepth = 0.0f;
-    /// @brief Scene 変換と制御点から作る不変の数値水面。保存対象ではない。
-    std::shared_ptr<const WaterSplineSnapshot> splineSnapshot;
-    /// @brief Zone ownerが共有する不変の和集合水面。保存対象ではない。
-    std::shared_ptr<const WaterZoneSnapshot> zoneSnapshot;
-    /// @brief シミュレーション照会が使う、直近の固定ステップで公開された水域。
-    std::shared_ptr<const WaterZoneSnapshot> simulationZoneSnapshot;
-    /// @brief LiveQuery の利用側と描画が共有する除外ボックス。
-    std::shared_ptr<const WaterExclusionSnapshot> exclusionSnapshot;
-    /// @brief シミュレーション用の水面と同じ固定ステップで取得した除外ボックス。
-    std::shared_ptr<const WaterExclusionSnapshot> simulationExclusionSnapshot;
-    /// @brief 未処理の水面接触イベント、活動中の水煙と再利用用のエミッター。
-    WaterInteractionRuntime interactionRuntime;
-    /// @brief 不変のライブ除外スナップショットを再利用するための入力キー。
-    std::uint64_t exclusionSnapshotAttemptSignature = 0;
-    bool exclusionSnapshotAttempted = false;
-    /// @brief シミュレーション照会が使う、直近の固定ステップで公開された独立スプライン。
-    std::shared_ptr<const WaterSplineSnapshot> simulationSplineSnapshot;
-    /// @brief 直近の固定ステップで公開した水面と同時に取得した所有者の姿勢。
-    Transform simulationTransform{};
-    /// @brief シミュレーション用形状と同時に取得した水面形状と Zone の選択。
-    WaterSurfaceShape simulationSurfaceShape = WaterSurfaceShape::RECTANGLE;
-    bool simulationZoneSurfaceSelected = false;
-    /// @brief 有効な Zone がこの水面を所有している間は true。Zone の結果が無効な場合も含む。
-    bool zoneSurfaceSelected = false;
-    /// @brief 最初のシミュレーション公開後は true。無効や空の結果も含む。
-    bool simulationSurfacePublished = false;
-    /// @brief シミュレーション照会で LiveQuery の値に代えて取得済みの水面を使うか。
-    bool simulationReadEnabled = false;
-    /// @brief 直近の固定ステップで公開した水面とともに取得した Zone の所有者。
-    EntityID simulationZoneOwner{};
-    /// @brief Zone memberが参照するownerのEntityID。owner自身と単独水域は無効値。
-    EntityID zoneOwner{};
-    /// @brief 同じ入力の有効・無効な生成結果を毎フレーム再評価しないための runtime key。
-    std::uint64_t splineSnapshotAttemptSignature = 0;
-    bool splineSnapshotAttempted = false;
-    physics::VolumeHandle volumeHandle;
+    std::shared_ptr<const WaterDepthField> depthField; ///< ライブ照会で参照する地形水深の不変スナップショット。
+    std::shared_ptr<const WaterDepthField> simulationDepthField; ///< シミュレーションと描画が使用する直近の固定ステップの地形水深マッピング。
+    float simulationWaveAttenuationDepth = 0.0f; ///< シミュレーションの水深マッピングと同時に取得した波の減衰しきい値。
+    std::shared_ptr<const WaterSplineSnapshot> splineSnapshot; ///< Scene 変換と制御点から作る不変の数値水面。保存対象ではない。
+    std::shared_ptr<const WaterZoneSnapshot> zoneSnapshot; ///< Zone ownerが共有する不変の和集合水面。保存対象ではない。
+    std::shared_ptr<const WaterZoneSnapshot> simulationZoneSnapshot; ///< シミュレーション照会が使う、直近の固定ステップで公開された水域。
+    std::shared_ptr<const WaterExclusionSnapshot> exclusionSnapshot; ///< LiveQuery の利用側と描画が共有する除外ボックス。
+    std::shared_ptr<const WaterExclusionSnapshot> simulationExclusionSnapshot; ///< シミュレーション用の水面と同じ固定ステップで取得した除外ボックス。
+    WaterInteractionRuntime interactionRuntime; ///< 未処理の水面接触イベント、活動中の水煙と再利用用のエミッター。
+    std::uint64_t exclusionSnapshotAttemptSignature = 0; ///< 不変のライブ除外スナップショットを再利用するための入力キー。
+    bool exclusionSnapshotAttempted = false; ///< exclusionSnapshotAttemptSignature の入力で除外領域の準備を試行済み。
+    std::shared_ptr<const WaterSplineSnapshot> simulationSplineSnapshot; ///< シミュレーション照会が使う、直近の固定ステップで公開された独立スプライン。
+    Transform simulationTransform{}; ///< 直近の固定ステップで公開した水面と同時に取得した所有者の姿勢。
+    WaterSurfaceShape simulationSurfaceShape = WaterSurfaceShape::RECTANGLE; ///< シミュレーション用形状と同時に取得した水面形状と Zone の選択。
+    bool simulationZoneSurfaceSelected = false; ///< 直近の固定ステップで Zone がこの水面を所有していた。
+    bool zoneSurfaceSelected = false; ///< 有効な Zone がこの水面を所有している間は true。Zone の結果が無効な場合も含む。
+    bool simulationSurfacePublished = false; ///< 最初のシミュレーション公開後は true。無効や空の結果も含む。
+    bool simulationReadEnabled = false; ///< シミュレーション照会で LiveQuery の値に代えて取得済みの水面を使うか。
+    EntityID simulationZoneOwner{}; ///< 直近の固定ステップで公開した水面とともに取得した Zone の所有者。
+    EntityID zoneOwner{}; ///< Zone memberが参照するownerのEntityID。owner自身と単独水域は無効値。
+    std::uint64_t splineSnapshotAttemptSignature = 0; ///< 同じ入力の有効・無効な生成結果を毎フレーム再評価しないための runtime key。
+    bool splineSnapshotAttempted = false; ///< splineSnapshotAttemptSignature の入力でスプライン水面の生成を試行済み。
+    physics::VolumeHandle volumeHandle; ///< 物理ワールドに登録したこの水面の浮力領域のハンドル。
 
     /// @brief 指定した水面読み取り境界に対応する不変の水深場を選ぶ。
     [[nodiscard]] const WaterDepthField* EffectiveDepthField(WaterSurfaceReadView view) const
     {
         if (view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled
-            && simulationSurfacePublished) return simulationDepthField.get();
+            && simulationSurfacePublished) {
+            return simulationDepthField.get();
+        }
         return depthField.get();
     }
 
@@ -381,7 +318,9 @@ struct WaterComponent {
     [[nodiscard]] float EffectiveWaveAttenuationDepth(WaterSurfaceReadView view) const
     {
         if (view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled
-            && simulationSurfacePublished) return simulationWaveAttenuationDepth;
+            && simulationSurfacePublished) {
+            return simulationWaveAttenuationDepth;
+        }
         return waveAttenuationDepth;
     }
 
@@ -434,12 +373,14 @@ struct WaterComponent {
     /// @brief 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。Water.hlsl の WaveMeshFade と同じ式。
     /// @note Gerstner 波は頂点でしか評価されないため、1 波長あたり数セルしか取れない波は山と谷が
     /// @note セル境界で入れ替わり «別の波» に化ける。刻めない波は消し、細かさは手続きさざ波に任せる。
-    /// @param cell 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
+    /// @param[in] cell 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
     static float WaveMeshFade(float wavelength, math::Vector2 cell)
     {
         const float c = (std::max)(cell.x, cell.y);
-        if (c <= 0.0f) return 1.0f;
-        /// @note smoothstep(2, 3.5, 1 波長あたりのセル数)。下限 2.0 は Nyquist。
+        if (c <= 0.0f) {
+            return 1.0f;
+        }
+        // smoothstep(2, 3.5, 1 波長あたりのセル数)。下限 2.0 は Nyquist。
         const float t = math::Clamp01((wavelength / c - 2.0f) / 1.5f);
         return t * t * (3.0f - 2.0f * t);
     }
@@ -448,12 +389,12 @@ struct WaterComponent {
     /// @note 群が波と同じ向きに進むだけだと波頭が «高さの揃った無限に長い直線» のままになる。
     /// @note 斜めにずらすと包絡が波頭に沿っても変化し、うねりが塊へ割れる。
     static constexpr float WAVE_GROUP_COS = 0.852525f;
-    static constexpr float WAVE_GROUP_SIN = 0.522687f;
+    static constexpr float WAVE_GROUP_SIN = 0.522687f; ///< 波群の向きを基波から 0.55 rad 回転するための正弦値。
 
     /// @brief 波の «群» の包絡 [1-depth, 1+depth]。振幅にそのまま掛ける。
     /// @note 正弦を 4 本足しただけでは全波頭が同じ高さ・形になる。実海面は近い周波数の «うなり»
     /// @note で波が群れ、大きい塊と凪の区間が交互に来る。
-    /// @param index 波の番号 [0,15]。群の波長帯と傾ける向きをここから決める。
+    /// @param[in] index 波の番号 [0,15]。群の波長帯と傾ける向きをここから決める。
     /// @note 群の角周波数を r*omega/2 にするのは、深水波の群速度が位相速度の 1/2 だから。
     /// @note これで «群はゆっくり進み、個々の波頭がその中を追い越していく» 見え方になる。
     /// @warning Water.hlsl の WaveGroupEnvelope と同じ式であること。片方だけ変えると、
@@ -462,7 +403,9 @@ struct WaterComponent {
                                    float worldX, float worldZ, float time, float depth,
                                    float phaseOffsetRadians = 0.0f)
     {
-        if (depth <= 0.0001f) return 1.0f;
+        if (depth <= 0.0001f) {
+            return 1.0f;
+        }
         const int band = (std::max)(index, 0) % 4;
         const float ratio = 0.09f + 0.035f * static_cast<float>(band);
         const float sign  = (index & 1) ? -1.0f : 1.0f;
@@ -478,13 +421,13 @@ struct WaterComponent {
 
     /// @brief 方向広がりの成分 1 つぶんの «向きと振幅倍率»。
     struct WaveSpreadPart {
-        math::Vector2 direction;
-        float         amplitudeScale = 1.0f;
+        math::Vector2 direction; ///< 広がりを適用した波成分のワールド XZ 進行方向。
+        float         amplitudeScale = 1.0f; ///< 元の波の振幅をこの方向成分へ配分する倍率。
     };
 
     /// @brief 方向広がりの成分を割り出す。
     ///
-    /// @param component 0 = 主成分, 1 = 伴走成分。
+    /// @param[in] component 0 = 主成分, 1 = 伴走成分。
     /// @note 実海面の波は 1 方向へ揃わず狭い方向スペクトルを持つ。同じ波数で向きだけ違う波を
     /// @note 重ねると、波頭が有限の長さに切れる (short-crested sea)。
     /// @note 振幅は main^2 + comp^2 = 1 で分ける。分けないと spread を上げるだけで海が高くなる。
@@ -518,7 +461,7 @@ struct WaterComponent {
 
     /// @brief 中心を持つ流れ 1 本が作る変位 [m] (穴は負、盛り上がりは正)。
     ///
-    /// @param worldX,worldZ ワールド XZ。**変位前へ戻さない** — 形は水平変位を持たないので
+    /// @param[in] worldX,worldZ ワールド XZ。**変位前へ戻さない** — 形は水平変位を持たないので
     /// @note 逆写像の対象ではなく、入れると Gerstner の位相まで穴のぶんずれる。
     /// @note 形を Gaussian にするのは C¹ 連続だから。(1 - r/R)^p は r = R で折れ、頂点法線が
     /// @note 1 セルだけ跳ねて縁に輪が出る。
@@ -526,7 +469,9 @@ struct WaterComponent {
     /// @note 見えている形と浮力・水中判定が別の水面になる。
     static float WaterRadialDisplacement(const WaterSurfaceFlow& flow, float worldX, float worldZ)
     {
-        if (std::abs(flow.height) <= 0.0001f || flow.radius <= 0.0001f) return 0.0f;
+        if (std::abs(flow.height) <= 0.0001f || flow.radius <= 0.0001f) {
+            return 0.0f;
+        }
         const float scale = flow.radius * kWaterSurfaceFlowShapeRatio;
         const float dx = worldX - flow.center.x;
         const float dz = worldZ - flow.center.y;
@@ -535,15 +480,19 @@ struct WaterComponent {
 
     /// @brief 焼いた場 1 枚が作るへこみ [m] (0 以下)。
     ///
-    /// @param baseX,baseZ **変位前の** ワールド XZ。高さは planeOffsetY で基準面に固定する。
+    /// @param[in] baseX,baseZ **変位前の** ワールド XZ。高さは planeOffsetY で基準面に固定する。
     /// @note 高さを «波を乗せた後の Y» で引くと «高さを高さで引く» 循環になる。
     /// @note 流速の XZ 成分だけを Bernoulli へ通す。鉛直成分は水面を «押し上げる» 話で、
     /// @note 淀みの深さとしては二重に数えることになる。
     /// @warning Water.hlsl の WaterBakedDisplacement と同じ式であること。
     static float WaterBakedDisplacement(const WaterSurfaceFlow& flow, float baseX, float baseZ)
     {
-        if (flow.vectorField == nullptr || flow.vectorField->Empty()) return 0.0f;
-        if (std::abs(flow.height) <= 0.0001f) return 0.0f;
+        if (flow.vectorField == nullptr || flow.vectorField->Empty()) {
+            return 0.0f;
+        }
+        if (std::abs(flow.height) <= 0.0001f) {
+            return 0.0f;
+        }
         const math::Vector3 toPoint = { baseX - flow.center.x, flow.planeOffsetY,
                                         baseZ - flow.center.y };
         const math::Vector3 local = flow.inverseRotation * toPoint;
@@ -551,7 +500,9 @@ struct WaterComponent {
                                     local.y / flow.extents.y * 0.5f + 0.5f,
                                     local.z / flow.extents.z * 0.5f + 0.5f };
         if (uvw.x < 0.0f || uvw.x > 1.0f || uvw.y < 0.0f || uvw.y > 1.0f
-            || uvw.z < 0.0f || uvw.z > 1.0f) return 0.0f;
+            || uvw.z < 0.0f || uvw.z > 1.0f) {
+            return 0.0f;
+        }
 
         const math::Vector3& assetMin = flow.vectorField->boundsMin;
         const math::Vector3& assetMax = flow.vectorField->boundsMax;
@@ -572,17 +523,23 @@ struct WaterComponent {
     /// @warning WaterSurface.hlsli の WaterSwellDisplacement と位相・包絡を揃える。
     static float WaterSwellDisplacement(const WaterSurfaceFlow& flow, float worldX, float worldZ, float time)
     {
-        if (flow.height == 0.0f || flow.swellWavelength <= 0.0f || flow.radius <= 0.0f) return 0.0f;
+        if (flow.height == 0.0f || flow.swellWavelength <= 0.0f || flow.radius <= 0.0f) {
+            return 0.0f;
+        }
         const math::Vector2 offset{worldX - flow.center.x, worldZ - flow.center.y};
         const auto normalized = offset * (1.0f / flow.radius);
         const float radiusSquared = normalized.x * normalized.x + normalized.y * normalized.y;
         const float envelope = 1.0f - radiusSquared;
-        if (envelope <= 0.0f) return 0.0f;
+        if (envelope <= 0.0f) {
+            return 0.0f;
+        }
         const float waveNumber = math::TWO_PI / flow.swellWavelength;
         const float travel = std::sqrt(9.8f * waveNumber) * time;
         if (flow.kind == FlowFieldType::Vortex) {
             const float bowl = envelope * envelope * envelope;
-            if (radiusSquared <= 1.0e-10f) return flow.height * bowl;
+            if (radiusSquared <= 1.0e-10f) {
+                return flow.height * bowl;
+            }
             const float spin = std::signbit(flow.speed) ? -1.0f : 1.0f;
             const float phase = waveNumber * std::sqrt(radiusSquared) * flow.radius
                               + 2.0f * spin * std::atan2(offset.y, offset.x) + travel;
@@ -596,8 +553,8 @@ struct WaterComponent {
     }
 
     /// @brief 流れ 1 本が作る変位 [m]。
-    /// @param worldX,worldZ 変位«後» のワールド XZ (中心型が使う)。
-    /// @param baseX,baseZ   変位«前» のワールド XZ (Baked が使う)。
+    /// @param[in] worldX,worldZ 変位«後» のワールド XZ (中心型が使う)。
+    /// @param[in] baseX,baseZ   変位«前» のワールド XZ (Baked が使う)。
     static float WaterSurfaceDisplacement(const WaterSurfaceFlow& flow,
                                           float worldX, float worldZ, float baseX, float baseZ)
     {
@@ -608,9 +565,9 @@ struct WaterComponent {
 
     /// @brief 波紋の輪 1 本ぶんの断面 [-1,1]。
     ///
-    /// @param distance  輪の中心からの距離 [m]。
-    /// @param ringRadius 今の輪の半径 [m]。
-    /// @param width     輪の太さ [m]。断面の «波長» は 2·width。
+    /// @param[in] distance  輪の中心からの距離 [m]。
+    /// @param[in] ringRadius 今の輪の半径 [m]。
+    /// @param[in] width     輪の太さ [m]。断面の «波長» は 2·width。
     /// @warning 波紋テクスチャを焼く側と GetSurfaceHeightAt が**この 1 本だけ**を呼ぶこと。
     /// @note 片方だけ変えると、見えている輪の上で物が別の高さに浮く。
     static float WaterRippleProfile(float distance, float ringRadius, float width)
@@ -633,7 +590,9 @@ struct WaterComponent {
     /// @brief 描画解像度から独立した波紋の水面高さ [m]。
     static float WaterRippleHeight(const WaterRipple& ripple, float worldX, float worldZ)
     {
-        if (ripple.amplitude <= 0.0f) return 0.0f;
+        if (ripple.amplitude <= 0.0f) {
+            return 0.0f;
+        }
         const float dx = worldX - ripple.center.x;
         const float dz = worldZ - ripple.center.y;
         return WaterRippleWave(ripple, std::sqrt(dx * dx + dz * dz))
@@ -646,13 +605,13 @@ struct WaterComponent {
     static constexpr int SURFACE_SOLVE_ITERATIONS = 4;
 
     struct ResolvedWave {
-        math::Vector2 direction;
-        float k = 0.0f;
-        float omega = 0.0f;
-        float amplitude = 0.0f;
-        float horizontalAmplitude = 0.0f;
-        float phaseOffsetRadians = 0.0f;
-        int index = 0;
+        math::Vector2 direction; ///< 方向広がりを適用した波成分の正規化済みワールド XZ 方向。
+        float k = 0.0f; ///< 波数。2π を波長（m）で割った値（rad/m）。
+        float omega = 0.0f; ///< 進行速度倍率を適用した角周波数（rad/s）。
+        float amplitude = 0.0f; ///< 波成分による鉛直変位の振幅（m）。
+        float horizontalAmplitude = 0.0f; ///< 波成分による水平変位の振幅（m）。
+        float phaseOffsetRadians = 0.0f; ///< 波の時空間位相に加える初期位相（rad）。
+        int index = 0; ///< 方向を分ける前の waves 内の基波の添字。
     };
 
     /// @return 有効なうねりの速度倍率。非有限値では等速。
@@ -682,7 +641,9 @@ struct WaterComponent {
                 && a.amplitude == b.amplitude && a.wavelength == b.wavelength && a.steepness == b.steepness
                 && a.phaseOffsetRadians == b.phaseOffsetRadians;
         }
-        if (same) return;
+        if (same) {
+            return;
+        }
         m_cachedWaves = waves;
         m_cachedWaveCount = waveCount;
         m_cachedSpread = waveSpread;
@@ -697,24 +658,30 @@ struct WaterComponent {
         m_horizontalContraction = 0.0f;
         float baseHeightSum = 0.0f;
         const float grouping = math::Clamp01(waveGrouping);
-        /// @note float の丸めを含む方向の正規化と回転に備え、上限に小さな余裕を加える。
+        // float の丸めを含む方向の正規化と回転に備え、上限に小さな余裕を加える。
         const float peak = (1.0f + grouping + grouping * 0.195f) * WaveSpreadAmplitudeSum(waveSpread)
             * (1.0f + 32.0f * std::numeric_limits<float>::epsilon());
         for (size_t i = 0; i < activeCount; ++i) {
             const auto& wave = waves[i];
             baseHeightSum += (std::max)(wave.amplitude, 0.0f);
             if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f
-                || !std::isfinite(wave.phaseOffsetRadians)) continue;
+                || !std::isfinite(wave.phaseOffsetRadians)) {
+                continue;
+            }
             const float directionLengthSq = wave.direction.LengthSq();
-            if (!std::isfinite(directionLengthSq) || directionLengthSq <= 1.0e-8f) continue;
-            /// @note 物理と水域照会の波は描画の分割数・カメラ・LOD に依存させない。
+            if (!std::isfinite(directionLengthSq) || directionLengthSq <= 1.0e-8f) {
+                continue;
+            }
+            // 物理と水域照会の波は描画の分割数・カメラ・LOD に依存させない。
             const float k = math::TWO_PI / wave.wavelength;
             m_contraction += math::Clamp01(wave.steepness) * wave.amplitude * peak * k;
             const float omega = std::sqrt(9.8f * k) * waveSpeed;
             const math::Vector2 direction = wave.direction.Normalized();
             for (int component = 0; component < 2; ++component) {
                 const auto part = WaveSpreadComponent(static_cast<int>(i), component, direction, waveSpread);
-                if (part.amplitudeScale <= 0.001f) continue;
+                if (part.amplitudeScale <= 0.001f) {
+                    continue;
+                }
                 auto& resolved = m_resolvedWaves[m_resolvedCount++];
                 resolved = { part.direction, k, omega, wave.amplitude * part.amplitudeScale,
                     math::Clamp01(wave.steepness) * wave.amplitude * part.amplitudeScale,
@@ -722,7 +689,7 @@ struct WaterComponent {
                 m_horizontalDisplacementBound += std::abs(resolved.horizontalAmplitude) * (1.0f + grouping);
             }
         }
-        /// @note 微小な方向分散成分も含め、RenderWaterExtractor.cpp と同じ波頂補正前の基準高を使う。
+        // 微小な方向分散成分も含め、RenderWaterExtractor.cpp と同じ波頂補正前の基準高を使う。
         m_waveHeightBound = baseHeightSum * ((1.0f + grouping) * WaveSpreadAmplitudeSum(waveSpread));
         float attenuationGradient = 0.0f;
         if (attenuationDepth > 0.0f && depth
@@ -731,8 +698,9 @@ struct WaterComponent {
             && depth->maximumAttenuationGradient >= 0.0f) {
             attenuationGradient = depth->maximumAttenuationGradient;
             const float contractionBound = m_contraction + m_horizontalDisplacementBound * attenuationGradient;
-            if (attenuationGradient > 0.0f && std::isfinite(contractionBound) && contractionBound > 0.849f)
+            if (attenuationGradient > 0.0f && std::isfinite(contractionBound) && contractionBound > 0.849f) {
                 m_horizontalWaveScale = 0.849f / contractionBound;
+            }
         }
         m_horizontalContraction = m_horizontalWaveScale
             * (m_contraction + m_horizontalDisplacementBound * attenuationGradient);
@@ -744,44 +712,49 @@ struct WaterComponent {
     {
         PrepareWaveCache(view);
         float bound = enableGerstnerWaves ? m_waveHeightBound : 0.0f;
-        if (bound > 0.0f && WaterSurfaceUsesHorizon(*this, view))
+        if (bound > 0.0f && WaterSurfaceUsesHorizon(*this, view)) {
             bound += bound * WATER_CROSSING_CREST_STRENGTH;
+        }
         if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(*this, view)) {
             bound += (std::max)(std::abs(geometry->minimumBaseHeightOffset),
                 std::abs(geometry->maximumBaseHeightOffset));
         }
-        for (int i = 0; i < (std::min)(surfaceFlowCount, kWaterSurfaceFlowCount); ++i)
+        for (int i = 0; i < (std::min)(surfaceFlowCount, kWaterSurfaceFlowCount); ++i) {
             bound += std::abs(surfaceFlows[static_cast<size_t>(i)].height);
+        }
         for (const auto& ripple : ripples)
-            if (ripple.amplitude > 0.0f)
+            if (ripple.amplitude > 0.0f) {
                 bound += ripple.amplitude * kWaterRippleHeightAmplitude * 1.58f;
-        /// @note 加算と三角関数の丸めが境界で早期判定を反転させないよう外側へ広げる。
+            }
+        // 加算と三角関数の丸めが境界で早期判定を反転させないよう外側へ広げる。
         return bound + (std::max)(1.0e-5f, bound * 1.0e-5f);
     }
 
 private:
-    mutable bool m_waveCacheValid = false;
-    mutable std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> m_cachedWaves{};
-    mutable std::uint32_t m_cachedWaveCount = 0;
-    mutable float m_cachedSpread = 0.0f;
-    mutable float m_cachedGrouping = 0.0f;
-    mutable float m_cachedWaveSpeedMultiplier = 1.0f;
-    mutable uint64_t m_cachedDepthSignature = 0;
-    mutable float m_cachedAttenuationDepth = 0.0f;
-    mutable std::array<ResolvedWave, fluid::MAX_BASE_GERSTNER_WAVES * 2> m_resolvedWaves{};
-    mutable size_t m_resolvedCount = 0;
-    mutable float m_contraction = 0.0f;
-    mutable float m_horizontalDisplacementBound = 0.0f;
-    mutable float m_horizontalWaveScale = 1.0f;
-    mutable float m_horizontalContraction = 0.0f;
-    mutable float m_waveHeightBound = 0.0f;
+    mutable bool m_waveCacheValid = false; ///< 波の計算結果と照合用入力を一度以上作成済み。
+    mutable std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> m_cachedWaves{}; ///< キャッシュ作成時に使用した基波の配列。
+    mutable std::uint32_t m_cachedWaveCount = 0; ///< キャッシュ作成時点で waves の先頭から有効だった基波の数。
+    mutable float m_cachedSpread = 0.0f; ///< キャッシュ作成時に適用した方向広がり。
+    mutable float m_cachedGrouping = 0.0f; ///< キャッシュ作成時に適用した波群の強さ。
+    mutable float m_cachedWaveSpeedMultiplier = 1.0f; ///< キャッシュ作成時に角周波数へ掛けた波の速度倍率。
+    mutable uint64_t m_cachedDepthSignature = 0; ///< キャッシュ作成時に参照した水深場の署名。0 は水深場なし。
+    mutable float m_cachedAttenuationDepth = 0.0f; ///< 浅瀬で波の振幅を減衰させるしきい値（ワールド m）。
+    mutable std::array<ResolvedWave, fluid::MAX_BASE_GERSTNER_WAVES * 2> m_resolvedWaves{}; ///< 方向広がりと速度倍率を解決済みの有効な波成分。
+    mutable size_t m_resolvedCount = 0; ///< m_resolvedWaves の先頭から有効な成分の数。
+    mutable float m_contraction = 0.0f; ///< 水深減衰を適用する前の水平逆写像の収縮率の上限。
+    mutable float m_horizontalDisplacementBound = 0.0f; ///< 波群を含めた水平変位の振幅の合計上限（m）。
+    mutable float m_horizontalWaveScale = 1.0f; ///< 水深の勾配を含む逆写像が収束するための水平変位倍率。
+    mutable float m_horizontalContraction = 0.0f; ///< 水深減衰と水平変位倍率を反映した逆写像の収縮率の上限。
+    mutable float m_waveHeightBound = 0.0f; ///< 波群・方向広がり込みの波頂補正前の鉛直変位上限（m）。
 
     float AttenuationFactorAt(math::Vector2 point, WaterSurfaceReadView view, WaterDepthAxis axis) const
     {
         const WaterDepthField* depth = EffectiveDepthField(view);
         const float attenuationDepth = EffectiveWaveAttenuationDepth(view);
         if (!depth || attenuationDepth <= 0.0f
-            || depth->attenuationDepth != attenuationDepth) return 1.0f;
+            || depth->attenuationDepth != attenuationDepth) {
+            return 1.0f;
+        }
         WaterDepthSample sample;
         return TrySampleWaterDepthField(*depth, point, sample, axis) ? sample.factor : 1.0f;
     }
@@ -789,16 +762,22 @@ private:
     float WaterfallWaveWeight(math::Vector2 point, WaterSurfaceReadView view) const
     {
         const auto& seams = EffectiveWaterfallSeams(view);
-        if (seams.front().w < 0.0f) return 0.0f;
+        if (seams.front().w < 0.0f) {
+            return 0.0f;
+        }
         float weight = 1.0f;
         for (const auto& seam : seams) {
-            if (seam.w <= 0.0f) break;
+            if (seam.w <= 0.0f) {
+                break;
+            }
             const float distance = (point - math::Vector2{seam.x, seam.y}).Length();
             const float t = (std::clamp)((distance - seam.z) / (seam.w - seam.z), 0.0f, 1.0f);
             weight = (std::min)(weight, t * t * (3.0f - 2.0f * t));
         }
         for (const auto& seam : EffectiveHorizonWaveSeams(view)) {
-            if (seam.w <= 0.0f) break;
+            if (seam.w <= 0.0f) {
+                break;
+            }
             const float distance = (point - math::Vector2{seam.x, seam.y}).Length();
             const float t = math::Clamp01((distance - seam.z) / (seam.w - seam.z));
             weight = (std::min)(weight, t * t * (3.0f - 2.0f * t));
@@ -829,11 +808,13 @@ private:
 public:
 
     /// @brief Gerstner 波の水平変位 [m] (ワールド XZ)。
-    /// @param undisplaced 変位«前»の水平位置。波の位相はここで取る。
+    /// @param[in] undisplaced 変位«前»の水平位置。波の位相はここで取る。
     math::Vector2 HorizontalDisplacementAt(math::Vector2 undisplaced, float time,
         WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
-        if (!enableGerstnerWaves) return math::Vector2::ZERO;
+        if (!enableGerstnerWaves) {
+            return math::Vector2::ZERO;
+        }
         PrepareWaveCache(view);
         return ResolvedHorizontalDisplacementAt(undisplaced, time, view);
     }
@@ -855,17 +836,21 @@ public:
         WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
         const math::Vector2 target = { worldX, worldZ };
-        if (!enableGerstnerWaves) return target;
+        if (!enableGerstnerWaves) {
+            return target;
+        }
 
-        /// @note 不動点反復の縮小率の上界 Σ Q·k·A。三角関数を 1 度も回さずに出せる。
-        /// @note 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
+        // 不動点反復の縮小率の上界 Σ Q·k·A。三角関数を 1 度も回さずに出せる。
+        // 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
         PrepareWaveCache(view);
         const float contraction = m_horizontalContraction;
-        /// @note 水平変位を持たない水面 (湖・プール・急峻度 0) は解く必要がない。
-        if (contraction <= 0.0001f) return target;
+        // 水平変位を持たない水面 (湖・プール・急峻度 0) は解く必要がない。
+        if (contraction <= 0.0001f) {
+            return target;
+        }
 
-        /// @note Σ Q·k·A ≤ 1 なら素の反復がそのまま縮小写像。超える («波が折り畳む») 設定では
-        /// @note その比で減衰させ、有限回で暴れないところへ抑える。
+        // Σ Q·k·A ≤ 1 なら素の反復がそのまま縮小写像。超える («波が折り畳む») 設定では
+        // その比で減衰させ、有限回で暴れないところへ抑える。
         const float relax = 1.0f / (std::max)(contraction, 1.0f);
 
         math::Vector2 guess = target;
@@ -878,7 +863,7 @@ public:
     }
 
     /// @brief 水面の基準面からの変位 [m] を CPU で評価する。
-    /// @param worldX, worldZ ワールド座標 (変位«後»、つまり画面に出ている位置)。
+    /// @param[in] worldX,worldZ ワールド座標 (変位«後»、つまり画面に出ている位置)。
     /// @note シェーダーは波の位相をワールド XZ で取るため、原点からの相対座標で評価すると
     /// @note 水面を原点以外へ置いた瞬間に浮力・水中判定と描画の波がずれる。
     /// @note Spline の基準高さ、流れの場が作る形、着水の輪も足す。中心型はワールド XZ、Baked と輪は変位前の XZ で
@@ -916,8 +901,8 @@ public:
                 }
             }
             if (crossingCrests) {
-                /// @note 差は、重み 1 - dot(direction_i, direction_j) を掛けた全ペアの総和の 2 倍になる。
-                /// @note 補正は鉛直成分だけに適用するため、水平方向の逆変換は変わらない。
+                // 差は、重み 1 - dot(direction_i, direction_j) を掛けた全ペアの総和の 2 倍になる。
+                // 補正は鉛直成分だけに適用するため、水平方向の逆変換は変わらない。
                 const float crossing = (std::max)(crestSum * crestSum - directionalCrestSum.LengthSq(), 0.0f);
                 height += WATER_CROSSING_CREST_STRENGTH * crossing * attenuation * attenuation
                     / (std::max)(m_waveHeightBound, 0.01f);
@@ -938,16 +923,18 @@ public:
             const auto& flow = surfaceFlows[static_cast<size_t>(i)];
             if (flow.swellWavelength > 0.0f) {
                 const float swell = WaterSwellDisplacement(flow, worldX, worldZ, time);
-                if (swell != 0.0f)
+                if (swell != 0.0f) {
                     height += swell * (enableGerstnerWaves ? attenuation
                         : AttenuationFactorAt(origin, view, WaterDepthAxis::VERTICAL));
+                }
             } else {
                 height += WaterSurfaceDisplacement(flow, worldX, worldZ, origin.x, origin.y);
             }
         }
 
-        for (const WaterRipple& ripple : ripples)
+        for (const WaterRipple& ripple : ripples) {
             height += WaterRippleHeight(ripple, origin.x, origin.y);
+        }
 
         const float weight = WaterfallWaveWeight(origin, view);
         return weight < 1.0f ? std::lerp(baseHeight, height, weight) : height;
@@ -982,7 +969,7 @@ public:
         const bool oldBakeValid = bakeValid;
         const std::string oldMaterialPath = materialPath;
 
-        /// @note IReflector は uint32_t 非対応のため int 経由で編集・保存する。
+        // IReflector は uint32_t 非対応のため int 経由で編集・保存する。
         int resX = static_cast<int>((std::clamp)(resolutionX, 1u, 512u));
         int resZ = static_cast<int>((std::clamp)(resolutionZ, 1u, 512u));
         int chunks = static_cast<int>((std::clamp)(chunkCount, 1u, 64u));
@@ -1036,24 +1023,29 @@ public:
         if (pointSourceMode == ControlPointSourceMode::INLINE) {
             const std::size_t requestedSplinePointCount = r.BeginObjectList("splinePoints", splinePoints.size());
             if (requestedSplinePointCount <= WATER_SPLINE_MAX_CONTROL_POINTS
-                || requestedSplinePointCount == splinePoints.size())
+                || requestedSplinePointCount == splinePoints.size()) {
                 splinePoints.resize(requestedSplinePointCount);
+            }
             std::uint32_t nextPointID = 1;
             for (std::size_t i = 0; i < splinePoints.size(); ++i) {
                 auto& point = splinePoints[i];
                 if (point.id == 0) {
                     while (nextPointID != 0 && std::any_of(splinePoints.begin(), splinePoints.end(),
-                        [nextPointID](const WaterSplinePoint& candidate) { return candidate.id == nextPointID; }))
+                        [nextPointID](const WaterSplinePoint& candidate) { return candidate.id == nextPointID; })) {
                         ++nextPointID;
-                    if (nextPointID != 0) point.id = nextPointID++;
+                    }
+                    if (nextPointID != 0) {
+                        point.id = nextPointID++;
+                    }
                 }
                 r.BeginObjectElement(i);
                 point.Reflect(r);
                 r.EndObjectElement();
             }
             const std::size_t removedSplinePoint = r.EndObjectList();
-            if (removedSplinePoint < splinePoints.size())
+            if (removedSplinePoint < splinePoints.size()) {
                 splinePoints.erase(splinePoints.begin() + static_cast<std::ptrdiff_t>(removedSplinePoint));
+            }
             std::size_t movedFrom = 0;
             std::size_t movedTo = 0;
             if (r.ObjectListMove(movedFrom, movedTo) && movedFrom < splinePoints.size()
@@ -1090,8 +1082,9 @@ public:
         resolutionZ = static_cast<uint32_t>((std::clamp)(resZ, 1, 512));
         chunkCount  = static_cast<uint32_t>((std::clamp)(chunks, 1, 64));
         lodPatchResolution = 2;
-        while (lodPatchResolution < static_cast<uint32_t>((std::clamp)(patchResolution, 2, 64)))
+        while (lodPatchResolution < static_cast<uint32_t>((std::clamp)(patchResolution, 2, 64))) {
             lodPatchResolution *= 2;
+        }
         lodMaxDepth = static_cast<uint32_t>((std::clamp)(maxDepth, 0, 10));
         lodMaxPatches = static_cast<uint32_t>((std::clamp)(maxPatches, 1, 4096));
         lodTargetPixels = (std::clamp)(lodTargetPixels, 1.0f, 64.0f);
@@ -1112,10 +1105,12 @@ public:
         buoyancyDepth      = std::isfinite(buoyancyDepth) ? (std::max)(buoyancyDepth, 0.0f) : 0.0f;
         waveAttenuationDepth = std::isfinite(waveAttenuationDepth)
             ? (std::max)(waveAttenuationDepth, 0.0f) : 0.0f;
-        if (resolutionX != oldResolutionX || resolutionZ != oldResolutionZ ||
-            chunkCount  != oldChunkCount  || extentX      != oldExtentX      ||
-            extentZ     != oldExtentZ || adaptivePatchLod != oldAdaptivePatchLod || farOceanEnabled != oldFarOceanEnabled ||
-            lodPatchResolution != oldPatchResolution) {
+        // 固定格子の分割と Adaptive LOD の設定は、どちらも描画メッシュと泡の再生成につながる。
+        const bool fixedGridChanged = resolutionX != oldResolutionX || resolutionZ != oldResolutionZ
+            || chunkCount != oldChunkCount || extentX != oldExtentX || extentZ != oldExtentZ;
+        const bool patchSettingsChanged = adaptivePatchLod != oldAdaptivePatchLod
+            || farOceanEnabled != oldFarOceanEnabled || lodPatchResolution != oldPatchResolution;
+        if (fixedGridChanged || patchSettingsChanged) {
             meshDirty = true;
             foamDirty = true;
         }
@@ -1123,14 +1118,25 @@ public:
             texDirty = true;
             foamDirty = true;
         }
-        if (surfaceShape != oldSurfaceShape || splineSamplesPerSegment != oldSplineSamplesPerSegment
-            || splineMeshCellSize != oldSplineMeshCellSize
-            || splinePoints != oldSplinePoints || lakeIslandPoints != oldLakeIslandPoints || pointSourceMode != oldPointSourceMode
-            || pointRuntimeMode != oldPointRuntimeMode || pointBindings != oldPointBindings
-            || lakePlaneHeight != oldLakePlaneHeight || bakedSplinePoints != oldBakedSplinePoints
-            || bakedInputSignature != oldBakedInputSignature || bakedSourceMode != oldBakedSourceMode
-            || bakedSurfaceShape != oldBakedSurfaceShape || bakedLakePlaneHeight != oldBakedLakePlaneHeight
-            || bakedAdapterVersion != oldBakedAdapterVersion || bakeValid != oldBakeValid) {
+        // スプラインは形状と点の入力元を先に照合し、そこに差がないときだけベイク済みの点を比較する。
+        const auto splineGeometryChanged = [&] {
+            if (surfaceShape != oldSurfaceShape || splineSamplesPerSegment != oldSplineSamplesPerSegment
+                || splineMeshCellSize != oldSplineMeshCellSize) {
+                return true;
+            }
+            if (splinePoints != oldSplinePoints || lakeIslandPoints != oldLakeIslandPoints
+                || pointSourceMode != oldPointSourceMode || pointRuntimeMode != oldPointRuntimeMode
+                || pointBindings != oldPointBindings || lakePlaneHeight != oldLakePlaneHeight) {
+                return true;
+            }
+            if (bakedSplinePoints != oldBakedSplinePoints || bakedInputSignature != oldBakedInputSignature
+                || bakedSourceMode != oldBakedSourceMode) {
+                return true;
+            }
+            return bakedSurfaceShape != oldBakedSurfaceShape || bakedLakePlaneHeight != oldBakedLakePlaneHeight
+                || bakedAdapterVersion != oldBakedAdapterVersion || bakeValid != oldBakeValid;
+        };
+        if (splineGeometryChanged()) {
             meshDirty = true;
             foamDirty = true;
         }

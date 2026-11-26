@@ -53,17 +53,12 @@ struct FlowFieldSettings {
     /// @brief 流速の大きさ [m/s]。
     /// @note Baked のときだけ無次元の倍率 (焼いた場が既に m/s を持つため)。
     float strength = 5.0f;
-    /// @brief 影響半径 [m]。0 以下でシーン全体へ減衰なしに作用する。
-    float radius = 5.0f;
-    /// @brief 距離減衰カーブ: influence = (1 - dist/radius)^falloffPower。radius <= 0 のとき無効。
-    float falloffPower = 2.0f;
-    /// @brief Uniform: 流れの向き / Vortex: 回転軸。space が決める座標系で解釈する。
-    math::Vector3 direction = { 1.0f, 0.0f, 0.0f };
-    /// @brief Curl 用: ノイズ格子の空間周波数 [1/m] とスクロール速度。
-    float noiseFrequency = 0.5f;
+    float radius = 5.0f; ///< 影響半径 [m]。0 以下でシーン全体へ減衰なしに作用する。
+    float falloffPower = 2.0f; ///< 距離減衰カーブ: influence = (1 - dist/radius)^falloffPower。radius <= 0 のとき無効。
+    math::Vector3 direction = { 1.0f, 0.0f, 0.0f }; ///< Uniform: 流れの向き / Vortex: 回転軸。space が決める座標系で解釈する。
+    float noiseFrequency = 0.5f; ///< Curl 用: ノイズ格子の空間周波数 [1/m] とスクロール速度。
     float noiseSpeed = 1.0f;
-    /// @brief 水面用の振幅・波長 [m]。半径付き Uniform ではうねり、Vortex では渦の深さと螺旋間隔。
-    float waterSwellAmplitude = 0.0f;
+    float waterSwellAmplitude = 0.0f; ///< 水面用の振幅・波長 [m]。半径付き Uniform ではうねり、Vortex では渦の深さと螺旋間隔。
     float waterSwellWavelength = 32.0f;
     /// @brief ParticleEmitter::flowFieldChannels と 1 ビットでも重なったエミッターにだけ作用する。
     /// @note 既定は全ビット ON なので、マスクを触らない既存シーンの挙動は変わらない。
@@ -98,7 +93,7 @@ struct FlowFieldSettings {
         r.Field("noiseSpeed", noiseSpeed);
         r.Field("waterSwellAmplitude", waterSwellAmplitude);
         r.Field("waterSwellWavelength", waterSwellWavelength);
-        /// @note IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
+        // IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
         int channelsValue = static_cast<int>(channels);
         r.Field("channels", channelsValue);
         channels = static_cast<uint32_t>(channelsValue);
@@ -107,9 +102,9 @@ struct FlowFieldSettings {
         r.Field("vectorFieldPath", vectorFieldPath);
         r.EndField();
         r.Field("vectorFieldExtents", vectorFieldExtents);
-        /// @note 旧 vectorFieldTightness は書かない。全型が緩和になったので «どれだけ場へ
-        /// @note 従わせるか» は ParticleEmitter::flowCoupling が一手に持つ。旧ファイルの
-        /// @note キーは読まれずに落ちる (未知キーは IReflector が無視する)。
+        // 旧 vectorFieldTightness は書かない。全型が緩和になったので «どれだけ場へ
+        // 従わせるか» は ParticleEmitter::flowCoupling が一手に持つ。旧ファイルの
+        // キーは読まれずに落ちる (未知キーは IReflector が無視する)。
     }
     /// @}
 };
@@ -148,4 +143,4 @@ struct FlowField {
     void Reflect(IReflector& r) { ReflectFlowFieldList(r, forces, "forces", "Forces"); }
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

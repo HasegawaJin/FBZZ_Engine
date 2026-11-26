@@ -60,4 +60,4 @@ enum class FluidPreset : uint8_t {
 /// @note 手書きのまま残し、両者の一致はテスト (FluidRecipeBakeTests) で縛る。
 FBZZ_ENGINE_API void ReflectFluidRecipe(fluid::FluidRecipe& recipe, scene::IReflector& r);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

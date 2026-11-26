@@ -135,8 +135,9 @@ std::uint64_t RawPatrolSignature(const NavMeshPatrolComponent& patrol,
         HashValue(hash, static_cast<std::uint64_t>(patrol.waypointBindings.size()));
         const std::size_t numericCount = (std::min)(patrol.waypoints.size(),
             MAX_NAV_MESH_PATROL_WAYPOINTS + 1);
-        for (std::size_t index = 0; index < numericCount; ++index)
+        for (std::size_t index = 0; index < numericCount; ++index) {
             HashVector(hash, patrol.waypoints[index]);
+        }
         const std::size_t bindingCount = (std::min)(patrol.waypointBindings.size(),
             MAX_NAV_MESH_PATROL_WAYPOINTS + 1);
         for (std::size_t index = 0; index < bindingCount; ++index) {
@@ -152,11 +153,15 @@ std::uint64_t RawPatrolSignature(const NavMeshPatrolComponent& patrol,
 
 bool ValidatePatrolValues(const std::vector<NavMeshPatrolPointValue>& values)
 {
-    if (values.size() > MAX_NAV_MESH_PATROL_WAYPOINTS) return false;
+    if (values.size() > MAX_NAV_MESH_PATROL_WAYPOINTS) {
+        return false;
+    }
     std::unordered_set<std::uint32_t> ids;
     ids.reserve(values.size());
     for (const NavMeshPatrolPointValue& value : values) {
-        if (!IsFinite(value) || !ids.insert(value.stableId).second) return false;
+        if (!IsFinite(value) || !ids.insert(value.stableId).second) {
+            return false;
+        }
     }
     return true;
 }
@@ -164,13 +169,16 @@ bool ValidatePatrolValues(const std::vector<NavMeshPatrolPointValue>& values)
 bool SameBakedValues(const std::vector<NavMeshPatrolPointValue>& current,
     const std::vector<NavMeshPatrolWaypointValue>& baked)
 {
-    if (current.size() != baked.size()) return false;
+    if (current.size() != baked.size()) {
+        return false;
+    }
     for (std::size_t index = 0; index < current.size(); ++index) {
         const NavMeshPatrolPointValue& lhs = current[index];
         const NavMeshPatrolWaypointValue& rhs = baked[index];
         if (lhs.stableId != rhs.id || lhs.worldPosition != rhs.worldPosition
-            || lhs.waitTime != rhs.waitTime || lhs.speed != rhs.speed)
+            || lhs.waitTime != rhs.waitTime || lhs.speed != rhs.speed) {
             return false;
+        }
     }
     return true;
 }
@@ -179,8 +187,12 @@ void HashResolvedPoints(std::uint64_t& hash,
     const std::vector<NavMeshPatrolPointValue>& points)
 {
     HashValue(hash, static_cast<std::uint64_t>(points.size()));
-    for (const NavMeshPatrolPointValue& point : points) HashPatrolValue(hash, point);
-    if (hash == 0) hash = 1;
+    for (const NavMeshPatrolPointValue& point : points) {
+        HashPatrolValue(hash, point);
+    }
+    if (hash == 0) {
+        hash = 1;
+    }
 }
 
 std::uint64_t CanonicalPatrolSignature(const NavMeshPatrolComponent& patrol,
@@ -256,14 +268,17 @@ NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPointAuthoring(
         }
         std::vector<ControlPointBinding> bindings;
         bindings.reserve(patrol.waypointBindings.size());
-        for (const NavMeshPatrolWaypointBinding& binding : patrol.waypointBindings)
+        for (const NavMeshPatrolWaypointBinding& binding : patrol.waypointBindings) {
             bindings.push_back({binding.id, &binding.target});
+        }
         std::vector<ResolvedControlPoint> resolved;
         if (!ResolveControlPointBindings(scene, ownerId, bindings, true,
                 resolved, snapshot.resolveStatus, resolverSignature)) {
             snapshot.status = NavigationControlPointStatus::RESOLUTION_FAILED;
             HashValue(snapshot.inputSignature, snapshot.resolveStatus);
-            if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+            if (snapshot.inputSignature == 0) {
+                snapshot.inputSignature = 1;
+            }
             return snapshot;
         }
         if (signatureRuntimeMode == ControlPointRuntimeMode::LIVE) {
@@ -279,7 +294,9 @@ NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPointAuthoring(
                 if (target && (target == owner || target->IsDescendantOf(*owner))) {
                     snapshot.status = NavigationControlPointStatus::SELF_REFERENTIAL_TARGET;
                     HashValue(snapshot.inputSignature, snapshot.status);
-                    if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+                    if (snapshot.inputSignature == 0) {
+                        snapshot.inputSignature = 1;
+                    }
                     return snapshot;
                 }
             }
@@ -316,9 +333,10 @@ NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPoints(
     Scene& scene, EntityID ownerId, const NavMeshPatrolComponent& patrol,
     ControlPointReadContext context)
 {
-    if (patrol.pointRuntimeMode == ControlPointRuntimeMode::LIVE)
+    if (patrol.pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
         return ResolveNavMeshPatrolPointAuthoring(scene, ownerId, patrol,
             ControlPointRuntimeMode::LIVE);
+    }
 
     NavMeshPatrolPointSnapshot snapshot;
     snapshot.inputSignature = patrol.bakedInputSignature;
@@ -364,18 +382,20 @@ NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPoints(
         return snapshot;
     }
     baked.reserve(patrol.bakedWaypoints.size());
-    for (const NavMeshPatrolWaypointValue& point : patrol.bakedWaypoints)
+    for (const NavMeshPatrolWaypointValue& point : patrol.bakedWaypoints) {
         baked.push_back({point.id, point.worldPosition, point.waitTime, point.speed});
+    }
     if (!ValidatePatrolValues(baked)) {
         snapshot.points.clear();
         snapshot.status = NavigationControlPointStatus::INVALID_NUMERIC_DATA;
         snapshot.valid = false;
         return snapshot;
     }
-    /// @note 保存済みベイクが既存の検証を通った後も、オーサリング用の参照では元の値を返す。
+    // 保存済みベイクが既存の検証を通った後も、オーサリング用の参照では元の値を返す。
     if (context == ControlPointReadContext::AUTHORING) {
-        if (snapshot.valid && snapshot.bakeStale)
+        if (snapshot.valid && snapshot.bakeStale) {
             snapshot.status = NavigationControlPointStatus::STALE_BAKE;
+        }
         return snapshot;
     }
     snapshot.points = std::move(baked);
@@ -418,7 +438,9 @@ NavMeshOffMeshLinkSnapshot ResolveNavMeshOffMeshLinkEndpoints(
                 resolved, snapshot.resolveStatus, resolverSignature)) {
             snapshot.status = NavigationControlPointStatus::RESOLUTION_FAILED;
             HashValue(snapshot.inputSignature, snapshot.resolveStatus);
-            if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+            if (snapshot.inputSignature == 0) {
+                snapshot.inputSignature = 1;
+            }
             return snapshot;
         }
         snapshot.startPoint = resolved[0].worldPosition;
@@ -427,7 +449,9 @@ NavMeshOffMeshLinkSnapshot ResolveNavMeshOffMeshLinkEndpoints(
     }
     HashVector(snapshot.inputSignature, snapshot.startPoint);
     HashVector(snapshot.inputSignature, snapshot.endPoint);
-    if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+    if (snapshot.inputSignature == 0) {
+        snapshot.inputSignature = 1;
+    }
     snapshot.status = NavigationControlPointStatus::SUCCESS;
     snapshot.resolveStatus = ControlPointResolveStatus::SUCCESS;
     snapshot.valid = true;
@@ -440,11 +464,15 @@ bool ValidateStaticNavMeshPatrolBakes(Scene& scene)
     bool valid = true;
     for (const EntityID id : scene.GetEntities<NavMeshPatrolComponent>()) {
         const NavMeshPatrolComponent* patrol = scene.GetComponent<NavMeshPatrolComponent>(id);
-        if (!patrol || patrol->pointRuntimeMode == ControlPointRuntimeMode::LIVE) continue;
+        if (!patrol || patrol->pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
+            continue;
+        }
         const NavMeshPatrolPointSnapshot snapshot = ResolveNavMeshPatrolPoints(
             scene, id, *patrol, ControlPointReadContext::AUTHORING);
         if (snapshot.valid && !snapshot.bakeStale
-            && snapshot.status == NavigationControlPointStatus::SUCCESS) continue;
+            && snapshot.status == NavigationControlPointStatus::SUCCESS) {
+            continue;
+        }
         FBZZ_LOG_ERROR("NavigationControlPoints: Patrol static bake is not ready on entity %u:%u (status=%u, resolve=%u).",
             id.index, id.generation, static_cast<unsigned>(snapshot.status),
             static_cast<unsigned>(snapshot.resolveStatus));

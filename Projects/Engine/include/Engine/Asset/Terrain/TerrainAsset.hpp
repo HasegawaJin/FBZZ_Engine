@@ -19,27 +19,20 @@ struct TerrainAsset {
     float                      cellSize  = 2.0f;
     float                      maxHeight = 20.0f;
     uint32_t                   chunkSize = 32;
-    /// @brief 高さブレンドの幅。TerrainComponent::heightBlendDepth と同じ意味。
-    float                      heightBlendDepth = 0.2f;
+    float                      heightBlendDepth = 0.2f; ///< 高さブレンドの幅。TerrainComponent::heightBlendDepth と同じ意味。
 
-    /// @brief 層ごとの .mat のパス (assets/ 相対)。添字がスプラットの番号。
-    std::vector<std::string>   layerMaterialPaths = std::vector<std::string>(4);
+    std::vector<std::string>   layerMaterialPaths = std::vector<std::string>(4); ///< 層ごとの .mat のパス (assets/ 相対)。添字がスプラットの番号。
 
-    /// @brief row-major: index = z * columns + x、値域 [-1, 1]。
-    std::vector<float>         heightData;
+    std::vector<float>         heightData; ///< row-major: index = z * columns + x、値域 [-1, 1]。
 
-    /// @brief index = (z * columns + x) * 4 + slot。層番号。正準形 (terrain_splat) を保つ。
-    std::vector<uint8_t>       splatIndices;
-    /// @brief splatIndices と同じ並びの重み [0, 255]。
-    std::vector<uint8_t>       splatWeights;
+    std::vector<uint8_t>       splatIndices; ///< index = (z * columns + x) * 4 + slot。層番号。正準形 (terrain_splat) を保つ。
+    std::vector<uint8_t>       splatWeights; ///< splatIndices と同じ並びの重み [0, 255]。
 
-    /// @brief 穴セルの添字 (cz * (columns - 1) + cx) の昇順列。
-    std::vector<uint32_t>      holeCells;
+    std::vector<uint32_t>      holeCells; ///< 穴セルの添字 (cz * (columns - 1) + cx) の昇順列。
 
-    /// @note 地形ローカル空間の表面形状。頂点の巻き順と検証規則は TerrainComponent と同じ。
-    std::vector<math::Vector3> surfacePositions;
+    std::vector<math::Vector3> surfacePositions; ///< 地形ローカル空間の表面形状。頂点の巻き順と検証規則は TerrainComponent と同じ。
     std::vector<uint32_t> surfaceIndices;
     std::string surfaceMaterial;
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -27,4 +27,4 @@ enum class ComponentInspectorMode { Automatic, Custom, Hidden };
 /// @brief Automatic は Reflect() で TOML 化し、Custom は既存の複合データ専用処理を使う。
 enum class ComponentSerializationMode { Automatic, Custom };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

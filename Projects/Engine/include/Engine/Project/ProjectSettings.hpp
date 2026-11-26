@@ -34,11 +34,9 @@ struct PhysicsSettings {
 struct AudioSettings {
     float masterVolume = 1.0f;
 
-    /// @note 同時 voice の上限。超過時は優先度の低い音を畳んで場所を空ける。
-    int voiceLimit = 48;
+    int voiceLimit = 48; ///< 同時 voice の上限。超過時は優先度の低い音を畳んで場所を空ける。
 
-    /// @note 先頭は必ず Master。旧 bgmVolume / seVolume は既定 BGM / SE バスへ移行する。
-    std::vector<audio::BusDesc> buses = audio::DefaultBusLayout();
+    std::vector<audio::BusDesc> buses = audio::DefaultBusLayout(); ///< 先頭は必ず Master。旧 bgmVolume / seVolume は既定 BGM / SE バスへ移行する。
 
     /// @brief masterVolume を反映した AudioManager::ApplyBusLayout 用の構成。
     [[nodiscard]] FBZZ_ENGINE_API std::vector<audio::BusDesc> BuildBusLayout() const;
@@ -50,7 +48,7 @@ struct ScreenSettings {
 };
 
 struct AppSettings {
-    int targetFps = 60;  ///< @note 0 は無制限。
+    int targetFps = 60; ///< 0 は無制限。
     /// @note 描画バックエンドは EditorLauncher が Application::Init より前に起動プロジェクトから読む。
     /// @note --renderer= があれば優先。起動後のプロジェクト切り替えではバックエンドを変更しない。
     renderer::RendererBackend rendererBackend = renderer::RendererBackend::DX12;
@@ -73,13 +71,12 @@ struct UISettings {
 /// @note 実行中の cursor.Push 要求はスクリプトが正本。ここには差し替え可能な絵だけを残す。
 struct CursorAppearance {
     struct ShapeImage {
-        std::string path;              ///< @note プロジェクト相対パス。空なら OS の既定矢印。
-        float       hotspotX = 0.0f;   ///< @note 画像左上から実際に指す点までの画素。
+        std::string path; ///< プロジェクト相対パス。空なら OS の既定矢印。
+        float       hotspotX = 0.0f; ///< 画像左上から実際に指す点までの画素。
         float       hotspotY = 0.0f;
     };
 
-    /// @note false なら OS 既定の矢印を使う。
-    bool hardwareCursor = true;
+    bool hardwareCursor = true; ///< false なら OS 既定の矢印を使う。
     std::array<ShapeImage, core::kCursorShapeCount> shapes{};
 
     /// @brief 絶対 projectRoot から画像を読み、Play 開始時と配布ゲーム起動時に OS へ適用する。
@@ -113,17 +110,16 @@ struct GameProjectConfig {
 };
 
 struct ProjectSettings {
-    GameProjectConfig            game;     ///< @note タグ・レイヤー・シーンパス等のゲーム固有設定。
+    GameProjectConfig            game; ///< タグ・レイヤー・シーンパス等のゲーム固有設定。
     PhysicsSettings              physics;
     renderer::RenderSettings     render;
-    /// @note 読込時は AssetManager が初期化されるまでこの参照を解決しない。render は割り当て解除やアセット欠落時にも使う代替設定。
-    std::string                  renderPipelineAssetPath;
+    std::string                  renderPipelineAssetPath; ///< 読込時は AssetManager が初期化されるまでこの参照を解決しない。render は割り当て解除やアセット欠落時にも使う代替設定。
     AudioSettings                audio;
     UISettings                   ui;
     ScreenSettings               screen;
     AppSettings                  app;
     WindowSettings               window;
-    CursorAppearance             cursor;   ///< @note カーソルの絵だけ。拘束と表示はスクリプトが持つ。
+    CursorAppearance             cursor; ///< カーソルの絵だけ。拘束と表示はスクリプトが持つ。
 
     FBZZ_ENGINE_API static ProjectSettings Default();
     FBZZ_ENGINE_API bool Load(const std::string& path);
@@ -137,4 +133,4 @@ struct ProjectSettings {
     [[nodiscard]] FBZZ_ENGINE_API std::string ToToml(bool explicitDefaults) const;
 };
 
-} /// @note namespace fbzz
+} // namespace fbzz

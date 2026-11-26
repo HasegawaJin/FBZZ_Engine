@@ -34,4 +34,4 @@ public:
     virtual int  RunInterval() const { return 1; }
 };
 
-} /// @note namespace fbzz
+} // namespace fbzz

@@ -27,43 +27,33 @@ inline constexpr std::uint32_t kVolumeFillMaxPuffs = 1024;
 inline constexpr float kVolumePuffBodyCullRadius = 1.4f;
 
 struct VolumeNoiseSettings {
-    float frequency = 2.2f;
-    /// @note 縁の揺らぎと内部の濃淡の強さ。[0,1]。1 を超えると cull 半径の外に密度が出る。
-    float amplitude = 0.7f;
+    float frequency = 2.2f; ///< パフの外縁を変調するノイズの空間周波数。
+    float amplitude = 0.7f; ///< 縁の揺らぎと内部の濃淡の強さ。[0,1]。1 を超えると cull 半径の外に密度が出る。
 };
 
 struct VolumePuff {
-    float birthTime = 0.0f;
-    float lifetime = 1.0e9f;
-    float fadeIn = 0.0f;
-    float fadeOut = 0.0f;
-    math::Vector3 startCenter;
-    /// @note 生まれたときの中心の速度。
-    math::Vector3 velocity;
-    /// @note 中心にかかる一定の加速度 (重力・浮力)。
-    math::Vector3 acceleration;
-    /// @note 速度に比例する減速の係数 [1/s]。0 で減速しない。
-    float drag = 0.0f;
-    /// @note 回転軸 × 角速度 [rad/s]。
-    math::Vector3 angularVelocity;
-    /// @note 半径が e^{rate·age} で膨らむ。
-    float expansionRate = 0.0f;
-    float radius = 0.3f;
+    float birthTime = 0.0f; ///< ベイクの先頭を基準とするパフの発生時刻 [s]。
+    float lifetime = 1.0e9f; ///< 発生からパフが消えるまでの時間 [s]。
+    float fadeIn = 0.0f; ///< 発生してから密度を立ち上げる時間 [s]。
+    float fadeOut = 0.0f; ///< 寿命の末尾で密度を下げる時間 [s]。
+    math::Vector3 startCenter; ///< パフの発生時点のシミュレーション空間上の中心。
+    math::Vector3 velocity; ///< 生まれたときの中心の速度。
+    math::Vector3 acceleration; ///< 中心にかかる一定の加速度 (重力・浮力)。
+    float drag = 0.0f; ///< 速度に比例する減速の係数 [1/s]。0 で減速しない。
+    math::Vector3 angularVelocity; ///< 回転軸 × 角速度 [rad/s]。
+    float expansionRate = 0.0f; ///< 半径が e^{rate·age} で膨らむ。
+    float radius = 0.3f; ///< パフの伸長を適用する前の基準半径。
     /// @note 中心の進行方向 (止まっているときは上) への伸び σ = max(1, stretch + stretchPerSpeed·速さ)。
     /// @note 体積を保つよう、横は 1/√σ に縮む。液滴の筋や炎の舌に使う。
-    float stretch = 1.0f;
-    float stretchPerSpeed = 0.0f;
-    float density = 1.0f;
-    /// @note 生まれたときの芯の温度 [0,1]。0 なら発光しない。
-    float temperature = 0.0f;
-    float coolingTime = 1.0f;
-    float noiseSeedOffset = 0.0f;
-    /// @note 縁の揺らぎ (VolumeNoiseSettings::amplitude) へ掛ける倍率。液体は小さくして表面を滑らかにする。
-    float noiseScale = 1.0f;
-    /// @note Look の Albedo Ramp 上の位置 [0,1]。
-    float colorKey = 0.0f;
-    /// @note 0 = 煙 (散乱する媒質) / 1 = 液体 (表面を持つ)。中間は混ざる。
-    float liquid = 0.0f;
+    float stretch = 1.0f; ///< 速度方向の軸へ掛けるパフの伸長倍率。
+    float stretchPerSpeed = 0.0f; ///< 速度の大きさから追加の伸長倍率を求める係数。
+    float density = 1.0f; ///< パフがボリュームに加える媒質密度の強さ。
+    float temperature = 0.0f; ///< 生まれたときの芯の温度 [0,1]。0 なら発光しない。
+    float coolingTime = 1.0f; ///< 発生後に温度を減衰させる時間尺度 [s]。
+    float noiseSeedOffset = 0.0f; ///< 個々のパフでノイズの模様を変える参照位置のずれ。
+    float noiseScale = 1.0f; ///< 縁の揺らぎ (VolumeNoiseSettings::amplitude) へ掛ける倍率。液体は小さくして表面を滑らかにする。
+    float colorKey = 0.0f; ///< Look の Albedo Ramp 上の位置 [0,1]。
+    float liquid = 0.0f; ///< 0 = 煙 (散乱する媒質) / 1 = 液体 (表面を持つ)。中間は混ざる。
 };
 
 /// @note StructuredBuffer の 1 要素 (float4 x 8)。時間に依存する計算は CPU で済ませる。
@@ -90,16 +80,16 @@ static_assert(sizeof(VolumeFillHeader) == 16, "VolumeFill.cs.hlsl の cbuffer �
 
 /// @note 1 コマぶんの GPU 入力。puffs.size() == header.puffCount。
 struct VolumeFillFrame {
-    VolumeFillHeader header;
-    std::vector<VolumeFillPuffGpu> puffs;
+    VolumeFillHeader header; ///< グリッドを充填する GPU パスへ渡す、このコマ共通のパラメーター。
+    std::vector<VolumeFillPuffGpu> puffs; ///< このコマの充填パスへ渡す有効パフの GPU 形式の列。
 };
 
 struct VolumeSample {
-    float density = 0.0f;
-    float temperature = 0.0f;
-    float colorKey = 0.0f;
-    float liquid = 0.0f;
-    math::Vector3 velocity;
+    float density = 0.0f; ///< 問い合わせ位置で合成した媒質密度。
+    float temperature = 0.0f; ///< 問い合わせ位置で合成した媒質の温度チャンネル。
+    float colorKey = 0.0f; ///< 問い合わせ位置の色をランプから得るための補間キー。
+    float liquid = 0.0f; ///< 問い合わせ位置で合成した液体の充填量。
+    math::Vector3 velocity; ///< 問い合わせ位置で合成したシミュレーション空間の速度。
 };
 
 /// @note 生まれてから age 秒後の中心。
@@ -128,8 +118,8 @@ FBZZ_ENGINE_API std::uint32_t PackVolumeFill(std::span<const VolumePuff> puffs, 
 
 /// @note 1 つの puff が «目に見える» 範囲を包む球。
 struct VolumeBound {
-    math::Vector3 center;
-    float radius = 0.0f;
+    math::Vector3 center; ///< ボリューム境界球のシミュレーション空間上の中心。
+    float radius = 0.0f; ///< 境界球の中心からボリュームを覆う距離。
 };
 
 /// @note 時刻 time に見えている puff の範囲。構図の検査 (箱やタイルの縁で切れないか) に使う。
@@ -139,4 +129,4 @@ struct VolumeBound {
                                                                   const VolumeNoiseSettings& noise,
                                                                   float time);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

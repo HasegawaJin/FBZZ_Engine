@@ -21,11 +21,11 @@ void ClearEmitterRuntime(ParticleEmitter& emitter)
     emitter.runtime.injectedSpawns.clear();
 }
 
-} /// @note namespace
+} // namespace
 bool StepParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, float dt)
 {
-    /// @note 黒体モードの焼き込みはここで 1 フレームに 1 回だけ行う。CPU 更新も GPU 定数バッファも
-    /// @note この後の runtimeGradient を読むため、両経路の色が原理的にずれない。
+    // 黒体モードの焼き込みはここで 1 フレームに 1 回だけ行う。CPU 更新も GPU 定数バッファも
+    // この後の runtimeGradient を読むため、両経路の色が原理的にずれない。
     emitter.RefreshRuntimeGradient();
 
     bool canEmit = emitter.settings.playing;
@@ -33,17 +33,19 @@ bool StepParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, 
         emitter.runtime.delayTime += dt;
         canEmit = false;
     }
-    /// @note duration の有無に関わらず進める (playTime は «再生開始からの経過»)。
-    /// @note 止めると duration = 0 のエミッターで時刻指定 Burst が永久に発火しない。
-    if (canEmit) emitter.runtime.playTime += dt;
+    // duration の有無に関わらず進める (playTime は «再生開始からの経過»)。
+    // 止めると duration = 0 のエミッターで時刻指定 Burst が永久に発火しない。
+    if (canEmit) {
+        emitter.runtime.playTime += dt;
+    }
     const float loopTolerance = emitter.settings.loop
         ? (std::min)((std::max)(dt, 0.0f) * 1.0e-3f, emitter.settings.duration * 1.0e-3f)
         : 0.0f;
     if (canEmit && emitter.settings.duration > 0.0f
         && emitter.runtime.playTime + loopTolerance >= emitter.settings.duration) {
         if (emitter.settings.loop) {
-            /// @note lifetime と duration が等しい粒子は同じ刻みで死ぬ。float の累積誤差で
-            /// @note 次の Burst が 1 刻み遅れると空白が出るので、境界近傍を同時刻とみなす。
+            // lifetime と duration が等しい粒子は同じ刻みで死ぬ。float の累積誤差で
+            // 次の Burst が 1 刻み遅れると空白が出るので、境界近傍を同時刻とみなす。
             const float remainder = std::fmod(emitter.runtime.playTime, emitter.settings.duration);
             emitter.runtime.playTime = std::abs(emitter.runtime.playTime - emitter.settings.duration)
                 <= loopTolerance ? 0.0f : remainder;
@@ -60,10 +62,10 @@ bool StepParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, 
     }
     emitter.runtime.emitThisFrame = canEmit;
 
-    /// @note 距離Emission: Emitterのワールド移動量を粒子数へ変換する。
+    // 距離Emission: Emitterのワールド移動量を粒子数へ変換する。
     const math::Vector3 emitterWorldPosition = TransformEmitterPoint(tf, emitter.settings.emitPosition);
-    /// @note エミッター自身のワールド速度。inheritVelocity がスポーン初速へ足すために使う。
-    /// @note dt が 0 (完全停止・スクラブ中) のときは前回値を保つ (0 除算と速度の消失を避ける)。
+    // エミッター自身のワールド速度。inheritVelocity がスポーン初速へ足すために使う。
+    // dt が 0 (完全停止・スクラブ中) のときは前回値を保つ (0 除算と速度の消失を避ける)。
     if (emitter.runtime.hasLastEmitterPosition && dt > 1.0e-6f) {
         emitter.runtime.emitterVelocity =
             (emitterWorldPosition - emitter.runtime.lastEmitterPosition) * (1.0f / dt);
@@ -80,22 +82,24 @@ bool StepParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, 
     emitter.runtime.lastEmitterPosition = emitterWorldPosition;
     emitter.runtime.hasLastEmitterPosition = true;
 
-    /// @note 時刻指定Burst。loop時はplayTimeの巻き戻しでcycle状態もリセットされる。
-    if (emitter.runtime.burstCyclesFired.size() != emitter.settings.bursts.size())
+    // 時刻指定Burst。loop時はplayTimeの巻き戻しでcycle状態もリセットされる。
+    if (emitter.runtime.burstCyclesFired.size() != emitter.settings.bursts.size()) {
         emitter.runtime.burstCyclesFired.assign(emitter.settings.bursts.size(), 0);
+    }
     for (size_t burstIndex = 0; burstIndex < emitter.settings.bursts.size(); ++burstIndex) {
         const ParticleBurst& burst = emitter.settings.bursts[burstIndex];
         int& fired = emitter.runtime.burstCyclesFired[burstIndex];
         const int cycles = (std::max)(burst.cycles, 1);
         while (fired < cycles
                && emitter.runtime.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
-            if (Random01(emitter) <= Clamp01(burst.probability))
+            if (Random01(emitter) <= Clamp01(burst.probability)) {
                 emitter.Burst(burst.count);
+            }
             ++fired;
         }
     }
 
-    /// @note Prewarmは初回描画前に定常個数を投入する。GPU readbackを避けるため履歴位置は近似する。
+    // Prewarmは初回描画前に定常個数を投入する。GPU readbackを避けるため履歴位置は近似する。
     if (emitter.settings.prewarm && emitter.settings.loop && !emitter.runtime.prewarmed) {
         const float warmDuration = emitter.settings.duration > 0.0f ? emitter.settings.duration : emitter.settings.lifetime;
         const int warmCount = static_cast<int>((std::max)(emitter.settings.emitRate, 0.0f)
@@ -110,13 +114,15 @@ bool StepParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, 
 
 bool AdvanceParticleEmitterPlaybackAtFrame(ParticleEmitter& emitter, const Transform& transform, float deltaTime, uint64_t frame)
 {
-    if (emitter.runtime.lastPlaybackFrame == frame) return emitter.runtime.emitThisFrame;
+    if (emitter.runtime.lastPlaybackFrame == frame) {
+        return emitter.runtime.emitThisFrame;
+    }
     emitter.runtime.lastPlaybackFrame = frame;
     return StepParticleEmitterPlayback(emitter, transform, deltaTime);
 }
-} /// @note namespace particle_runtime_detail
+} // namespace particle_runtime_detail
 bool AdvanceParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& transform, float deltaTime)
 {
     return particle_runtime_detail::AdvanceParticleEmitterPlaybackAtFrame(emitter, transform, deltaTime, Time::frameCount);
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

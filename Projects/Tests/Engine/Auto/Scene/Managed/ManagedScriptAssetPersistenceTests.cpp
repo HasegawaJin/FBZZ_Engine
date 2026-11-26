@@ -52,7 +52,7 @@ protected:
     scene::GameObject& AddOwner(scene::Scene& source)
     {
         auto& owner = source.CreateGameObject("ManagedAssetOwner");
-        /// @note Decal のデータ読取は GPU や Material importer を要求せず、native の参照変換を直接観測できる。
+        // Decal のデータ読取は GPU や Material importer を要求せず、native の参照変換を直接観測できる。
         owner.AddComponent<scene::DecalComponent>().materialPath = m_assetPath;
         auto& scripts = owner.AddComponent<scene::ScriptComponent>();
         for (const char* type : {"cs:missing-managed-asset-persistence", "cs-internal:MissingManagedAssetPersistence"}) {
@@ -149,7 +149,7 @@ TEST_F(ManagedScriptAssetPersistenceTest, AppendedManagedSettingsKeepGuidValuesA
     ASSERT_EQ(roots.size(), 1u);
     auto* appended = destination.GetGameObject(roots.front());
     ASSERT_NE(appended, nullptr);
-    /// @note Decal は AppendObjects の復元対象外なので、native 参照の往復は Save/Load 側で検証する。
+    // Decal は AppendObjects の復元対象外なので、native 参照の往復は Save/Load 側で検証する。
     ExpectPreservedSettings(*appended);
     EXPECT_EQ(destination.GetGameObject(unrelatedId), &unrelated);
 }

@@ -48,30 +48,30 @@ constexpr uint32_t FZMODEL_SLOT_NAME_LEN = 64;
 constexpr uint32_t FZMODEL_NODE_NAME_LEN = 64;
 
 struct FzModelHeader {
-    char     magic[4];           ///< "FZMD"
-    uint32_t version;
-    uint32_t flags;              ///< FZMODEL_FLAG_*
-    uint32_t lodCount;
-    uint32_t materialSlotCount;
-    float    boundsCenter[3];
-    float    boundsRadius;
-    uint32_t _pad[3];
+    char     magic[4]; ///< モデルファイルの形式を照合する 4 バイトの識別子 FZMD。
+    uint32_t version; ///< フィールド配置を選ぶモデルファイルの版番号。
+    uint32_t flags; ///< スケルトンなどの追加データの有無を表す FZMODEL_FLAG_* のビット集合。
+    uint32_t lodCount; ///< モデルファイル内の LOD レコード数。
+    uint32_t materialSlotCount; ///< モデル全体で参照できる材質スロット数。
+    float    boundsCenter[3]; ///< 対象メッシュ集合を覆う境界球のモデル空間中心 XYZ。
+    float    boundsRadius; ///< 対象メッシュ集合を覆う境界球のモデル空間半径。
+    uint32_t _pad[3]; ///< 対応するバイナリレコードのバイト配置を保つ予約領域。
 };
 static_assert(sizeof(FzModelHeader) == 48, "FzModelHeader size mismatch");
 
 struct FzLodHeader {
     float    screenSizeThreshold; ///< このLODを使う画面占有率の下限 (0.0 = 常時使用)
-    uint32_t submeshCount;
+    uint32_t submeshCount; ///< この LOD に後続するサブメッシュの数。
 };
 static_assert(sizeof(FzLodHeader) == 8, "FzLodHeader size mismatch");
 
 struct FzSubmeshHeader {
-    uint32_t materialSlotIndex;
-    uint32_t vertexFormat;       ///< 0 = Vertex (static), 1 = SkinnedVertex
-    uint32_t vertexCount;
-    uint32_t indexCount;
-    float    boundsCenter[3];
-    float    boundsRadius;
+    uint32_t materialSlotIndex; ///< このサブメッシュが使用するモデルの材質スロット番号。
+    uint32_t vertexFormat; ///< 頂点レコードの形式番号。0 は静的頂点、1 はスキンド頂点。
+    uint32_t vertexCount; ///< 対応するレコードに続く頂点データの要素数。
+    uint32_t indexCount; ///< このサブメッシュに後続するインデックスの要素数。
+    float    boundsCenter[3]; ///< 対象メッシュ集合を覆う境界球のモデル空間中心 XYZ。
+    float    boundsRadius; ///< 対象メッシュ集合を覆う境界球のモデル空間半径。
 };
 static_assert(sizeof(FzSubmeshHeader) == 32, "FzSubmeshHeader size mismatch");
 
@@ -79,29 +79,29 @@ static_assert(sizeof(FzSubmeshHeader) == 32, "FzSubmeshHeader size mismatch");
 /// @note Scene 配置時に Mesh_0 のようなエンジン都合の名前へ置き換えず、
 ///       FBX のメッシュ名をそのまま GameObject 名へ反映するため。
 struct FzSubmeshExtensionV3 {
-    uint32_t morphTargetCount;
-    char     name[128];
+    uint32_t morphTargetCount; ///< このサブメッシュに後続するモーフターゲット数。
+    char     name[128]; ///< サブメッシュ名を格納する固定長バイト欄。
 };
 
 struct FzMorphTargetHeader {
-    char name[128];
-    uint32_t vertexCount;
+    char name[128]; ///< モーフをアニメーション側から照合する固定長の名前欄。
+    uint32_t vertexCount; ///< このモーフに格納した頂点差分の要素数。
 };
 
 struct FzMorphDelta {
-    float position[3];
-    float normal[3];
-    float tangent[3];
+    float position[3]; ///< 基底頂点からの位置差分 XYZ。
+    float normal[3]; ///< 基底頂点からの法線差分 XYZ。
+    float tangent[3]; ///< 基底頂点からの接線差分 XYZ。
 };
 static_assert(sizeof(FzMorphDelta) == 36, "FzMorphDelta size mismatch");
 
 /// DCC のノード 1 個 = 配置時の 1 GameObject。ノード内のマテリアル分割は
 /// meshIndices の複数要素 (= Renderer の submesh 列) として表現する。
 struct FzModelNodeChunkHeader {
-    char     magic[4];        ///< "FZND"
-    uint32_t nodeCount;
-    int32_t  rootNodeIndex;
-    uint32_t _pad;
+    char     magic[4]; ///< ノードチャンクを照合する 4 バイトの識別子 FZND。
+    uint32_t nodeCount; ///< ノードチャンクに格納するモデルノード数。
+    int32_t  rootNodeIndex; ///< モデルノードレコードの先頭のルート添字。未設定時は -1。
+    uint32_t _pad; ///< 対応するバイナリレコードのバイト配置を保つ予約領域。
 };
 static_assert(sizeof(FzModelNodeChunkHeader) == 16, "FzModelNodeChunkHeader size mismatch");
 
@@ -109,13 +109,13 @@ static_assert(sizeof(FzModelNodeChunkHeader) == 16, "FzModelNodeChunkHeader size
 /// 直後に meshCount × uint32_t (lods[0].submeshes の添字)、
 /// 続いて childCount × int32_t が並ぶ。
 struct FzModelNodeData {
-    char     name[FZMODEL_NODE_NAME_LEN];
-    int32_t  parentIndex;
-    float    localTranslation[3];
-    float    localRotation[4];    ///< x,y,z,w
-    float    localScale[3];
-    uint32_t meshCount;
-    uint32_t childCount;
+    char     name[FZMODEL_NODE_NAME_LEN]; ///< このモデルノードを照合する固定長の名前欄。
+    int32_t  parentIndex; ///< モデルノード配列内での親の添字。ルートは -1。
+    float    localTranslation[3]; ///< 親ノードを基準としたローカル位置 XYZ。
+    float    localRotation[4]; ///< 親ノードを基準とした回転。クォータニオンの x、y、z、w 順。
+    float    localScale[3]; ///< 親ノードを基準としたローカル軸別倍率 XYZ。
+    uint32_t meshCount; ///< ノードレコードの後ろに並ぶメッシュ添字の数。
+    uint32_t childCount; ///< ノードレコードの後ろに並ぶ直下の子ノード添字の数。
 };
 static_assert(sizeof(FzModelNodeData) == 116, "FzModelNodeData size mismatch");
 

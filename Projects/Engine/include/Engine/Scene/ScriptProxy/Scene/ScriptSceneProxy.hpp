@@ -22,7 +22,7 @@ class Script;
 struct EntityRef;
 
 struct ScriptSceneProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< シーン操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name 検索 (Unity の GameObject.Find / FindWithTag / FindObjectsOfType と同じ規則)
     /// @note 既定では親ごと無効化された GameObject を返さない。無効にしておいて後で有効化する物 (HUD・ポーズ画面など) を探すときは includeInactive = true を渡す。
@@ -75,8 +75,8 @@ struct ScriptSceneProxy {
     FBZZ_ENGINE_API std::string GetTag() const;
     FBZZ_ENGINE_API void        SetTag(const std::string& t) const;
 
-    __declspec(property(get=GetName, put=SetName)) std::string name;
-    __declspec(property(get=GetTag,  put=SetTag )) std::string tag;
+    __declspec(property(get=GetName, put=SetName)) std::string name; ///< 対象 GameObject に設定する表示名。
+    __declspec(property(get=GetTag,  put=SetTag )) std::string tag; ///< 対象 GameObject のタグ検索に使う識別文字列。
 
     /// @note Prefab をインスタンス化して最初のルート GO を返す。失敗時は nullptr。
     FBZZ_ENGINE_API GameObject* Instantiate(const PrefabRef& prefab) const;

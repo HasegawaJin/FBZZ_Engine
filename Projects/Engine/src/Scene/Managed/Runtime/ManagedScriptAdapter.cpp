@@ -19,18 +19,22 @@ std::string AuthoringInput(std::string_view fields, const std::vector<std::strin
     constexpr char hexadecimal[] = "0123456789abcdef";
     bool first = true;
     for (const std::string& path : rebindReferences) {
-        if (!first) result.push_back(',');
+        if (!first) {
+            result.push_back(',');
+        }
         first = false; result.push_back('"');
         for (unsigned char value : path) {
             if (value == '"' || value == '\\') { result.push_back('\\'); result.push_back(static_cast<char>(value)); }
             else if (value < 32) { result.append("\\u00"); result.push_back(hexadecimal[value >> 4]); result.push_back(hexadecimal[value & 15]); }
-            else result.push_back(static_cast<char>(value));
+            else {
+                result.push_back(static_cast<char>(value));
+            }
         }
         result.push_back('"');
     }
     result.append("]}"); return result;
 }
-} /// @note namespace
+} // namespace
 
 ManagedScriptAdapter::ManagedScriptAdapter(ManagedScriptRuntime& runtime, std::string typeName,
                                          uint64_t generation, uint64_t instanceId, uint64_t ownerId, bool executeAlways, std::string savedScriptId)
@@ -54,9 +58,13 @@ bool ManagedScriptAdapter::RefreshOwnerBinding() { return m_runtime.BindOwner(*t
 bool ManagedScriptAdapter::ValidateSettingsJson(std::string_view json, SettingsValidationPurpose purpose,
     const std::vector<std::string>& rebindReferences)
 {
-    if (purpose != SettingsValidationPurpose::AUTHORING && !rebindReferences.empty()) return false;
+    if (purpose != SettingsValidationPurpose::AUTHORING && !rebindReferences.empty()) {
+        return false;
+    }
     const std::string authoring = purpose == SettingsValidationPurpose::AUTHORING ? AuthoringInput(json, rebindReferences) : std::string{};
-    if (purpose == SettingsValidationPurpose::AUTHORING) json = authoring;
+    if (purpose == SettingsValidationPurpose::AUTHORING) {
+        json = authoring;
+    }
     ManagedBridgeRequest request;
     request.op = ManagedBridgeOp::VALIDATE_FIELDS;
     request.flags = static_cast<uint32_t>(purpose);
@@ -69,9 +77,13 @@ bool ManagedScriptAdapter::ValidateSettingsJson(std::string_view json, SettingsV
 bool ManagedScriptAdapter::ApplySettingsJson(std::string_view json, SettingsValidationPurpose purpose,
     const std::vector<std::string>& rebindReferences)
 {
-    if (purpose != SettingsValidationPurpose::AUTHORING && !rebindReferences.empty()) return false;
+    if (purpose != SettingsValidationPurpose::AUTHORING && !rebindReferences.empty()) {
+        return false;
+    }
     const std::string authoring = purpose == SettingsValidationPurpose::AUTHORING ? AuthoringInput(json, rebindReferences) : std::string{};
-    if (purpose == SettingsValidationPurpose::AUTHORING) json = authoring;
+    if (purpose == SettingsValidationPurpose::AUTHORING) {
+        json = authoring;
+    }
     ManagedBridgeRequest request;
     request.op = ManagedBridgeOp::WRITE_FIELDS;
     request.flags = static_cast<uint32_t>(purpose);
@@ -109,23 +121,33 @@ bool ManagedScriptAdapter::RestoreSettingsJson(std::string_view json)
 
 void ManagedScriptAdapter::Invoke(ManagedCallback callback)
 {
-    if (callback == ManagedCallback::CONNECT && m_connectionsActive) return;
-    if (!m_runtime.Invoke(*this, callback)) RecordFault();
+    if (callback == ManagedCallback::CONNECT && m_connectionsActive) {
+        return;
+    }
+    if (!m_runtime.Invoke(*this, callback)) {
+        RecordFault();
+    }
     else if (callback == ManagedCallback::CONNECT) m_connectionsActive = true;
 }
 
 void ManagedScriptAdapter::InvokeCollision(ManagedCallback callback, const CollisionInfo& collision)
 {
-    if (!m_runtime.InvokeCollision(*this, callback, collision)) RecordFault();
+    if (!m_runtime.InvokeCollision(*this, callback, collision)) {
+        RecordFault();
+    }
 }
 
 void ManagedScriptAdapter::RecordFault()
 {
     if (m_faultDiagnostic.empty()) {
         m_faultDiagnostic = m_runtime.LastDiagnostic();
-        if (m_faultDiagnostic.empty()) m_faultDiagnostic = "Managed callback could not execute in its current lifetime or scope.";
+        if (m_faultDiagnostic.empty()) {
+            m_faultDiagnostic = "Managed callback could not execute in its current lifetime or scope.";
+        }
     }
-    if (m_faultDiagnostic.find("CS_REQUIRED_COMPONENT") != std::string::npos) BlockForMissingRequirements();
+    if (m_faultDiagnostic.find("CS_REQUIRED_COMPONENT") != std::string::npos) {
+        BlockForMissingRequirements();
+    }
     else { m_runtimeFaulted = true; enabled = false; }
     m_runtime.CancelOwned(*this);
 }
@@ -133,10 +155,14 @@ void ManagedScriptAdapter::RecordFault()
 void ManagedScriptAdapter::OnDrawGizmos()
 {
     std::vector<ScriptDebugDrawCommand> commands;
-    if (!m_runtime.CaptureGizmos(*this, false, commands)) return;
+    if (!m_runtime.CaptureGizmos(*this, false, commands)) {
+        return;
+    }
     for (const auto& command : commands) {
         gizmo.SetDepthTest(command.depthTest);
-        if (command.type == ScriptDebugDrawType::Line) gizmo.DrawLine(command.a, command.b, command.color);
+        if (command.type == ScriptDebugDrawType::Line) {
+            gizmo.DrawLine(command.a, command.b, command.color);
+        }
         else if (command.type == ScriptDebugDrawType::Sphere) gizmo.DrawSphere(command.a, command.radius, command.color);
         else if (command.type == ScriptDebugDrawType::Box) gizmo.DrawBox(command.a, command.halfExtents, command.color);
     }
@@ -146,10 +172,14 @@ void ManagedScriptAdapter::OnDrawGizmos()
 void ManagedScriptAdapter::OnDrawGizmosSelected()
 {
     std::vector<ScriptDebugDrawCommand> commands;
-    if (!m_runtime.CaptureGizmos(*this, true, commands)) return;
+    if (!m_runtime.CaptureGizmos(*this, true, commands)) {
+        return;
+    }
     for (const auto& command : commands) {
         gizmo.SetDepthTest(command.depthTest);
-        if (command.type == ScriptDebugDrawType::Line) gizmo.DrawLine(command.a, command.b, command.color);
+        if (command.type == ScriptDebugDrawType::Line) {
+            gizmo.DrawLine(command.a, command.b, command.color);
+        }
         else if (command.type == ScriptDebugDrawType::Sphere) gizmo.DrawSphere(command.a, command.radius, command.color);
         else if (command.type == ScriptDebugDrawType::Box) gizmo.DrawBox(command.a, command.halfExtents, command.color);
     }
@@ -159,7 +189,9 @@ void ManagedScriptAdapter::OnDrawGizmosSelected()
 void ManagedScriptAdapter::OnAwake()
 {
     Invoke(ManagedCallback::AWAKE);
-    if (!m_runtimeFaulted && !RequirementsBlocked()) m_managedAwoken = true;
+    if (!m_runtimeFaulted && !RequirementsBlocked()) {
+        m_managedAwoken = true;
+    }
 }
 void ManagedScriptAdapter::OnStart()
 {
@@ -169,7 +201,9 @@ void ManagedScriptAdapter::OnStart()
 void ManagedScriptAdapter::OnEnable()
 {
     Invoke(ManagedCallback::ENABLE);
-    if (m_managedStarted && !m_runtimeFaulted && !m_connectionsActive) Invoke(ManagedCallback::CONNECT);
+    if (m_managedStarted && !m_runtimeFaulted && !m_connectionsActive) {
+        Invoke(ManagedCallback::CONNECT);
+    }
 }
 void ManagedScriptAdapter::OnDisable() { Invoke(ManagedCallback::DISABLE); m_runtime.CancelOwned(*this); }
 void ManagedScriptAdapter::OnUpdate() { Invoke(ManagedCallback::UPDATE); }
@@ -222,7 +256,9 @@ bool ManagedScriptAdapter::InitializeFields()
         ManagedBridgeReply reply;
         std::string name;
         if (!m_runtime.Dispatch(request, reply, &name)) {
-            if (reply.status == ManagedBridgeStatus::NOT_FOUND && index == 0) break;
+            if (reply.status == ManagedBridgeStatus::NOT_FOUND && index == 0) {
+                break;
+            }
             return false;
         }
         ManagedFieldDescriptor field;
@@ -232,18 +268,28 @@ bool ManagedScriptAdapter::InitializeFields()
         field.minimum = reply.x;
         field.maximum = reply.y;
         if (field.flags & kManagedFieldRange) {
-            if (!std::isfinite(field.minimum) || !std::isfinite(field.maximum) || field.minimum > field.maximum) return false;
+            if (!std::isfinite(field.minimum) || !std::isfinite(field.maximum) || field.minimum > field.maximum) {
+                return false;
+            }
         }
         request.flags = 1;
         ManagedBridgeReply labelReply;
-        if (!m_runtime.Dispatch(request, labelReply, &field.label)) return false;
+        if (!m_runtime.Dispatch(request, labelReply, &field.label)) {
+            return false;
+        }
         request.flags = 2;
-        if (!m_runtime.Dispatch(request, labelReply, &field.schemaJson)) return false;
+        if (!m_runtime.Dispatch(request, labelReply, &field.schemaJson)) {
+            return false;
+        }
         request.flags = 3;
         std::string keys;
-        if (!m_runtime.Dispatch(request, labelReply, &keys) || !managed_detail::DecodeArray(keys, field.previousKeys)) return false;
+        if (!m_runtime.Dispatch(request, labelReply, &keys) || !managed_detail::DecodeArray(keys, field.previousKeys)) {
+            return false;
+        }
         fields.push_back(std::move(field));
-        if (index + 1 >= reply.index) break;
+        if (index + 1 >= reply.index) {
+            break;
+        }
     }
     m_fields = std::move(fields);
     return true;
@@ -254,7 +300,9 @@ bool ManagedScriptAdapter::CaptureFields(std::vector<ManagedFieldValue>& fields,
     fields.clear();
     for (const auto& field : m_fields) {
         if (!(field.flags & kManagedFieldSetting)
-            && !(includeReloadState && (field.flags & kManagedFieldReloadState))) continue;
+            && !(includeReloadState && (field.flags & kManagedFieldReloadState))) {
+            continue;
+        }
         ManagedBridgeRequest request;
         request.op = ManagedBridgeOp::READ_FIELD;
         request.generation = m_generation;
@@ -263,7 +311,9 @@ bool ManagedScriptAdapter::CaptureFields(std::vector<ManagedFieldValue>& fields,
         request.inputBytes = static_cast<uint32_t>(field.name.size());
         ManagedFieldValue value;
         value.name = field.name;
-        if (!m_runtime.Dispatch(request, value.value, &value.text)) return false;
+        if (!m_runtime.Dispatch(request, value.value, &value.text)) {
+            return false;
+        }
         fields.push_back(std::move(value));
     }
     return true;
@@ -271,7 +321,9 @@ bool ManagedScriptAdapter::CaptureFields(std::vector<ManagedFieldValue>& fields,
 
 bool ManagedScriptAdapter::ReadSettingsSnapshot(std::string& json)
 {
-    if (!RefreshOwnerBinding()) return false;
+    if (!RefreshOwnerBinding()) {
+        return false;
+    }
     ManagedBridgeRequest request;
     request.op = ManagedBridgeOp::GET_SETTINGS_SNAPSHOT;
     request.generation = m_generation;
@@ -282,13 +334,17 @@ bool ManagedScriptAdapter::ReadSettingsSnapshot(std::string& json)
 
 bool ManagedScriptAdapter::ReadSettingsPage(std::string_view path, uint64_t start, uint32_t count, std::string& json)
 {
-    if (!RefreshOwnerBinding()) return false;
+    if (!RefreshOwnerBinding()) {
+        return false;
+    }
     std::string escaped;
     constexpr char HEX[] = "0123456789abcdef";
     for (const char character : path) {
         const auto byte = static_cast<unsigned char>(character);
         if (byte < 32) { escaped += "\\u00"; escaped += HEX[byte >> 4]; escaped += HEX[byte & 15]; continue; }
-        if (character == '"' || character == '\\') escaped += '\\';
+        if (character == '"' || character == '\\') {
+            escaped += '\\';
+        }
         escaped += character;
     }
     const std::string input = "{\"path\":\"" + escaped + "\",\"start\":" + std::to_string(start)
@@ -300,11 +356,15 @@ bool ManagedScriptAdapter::ReadSettingsPage(std::string_view path, uint64_t star
 }
 bool ManagedScriptAdapter::OpenSettingsEdit(uint64_t& sessionId, std::string& revision)
 {
-    if (!RefreshOwnerBinding()) return false;
+    if (!RefreshOwnerBinding()) {
+        return false;
+    }
     ManagedBridgeRequest request; request.op = ManagedBridgeOp::OPEN_SETTINGS_EDIT;
     request.generation = m_generation; request.instanceId = m_instanceId;
     ManagedBridgeReply reply;
-    if (!m_runtime.Dispatch(request, reply, &revision)) return false;
+    if (!m_runtime.Dispatch(request, reply, &revision)) {
+        return false;
+    }
     sessionId = std::bit_cast<uint64_t>(reply.integer); return sessionId != 0;
 }
 void ManagedScriptAdapter::CloseSettingsEdit(uint64_t sessionId, bool retainPrepared)
@@ -322,7 +382,9 @@ bool ManagedScriptAdapter::ReadSettingsRevision(uint64_t& revision)
     request.generation = m_generation;
     request.instanceId = m_instanceId;
     ManagedBridgeReply reply;
-    if (!m_runtime.Dispatch(request, reply)) return false;
+    if (!m_runtime.Dispatch(request, reply)) {
+        return false;
+    }
     revision = std::bit_cast<uint64_t>(reply.integer);
     return true;
 }
@@ -333,11 +395,13 @@ void ManagedScriptAdapter::CommitInstance(uint64_t generation, uint64_t instance
     const bool faulted = m_runtimeFaulted;
     const bool blocked = RequirementsBlocked();
     const bool wasEnabled = enabled;
-    /// @note 初回 enabled 通知だけ張り直し、既存の障害・必須設定ラッチを復帰させない。
+    // 初回 enabled 通知だけ張り直し、既存の障害・必須設定ラッチを復帰させない。
     if (!preserveLifecycle) { ResetLifecycleState(); m_managedAwoken = false; m_managedStarted = false; }
     m_connectionsActive = false;
     m_runtimeFaulted = faulted;
-    if (blocked) BlockForMissingRequirements();
+    if (blocked) {
+        BlockForMissingRequirements();
+    }
     enabled = wasEnabled;
     m_generation = generation;
     m_instanceId = instanceId;
@@ -356,7 +420,7 @@ bool ManagedScriptAdapter::ReflectForSerialization(IReflector& reflector, std::s
         diagnostic = m_typeName + ".OnBeforeSerialize: " + m_faultDiagnostic;
         return false;
     }
-    /// @note 保存は欠損した必須参照を保持する。値 codec の検証だけを要求し、設定を変更しない。
+    // 保存は欠損した必須参照を保持する。値 codec の検証だけを要求し、設定を変更しない。
     if (!ValidateSettingsJson("{}", SettingsValidationPurpose::SNAPSHOT)) {
         diagnostic = m_typeName + ": " + m_runtime.LastDiagnostic();
         return false;
@@ -367,16 +431,24 @@ bool ManagedScriptAdapter::ReflectForSerialization(IReflector& reflector, std::s
 bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std::string* diagnostic)
 {
     const auto fail = [&](const char* field, const char* reason) {
-        if (diagnostic) *diagnostic = m_typeName + "." + field + ": " + reason;
+        if (diagnostic) {
+            *diagnostic = m_typeName + "." + field + ": " + reason;
+        }
         reflector.EndField();
         return false;
     };
-    if (!RefreshOwnerBinding()) return fail("owner", m_runtime.LastDiagnostic().c_str());
+    if (!RefreshOwnerBinding()) {
+        return fail("owner", m_runtime.LastDiagnostic().c_str());
+    }
     for (const auto& field : m_fields) {
-        if (field.kind == ManagedValueKind::NONE) continue;
+        if (field.kind == ManagedValueKind::NONE) {
+            continue;
+        }
         const bool setting = (field.flags & kManagedFieldSetting) != 0;
         if (!setting && (!(field.flags & kManagedFieldObservation)
-            || !reflector.BeginObservation(field.name.c_str(), "managed field"))) continue;
+            || !reflector.BeginObservation(field.name.c_str(), "managed field"))) {
+            continue;
+        }
         ManagedBridgeRequest request;
         request.op = ManagedBridgeOp::READ_FIELD;
         request.generation = m_generation;
@@ -386,7 +458,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         ManagedBridgeReply value;
         std::string text;
         if (!m_runtime.Dispatch(request, value, &text)) {
-            if (diagnostic && setting) return fail(field.name.c_str(), m_runtime.LastDiagnostic().c_str());
+            if (diagnostic && setting) {
+                return fail(field.name.c_str(), m_runtime.LastDiagnostic().c_str());
+            }
             continue;
         }
         reflector.BeginField(field.name.c_str(), field.label.c_str());
@@ -401,24 +475,28 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         switch (field.kind) {
         case ManagedValueKind::FLOAT: {
             float edited = value.x;
-            if (field.flags & kManagedFieldRange)
+            if (field.flags & kManagedFieldRange) {
                 reflector.FloatRange(field.name.c_str(), edited, field.minimum, field.maximum);
-            else
+            }
+            else {
                 reflector.Field(field.name.c_str(), edited);
+            }
             changed = edited != value.x;
             value.x = edited;
             break;
         }
         case ManagedValueKind::INT: {
             int edited = static_cast<int>(value.integer);
-            if (field.flags & kManagedFieldRange)
+            if (field.flags & kManagedFieldRange) {
                 reflector.IntRange(field.name.c_str(), edited,
                     static_cast<int>(std::ceil(std::clamp(static_cast<double>(field.minimum),
                         static_cast<double>(std::numeric_limits<int>::min()), static_cast<double>(std::numeric_limits<int>::max())))),
                     static_cast<int>(std::floor(std::clamp(static_cast<double>(field.maximum),
                         static_cast<double>(std::numeric_limits<int>::min()), static_cast<double>(std::numeric_limits<int>::max())))));
-            else
+            }
+            else {
                 reflector.Field(field.name.c_str(), edited);
+            }
             changed = edited != value.integer;
             value.integer = edited;
             break;
@@ -455,7 +533,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         case ManagedValueKind::STRUCTURED: {
             managed_detail::StructuredValue edited{text};
             if (!edited.Valid()) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Structured reference payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Structured reference payload is invalid.");
+                }
                 continue;
             }
             request.flags = 1;
@@ -465,15 +545,20 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
             if (!m_runtime.Dispatch(request, identitiesReply, &identities)
                 || !managed_detail::DecodeArray(identities, objectIds, managed_detail::kMaximumStructuredElements)
                 || objectIds.size() != edited.objectReferences.size()) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Structured reference identities could not be read.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Structured reference identities could not be read.");
+                }
                 continue;
             }
-            for (size_t index = 0; index < objectIds.size(); ++index)
+            for (size_t index = 0; index < objectIds.size(); ++index) {
                 m_runtime.ResolveObjectId(*this, objectIds[index], edited.objectReferences[index]);
+            }
             request.flags = 0;
             reflector.ObjectField(field.name.c_str(), edited);
             if (!edited.ApplyReferences()) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Structured references could not be preserved.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Structured references could not be preserved.");
+                }
                 continue;
             }
             changed = edited.json != text || reflector.ResolveObjectReferences();
@@ -495,14 +580,17 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
             changed = before != reference.guid || reflector.ResolveObjectReferences();
             text = std::move(reference.guid);
             value.flags = text.empty() ? kManagedNullValue : 0;
-            if (field.flags & kManagedFieldRequired)
+            if (field.flags & kManagedFieldRequired) {
                 reflector.RequireReference(field.name.c_str(), EntityRef{reference.id}, "");
+            }
             break;
         }
         case ManagedValueKind::FLOAT_ARRAY: {
             std::vector<float> values;
             if (!managed_detail::DecodeArray(text, values)) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array payload is invalid.");
+                }
                 continue;
             }
             reflector.ListField(field.name.c_str(), values);
@@ -514,7 +602,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         case ManagedValueKind::INT_ARRAY: {
             std::vector<int> values;
             if (!managed_detail::DecodeArray(text, values)) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array payload is invalid.");
+                }
                 continue;
             }
             reflector.ListField(field.name.c_str(), values);
@@ -526,7 +616,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         case ManagedValueKind::BOOL_ARRAY: {
             std::vector<bool> values;
             if (!managed_detail::DecodeArray(text, values)) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array payload is invalid.");
+                }
                 continue;
             }
             reflector.ListField(field.name.c_str(), values);
@@ -538,7 +630,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         case ManagedValueKind::STRING_ARRAY: {
             std::vector<std::string> values;
             if (!managed_detail::DecodeArray(text, values)) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array payload is invalid.");
+                }
                 continue;
             }
             reflector.ListField(field.name.c_str(), values);
@@ -550,7 +644,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         case ManagedValueKind::VECTOR3_ARRAY: {
             std::vector<math::Vector3> values;
             if (!managed_detail::DecodeArray(text, values)) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array payload is invalid.");
+                }
                 continue;
             }
             reflector.ListField(field.name.c_str(), values);
@@ -562,7 +658,9 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
         case ManagedValueKind::GAME_OBJECT_ARRAY: {
             std::vector<ScriptObjectReference> values;
             if (!managed_detail::DecodeArray(text, values)) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array payload is invalid.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array payload is invalid.");
+                }
                 continue;
             }
             ManagedBridgeRequest identitiesRequest = request;
@@ -572,26 +670,37 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
             std::vector<uint64_t> objectIds;
             if (!m_runtime.Dispatch(identitiesRequest, identitiesReply, &identities)
                 || !managed_detail::DecodeArray(identities, objectIds) || objectIds.size() != values.size()) {
-                if (diagnostic && setting) return fail(field.name.c_str(), "Array reference identities could not be read.");
+                if (diagnostic && setting) {
+                    return fail(field.name.c_str(), "Array reference identities could not be read.");
+                }
                 continue;
             }
-            for (size_t index = 0; index < values.size(); ++index)
+            for (size_t index = 0; index < values.size(); ++index) {
                 m_runtime.ResolveObjectId(*this, objectIds[index], values[index]);
+            }
             reflector.ObjectReferenceListField(field.name.c_str(), values);
             const std::string edited = managed_detail::EncodeArray(values);
             changed = edited != text || reflector.ResolveObjectReferences();
             text = edited;
             if (field.flags & kManagedFieldRequired) {
-                if (values.empty()) reflector.RequireReference(field.name.c_str(), EntityRef{}, "");
-                for (const auto& reference : values) reflector.RequireReference(field.name.c_str(), EntityRef{reference.id}, "");
+                if (values.empty()) {
+                    reflector.RequireReference(field.name.c_str(), EntityRef{}, "");
+                }
+                for (const auto& reference : values) {
+                    reflector.RequireReference(field.name.c_str(), EntityRef{reference.id}, "");
+                }
             }
             break;
         }
         default:
-            if (diagnostic && setting) return fail(field.name.c_str(), "Setting codec is unsupported.");
+            if (diagnostic && setting) {
+                return fail(field.name.c_str(), "Setting codec is unsupported.");
+            }
             continue;
         }
-        if (!write || !setting || !changed) continue;
+        if (!write || !setting || !changed) {
+            continue;
+        }
         request.op = ManagedBridgeOp::WRITE_FIELD;
         request.index = static_cast<uint32_t>(field.kind);
         request.integer = value.integer;
@@ -616,4 +725,4 @@ bool ManagedScriptAdapter::ReflectFields(IReflector& reflector, bool write, std:
     return true;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

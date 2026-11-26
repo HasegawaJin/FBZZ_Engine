@@ -98,9 +98,12 @@ void PropagateNonBoneChildTransforms(GameObject& parent)
 {
     for (int i = 0; i < parent.GetChildCount(); ++i) {
         GameObject* child = parent.GetChild(i);
-        if (!child) continue;
-        if (child->GetComponent<BoneComponent>())
+        if (!child) {
             continue;
+        }
+        if (child->GetComponent<BoneComponent>()) {
+            continue;
+        }
 
         UpdateWorldTransform(*child, parent.transform);
         PropagateNonBoneChildTransforms(*child);
@@ -113,14 +116,18 @@ GameObject* FindBoneDescendant(GameObject& root, int nodeIndex)
 {
     for (int i = 0; i < root.GetChildCount(); ++i) {
         GameObject* child = root.GetChild(i);
-        if (!child) continue;
+        if (!child) {
+            continue;
+        }
 
         if (auto* bone = child->GetComponent<BoneComponent>())
-            if (bone->nodeIndex == nodeIndex)
+            if (bone->nodeIndex == nodeIndex) {
                 return child;
+            }
 
-        if (GameObject* found = FindBoneDescendant(*child, nodeIndex))
+        if (GameObject* found = FindBoneDescendant(*child, nodeIndex)) {
             return found;
+        }
     }
     return nullptr;
 }
@@ -132,10 +139,12 @@ bool HasAcyclicParentChain(const asset::Skeleton& skeleton, int nodeIndex)
     std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
     int current = nodeIndex;
     while (current >= 0) {
-        if (current >= static_cast<int>(skeleton.nodes.size()))
+        if (current >= static_cast<int>(skeleton.nodes.size())) {
             return false;
-        if (visited[static_cast<size_t>(current)] != 0)
+        }
+        if (visited[static_cast<size_t>(current)] != 0) {
             return false;
+        }
         visited[static_cast<size_t>(current)] = 1;
         current = skeleton.nodes[static_cast<size_t>(current)].parentIndex;
     }
@@ -146,7 +155,9 @@ bool HasAcyclicParentChain(const asset::Skeleton& skeleton, int nodeIndex)
 GameObject& BoneSearchScope(Scene& scene, GameObject& owner, const SkinnedMeshRenderer& smr)
 {
     auto* root = scene.GetGameObject(smr.skeletonRootEntity);
-    if (!root) return owner;
+    if (!root) {
+        return owner;
+    }
     auto* parent = root->GetParent();
     return parent ? *parent : *root;
 }
@@ -159,8 +170,9 @@ GameObject* EnsureBoneObject(Scene& scene,
                              const asset::Skeleton& skeleton,
                              int nodeIndex)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
         return &owner;
+    }
     auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
 
     if (nodeIndex < static_cast<int>(smr.nodeEntities.size())) {
@@ -170,8 +182,9 @@ GameObject* EnsureBoneObject(Scene& scene,
                 bone->boneIndex = node.boneIndex;
                 bone->skinnedMeshEntity = owner.GetID();
             }
-            if (nodeIndex == skeleton.rootNodeIndex)
+            if (nodeIndex == skeleton.rootNodeIndex) {
                 smr.skeletonRootEntity = existing->GetID();
+            }
             return existing;
         }
     }
@@ -184,20 +197,26 @@ GameObject* EnsureBoneObject(Scene& scene,
             bone->skinnedMeshEntity = owner.GetID();
         }
         smr.nodeEntities[static_cast<size_t>(nodeIndex)] = found->GetID();
-        if (nodeIndex == skeleton.rootNodeIndex)
+        if (nodeIndex == skeleton.rootNodeIndex) {
             smr.skeletonRootEntity = found->GetID();
+        }
         return found;
     }
 
     GameObject* parent = &owner;
     if (node.parentIndex >= 0 &&
         node.parentIndex < static_cast<int>(skeleton.nodes.size()) &&
-        HasAcyclicParentChain(skeleton, node.parentIndex))
+        HasAcyclicParentChain(skeleton, node.parentIndex)) {
         parent = EnsureBoneObject(scene, owner, smr, skeleton, node.parentIndex);
-    if (!parent) return nullptr;
+    }
+    if (!parent) {
+        return nullptr;
+    }
 
     GameObject* boneObject = scene.TryCreateGameObject(node.name);
-    if (!boneObject) return nullptr;
+    if (!boneObject) {
+        return nullptr;
+    }
     boneObject->layer = owner.layer;
     boneObject->transform.position = node.bindTranslation;
     boneObject->transform.rotation = node.bindRotation;
@@ -213,8 +232,9 @@ GameObject* EnsureBoneObject(Scene& scene,
     boneObject->AddComponent<BoneComponent>(std::move(bone));
 
     smr.nodeEntities[static_cast<size_t>(nodeIndex)] = boneObject->GetID();
-    if (nodeIndex == skeleton.rootNodeIndex)
+    if (nodeIndex == skeleton.rootNodeIndex) {
         smr.skeletonRootEntity = boneObject->GetID();
+    }
     return boneObject;
 }
 
@@ -231,8 +251,9 @@ bool EnsureBoneHierarchy(Scene& scene,
         std::all_of(smr.nodeEntities.begin(), smr.nodeEntities.end(),
                     [&scene](EntityID id) { return scene.GetGameObject(id) != nullptr; })) {
         for (size_t i = 0; i < skeleton.nodes.size(); ++i)
-            if (!EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i)))
+            if (!EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i))) {
                 return false;
+            }
         return true;
     }
 
@@ -244,13 +265,19 @@ bool EnsureBoneHierarchy(Scene& scene,
             ? scene.GetGameObject(smr.nodeEntities[i]) : nullptr;
         if (!existing) {
             if (auto* bone = searchScope.GetComponent<BoneComponent>();
-                bone && bone->nodeIndex == static_cast<int>(i))
+                bone && bone->nodeIndex == static_cast<int>(i)) {
                 existing = &searchScope;
-            else
+            }
+            else {
                 existing = FindBoneDescendant(searchScope, static_cast<int>(i));
+            }
         }
-        if (existing) resolvedNodes[i] = existing->GetID();
-        else ++missingCount;
+        if (existing) {
+            resolvedNodes[i] = existing->GetID();
+        }
+        else {
+            ++missingCount;
+        }
     }
     if (!scene.CanCreateGameObjects(missingCount)) {
         FBZZ_LOG_WARN("AnimatorSystem: '%s' needs %zu Bone entities, but only %zu slots remain",
@@ -260,8 +287,9 @@ bool EnsureBoneHierarchy(Scene& scene,
     smr.nodeEntities = std::move(resolvedNodes);
 
     for (size_t i = 0; i < skeleton.nodes.size(); ++i)
-        if (!EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i)))
+        if (!EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i))) {
             return false;
+        }
     return true;
 }
 
@@ -276,18 +304,23 @@ const Transform& SkeletonParentTransform(Scene& scene,
                                          GameObject& owner)
 {
     if (skeleton.rootNodeIndex < 0 ||
-        skeleton.rootNodeIndex >= static_cast<int>(smr.nodeEntities.size()))
+        skeleton.rootNodeIndex >= static_cast<int>(smr.nodeEntities.size())) {
         return owner.transform;
+    }
     GameObject* rootBone =
         scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(skeleton.rootNodeIndex)]);
-    if (!rootBone) return owner.transform;
+    if (!rootBone) {
+        return owner.transform;
+    }
     GameObject* parent = rootBone->GetParent();
-    if (!parent || parent == &owner) return owner.transform;
+    if (!parent || parent == &owner) {
+        return owner.transform;
+    }
     return parent->transform;
 }
 
 /// @brief nodeIndex 以下のボーンと非ボーン子の world を親から順に組み直す。
-/// @param visited skeleton.nodes と同じ長さ。呼び出し側で 0 初期化する。
+/// @param[in,out] visited skeleton.nodes と同じ長さ。呼び出し側で 0 初期化する。
 void PropagateBoneTransforms(Scene& scene,
                              const asset::Skeleton& skeleton,
                              SkinnedMeshRenderer& smr,
@@ -297,26 +330,31 @@ void PropagateBoneTransforms(Scene& scene,
                              std::vector<uint8_t>& visited)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
-        nodeIndex >= static_cast<int>(smr.nodeEntities.size()))
+        nodeIndex >= static_cast<int>(smr.nodeEntities.size())) {
         return;
-    /// @note 破損アセットで children が循環していても無限再帰にしない。
-    if (visited[static_cast<size_t>(nodeIndex)] != 0)
+    }
+    // 破損アセットで children が循環していても無限再帰にしない。
+    if (visited[static_cast<size_t>(nodeIndex)] != 0) {
         return;
+    }
     visited[static_cast<size_t>(nodeIndex)] = 1;
     GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(nodeIndex)]);
-    if (!boneObject) return;
+    if (!boneObject) {
+        return;
+    }
 
     if (nodeIndex == skeleton.rootNodeIndex) {
-        /// @note boneMatrix = rootInverse · nodeGlobal · offset の rootInverse を root local へ移し、Flush 後も残す。
+        // boneMatrix = rootInverse · nodeGlobal · offset の rootInverse を root local へ移し、Flush 後も残す。
         ApplyRootLocalTransform(*boneObject, rootInverseTransform);
     }
 
     UpdateWorldTransform(*boneObject, parentTransform);
     PropagateNonBoneChildTransforms(*boneObject);
 
-    for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
+    for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children) {
         PropagateBoneTransforms(scene, skeleton, smr, rootInverseTransform,
                                 child, boneObject->transform, visited);
+    }
 }
 
 void PropagateSkeletonWorld(Scene& scene, const asset::Skeleton& skeleton,
@@ -336,9 +374,13 @@ void ApplyBindPoseToBones(Scene& scene,
                           GameObject& owner)
 {
     for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (i >= smr.nodeEntities.size()) continue;
+        if (i >= smr.nodeEntities.size()) {
+            continue;
+        }
         GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[i]);
-        if (!boneObject) continue;
+        if (!boneObject) {
+            continue;
+        }
         const auto& node = skeleton.nodes[i];
         boneObject->transform.position = node.bindTranslation;
         boneObject->transform.rotation = node.bindRotation;
@@ -360,28 +402,34 @@ void RebuildSkinningFromBoneTransforms(Scene& scene,
                                        AnimatorComponent& animator)
 {
     if (smr.nodeEntities.size() < skeleton.nodes.size() ||
-        animator.nodeGlobalTransforms.size() < skeleton.nodes.size())
+        animator.nodeGlobalTransforms.size() < skeleton.nodes.size()) {
         return;
+    }
 
     const math::Matrix4 ownerInverse = math::Matrix4::Inverse(owner.transform.GetWorldMatrix());
-    /// @note PropagateBoneTransforms が root local へ rootInverse を焼き込んでいるので、ここで打ち消す。
+    // PropagateBoneTransforms が root local へ rootInverse を焼き込んでいるので、ここで打ち消す。
     const math::Matrix4 rootTransform =
         math::Matrix4::Inverse(skeleton.rootInverseTransform);
 
     for (size_t nodeIndex = 0; nodeIndex < skeleton.nodes.size(); ++nodeIndex) {
         GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[nodeIndex]);
-        if (!boneObject) continue;
+        if (!boneObject) {
+            continue;
+        }
 
         animator.nodeGlobalTransforms[nodeIndex] =
             rootTransform * ownerInverse * boneObject->transform.GetWorldMatrix();
     }
 
     for (size_t boneIndex = 0; boneIndex < animator.boneMatrices.size(); ++boneIndex) {
-        if (boneIndex >= skeleton.bones.size()) continue;
+        if (boneIndex >= skeleton.bones.size()) {
+            continue;
+        }
         const auto& bone = skeleton.bones[boneIndex];
         if (bone.nodeIndex < 0 ||
-            bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+            bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
             continue;
+        }
 
         animator.boneMatrices[boneIndex] =
             skeleton.rootInverseTransform

@@ -30,7 +30,9 @@ using math::TurbulenceSamplePoint;
 /// @note パス→ハンドルは AssetManager が持つので毎フレーム呼んでよい (中身はハッシュ 1 回)。
 const fluid::VectorFieldAsset* ResolveVectorField(const std::string& path)
 {
-    if (path.empty()) return nullptr;
+    if (path.empty()) {
+        return nullptr;
+    }
     const auto handle = asset::AssetManager::Load<fluid::VectorFieldAsset>(path);
     return handle.IsValid() ? asset::AssetManager::Get(handle) : nullptr;
 }
@@ -39,9 +41,13 @@ const fluid::VectorFieldAsset* ResolveVectorField(const std::string& path)
 bool ResolveInfluence(const ActiveFlowField& f, const math::Vector3& toPoint, float& influence)
 {
     influence = 1.0f;
-    if (f.radius <= 0.0f) return true;
+    if (f.radius <= 0.0f) {
+        return true;
+    }
     const float dist = toPoint.Length();
-    if (dist >= f.radius) return false;
+    if (dist >= f.radius) {
+        return false;
+    }
     influence = std::pow(1.0f - dist / f.radius, f.falloffPower);
     return true;
 }
@@ -78,7 +84,9 @@ std::span<const ActiveFlowField> SelectFlowFields(const FlowFieldFrame& frame, b
 std::function<math::Vector3(const math::Vector3&)> MakeFlowSampler(
     const FlowFieldFrame& frame, FlowReceiver receiver, float time, bool includeAmbient)
 {
-    if (!receiver.enabled || receiver.channels == 0u) return {};
+    if (!receiver.enabled || receiver.channels == 0u) {
+        return {};
+    }
     const size_t count = SelectFlowFields(frame, includeAmbient).size();
     return [fields = frame.fields, count, receiver, time](const math::Vector3& position) {
         return receiver.Sample(position, std::span<const ActiveFlowField>(*fields).first(count), time);
@@ -87,7 +95,9 @@ std::function<math::Vector3(const math::Vector3&)> MakeFlowSampler(
 
 bool FlowIntersectsSphere(const ActiveFlowField& field, const math::Vector3& center, float radius)
 {
-    if (!std::isfinite(radius) || radius < 0.0f) return true;
+    if (!std::isfinite(radius) || radius < 0.0f) {
+        return true;
+    }
     const auto delta = center - field.position;
     if (field.type == FlowFieldType::Baked) {
         const auto local = field.inverseRotation * delta;
@@ -98,18 +108,25 @@ bool FlowIntersectsSphere(const ActiveFlowField& field, const math::Vector3& cen
         const float paddedRadius = radius + 1.0e-4f;
         return outside.LengthSq() <= paddedRadius * paddedRadius;
     }
-    if (field.radius <= 0.0f) return true;
+    if (field.radius <= 0.0f) {
+        return true;
+    }
     const float reach = field.radius + radius + 1.0e-4f;
     return delta.LengthSq() <= reach * reach;
 }
 
 float FlowSpeedBound(const ActiveFlowField& field)
 {
-    if (field.type == FlowFieldType::LegacyDrag) return 0.0f;
-    /// @note Curl の各差分は [-4,4]、差は [-8,8]。8*sqrt(3) を外側へ丸める。
-    if (field.type == FlowFieldType::Curl) return std::abs(field.strength) * 14.0f;
-    if (field.type == FlowFieldType::Baked)
+    if (field.type == FlowFieldType::LegacyDrag) {
+        return 0.0f;
+    }
+    // Curl の各差分は [-4,4]、差は [-8,8]。8*sqrt(3) を外側へ丸める。
+    if (field.type == FlowFieldType::Curl) {
+        return std::abs(field.strength) * 14.0f;
+    }
+    if (field.type == FlowFieldType::Baked) {
         return field.vectorField ? std::abs(field.strength) * field.vectorField->maxMagnitude * 1.733f : 0.0f;
+    }
     return std::abs(field.strength);
 }
 
@@ -135,9 +152,9 @@ ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
     f.waterSwellAmplitude = settings.waterSwellAmplitude;
     f.waterSwellWavelength = settings.waterSwellWavelength;
     if (settings.fieldType == FlowFieldType::Baked) {
-        /// @note 焼いた場の効く範囲は extents (AABB の貼り先) が決める。radius まで見ると
-        /// @note 球で二重にクリップされる。Inspector は Baked のとき Radius を出さないので、
-        /// @note 型を切り替えて残った値が «見えないのに効く» ことのないよう無効化する。
+        // 焼いた場の効く範囲は extents (AABB の貼り先) が決める。radius まで見ると
+        // 球で二重にクリップされる。Inspector は Baked のとき Radius を出さないので、
+        // 型を切り替えて残った値が «見えないのに効く» ことのないよう無効化する。
         f.radius          = 0.0f;
         f.vectorField     = ResolveVectorField(settings.vectorFieldPath);
         f.inverseRotation = rotation.Conjugate();
@@ -152,14 +169,22 @@ ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
 void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>& out)
 {
     out.clear();
-    if (scene.GetEntities<FlowField>().empty()) return;
+    if (scene.GetEntities<FlowField>().empty()) {
+        return;
+    }
     for (auto& go : scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
+        if (!go.activeInHierarchy()) {
+            continue;
+        }
         auto* ff = go.GetComponent<FlowField>();
-        if (ff == nullptr) continue;
+        if (ff == nullptr) {
+            continue;
+        }
         for (const FlowFieldSettings& settings : ff->forces) {
-            if (!settings.enabled) continue;
-            /// @note direction はローカル指定。GameObject を回せば流向・渦軸も回る。
+            if (!settings.enabled) {
+                continue;
+            }
+            // direction はローカル指定。GameObject を回せば流向・渦軸も回る。
             out.push_back(ResolveFlowField(settings, go.transform.worldPosition,
                                            go.transform.worldRotation));
         }
@@ -172,14 +197,22 @@ math::Vector3 SampleFlow(const math::Vector3& position,
                          uint32_t channels, float time, bool* covered)
 {
     math::Vector3 flow = math::Vector3::ZERO;
-    if (covered != nullptr) *covered = false;
+    if (covered != nullptr) {
+        *covered = false;
+    }
     for (const auto& f : fields) {
-        if (!AffectsEmitter(f, channels)) continue;
+        if (!AffectsEmitter(f, channels)) {
+            continue;
+        }
         const math::Vector3 toPoint = position - f.position;
         float influence = 1.0f;
-        if (!ResolveInfluence(f, toPoint, influence)) continue;
-        /// @note 半径の内側に居れば «媒質の話がある» 点。流速が 0 でも覆いは立てる。
-        if (covered != nullptr && f.type != FlowFieldType::LegacyDrag) *covered = true;
+        if (!ResolveInfluence(f, toPoint, influence)) {
+            continue;
+        }
+        // 半径の内側に居れば «媒質の話がある» 点。流速が 0 でも覆いは立てる。
+        if (covered != nullptr && f.type != FlowFieldType::LegacyDrag) {
+            *covered = true;
+        }
         const float scale = f.strength * influence;
         switch (f.type) {
         case FlowFieldType::Uniform:
@@ -193,10 +226,12 @@ math::Vector3 SampleFlow(const math::Vector3& position,
             break;
         }
         case FlowFieldType::Vortex: {
-            /// @note 軸×点方向の外積 = 接線方向。軸周りに回す。
+            // 軸×点方向の外積 = 接線方向。軸周りに回す。
             const math::Vector3 tangent = math::Vector3::Cross(f.direction, toPoint);
             const float len = tangent.Length();
-            if (len > 1.0e-4f) flow = flow + tangent * (scale / len);
+            if (len > 1.0e-4f) {
+                flow = flow + tangent * (scale / len);
+            }
             break;
         }
         case FlowFieldType::Curl:
@@ -204,25 +239,29 @@ math::Vector3 SampleFlow(const math::Vector3& position,
                 position, f.noiseFrequency, f.noiseSpeed, time)) * scale;
             break;
         case FlowFieldType::LegacyDrag:
-            /// @note 流れではない。読み込み時に ParticleEmitter::flowCoupling へ写るので、
-            /// @note ここまで届くのは «旧ファイルを移行し損ねた» ときだけ。何も足さない。
+            // 流れではない。読み込み時に ParticleEmitter::flowCoupling へ写るので、
+            // ここまで届くのは «旧ファイルを移行し損ねた» ときだけ。何も足さない。
             break;
         case FlowFieldType::Baked: {
-            if (f.vectorField == nullptr || f.vectorField->Empty()) break;
-            /// @note 場のローカルへ: 平行移動 → 逆回転 → 指定した寸法で正規化。
-            /// @note 式は ParticleGpuSim.cs.hlsl の FF_BAKED 分岐と一致させること。
+            if (f.vectorField == nullptr || f.vectorField->Empty()) {
+                break;
+            }
+            // 場のローカルへ: 平行移動 → 逆回転 → 指定した寸法で正規化。
+            // 式は ParticleGpuSim.cs.hlsl の FF_BAKED 分岐と一致させること。
 
-            /// @note アセット側の bounds をそのまま使わないのは、同じ 1 枚を «部屋いっぱいの渦» と
-            /// @note «手のひらの渦» に貼り分けられるようにするため。
+            // アセット側の bounds をそのまま使わないのは、同じ 1 枚を «部屋いっぱいの渦» と
+            // «手のひらの渦» に貼り分けられるようにするため。
             const math::Vector3 localOffset = f.inverseRotation * toPoint;
             const math::Vector3 uvw = {
                 localOffset.x / f.extents.x * 0.5f + 0.5f,
                 localOffset.y / f.extents.y * 0.5f + 0.5f,
                 localOffset.z / f.extents.z * 0.5f + 0.5f };
             if (uvw.x < 0.0f || uvw.x > 1.0f || uvw.y < 0.0f || uvw.y > 1.0f
-                || uvw.z < 0.0f || uvw.z > 1.0f) break;
+                || uvw.z < 0.0f || uvw.z > 1.0f) {
+                break;
+            }
 
-            /// @note uvw [0,1] をアセットの bounds へ写して引く。
+            // uvw [0,1] をアセットの bounds へ写して引く。
             const math::Vector3& assetMin = f.vectorField->boundsMin;
             const math::Vector3& assetMax = f.vectorField->boundsMax;
             const math::Vector3 samplePoint = {
@@ -230,8 +269,8 @@ math::Vector3 SampleFlow(const math::Vector3& position,
                 assetMin.y + (assetMax.y - assetMin.y) * uvw.y,
                 assetMin.z + (assetMax.z - assetMin.z) * uvw.z };
             const math::Vector3 fieldValue = f.vectorField->SampleLocal(samplePoint);
-            /// @note 場は «場のローカル» で焼かれているのでワールドへ戻す。
-            /// @note strength は Baked だけ無次元の倍率。焼いた値が既に [m/s] のため。
+            // 場は «場のローカル» で焼かれているのでワールドへ戻す。
+            // strength は Baked だけ無次元の倍率。焼いた値が既に [m/s] のため。
             flow = flow + (f.inverseRotation.Conjugate() * fieldValue) * scale;
             break;
         }
@@ -247,12 +286,16 @@ void ApplyFlowFields(const std::vector<ActiveFlowField>& fields,
                      math::Vector3&       velocity,
                      float dt, float time, float coupling)
 {
-    if (fields.empty() || coupling <= 0.0f) return;
+    if (fields.empty() || coupling <= 0.0f) {
+        return;
+    }
     bool covered = false;
     const math::Vector3 flow = FlowReceiver{true, emitterChannels}.Sample(position, fields, time, &covered);
-    if (!covered) return;
-    /// @note 1 を超えると «行き過ぎて逆に振れる» 発散になる。陽解法の 1 ステップぶんで
-    /// @note 追い越さないところで止める (HLSL 側は saturate)。
+    if (!covered) {
+        return;
+    }
+    // 1 を超えると «行き過ぎて逆に振れる» 発散になる。陽解法の 1 ステップぶんで
+    // 追い越さないところで止める (HLSL 側は saturate)。
     const float blend = std::clamp(coupling * dt, 0.0f, 1.0f);
     velocity = velocity + (flow - velocity) * blend;
 }
@@ -271,26 +314,30 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
     const math::Vector3 emitterOrigin = TransformEmitterPoint(tf, emitter.settings.emitPosition);
 
     for (const FlowFieldSettings& force : emitter.settings.localForces) {
-        if (!force.enabled) continue;
-        /// @note Emitter 空間の流れ (周回・放射) だけがエミッターの位置と回転に追従する。
-        /// @note 乱流まで追従させると、エミッターを傾けただけで «どちらへ流れるか» が変わる。
+        if (!force.enabled) {
+            continue;
+        }
+        // Emitter 空間の流れ (周回・放射) だけがエミッターの位置と回転に追従する。
+        // 乱流まで追従させると、エミッターを傾けただけで «どちらへ流れるか» が変わる。
         const bool emitterSpace = force.space == FlowFieldSpace::Emitter;
         ActiveFlowField resolved = ResolveFlowField(
             force,
             emitterSpace ? emitterOrigin : math::Vector3::ZERO,
             emitterSpace ? tf.worldRotation : math::Quaternion{});
-        /// @note 内蔵の流れは相手が既にこのエミッター 1 体に決まっている。channels を持ち込むと
-        /// @note «自分の流れが自分のマスクに弾かれる» という説明のつかない挙動になる。
+        // 内蔵の流れは相手が既にこのエミッター 1 体に決まっている。channels を持ち込むと
+        // «自分の流れが自分のマスクに弾かれる» という説明のつかない挙動になる。
         resolved.channels = 0xFFFFFFFFu;
         outFields.push_back(resolved);
     }
 
     const FlowReceiver receiver{emitter.settings.receiveFlowFields, emitter.settings.flowFieldChannels};
-    if (!receiver.enabled || receiver.channels == 0u) return;
+    if (!receiver.enabled || receiver.channels == 0u) {
+        return;
+    }
     math::Vector3 boundsCenter = emitter.runtime.flowBoundsCenter;
     float boundsRadius = emitter.runtime.flowBoundsRadius;
     if (!useGpuBounds) {
-        /// @note スポーン後・移動前の全粒子を含める。Flow は移動前の位置で一度だけ標本化する。
+        // スポーン後・移動前の全粒子を含める。Flow は移動前の位置で一度だけ標本化する。
         boundsCenter = emitterOrigin;
         boundsRadius = 0.0f;
         for (const auto& particle : emitter.runtime.particles) {
@@ -301,7 +348,9 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
     }
     bool needsZeroFlow = false;
     for (const ActiveFlowField& field : sceneFields) {
-        if (!receiver.Accepts(field)) continue;
+        if (!receiver.Accepts(field)) {
+            continue;
+        }
         if (!receiver.Intersects(field, boundsCenter, boundsRadius)) {
             needsZeroFlow |= field.type == FlowFieldType::Baked;
             continue;
@@ -309,7 +358,7 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
         outFields.push_back(field);
     }
     if (needsZeroFlow) {
-        /// @note Baked は箱の外でも covered を立てる既存契約。省略した場の抵抗をゼロ流速1本で保つ。
+        // Baked は箱の外でも covered を立てる既存契約。省略した場の抵抗をゼロ流速1本で保つ。
         ActiveFlowField zero{};
         zero.type = FlowFieldType::Uniform;
         zero.channels = emitter.settings.flowFieldChannels;

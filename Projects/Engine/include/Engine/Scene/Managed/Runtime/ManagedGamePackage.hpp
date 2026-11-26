@@ -22,4 +22,4 @@ namespace fbzz::scene {
 /// @see https://learn.microsoft.com/dotnet/core/tutorials/netcore-hosting Framework-dependent native hosting。
 [[nodiscard]] FBZZ_ENGINE_API bool InitializeManagedGame(const std::filesystem::path& root,
     const std::filesystem::path& hostDirectory, std::string_view configuration, bool& loaded, std::string& diagnostic);
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

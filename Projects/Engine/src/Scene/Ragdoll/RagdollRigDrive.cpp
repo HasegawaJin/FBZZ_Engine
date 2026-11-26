@@ -39,7 +39,7 @@ RagdollBodyDrive ResolveDrivePatch(const RagdollBodyDrive& base, const RagdollBo
 
 RagdollBodyDrive BlendBodyDrive(const RagdollBodyDrive& from, const RagdollBodyDrive& to, float weight)
 {
-    /// @note on/off を切り替える間は出力上限を 0 から補間し、最後に目標の enabled と値へ揃える。
+    // on/off を切り替える間は出力上限を 0 から補間し、最後に目標の enabled と値へ揃える。
     return {
         from.enabled || to.enabled,
         to.space,
@@ -53,7 +53,7 @@ RagdollBodyDrive BlendBodyDrive(const RagdollBodyDrive& from, const RagdollBodyD
     };
 }
 
-} /// @note namespace
+} // namespace
 
 void RagdollRig::ApplyDrive()
 {
@@ -67,7 +67,9 @@ void RagdollRig::ApplyDrive()
 void RagdollRig::ApplyBodyDriveSettings()
 {
     for (auto& link : m_bodies) {
-        if (!link.drive) continue;
+        if (!link.drive) {
+            continue;
+        }
         const auto& activeDrive = link.activeDrive;
         int jointDepth = 0;
         for (int ancestorBodyIndex = link.parentBody; ancestorBodyIndex >= 0;
@@ -94,7 +96,7 @@ void RagdollRig::ApplyBodyDriveSettings()
 
 void RagdollRig::ApplyRootAnchorSettings(float gravityMagnitude)
 {
-    /// @note 繋ぎ止めもサーボと同じ «自重比» で持つ。重力を変えれば必要な力も変わる。
+    // 繋ぎ止めもサーボと同じ «自重比» で持つ。重力を変えれば必要な力も変わる。
     const float anchorStrength = std::max(m_anchorScale, 0.0f);
     for (std::size_t anchorIndex = 0; anchorIndex < m_anchors.size(); ++anchorIndex) {
         const float supportedMass = anchorIndex < m_anchorMass.size() ? m_anchorMass[anchorIndex] : m_totalMass;
@@ -104,7 +106,7 @@ void RagdollRig::ApplyRootAnchorSettings(float gravityMagnitude)
             massMoment * gravityMagnitude * anchorStrength,
             std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
 
-        /// @note XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
+        // XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
         const auto& rootBody = m_bodies[static_cast<std::size_t>(m_anchorBody[anchorIndex])];
         anchor.SetEnabled(m_driveEnabled && anchorStrength > 0.0f && gravityMagnitude > 0.0f
             && !rootBody.authoredDrive && !rootBody.customDrive && !rootBody.profileDrive);
@@ -119,7 +121,7 @@ void RagdollRig::ApplyJointServoSettings(float gravityMagnitude)
             std::pow(std::max(m_driveFalloff, 0.0f), static_cast<float>(link.depth));
 
         physics::XPBDJointDrive& drive = link.joint->Drive();
-        /// @note 目標は毎フレーム別に更新される
+        // 目標は毎フレーム別に更新される
         const math::Quaternion previousTarget = drive.target;
 
         drive = physics::XPBDJointDrive{};
@@ -127,18 +129,22 @@ void RagdollRig::ApplyJointServoSettings(float gravityMagnitude)
         const auto& childBody = m_bodies[static_cast<std::size_t>(link.childBody)];
         drive.enabled = link.baseServo.enabled && m_driveEnabled && driveStrength > 0.0f
             && !childBody.authoredDrive && !childBody.customDrive && !childBody.profileDrive;
-        if (!drive.enabled) continue;
+        if (!drive.enabled) {
+            continue;
+        }
 
-        /// @note «その先を支えるのに要るトルク» に倍率を掛けたものが上限になる。骨格の
-        /// @note 大きさが変わっても «どれだけ余裕があるか» が保たれる (理由は RagdollServo を参照)。
+        // «その先を支えるのに要るトルク» に倍率を掛けたものが上限になる。骨格の
+        // 大きさが変わっても «どれだけ余裕があるか» が保たれる (理由は RagdollServo を参照)。
         drive.maxTorque =
             link.holdMoment * gravityMagnitude * std::max(link.baseServo.torqueScale, 0.0f) * driveStrength;
         drive.enabled = drive.maxTorque > 0.0f;
-        if (!drive.enabled) continue;
-        /// @note たわみ角 θ でのトルクは θ/α。α = holdSag / maxTorque と置くと、
-        /// @note «holdSag だけたわんだところで上限を出し切る» という一貫した意味になる。
-        /// @note 弱くすると上限が下がり、同じ式で compliance が上がる ─ 硬いまま上限だけ
-        /// @note 下げると、押した瞬間は耐えて限界で急に落ちる不連続な動きになる。
+        if (!drive.enabled) {
+            continue;
+        }
+        // たわみ角 θ でのトルクは θ/α。α = holdSag / maxTorque と置くと、
+        // «holdSag だけたわんだところで上限を出し切る» という一貫した意味になる。
+        // 弱くすると上限が下がり、同じ式で compliance が上がる ─ 硬いまま上限だけ
+        // 下げると、押した瞬間は耐えて限界で急に落ちる不連続な動きになる。
         drive.compliance =
             std::max(link.baseServo.holdSag, 0.0f) / std::max(drive.maxTorque, 1.0e-4f);
         drive.damping = link.baseServo.damping * std::max(m_driveDamping, 0.0f);
@@ -147,15 +153,21 @@ void RagdollRig::ApplyJointServoSettings(float gravityMagnitude)
 
 void RagdollRig::SetEffectiveDrive(BodyLink& link, const RagdollBodyDrive& settings)
 {
-    if (link.activeDrive.space != settings.space) link.targetHistory = false;
+    if (link.activeDrive.space != settings.space) {
+        link.targetHistory = false;
+    }
     link.activeDrive = settings;
 }
 
 bool RagdollRig::SetBodyDrive(std::string_view bone, const RagdollBodyDrive& settings)
 {
-    if (!ValidBodyDrive(settings)) return false;
+    if (!ValidBodyDrive(settings)) {
+        return false;
+    }
     for (auto& link : m_bodies) {
-        if (link.name != bone) continue;
+        if (link.name != bone) {
+            continue;
+        }
         SetEffectiveDrive(link, settings);
         link.customDrive = true;
         ResetRest();
@@ -168,7 +180,9 @@ bool RagdollRig::SetBodyDrive(std::string_view bone, const RagdollBodyDrive& set
 bool RagdollRig::ClearBodyDrive(std::string_view bone)
 {
     for (auto& link : m_bodies) {
-        if (link.name != bone) continue;
+        if (link.name != bone) {
+            continue;
+        }
         link.customDrive = false;
         SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
         ResetRest();
@@ -180,16 +194,24 @@ bool RagdollRig::ClearBodyDrive(std::string_view bone)
 
 bool RagdollRig::ApplyDriveProfile(std::span<const RagdollBodyDriveEntry> entries, float transitionSeconds)
 {
-    if (!std::isfinite(transitionSeconds) || transitionSeconds < 0.0f || entries.size() > m_bodies.size()) return false;
+    if (!std::isfinite(transitionSeconds) || transitionSeconds < 0.0f || entries.size() > m_bodies.size()) {
+        return false;
+    }
     std::vector<std::optional<RagdollBodyDrive>> profileTargets(m_bodies.size());
     for (const auto& entry : entries) {
         const auto body = std::find_if(m_bodies.begin(), m_bodies.end(),
             [&entry](const BodyLink& link) { return link.name == entry.bone; });
-        if (entry.bone.empty() || body == m_bodies.end()) return false;
+        if (entry.bone.empty() || body == m_bodies.end()) {
+            return false;
+        }
         auto& profileTarget = profileTargets[static_cast<std::size_t>(body - m_bodies.begin())];
-        if (profileTarget) return false;
+        if (profileTarget) {
+            return false;
+        }
         profileTarget = ResolveDrivePatch(body->baseDrive, entry.patch);
-        if (!ValidBodyDrive(*profileTarget)) return false;
+        if (!ValidBodyDrive(*profileTarget)) {
+            return false;
+        }
     }
 
     m_driveProfileTransitions.clear();
@@ -198,13 +220,17 @@ bool RagdollRig::ApplyDriveProfile(std::span<const RagdollBodyDriveEntry> entrie
     for (std::size_t bodyIndex = 0; bodyIndex < m_bodies.size(); ++bodyIndex) {
         auto& link = m_bodies[bodyIndex];
         const auto& profileTarget = profileTargets[bodyIndex];
-        if (!profileTarget && !link.profileDrive) continue;
+        if (!profileTarget && !link.profileDrive) {
+            continue;
+        }
         if (transitionSeconds > 0.0f) {
             const auto currentDrive = link.profileDrive.value_or(link.baseDrive);
             m_driveProfileTransitions.push_back({ bodyIndex, currentDrive, profileTarget });
         } else {
             link.profileDrive = profileTarget;
-            if (!link.customDrive) SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+            if (!link.customDrive) {
+                SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+            }
         }
     }
     ResetRest();
@@ -214,7 +240,9 @@ bool RagdollRig::ApplyDriveProfile(std::span<const RagdollBodyDriveEntry> entrie
 
 void RagdollRig::AdvanceDriveProfile(float dt)
 {
-    if (m_driveProfileTransitions.empty()) return;
+    if (m_driveProfileTransitions.empty()) {
+        return;
+    }
     m_driveProfileElapsed += static_cast<double>(dt);
     const bool transitionComplete = m_driveProfileElapsed >= m_driveProfileDuration;
     const float blendWeight = static_cast<float>(std::min(1.0, m_driveProfileElapsed / m_driveProfileDuration));
@@ -222,21 +250,29 @@ void RagdollRig::AdvanceDriveProfile(float dt)
         auto& link = m_bodies[transition.bodyIndex];
         link.profileDrive = transitionComplete ? transition.to : std::optional{
             BlendBodyDrive(transition.from, transition.to.value_or(link.baseDrive), blendWeight) };
-        if (!link.customDrive) SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+        if (!link.customDrive) {
+            SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+        }
     }
-    if (transitionComplete) m_driveProfileTransitions.clear();
+    if (transitionComplete) {
+        m_driveProfileTransitions.clear();
+    }
     ApplyDrive();
 }
 
 void RagdollRig::SetDrive(bool enabled, float scale, float falloff, float damping)
 {
-    if (enabled) ResetRest();
+    if (enabled) {
+        ResetRest();
+    }
     m_driveEnabled = enabled;
     m_driveScale   = scale;
     m_driveFalloff = falloff;
     m_driveDamping = damping;
-    /// @note 脱力するときは繋ぎ止めも外す。残すと «力が抜けたのに胴だけ宙に留まる» になる。
-    for (physics::XPBDPoseAnchor* anchor : m_anchors) anchor->SetEnabled(enabled);
+    // 脱力するときは繋ぎ止めも外す。残すと «力が抜けたのに胴だけ宙に留まる» になる。
+    for (physics::XPBDPoseAnchor* anchor : m_anchors) {
+        anchor->SetEnabled(enabled);
+    }
     ApplyDrive();
 }
 
@@ -254,24 +290,30 @@ void RagdollRig::SetLimitLearning(bool enabled, float margin)
     m_learnLimits = enabled;
     m_limitMargin = std::max(margin, 0.0f);
 
-    if (!m_learnLimits || wasEnabled) return;
+    if (!m_learnLimits || wasEnabled) {
+        return;
+    }
 
-    /// @note 有効にした «その瞬間の姿勢» は、可動域の内側であることにする。毎フレーム今の姿勢を
-    /// @note 取り込むと、崩れて押し込まれた角まで «許可された角» として焼き込み、可動域が時間と
-    /// @note ともに意味を失うため、false → true の遷移の 1 回だけにする
-    /// @note (RagdollSystem は毎フレーム同じ値で呼ぶ)。
-    /// @note 有効にするのはふつう捕獲の直後で、その姿勢が既に可動域の外まで曲がっていることが
-    /// @note ある。UpdateDriveTargets が目標から学習するより先に 1 ステップ回ると、そこで
-    /// @note 押し戻されて «学習が効く前に崩れる» ため、クリップの要求値ではなく «実際に置いた
-    /// @note 姿勢» を測る (両者がずれていても効く)。
-    for (JointLink& link : m_joints) link.joint->LearnLimitsFromCurrentPose(m_limitMargin);
+    // 有効にした «その瞬間の姿勢» は、可動域の内側であることにする。毎フレーム今の姿勢を
+    // 取り込むと、崩れて押し込まれた角まで «許可された角» として焼き込み、可動域が時間と
+    // ともに意味を失うため、false → true の遷移の 1 回だけにする
+    // (RagdollSystem は毎フレーム同じ値で呼ぶ)。
+    // 有効にするのはふつう捕獲の直後で、その姿勢が既に可動域の外まで曲がっていることが
+    // ある。UpdateDriveTargets が目標から学習するより先に 1 ステップ回ると、そこで
+    // 押し戻されて «学習が効く前に崩れる» ため、クリップの要求値ではなく «実際に置いた
+    // 姿勢» を測る (両者がずれていても効く)。
+    for (JointLink& link : m_joints) {
+        link.joint->LearnLimitsFromCurrentPose(m_limitMargin);
+    }
 }
 
 int RagdollRig::CountLimitedJoints() const
 {
     int count = 0;
     for (const JointLink& link : m_joints)
-        if (link.joint->IsLimited()) ++count;
+        if (link.joint->IsLimited()) {
+            ++count;
+        }
     return count;
 }
 
@@ -279,10 +321,14 @@ int RagdollRig::CountSaturatedJoints() const
 {
     int count = 0;
     for (const JointLink& link : m_joints)
-        if (link.joint->IsDriveSaturated()) ++count;
+        if (link.joint->IsDriveSaturated()) {
+            ++count;
+        }
     for (const auto& link : m_bodies)
-        if (link.drive && link.drive->IsSaturated()) ++count;
+        if (link.drive && link.drive->IsSaturated()) {
+            ++count;
+        }
     return count;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -12,11 +12,17 @@ namespace {
 
 GameObject* FindUniqueName(Scene& scene, const std::string& name)
 {
-    if (name.empty()) return nullptr;
+    if (name.empty()) {
+        return nullptr;
+    }
     GameObject* match = nullptr;
     for (GameObject& object : scene.GameObjects()) {
-        if (object.name != name) continue;
-        if (match) return nullptr;
+        if (object.name != name) {
+            continue;
+        }
+        if (match) {
+            return nullptr;
+        }
         match = &object;
     }
     return match;
@@ -26,16 +32,24 @@ void InitializeReference(Scene& scene, ObjectReference& reference,
     EntityID legacyEntity, const std::string& legacyGuid,
     const std::string& legacyName, bool& migrationPending)
 {
-    if (!migrationPending) return;
+    if (!migrationPending) {
+        return;
+    }
     migrationPending = false;
-    if (!reference.guid.empty()) return;
+    if (!reference.guid.empty()) {
+        return;
+    }
     if (!legacyGuid.empty()) {
         reference.guid = legacyGuid;
         return;
     }
     GameObject* target = legacyEntity.IsValid() ? scene.GetGameObject(legacyEntity) : nullptr;
-    if (!target) target = FindUniqueName(scene, legacyName);
-    if (target) reference.guid = target->instanceId;
+    if (!target) {
+        target = FindUniqueName(scene, legacyName);
+    }
+    if (target) {
+        reference.guid = target->instanceId;
+    }
     reference.id = EntityID::INVALID;
     reference.sceneGeneration = 0;
 }
@@ -46,10 +60,12 @@ void ResolveReference(Scene& scene, ObjectReference& reference,
     GameObject* target = nullptr;
     const uint64_t generation = scene.GetRenderSceneGeneration();
     if (!reference.guid.empty()) {
-        if (reference.sceneGeneration == generation)
+        if (reference.sceneGeneration == generation) {
             target = scene.GetGameObject(reference.id);
-        if (!target || target->instanceId != reference.guid)
+        }
+        if (!target || target->instanceId != reference.guid) {
             target = scene.FindByGuid(reference.guid);
+        }
     }
     reference.id = target ? target->GetID() : EntityID::INVALID;
     reference.sceneGeneration = generation;
@@ -61,7 +77,9 @@ bool SetReference(Scene& scene, EntityID targetId, ObjectReference& reference,
     EntityID& legacyEntity, std::string& legacyGuid, bool& migrationPending)
 {
     GameObject* target = scene.GetGameObject(targetId);
-    if (!target || target->instanceId.empty()) return false;
+    if (!target || target->instanceId.empty()) {
+        return false;
+    }
     reference = {target->instanceId, target->GetID(), scene.GetRenderSceneGeneration()};
     legacyEntity = reference.id;
     legacyGuid = reference.guid;
@@ -69,7 +87,7 @@ bool SetReference(Scene& scene, EntityID targetId, ObjectReference& reference,
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 void InitializeIKTargetReferences(Scene& scene, IKSolverComponent& solver)
 {
@@ -124,4 +142,4 @@ void ClearIKPoleReference(IKChain& chain)
     chain.poleReferenceMigrationPending = false;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

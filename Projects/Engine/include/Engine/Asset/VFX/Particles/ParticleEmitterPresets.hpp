@@ -214,4 +214,4 @@ inline void ApplyParticleEmitterPreset(scene::ParticleEmitterSettings& settings,
     settings.colorGradient.interpolation = scene::ParticleCurveInterpolation::Smooth;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

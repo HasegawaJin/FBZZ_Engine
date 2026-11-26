@@ -70,14 +70,11 @@ struct ManagedScriptRuntime::Impl {
     std::unordered_map<std::string, int> candidateExecutionOrders;
     std::unordered_map<std::string, std::vector<std::string>> requiredComponents;
     std::unordered_map<std::string, std::vector<std::string>> candidateRequiredComponents;
-    /// @note 未登録型は metadata 非対応の Host として従来の draw query を行う。値 0 は両 callback の不在を表す。
-    std::unordered_map<std::string, uint32_t> gizmoCallbacks;
+    std::unordered_map<std::string, uint32_t> gizmoCallbacks; ///< 未登録型は metadata 非対応の Host として従来の draw query を行う。値 0 は両 callback の不在を表す。
     std::unordered_map<std::string, uint32_t> candidateGizmoCallbacks;
-    /// @note 対応印のない旧 Host は登録せず、不在 mask と未知の情報を区別する。
-    std::unordered_map<std::string, uint32_t> lifecycleCallbacks;
+    std::unordered_map<std::string, uint32_t> lifecycleCallbacks; ///< 対応印のない旧 Host は登録せず、不在 mask と未知の情報を区別する。
     std::unordered_map<std::string, uint32_t> candidateLifecycleCallbacks;
-    /// @note Host だけが fault した個体も、新しい個体への交換まで保守 dispatch を保つ。
-    std::unordered_set<uint64_t> failedCallbackInstances;
+    std::unordered_set<uint64_t> failedCallbackInstances; ///< Host だけが fault した個体も、新しい個体への交換まで保守 dispatch を保つ。
     std::filesystem::path candidateAssemblyPath;
     bool candidateInternalMode = false;
     struct GenerationMetadata {
@@ -107,10 +104,8 @@ struct ManagedScriptRuntime::Impl {
         std::string scriptBirth;
         uint32_t lifecycleCallbacks = 0;
     };
-    /// @note Host の個体 ID は世代をまたぐ単調 ID。成功した接続だけを記録し、CLR オブジェクトは保持しない。
-    std::unordered_map<uint64_t, OwnerBinding> ownerBindings;
-    /// @note Scene 外の Undo/preview 個体も所有するため、最後の Adapter の解放まで旧世代の退役を遅らせる。
-    std::unordered_set<uint64_t> deferredRetirements;
+    std::unordered_map<uint64_t, OwnerBinding> ownerBindings; ///< Host の個体 ID は世代をまたぐ単調 ID。成功した接続だけを記録し、CLR オブジェクトは保持しない。
+    std::unordered_set<uint64_t> deferredRetirements; ///< Scene 外の Undo/preview 個体も所有するため、最後の Adapter の解放まで旧世代の退役を遅らせる。
     ManagedScriptAdapter* preparation = nullptr;
     std::vector<ManagedScriptAdapter*> settingsPreparation;
     managed_detail::ManagedObjectRegistry objects;

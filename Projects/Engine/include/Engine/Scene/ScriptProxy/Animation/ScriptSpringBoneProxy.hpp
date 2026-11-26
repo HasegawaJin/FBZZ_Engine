@@ -16,7 +16,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptSpringBoneProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< スプリングボーン操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note 根ボーン名のチェーンが無ければ作る。あれば maxDepth だけ更新して何もしない。
     /// @note SpringBoneComponent 自体が無ければ追加する。
@@ -52,4 +52,4 @@ struct ScriptSpringBoneProxy {
     [[nodiscard]] FBZZ_ENGINE_API bool IsEnabled() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

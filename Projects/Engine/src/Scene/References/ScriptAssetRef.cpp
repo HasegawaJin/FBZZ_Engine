@@ -18,8 +18,9 @@ void ScriptAssetReference::SetPath(std::string_view assetPath)
     std::string guidPath = path;
     std::string spriteTexturePath;
     std::string spriteToken;
-    if (asset::ParseSpriteReference(path, spriteTexturePath, spriteToken))
+    if (asset::ParseSpriteReference(path, spriteTexturePath, spriteToken)) {
         guidPath = spriteTexturePath;
+    }
     const std::string absolutePath = guidPath.empty()
         ? std::string{}
         : asset::AssetManager::ResolveAssetPath(guidPath);
@@ -42,8 +43,9 @@ std::string ScriptAssetReference::ResolvePath() const
         if (!resolved.empty() && !asset::AssetDatabase::IsGuidRef(resolved)) {
             std::string spriteTexturePath;
             std::string spriteToken;
-            if (asset::ParseSpriteReference(path, spriteTexturePath, spriteToken))
+            if (asset::ParseSpriteReference(path, spriteTexturePath, spriteToken)) {
                 return asset::MakeSpriteReference(resolved, spriteToken);
+            }
             return resolved;
         }
     }

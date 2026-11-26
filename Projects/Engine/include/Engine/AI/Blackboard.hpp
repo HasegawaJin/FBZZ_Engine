@@ -23,14 +23,13 @@ struct BlackboardDef {
     std::string    name;
     BlackboardType type = BlackboardType::Bool;
 
-    /// @note 既定値。type に応じて 1 つだけ意味を持つ。TOML へ素直に書き出すため variant は使わず、BTNodeDef と同じ平置き方式で揃える。
-    bool          defaultBool    = false;
+    bool          defaultBool    = false; ///< 既定値。type に応じて 1 つだけ意味を持つ。TOML へ素直に書き出すため variant は使わず、BTNodeDef と同じ平置き方式で揃える。
     int           defaultInt     = 0;
     float         defaultFloat   = 0.0f;
     math::Vector3 defaultVector3 = math::Vector3::ZERO;
     std::string   defaultString;
 
-    bool reserved = false;   ///< @note PerceptionSystem / BehaviorTreeSystem が自動で書き込む予約キーか。エディタは名前変更と削除を禁止する。
+    bool reserved = false; ///< PerceptionSystem / BehaviorTreeSystem が自動で書き込む予約キーか。エディタは名前変更と削除を禁止する。
 };
 
 /// @brief 予約キーの固定添字。
@@ -46,7 +45,7 @@ inline constexpr BlackboardKey Health01          = 6;
 inline constexpr BlackboardKey Awareness         = 7;
 inline constexpr BlackboardKey NoisePosition     = 8;
 inline constexpr std::uint16_t ReservedCount     = 9;
-} /// @note namespace bb
+} // namespace bb
 
 /// @brief 予約キーの定義列を返す (name / type / reserved が埋まったもの)。
 [[nodiscard]] FBZZ_ENGINE_API const std::vector<BlackboardDef>& ReservedBlackboardDefs();
@@ -132,4 +131,4 @@ private:
     std::uint64_t      m_revision = 0;
 };
 
-} /// @note namespace fbzz::ai
+} // namespace fbzz::ai

@@ -18,8 +18,8 @@ class GameObject;
 
 /// @brief 1 コンポーネント型ぶんの名前引きエントリ。
 struct ComponentOps {
-    const char* typeName = ""; ///< @note ComponentRegistry の serializedName (= 型名そのもの)。検証キーになる。
-    const char* displayName = ""; ///< @note Inspector / Console に出す人間向けの名前 ("Rigid Body" 等)。
+    const char* typeName = ""; ///< ComponentRegistry の serializedName (= 型名そのもの)。検証キーになる。
+    const char* displayName = ""; ///< Inspector / Console に出す人間向けの名前 ("Rigid Body" 等)。
     ComponentCategory category = ComponentCategory::Misc;
     /// @brief Add Component メニューに出る型か (内部型は false)。
     /// @note 要求として宣言されていても false の型はユーザーが手で足せないため、検証側は「Fix ボタンを出さない」判断にこれを使う。
@@ -34,4 +34,4 @@ struct ComponentOps {
 /// @note typeName は名前空間修飾を含まない短縮名 (SplitComponentNames が正規化済み)。
 [[nodiscard]] FBZZ_ENGINE_API const ComponentOps* FindComponentOps(std::string_view typeName);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

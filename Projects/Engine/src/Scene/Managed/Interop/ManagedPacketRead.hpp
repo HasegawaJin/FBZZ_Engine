@@ -14,10 +14,12 @@ namespace fbzz::scene::managed_detail {
 template<typename T>
 [[nodiscard]] bool ReadManagedValue(std::string_view bytes, size_t& offset, T& value)
 {
-    if (offset > bytes.size() || bytes.size() - offset < sizeof(T)) return false;
+    if (offset > bytes.size() || bytes.size() - offset < sizeof(T)) {
+        return false;
+    }
     std::memcpy(&value, bytes.data() + offset, sizeof(T));
     offset += sizeof(T);
     return true;
 }
 
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

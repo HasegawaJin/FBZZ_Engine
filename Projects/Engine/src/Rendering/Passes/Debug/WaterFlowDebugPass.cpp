@@ -51,21 +51,29 @@ void DrawRect(renderer::IRenderer& r, const math::Vector3& center, float halfX, 
     for (int i = 0; i < 4; ++i) {
         const math::Vector3& a = corners[i];
         const math::Vector3& b = corners[(i + 1) % 4];
-        if (dashed) renderer::DebugDraw::LineDashed(r, a, b, color, (std::max)(halfX, halfZ) * 0.05f, 24);
-        else        renderer::DebugDraw::Line(r, a, b, color);
+        if (dashed) {
+            renderer::DebugDraw::LineDashed(r, a, b, color, (std::max)(halfX, halfZ) * 0.05f, 24);
+        }
+        else {
+            renderer::DebugDraw::Line(r, a, b, color);
+        }
     }
 }
 
-} /// @note namespace
+} // namespace
 
 std::string_view WaterFlowDebugPass::Name() const { return "WaterFlowDebug"; }
 
 bool WaterFlowDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (ctx.settings.showWaterFlow) return true;
+    if (ctx.settings.showWaterFlow) {
+        return true;
+    }
     for (EntityID id : ctx.scene.GetEntities<WaterExclusionComponent>()) {
         const GameObject* go = ctx.scene.GetGameObject(id);
-        if (go && go->activeInHierarchy() && IsSelectedForDebug(*go, ctx)) return true;
+        if (go && go->activeInHierarchy() && IsSelectedForDebug(*go, ctx)) {
+            return true;
+        }
     }
     return false;
 }
@@ -79,7 +87,9 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
         GameObject* go = ctx.scene.GetGameObject(id);
         const WaterComponent* water = ctx.scene.GetComponent<WaterComponent>(id);
         if (go == nullptr || water == nullptr || !go->activeInHierarchy()
-            || WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid()) continue;
+            || WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid()) {
+            continue;
+        }
 
         const Transform& tf = WaterSurfaceTransform(*water, go->transform, WaterSurfaceReadView::SIMULATION);
         const math::Vector3 center = tf.worldPosition;
@@ -91,7 +101,9 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
 
         if (UsesWaterSurfaceGeometry(*water, WaterSurfaceReadView::SIMULATION)) {
             const auto* geometry = WaterSurfaceGeometry(*water, WaterSurfaceReadView::SIMULATION);
-            if (!geometry) continue;
+            if (!geometry) {
+                continue;
+            }
             const auto& vertices = geometry->vertices;
             const auto drawEdge = [&](size_t a, size_t b) {
                 renderer::DebugDraw::Line(ctx.renderer, vertices[a].worldPosition, vertices[b].worldPosition,
@@ -101,10 +113,14 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
                 && water->simulationSurfacePublished
                 ? water->simulationZoneSnapshot.get() : water->zoneSnapshot.get();
             if (zoneSnapshot) {
-                for (const auto& edge : zoneSnapshot->boundaryEdges) drawEdge(edge[0], edge[1]);
+                for (const auto& edge : zoneSnapshot->boundaryEdges) {
+                    drawEdge(edge[0], edge[1]);
+                }
             } else {
                 const auto& outline = geometry->outlineIndices;
-                for (size_t i = 0; i < outline.size(); ++i) drawEdge(outline[i], outline[(i + 1) % outline.size()]);
+                for (size_t i = 0; i < outline.size(); ++i) {
+                    drawEdge(outline[i], outline[(i + 1) % outline.size()]);
+                }
             }
             const size_t stride = (std::max)(size_t{1}, vertices.size() / 32u);
             for (size_t i = 0; i < vertices.size(); i += stride) {
@@ -115,16 +131,17 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
                     renderer::DebugDraw::Arrow(ctx.renderer, vertex.worldPosition, vertex.worldPosition + offset,
                         offset.Length() * 0.3f, offset.Length() * 0.1f, WithAlpha(kCurrentColor, alpha));
                 }
-                if (water->buoyancyEnabled)
+                if (water->buoyancyEnabled) {
                     renderer::DebugDraw::Line(ctx.renderer, vertex.worldPosition,
                         vertex.worldPosition - math::Vector3{0.0f, vertex.depth, 0.0f}, WithAlpha(kDepthColor, alpha));
+                }
             }
             continue;
         }
 
         DrawRect(ctx.renderer, center, halfX, halfZ, WithAlpha(kOutlineColor, alpha), false);
         if (water->buoyancyEnabled && water->buoyancyDepth > 0.0f) {
-            /// @note 浮力はここより深くへ届かない。水面の下に洞窟を置いたときの切り分け用。
+            // 浮力はここより深くへ届かない。水面の下に洞窟を置いたときの切り分け用。
             DrawRect(ctx.renderer, center - math::Vector3{ 0.0f, water->buoyancyDepth, 0.0f },
                      halfX, halfZ, WithAlpha(kDepthColor, alpha), true);
         }
@@ -142,7 +159,7 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
                 for (int iz = 0; iz < nz; ++iz) {
                     const float x = center.x - halfX + halfX * 2.0f * (static_cast<float>(ix) + 0.5f) / nx;
                     const float z = center.z - halfZ + halfZ * 2.0f * (static_cast<float>(iz) + 0.5f) / nz;
-                    /// @note 波に乗せて描く。基準面に置くと高い波の下へ矢印が沈んで見えない。
+                    // 波に乗せて描く。基準面に置くと高い波の下へ矢印が沈んで見えない。
                     const float y = center.y + water->GetSurfaceHeightAt(x, z, time,
                         WaterSurfaceReadView::SIMULATION) + 0.05f;
                     const math::Vector3 p = { x, y, z };
@@ -157,16 +174,18 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
                                          static_cast<int>(water->surfaceFlows.size()));
         for (int i = 0; i < liveFlows; ++i) {
             const WaterSurfaceFlow& flow = water->surfaceFlows[static_cast<size_t>(i)];
-            /// @note 半径を持たない Baked は箱で描くべきなので、ここでは円を出さない。
-            if (flow.radius <= 0.0f) continue;
+            // 半径を持たない Baked は箱で描くべきなので、ここでは円を出さない。
+            if (flow.radius <= 0.0f) {
+                continue;
+            }
             const math::Vector3 c = { flow.center.x, center.y, flow.center.y };
             DrawDebugCircle(ctx.renderer, c, math::Vector3::UP, flow.radius, WithAlpha(flowColor, 0.5f), true);
-            /// @note 渦の speed は回転軸 y の符号つき。SampleFlow と同じ «軸まわり右回り» で描く。
+            // 渦の speed は回転軸 y の符号つき。SampleFlow と同じ «軸まわり右回り» で描く。
             if (flow.kind == FlowFieldType::Vortex) {
                 DrawDebugSwirl(ctx.renderer, c, math::Vector3::UP, flow.radius * 0.5f,
                                flow.speed >= 0.0f ? 1.0f : -1.0f, flowColor);
             }
-            /// @note 形の向き。穴は下、盛り上がりは上へ矢印を出す。
+            // 形の向き。穴は下、盛り上がりは上へ矢印を出す。
             if (std::abs(flow.height) > 0.0f) {
                 const math::Vector3 tip = c + math::Vector3{ 0.0f, flow.height, 0.0f };
                 const float head = std::abs(flow.height) * 0.25f;
@@ -178,15 +197,24 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
         GameObject* go = ctx.scene.GetGameObject(id);
         const WaterExclusionComponent* exclusion = ctx.scene.GetComponent<WaterExclusionComponent>(id);
         if (!go || !exclusion || !go->activeInHierarchy()
-            || (!ctx.settings.showWaterFlow && !IsSelectedForDebug(*go, ctx))) continue;
+            || (!ctx.settings.showWaterFlow && !IsSelectedForDebug(*go, ctx))) {
+            continue;
+        }
         const Transform& transform = go->transform;
         const double rotationLength = transform.worldRotation.Length();
-        if (!std::isfinite(transform.worldPosition.x) || !std::isfinite(transform.worldPosition.y)
-            || !std::isfinite(transform.worldPosition.z) || !std::isfinite(rotationLength)
-            || std::abs(rotationLength - 1.0) > 0.001
-            || !std::isfinite(exclusion->size.x) || !std::isfinite(exclusion->size.y)
-            || !std::isfinite(exclusion->size.z) || exclusion->size.x <= 0.0f
-            || exclusion->size.y <= 0.0f || exclusion->size.z <= 0.0f) continue;
+        // デバッグ形状の中心と回転を確認してから、正の寸法を持つ箱だけを描く。
+        const bool finitePosition = std::isfinite(transform.worldPosition.x) && std::isfinite(transform.worldPosition.y)
+            && std::isfinite(transform.worldPosition.z);
+        if (!finitePosition || !std::isfinite(rotationLength) || std::abs(rotationLength - 1.0) > 0.001) {
+            continue;
+        }
+        const auto& size = exclusion->size;
+        const bool validBoxSize = std::isfinite(size.x) && std::isfinite(size.y) && std::isfinite(size.z)
+            && size.x > 0.0f && size.y > 0.0f && size.z > 0.0f;
+        if (!validBoxSize) {
+            continue;
+        }
+
         const math::Vector3 halfExtent{
             exclusion->size.x * std::abs(transform.worldScale.x) * 0.5f,
             exclusion->size.y * std::abs(transform.worldScale.y) * 0.5f,
@@ -199,4 +227,4 @@ void WaterFlowDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
     renderer::DebugDraw::Flush();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

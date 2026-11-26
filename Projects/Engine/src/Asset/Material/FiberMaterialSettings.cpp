@@ -11,23 +11,30 @@ namespace fbzz::asset {
 namespace {
 float ReadFiberFloat(const MaterialAssetAuthoring* asset, const char* name, float fallback, float minimum, float maximum)
 {
-    if (!asset) return fallback;
-    const auto it = asset->params.find(name);
-    if (it == asset->params.end() || it->second.size() != 1 || !std::isfinite(it->second[0]))
+    if (!asset) {
         return fallback;
+    }
+    const auto it = asset->params.find(name);
+    if (it == asset->params.end() || it->second.size() != 1 || !std::isfinite(it->second[0])) {
+        return fallback;
+    }
     return std::clamp(it->second[0], minimum, maximum);
 }
 
 math::Vector4 ReadFiberColor(const MaterialAssetAuthoring* asset, const char* name, math::Vector4 fallback)
 {
-    if (!asset) return fallback;
+    if (!asset) {
+        return fallback;
+    }
     const auto it = asset->params.find(name);
-    if (it == asset->params.end() || (it->second.size() != 3 && it->second.size() != 4)) return fallback;
+    if (it == asset->params.end() || (it->second.size() != 3 && it->second.size() != 4)) {
+        return fallback;
+    }
     for (float value : it->second) if (!std::isfinite(value)) return fallback;
     return { std::clamp(it->second[0], 0.0f, 1.0f), std::clamp(it->second[1], 0.0f, 1.0f),
              std::clamp(it->second[2], 0.0f, 1.0f), 1.0f };
 }
-} /// @note namespace
+} // namespace
 
 FiberMaterialSettings ResolveFiberMaterial(const MaterialAssetAuthoring& values)
 {
@@ -47,7 +54,7 @@ FiberMaterialSettings ResolveFiberMaterial(const MaterialAssetAuthoring& values)
     result.m_specular = ReadFiberFloat(asset, "specularStrength", result.m_specular, 0.0f, 1.0f);
     result.m_transmission = ReadFiberFloat(asset, "transmission", result.m_transmission, 0.0f, 1.0f);
     result.m_rootOcclusion = ReadFiberFloat(asset, "rootOcclusion", result.m_rootOcclusion, 0.0f, 1.0f);
-    /// @note 新キーを優先し、保存前の旧材質も同じ照明モデルへ解決する。
+    // 新キーを優先し、保存前の旧材質も同じ照明モデルへ解決する。
     const char* shadingKey = asset && (asset->params.contains("planarShading") || asset->integerParams.contains("planarShading"))
         ? "planarShading" : "grassShading";
     result.m_planarShading = ReadFiberFloat(asset, shadingKey, result.m_planarShading, 0.0f, 1.0f);
@@ -65,4 +72,4 @@ FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset)
     const auto snapshot = asset ? asset->ReadAuthoring() : MaterialAsset::AuthoringSnapshotPtr{};
     return snapshot ? ResolveFiberMaterial(snapshot->Data()) : FiberMaterialSettings{};
 }
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -142,7 +142,7 @@ TEST_F(BakedBoneReplayTest, ThousandPhasesSpeedsAndBlendsMatchCpuAcrossFrameLane
         EXPECT_EQ(result.dispatchCount, 1u); EXPECT_EQ(result.rowUploadBytes, 1000u*32u+80u);
         const auto pixels = Read(result.palette, static_cast<uint32_t>(expected.size()));
         ASSERT_EQ(pixels.size(), expected.size()*16);
-        /// @note HLSL reads column-major matrices; shader rows are CPU columns. The capture target retains float32 values.
+        // HLSL は列優先で読むため、シェーダーの行は CPU 側の列に対応する。取得先は float32 の値を保持する。
         for (size_t i = 0; i < expected.size(); ++i)
             for (uint32_t row = 0; row < 4; ++row) for (uint32_t col = 0; col < 4; ++col)
                 EXPECT_NEAR(pixels[i*16+row*4+col], expected[i].m[col][row], 0.0001f) << "fish=" << i/2 << " lane=" << lane;

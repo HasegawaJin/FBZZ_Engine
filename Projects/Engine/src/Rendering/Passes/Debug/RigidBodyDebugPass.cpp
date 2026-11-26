@@ -32,10 +32,14 @@ void RigidBodyDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
     for (EntityID id : ctx.scene.GetEntities<RigidBodyComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* rb = ctx.scene.GetComponent<RigidBodyComponent>(id);
-        if (!go || !rb || !rb->enabled || !go->activeInHierarchy()) continue;
-        if (!IsSelectedForDebug(*go, ctx)) continue;
+        if (!go || !rb || !rb->enabled || !go->activeInHierarchy()) {
+            continue;
+        }
+        if (!IsSelectedForDebug(*go, ctx)) {
+            continue;
+        }
 
-        /// @note 剛体の実体は Play 中しか無い。編集中は重心の代わりに Transform の位置だけ示す。
+        // 剛体の実体は Play 中しか無い。編集中は重心の代わりに Transform の位置だけ示す。
         const physics::RigidBody* body = rb->rigidBody.get();
         const math::Vector3 center = body ? body->GetPosition() : go->transform.worldPosition;
         const float distance = (center - ctx.camera.m_position).Length();
@@ -47,22 +51,26 @@ void RigidBodyDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
                                   center + math::Vector3{ 0, marker, 0 }, centerColor);
         renderer::DebugDraw::Line(ctx.renderer, center - math::Vector3{ 0, 0, marker },
                                   center + math::Vector3{ 0, 0, marker }, centerColor);
-        if (!body || body->IsStatic()) continue;
+        if (!body || body->IsStatic()) {
+            continue;
+        }
 
         const math::Vector3 velocity = body->GetVelocity();
         const float speed = velocity.Length();
-        if (speed > 1e-3f)
+        if (speed > 1e-3f) {
             renderer::DebugDraw::Arrow(ctx.renderer, center, center + velocity,
                                        (std::min)(speed * 0.2f, 0.4f), (std::min)(speed * 0.06f, 0.12f),
                                        kVelocityColor);
+        }
 
-        /// @note 角速度は回転軸の向き、長さは rad/s。
+        // 角速度は回転軸の向き、長さは rad/s。
         const math::Vector3 angular = body->GetAngularVelocity();
         const float spin = angular.Length();
-        if (spin > 1e-3f)
+        if (spin > 1e-3f) {
             renderer::DebugDraw::Arrow(ctx.renderer, center, center + angular * 0.25f,
                                        (std::min)(spin * 0.05f, 0.2f), (std::min)(spin * 0.015f, 0.06f),
                                        kAngularColor);
+        }
     }
     renderer::DebugDraw::Flush();
 }

@@ -277,7 +277,9 @@ TEST_F(TweenCoroutineTest, ACoroutineStartedDuringResumeWaitsForTheNextFrame)
 {
     bool started = false;
     m_owner->StartCoroutine(m_owner->tween.Value(0, 1, 1, [&](float) {
-        if (started) return;
+        if (started) {
+            return;
+        }
         started = true;
         m_owner->StartCoroutine(m_owner->tween.MoveBy({4, 0, 0}, 1.0f));
     }));

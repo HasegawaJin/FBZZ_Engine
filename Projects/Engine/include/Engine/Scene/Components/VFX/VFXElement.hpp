@@ -21,13 +21,15 @@ namespace fbzz::scene {
 /// @note 元の値でしかなく、保存すると書き換え途中の値が焼き付く)。
 template<class T>
 struct VFXCaptured {
-    T    value{};
-    bool captured = false;
+    T    value{}; ///< エンベロープ適用前に保持する元の値。
+    bool captured = false; ///< value に復元可能な値を取得済み。
 
     /// @note 初回だけ現在値を覚える。2 回目以降は何もしない。
     void Capture(const T& current)
     {
-        if (captured) return;
+        if (captured) {
+            return;
+        }
         value = current;
         captured = true;
     }
@@ -36,7 +38,9 @@ struct VFXCaptured {
     /// @return 書き戻したか
     bool Restore(T& target) const
     {
-        if (!captured) return false;
+        if (!captured) {
+            return false;
+        }
         target = value;
         return true;
     }
@@ -48,14 +52,11 @@ struct VFXCaptured {
 /// @note 旧 .vfx の startOffset / duration と、ScreenEffect の fadeIn/fadeOut ・
 /// @note CameraShake の falloffPower ・TimeScale の blendIn/blendOut を 1 本のカーブへ畳んだもの。
 struct VFXElement {
-    bool enabled = true;
+    bool enabled = true; ///< このエフェクトの生存窓をルート VFX の時間で管理する。
 
-    /// @note VFX 先頭からの遅延 [秒]。
-    float startDelay = 0.0f;
-    /// @note 窓の長さ [秒]。0 以下ならルートが終わるまで開いたままにする。
-    float duration = 1.0f;
-    /// @note 窓の終わりで頭出しして繰り返す。
-    bool loop = false;
+    float startDelay = 0.0f; ///< VFX 先頭からの遅延 [秒]。
+    float duration = 1.0f; ///< 窓の長さ [秒]。0 以下ならルートが終わるまで開いたままにする。
+    bool loop = false; ///< 窓の終わりで頭出しして繰り返す。
 
     /// @note 窓の進捗 0..1 に対する重み。既定は矩形 (常に 1)。
     /// @note VFXScreenEffect / VFXCameraShake / VFXTimeScale の weight へそのまま入り、
@@ -63,24 +64,21 @@ struct VFXElement {
     ParticleCurve weightCurve{
         {{ {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f},
            {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f} }},
-        2, ParticleCurveInterpolation::Linear };
+        2, ParticleCurveInterpolation::Linear }; ///< 生存窓の進捗を、画面・揺れ・時間演出へ渡す適用重みに変える。
 
     /// @note 空でなければ時間ではなく VFXComponent::Trigger(name) で開始する。
     /// @note 旧 .vfx の OnCollision / OnDeath / OnAnimationEvent / OnTrigger の置き換え。
-    std::string trigger;
+    std::string trigger; ///< 時間指定の代わりに開始の合図に使うイベント名。空なら時間で開始する。
 
     /// @name ランタイム
     /// @{
 
-    /// @note 窓の進捗 [0,1]。窓の外では 0 (開始前) または 1 (終了後)。
-    float progress = 0.0f;
-    /// @note weightCurve.Evaluate(progress)。窓の外では 0。
-    float weight = 0.0f;
-    /// @note trigger 待ちが解けた時刻 [秒]。負なら未発火。
-    float triggeredAt = -1.0f;
+    float progress = 0.0f; ///< 窓の進捗 [0,1]。窓の外では 0 (開始前) または 1 (終了後)。
+    float weight = 0.0f; ///< weightCurve.Evaluate(progress)。窓の外では 0。
+    float triggeredAt = -1.0f; ///< trigger 待ちが解けた時刻 [秒]。負なら未発火。
     /// @note 前フレームの窓内時刻。loop の折り返しを検出して頭出しするために持つ。
     /// @note ループする窓は active のままなので、SetActive の切り替わりに頼ると一度も頭出しされない。
-    float lastLocalTime = -1.0f;
+    float lastLocalTime = -1.0f; ///< ループの折り返し検出に使う前フレームの生存窓内時刻（秒）。
 
     const char* GetTypeName() const { return "VFX Element"; }
 
@@ -100,28 +98,27 @@ struct VFXElement {
 /// @note 基準値は Inspector の LightComponent の値 (=ピーク) を初回適用時に捕まえ、毎フレーム倍率を
 /// @note 掛け直す。ここに複製すると LightComponent.intensity と二重管理になり食い違う。
 struct VFXLightEnvelope {
-    bool enabled = true;
+    bool enabled = true; ///< 光源の強度や色へ進捗に応じたエンベロープを適用する。
 
-    /// @note intensity への倍率。0..1 想定だが 1 超で増幅もできる。
-    bool useIntensityCurve = true;
+    bool useIntensityCurve = true; ///< intensity への倍率。0..1 想定だが 1 超で増幅もできる。
     ParticleCurve intensityCurve{
         {{ {0.0f, 1.0f}, {0.12f, 0.55f}, {1.0f, 0.0f}, {1.0f, 0.0f},
            {1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f} }},
-        3, ParticleCurveInterpolation::Linear };
+        3, ParticleCurveInterpolation::Linear }; ///< 生存窓の進捗から保存した光源強度に掛ける倍率を求める。
 
     /// @note 色の推移。alpha は明るさ倍率として rgb へ乗算する
     /// @note (白熱 → 橙 → 暗赤 のような色温度変化を 1 本で作れるようにするため)。
     bool useColorGradient = false;
-    ParticleGradient colorGradient;
+    ParticleGradient colorGradient; ///< 効果進捗から求める光源の色。アルファは強度の倍率にする。
 
     /// @name ランタイム
     /// @{
     /// @note 書き換える前の LightComponent の値。
     struct Base {
-        float         intensity = 0.0f;
-        math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
+        float         intensity = 0.0f; ///< 光源の強度を書き換える前に保存する基準値。
+        math::Vector3 color     = { 1.0f, 1.0f, 1.0f }; ///< 光源の色を書き換える前に保存する基準 RGB 値。
     };
-    VFXCaptured<Base> base;
+    VFXCaptured<Base> base; ///< 光源の元の強度と色を取得して復元するための状態。
 
     const char* GetTypeName() const { return "VFX Light Envelope"; }
 
@@ -139,7 +136,7 @@ struct VFXLightEnvelope {
 /// @note 時間に沿った膨張・収縮。localScale へ倍率を掛ける。
 /// @note 衝撃波シェル・斬撃の板ポリ・魔法陣の立ち上がりがこれ 1 つで作れる。
 struct VFXTransformEnvelope {
-    bool enabled = true;
+    bool enabled = true; ///< ローカルスケールへ進捗に応じたエンベロープを適用する。
 
     /// @note localScale への倍率。既定は 0.1 倍から 4 倍へ、頭で一気に開いて減速する形。
     /// @note 線形だと «風船が膨らむ» 動きになり衝撃波に見えないため、既定は減速カーブ。
@@ -147,12 +144,12 @@ struct VFXTransformEnvelope {
     ParticleCurve scaleCurve{
         {{ {0.0f, 0.1f}, {0.35f, 2.8f}, {1.0f, 4.0f}, {1.0f, 4.0f},
            {1.0f, 4.0f}, {1.0f, 4.0f}, {1.0f, 4.0f}, {1.0f, 4.0f} }},
-        3, ParticleCurveInterpolation::Smooth };
+        3, ParticleCurveInterpolation::Smooth }; ///< 生存窓の進捗からローカルスケールに掛ける倍率を求める。
 
     /// @name ランタイム
     /// @{
     /// @note 書き換える前の localScale。
-    VFXCaptured<math::Vector3> base;
+    VFXCaptured<math::Vector3> base; ///< ローカルスケールの元の値を取得して復元するための状態。
 
     const char* GetTypeName() const { return "VFX Transform Envelope"; }
 
@@ -175,16 +172,16 @@ inline constexpr const char* kVFXMeshFallbackMaterial =
 /// @note 既定の書き先が "albedo" な理由: どの .mat にも必ずある共通パラメーターで、差し替えても
 /// @note 黙って効かなくならない。加算ブレンド (out = src.rgb*src.a + dst.rgb) では RGB を落とすと消える。
 struct VFXMaterialEnvelope {
-    bool enabled = true;
+    bool enabled = true; ///< 材質の上書きパラメータへ時間変化を適用する。
 
-    bool        useColorGradient = true;
-    std::string colorParamName   = "albedo";
-    ParticleGradient colorGradient;
+    bool        useColorGradient = true; ///< 効果進捗から求めた色を colorParamName へ書き込む。
+    std::string colorParamName   = "albedo"; ///< 色グラデーションの書き込み先となるシェーダーのパラメータ名。
+    ParticleGradient colorGradient; ///< 効果進捗に応じて材質へ書き込む RGBA 色。
 
     /// @note 追加で動かしたいシェーダー変数 1 本 (任意)。空なら書かない。
     /// @note 例: Surface/Dissolve.hlsl の "alphaCutoff" (0 = 表示, 1 = 消滅)。
-    std::string   paramName;
-    ParticleCurve paramCurve;
+    std::string   paramName; ///< スカラーの時間変化を書き込むパラメータ名。空なら書き込まない。
+    ParticleCurve paramCurve; ///< 効果進捗から paramName へ書くスカラー値を求めるカーブ。
 
     /// @name ランタイム
     /// @{
@@ -194,8 +191,8 @@ struct VFXMaterialEnvelope {
     /// @note を作った理由の実例)。
     /// @note paramOverrides は «上書き» なので元の状態は «キーが無い» こと。値でなくキーを覚え、
     /// @note 復元は消すのが正しい (空文字の書き戻しは誤り)。
-    std::string writtenColorParam;
-    std::string writtenParam;
+    std::string writtenColorParam; ///< 復元時に解放する、この処理が上書きした色パラメータのキー。
+    std::string writtenParam; ///< 復元時に解放する、この処理が上書きしたスカラーパラメータのキー。
 
     const char* GetTypeName() const { return "VFX Material Envelope"; }
 
@@ -216,17 +213,16 @@ struct VFXMaterialEnvelope {
 /// @note 焼け跡は «しばらく濃く残ってから急に消える» 減り方をする。線形フェードだと置いた直後
 /// @note から薄まり «跡が残った» 見た目にならない。
 struct VFXDecalEnvelope {
-    bool enabled = true;
+    bool enabled = true; ///< デカールの寿命に合わせて不透明度や発光を更新する。
 
     /// @note opacity へ入る値。
     ParticleCurve fadeCurve{
         {{ {0.0f, 1.0f}, {0.65f, 0.95f}, {1.0f, 0.0f}, {1.0f, 0.0f},
            {1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f} }},
-        3, ParticleCurveInterpolation::Linear };
+        3, ParticleCurveInterpolation::Linear }; ///< デカール寿命の進捗から書き込む不透明度を求める。
 
-    /// @note emissiveScale への倍率も動かす。組み込み経路 (materialPath が空) でのみ効く。
-    bool          driveEmissive = false;
-    ParticleCurve emissiveCurve;
+    bool          driveEmissive = false; ///< emissiveScale への倍率も動かす。組み込み経路 (materialPath が空) でのみ効く。
+    ParticleCurve emissiveCurve; ///< デカール寿命の進捗から発光の倍率を求めるカーブ。
 
     /// @name ランタイム
     /// @{

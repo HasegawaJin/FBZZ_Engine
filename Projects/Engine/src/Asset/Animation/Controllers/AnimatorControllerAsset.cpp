@@ -45,7 +45,9 @@ std::vector<To> CopyControllerStates(const std::vector<From>& source)
 {
     std::vector<To> result;
     result.reserve(source.size());
-    for (const auto& state : source) result.push_back(CopyControllerState<To>(state));
+    for (const auto& state : source) {
+        result.push_back(CopyControllerState<To>(state));
+    }
     return result;
 }
 template<class To, class From>
@@ -95,7 +97,9 @@ toml::table WriteTransition(const scene::AnimationTransition& transition)
     table.insert("exitTime", static_cast<double>(transition.exitTime));
     table.insert("fixedDuration", transition.fixedDuration);
     table.insert("transitionDuration", static_cast<double>(transition.transitionDuration));
-    if (transition.interruptActiveBlend) table.insert("interruptActiveBlend", true);
+    if (transition.interruptActiveBlend) {
+        table.insert("interruptActiveBlend", true);
+    }
     toml::array conditions;
     for (const auto& condition : transition.conditions) {
         toml::table conditionTable;
@@ -135,7 +139,9 @@ scene::AnimationTransition ReadTransition(const toml::table& table)
     if (const auto* conditions = table["conditions"].as_array()) {
         for (const auto& element : *conditions) {
             const auto* conditionTable = element.as_table();
-            if (!conditionTable) continue;
+            if (!conditionTable) {
+                continue;
+            }
             scene::AnimatorCondition condition;
             condition.paramName = (*conditionTable)["paramName"].value_or(std::string{});
             condition.op = static_cast<scene::ConditionOp>(
@@ -202,9 +208,13 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
     if (const auto* nodes = table["nodes"].as_array()) {
         for (const auto& element : *nodes) {
             const auto* node = element.as_table();
-            if (!node) continue;
+            if (!node) {
+                continue;
+            }
             const std::string stateName = (*node)["stateName"].value_or(std::string{});
-            if (stateName.empty()) continue;
+            if (stateName.empty()) {
+                continue;
+            }
             layout.nodePositions[stateName] = {
                 static_cast<float>((*node)["x"].value_or(0.0)),
                 static_cast<float>((*node)["y"].value_or(0.0))
@@ -215,13 +225,18 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
     if (const auto* motions = table["blendTreeMotions"].as_array()) {
         for (const auto& element : *motions) {
             const auto* motion = element.as_table();
-            if (!motion) continue;
+            if (!motion) {
+                continue;
+            }
             const std::string stateName = (*motion)["stateName"].value_or(std::string{});
             const int motionIndex = static_cast<int>((*motion)["motionIndex"].value_or(int64_t{-1}));
-            if (stateName.empty() || motionIndex < 0) continue;
+            if (stateName.empty() || motionIndex < 0) {
+                continue;
+            }
             auto& positions = layout.blendTreeMotionPositions[stateName];
-            if (positions.size() <= static_cast<size_t>(motionIndex))
+            if (positions.size() <= static_cast<size_t>(motionIndex)) {
                 positions.resize(static_cast<size_t>(motionIndex) + 1);
+            }
             positions[static_cast<size_t>(motionIndex)] = {
                 static_cast<float>((*motion)["x"].value_or(0.0)),
                 static_cast<float>((*motion)["y"].value_or(0.0))
@@ -248,8 +263,9 @@ toml::table WriteState(const AnimationStateDefinition& state)
     stateTable.insert("ikWeight", static_cast<double>(state.ikWeight));
 
     toml::array transitions;
-    for (const auto& transition : state.transitions)
+    for (const auto& transition : state.transitions) {
         transitions.push_back(WriteTransition(transition));
+    }
     stateTable.insert("transitions", std::move(transitions));
 
     toml::table blendTree1D;
@@ -257,8 +273,9 @@ toml::table WriteState(const AnimationStateDefinition& state)
     blendTree1D.insert("dampTime", static_cast<double>(state.blendTree1D.dampTime));
     blendTree1D.insert("syncNormalizedTime", state.blendTree1D.syncNormalizedTime);
     toml::array motions1D;
-    for (const auto& motion : state.blendTree1D.motions)
+    for (const auto& motion : state.blendTree1D.motions) {
         motions1D.push_back(WriteMotion(motion));
+    }
     blendTree1D.insert("motions", std::move(motions1D));
     stateTable.insert("blendTree1D", std::move(blendTree1D));
 
@@ -269,8 +286,9 @@ toml::table WriteState(const AnimationStateDefinition& state)
     blendTree2D.insert("dampTime", static_cast<double>(state.blendTree2D.dampTime));
     blendTree2D.insert("syncNormalizedTime", state.blendTree2D.syncNormalizedTime);
     toml::array motions2D;
-    for (const auto& motion : state.blendTree2D.motions)
+    for (const auto& motion : state.blendTree2D.motions) {
         motions2D.push_back(WriteMotion(motion));
+    }
     blendTree2D.insert("motions", std::move(motions2D));
     stateTable.insert("blendTree2D", std::move(blendTree2D));
     return stateTable;
@@ -292,8 +310,9 @@ AnimationStateDefinition ReadState(const toml::table& stateTable)
 
     if (const auto* transitions = stateTable["transitions"].as_array())
         for (const auto& transitionElement : *transitions)
-            if (const auto* transitionTable = transitionElement.as_table())
+            if (const auto* transitionTable = transitionElement.as_table()) {
                 state.transitions.push_back(ReadTransition(*transitionTable));
+            }
 
     if (const auto* blend1D = stateTable["blendTree1D"].as_table()) {
         state.blendTree1D.paramName = (*blend1D)["paramName"].value_or(std::string{});
@@ -303,8 +322,9 @@ AnimationStateDefinition ReadState(const toml::table& stateTable)
             (*blend1D)["syncNormalizedTime"].value_or(false);
         if (const auto* motions = (*blend1D)["motions"].as_array())
             for (const auto& motionElement : *motions)
-                if (const auto* motionTable = motionElement.as_table())
+                if (const auto* motionTable = motionElement.as_table()) {
                     state.blendTree1D.motions.push_back(ReadMotion(*motionTable));
+                }
     }
     if (const auto* blend2D = stateTable["blendTree2D"].as_table()) {
         state.blendTree2D.paramX = (*blend2D)["paramX"].value_or(std::string{});
@@ -317,13 +337,14 @@ AnimationStateDefinition ReadState(const toml::table& stateTable)
             (*blend2D)["syncNormalizedTime"].value_or(false);
         if (const auto* motions = (*blend2D)["motions"].as_array())
             for (const auto& motionElement : *motions)
-                if (const auto* motionTable = motionElement.as_table())
+                if (const auto* motionTable = motionElement.as_table()) {
                     state.blendTree2D.motions.push_back(ReadMotion(*motionTable));
+                }
     }
     return state;
 }
 
-} /// @note namespace
+} // namespace
 
 bool SaveAnimatorControllerAsset(const std::string& path,
                                  const AnimatorControllerAsset& asset)
@@ -333,13 +354,15 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     root.insert("defaultStateName", asset.defaultStateName);
 
     toml::array states;
-    for (const auto& state : asset.states)
+    for (const auto& state : asset.states) {
         states.push_back(WriteState(state));
+    }
     root.insert("states", std::move(states));
 
     toml::array anyStateTransitions;
-    for (const auto& transition : asset.anyStateTransitions)
+    for (const auto& transition : asset.anyStateTransitions) {
         anyStateTransitions.push_back(WriteTransition(transition));
+    }
     root.insert("anyStateTransitions", std::move(anyStateTransitions));
 
     toml::array parameters;
@@ -349,9 +372,9 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         parameterTable.insert("type", static_cast<int64_t>(parameter.type));
         parameterTable.insert("floatValue", static_cast<double>(parameter.floatValue));
         parameterTable.insert("intValue", static_cast<int64_t>(parameter.intValue));
-        /// @note Trigger は状態値ではなく一瞬の発火信号なので、Controller へ保存しない。
-        /// @note Editor の一時操作や古い .animcontroller の boolValue=true を復元すると、
-        /// @note 起動直後に Trigger 遷移が発火して意図しない State へ進んでしまう。
+        // Trigger は状態値ではなく一瞬の発火信号なので、Controller へ保存しない。
+        // Editor の一時操作や古い .animcontroller の boolValue=true を復元すると、
+        // 起動直後に Trigger 遷移が発火して意図しない State へ進んでしまう。
         parameterTable.insert(
             "boolValue",
             parameter.type == scene::ParamType::Trigger ? false : parameter.boolValue);
@@ -368,26 +391,28 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         layerTable.insert("enabled", layer.enabled);
         layerTable.insert("maskPath", layer.mask.path);
 
-        /// @note 加算レイヤーの基準ポーズ。
+        // 加算レイヤーの基準ポーズ。
         toml::table additiveReference;
         additiveReference.insert("sourcePath", layer.additiveReference.sourcePath);
         additiveReference.insert("clipName", layer.additiveReference.clipName);
         additiveReference.insert("time", static_cast<double>(layer.additiveReference.time));
         layerTable.insert("additiveReference", std::move(additiveReference));
 
-        /// @note レイヤー独自ステートマシン。
+        // レイヤー独自ステートマシン。
         layerTable.insert("defaultStateName", layer.defaultStateName);
         toml::array layerStates;
-        for (const auto& state : layer.states)
+        for (const auto& state : layer.states) {
             layerStates.push_back(WriteState(state));
+        }
         layerTable.insert("states", std::move(layerStates));
         toml::array layerAnyState;
-        for (const auto& transition : layer.anyStateTransitions)
+        for (const auto& transition : layer.anyStateTransitions) {
             layerAnyState.push_back(WriteTransition(transition));
+        }
         layerTable.insert("anyStateTransitions", std::move(layerAnyState));
 
-        /// @note Slot は「今この瞬間割り込んでいるモーション」であってレイヤー定義ではないため、
-        /// @note ランタイム状態 (active / time / weight) は保存しない。既定のフェード時間だけ残す。
+        // Slot は「今この瞬間割り込んでいるモーション」であってレイヤー定義ではないため、
+        // ランタイム状態 (active / time / weight) は保存しない。既定のフェード時間だけ残す。
         toml::table slot;
         slot.insert("fadeInDuration", static_cast<double>(layer.slot.fadeInDuration));
         slot.insert("fadeOutDuration", static_cast<double>(layer.slot.fadeOutDuration));
@@ -414,7 +439,7 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     root.insert("baseLayerMaskPath", asset.baseLayerMaskPath);
     root.insert("editorLayout", WriteEditorLayout(asset.editorLayout));
 
-    /// @note .anim クリップ参照 (sourcePath) を guid: 形式で保存する (リネーム・移動耐性)。
+    // .anim クリップ参照 (sourcePath) を guid: 形式で保存する (リネーム・移動耐性)。
     EncodeGuidRefs(root);
 
     std::ostringstream stream;
@@ -428,11 +453,15 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 {
     std::string text;
     if (!util::FileSystem::ReadText(
-            AssetManager::ResolveAssetPath(path), text)) return false;
+            AssetManager::ResolveAssetPath(path), text)) {
+        return false;
+    }
     toml::parse_result result = toml::parse(text);
-    if (!result) return false;
+    if (!result) {
+        return false;
+    }
 
-    /// @note guid: 参照を "Assets/..." パスへ戻してから読む。
+    // guid: 参照を "Assets/..." パスへ戻してから読む。
     DecodeGuidRefs(result.table());
 
     AnimatorControllerAsset loaded;
@@ -440,7 +469,9 @@ bool LoadAnimatorControllerAsset(const std::string& path,
     if (const auto* states = result["states"].as_array()) {
         for (const auto& element : *states) {
             const auto* stateTable = element.as_table();
-            if (!stateTable) continue;
+            if (!stateTable) {
+                continue;
+            }
             AnimationStateDefinition state = ReadState(*stateTable);
 
             loaded.states.push_back(std::move(state));
@@ -448,13 +479,16 @@ bool LoadAnimatorControllerAsset(const std::string& path,
     }
     if (const auto* transitions = result["anyStateTransitions"].as_array())
         for (const auto& element : *transitions)
-            if (const auto* transitionTable = element.as_table())
+            if (const auto* transitionTable = element.as_table()) {
                 loaded.anyStateTransitions.push_back(ReadTransition(*transitionTable));
+            }
 
     if (const auto* parameters = result["parameters"].as_array()) {
         for (const auto& element : *parameters) {
             const auto* parameterTable = element.as_table();
-            if (!parameterTable) continue;
+            if (!parameterTable) {
+                continue;
+            }
             scene::AnimatorParameter parameter;
             parameter.name = (*parameterTable)["name"].value_or(std::string{});
             parameter.type = static_cast<scene::ParamType>(
@@ -470,7 +504,9 @@ bool LoadAnimatorControllerAsset(const std::string& path,
     if (const auto* layers = result["layers"].as_array()) {
         for (const auto& element : *layers) {
             const auto* layerTable = element.as_table();
-            if (!layerTable) continue;
+            if (!layerTable) {
+                continue;
+            }
             AnimationLayerDefinition layer;
             layer.name = (*layerTable)["name"].value_or(std::string{"Layer"});
             layer.weight = static_cast<float>((*layerTable)["weight"].value_or(1.0));
@@ -489,12 +525,14 @@ bool LoadAnimatorControllerAsset(const std::string& path,
             layer.defaultStateName = (*layerTable)["defaultStateName"].value_or(std::string{});
             if (const auto* layerStates = (*layerTable)["states"].as_array())
                 for (const auto& stateElement : *layerStates)
-                    if (const auto* stateTable = stateElement.as_table())
+                    if (const auto* stateTable = stateElement.as_table()) {
                         layer.states.push_back(ReadState(*stateTable));
+                    }
             if (const auto* layerAnyState = (*layerTable)["anyStateTransitions"].as_array())
                 for (const auto& transitionElement : *layerAnyState)
-                    if (const auto* transitionTable = transitionElement.as_table())
+                    if (const auto* transitionTable = transitionElement.as_table()) {
                         layer.anyStateTransitions.push_back(ReadTransition(*transitionTable));
+                    }
             if (const auto* slot = (*layerTable)["slot"].as_table()) {
                 layer.slot.fadeInDuration =
                     static_cast<float>((*slot)["fadeInDuration"].value_or(0.15));
@@ -505,7 +543,9 @@ bool LoadAnimatorControllerAsset(const std::string& path,
             if (const auto* mappings = (*layerTable)["retargetMappings"].as_array()) {
                 for (const auto& mappingElement : *mappings) {
                     const auto* mappingTable = mappingElement.as_table();
-                    if (!mappingTable) continue;
+                    if (!mappingTable) {
+                        continue;
+                    }
                     scene::RetargetBoneMapping mapping;
                     mapping.sourcePath = (*mappingTable)["sourcePath"].value_or(std::string{});
                     mapping.targetPath = (*mappingTable)["targetPath"].value_or(std::string{});
@@ -527,8 +567,9 @@ bool LoadAnimatorControllerAsset(const std::string& path,
         }
     }
     loaded.baseLayerMaskPath = result["baseLayerMaskPath"].value_or(std::string{});
-    if (const auto* editorLayout = result["editorLayout"].as_table())
+    if (const auto* editorLayout = result["editorLayout"].as_table()) {
         loaded.editorLayout = ReadEditorLayout(*editorLayout);
+    }
     outAsset = std::move(loaded);
     return true;
 }
@@ -536,10 +577,10 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                                   scene::AnimatorComponent& animator)
 {
-    /// @note Controller の初回ロードや差し替えでは再生状態を初期化するが、Graph の保存後に
-    /// @note 同じ Controller をライブ Animator へ反映する場合は、現在のモーションを止めない。
-    /// @note loadedControllerPath は AnimatorSystem が初回ロード完了後に設定するため、
-    /// @note 「初回ロード」と「編集反映」を安全に区別できる。
+    // Controller の初回ロードや差し替えでは再生状態を初期化するが、Graph の保存後に
+    // 同じ Controller をライブ Animator へ反映する場合は、現在のモーションを止めない。
+    // loadedControllerPath は AnimatorSystem が初回ロード完了後に設定するため、
+    // 「初回ロード」と「編集反映」を安全に区別できる。
     const bool preservePlayback =
         !animator.loadedControllerPath.empty() &&
         animator.loadedControllerPath == animator.controllerPath;
@@ -555,11 +596,12 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     animator.states = CopyControllerStates<scene::AnimationState>(asset.states);
     animator.anyStateTransitions = asset.anyStateTransitions;
     animator.parameters = asset.parameters;
-    /// @note 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
-    /// @note Trigger は SetTrigger() でのみ発火し、アセットの初期値にはしない。
+    // 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
+    // Trigger は SetTrigger() でのみ発火し、アセットの初期値にはしない。
     for (auto& parameter : animator.parameters) {
-        if (parameter.type == scene::ParamType::Trigger)
+        if (parameter.type == scene::ParamType::Trigger) {
             parameter.boolValue = false;
+        }
     }
     animator.layers = CopyControllerLayers<scene::AnimationLayer>(asset.layers);
     animator.baseLayerMask.path = asset.baseLayerMaskPath;
@@ -574,14 +616,18 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     animator.sharedClips.clear();
     animator.clipSourcePaths.clear();
     animator.clipsLoaded = false;
-    /// @note clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
+    // clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
     animator.rootMotionSamples.clear();
 
     const auto stateExists = [](const std::vector<scene::AnimationState>& states,
                                 const std::string& name) {
-        if (name.empty()) return false;
+        if (name.empty()) {
+            return false;
+        }
         for (const auto& state : states)
-            if (state.name == name) return true;
+            if (state.name == name) {
+                return true;
+            }
         return false;
     };
 
@@ -598,14 +644,17 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
         }
     }
 
-    /// @note Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
-    /// @note 初回 Controller 読込前に Script が PlayLayerState を呼んだ場合も、同名ステートが
-    /// @note Controller 側に存在するなら、その要求を復元して初回フレームから再生できる。
+    // Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
+    // 初回 Controller 読込前に Script が PlayLayerState を呼んだ場合も、同名ステートが
+    // Controller 側に存在するなら、その要求を復元して初回フレームから再生できる。
     for (auto& layer : animator.layers) {
         for (const auto& previousLayer : previousLayers) {
-            if (previousLayer.name != layer.name) continue;
-            if (stateExists(layer.states, previousLayer.runtime.currentStateName))
+            if (previousLayer.name != layer.name) {
+                continue;
+            }
+            if (stateExists(layer.states, previousLayer.runtime.currentStateName)) {
                 layer.runtime = previousLayer.runtime;
+            }
             break;
         }
     }
@@ -624,4 +673,4 @@ AnimatorControllerAsset MakeAnimatorControllerAsset(
     return asset;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

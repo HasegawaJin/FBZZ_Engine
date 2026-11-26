@@ -17,4 +17,4 @@ FBZZ_ENGINE_API ManagedBridgeStatus RunComponentServices(Scene& scene, Script& v
     std::span<const std::string> text, ManagedServiceResult& result, bool fixedUpdate);
 /// @return 対応する読み取り selector だけ true。未対応 selector は実行境界で拒否する。
 FBZZ_ENGINE_API bool IsComponentServiceRead(ManagedBridgeOp operation, uint32_t selector);
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

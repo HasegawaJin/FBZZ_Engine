@@ -18,9 +18,13 @@ namespace fbzz::scene {
 
 static float ReadLayerFloat(const asset::MaterialAssetAuthoring* material, const std::string& name, float fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     auto parameter = material->params.find(name);
-    if (parameter != material->params.end() && !parameter->second.empty()) return parameter->second[0];
+    if (parameter != material->params.end() && !parameter->second.empty()) {
+        return parameter->second[0];
+    }
     return fallback;
 }
 
@@ -28,27 +32,36 @@ static float ReadLayerFloat(const asset::MaterialAssetAuthoring* material, const
 /// @see Docs/design/instanced-mesh.md
 static asset::MaterialAsset::AuthoringSnapshotPtr ReadTerrainMaterial(TerrainRenderCache& cache, const std::string& path)
 {
-    if (path.empty()) return {};
+    if (path.empty()) {
+        return {};
+    }
     const auto revision = asset::AssetDatabase::Revision();
     const auto generation = asset::AssetManager::GetAssetGeneration();
     if (cache.materialIndexRevision != revision || cache.materialAssetGeneration != generation) {
         cache.materials.clear(); cache.materialIndexRevision = revision; cache.materialAssetGeneration = generation;
     }
     if (const auto found = cache.materials.find(path); found != cache.materials.end()) {
-        if (const auto* material = asset::AssetManager::Get(found->second)) return material->ReadAuthoring();
+        if (const auto* material = asset::AssetManager::Get(found->second)) {
+            return material->ReadAuthoring();
+        }
         cache.materials.erase(found);
     }
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     const auto* material = asset::AssetManager::Get(handle);
-    if (material && cache.materials.size() < 4096 && asset::detail::IsCacheableLoadedReference(path))
+    if (material && cache.materials.size() < 4096 && asset::detail::IsCacheableLoadedReference(path)) {
         cache.materials.emplace(path, handle);
+    }
     return material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
 }
 static std::string ReadLayerTexturePath(const asset::MaterialAssetAuthoring* material, const std::string& name)
 {
-    if (!material) return {};
+    if (!material) {
+        return {};
+    }
     auto parameter = material->textures.find(name);
-    if (parameter != material->textures.end()) return parameter->second;
+    if (parameter != material->textures.end()) {
+        return parameter->second;
+    }
     return {};
 }
 
@@ -126,10 +139,13 @@ static uint32_t BindlessIndexOr(renderer::ResourceManager& resources,
 {
     if (const renderer::ITexture* textureResource = resources.Get(texture)) {
         const uint32_t index = textureResource->GetBindlessIndex();
-        if (index != renderer::INVALID_BINDLESS_INDEX) return index;
+        if (index != renderer::INVALID_BINDLESS_INDEX) {
+            return index;
+        }
     }
-    if (const renderer::ITexture* fallbackResource = resources.Get(fallback))
+    if (const renderer::ITexture* fallbackResource = resources.Get(fallback)) {
         return fallbackResource->GetBindlessIndex();
+    }
     return renderer::INVALID_BINDLESS_INDEX;
 }
 
@@ -186,8 +202,9 @@ static void UploadLayerBuffer(TerrainGpuState& state, const std::vector<TerrainL
         return;
     }
     if (state.uploadedLayers.size() == layers.size()
-        && std::memcmp(state.uploadedLayers.data(), layers.data(), bytes) == 0)
+        && std::memcmp(state.uploadedLayers.data(), layers.data(), bytes) == 0) {
         return;
+    }
     resources.Update(state.layerBuffer, layers.data(), bytes);
     state.uploadedLayers = layers;
 }
@@ -195,8 +212,8 @@ static void UploadLayerBuffer(TerrainGpuState& state, const std::vector<TerrainL
 TerrainLayerBinding PrepareTerrainLayers(TerrainRenderCache& cache, TerrainGpuState& gpu, TerrainComponent& terrain,
     renderer::ResourceManager& resources)
 {
-    /// @note 地形の dirty に依存せず現 authoring を毎回読む。索引付きの読込済み参照だけ handle を再利用する。
-    /// @note bindless 添字も毎フレーム引く。差し替え・ホットリロードで変わるため (Material::Upload と同じ方針)。
+    // 地形の dirty に依存せず現 authoring を毎回読む。索引付きの読込済み参照だけ handle を再利用する。
+    // bindless 添字も毎フレーム引く。差し替え・ホットリロードで変わるため (Material::Upload と同じ方針)。
     std::vector<TerrainLayerGpu> layers;
     layers.reserve(static_cast<size_t>((std::max)(terrain.LayerCount(), 1)));
     bool usesAutoBlend = false;
@@ -209,7 +226,7 @@ TerrainLayerBinding PrepareTerrainLayers(TerrainRenderCache& cache, TerrainGpuSt
         layers.push_back(layer);
     }
     if (layers.empty()) {
-        /// @note 層 0 枚の地形は白い既定層 1 枚で描く。シェーダーは layerCount >= 1 を前提にする。
+        // 層 0 枚の地形は白い既定層 1 枚で描く。シェーダーは layerCount >= 1 を前提にする。
         TerrainLayerGpu layer;
         FillTerrainLayerTextureIndices(resources, nullptr, {}, cache.fallback, layer);
         layers.push_back(layer);
@@ -230,8 +247,9 @@ bool ApplyTerrainSurfaceMaterial(TerrainRenderCache& cache, const TerrainCompone
     auto layer = ReadTerrainLayerParamsImpl(material, {});
     layer.triplanar = 1.0f; layer.autoBlendEnabled = 0.0f;
     FillTerrainLayerTextureIndicesImpl(resources, material, {}, cache.fallback, layer);
-    if (!gpu.surfaceLayerBuffer.IsValid())
+    if (!gpu.surfaceLayerBuffer.IsValid()) {
         gpu.surfaceLayerBuffer = resources.CreateStructuredBuffer(&layer, 1, sizeof(layer));
+    }
     else if (!gpu.uploadedSurfaceLayer || std::memcmp(&*gpu.uploadedSurfaceLayer, &layer, sizeof(layer)) != 0)
         resources.Update(gpu.surfaceLayerBuffer, &layer, sizeof(layer));
     gpu.uploadedSurfaceLayer = layer;
@@ -241,7 +259,9 @@ bool ApplyTerrainSurfaceMaterial(TerrainRenderCache& cache, const TerrainCompone
         gpu.surfaceSplatWeights = resources.CreateTexture(weights, 1, 1);
     }
     const auto* buffer = resources.Get(gpu.surfaceLayerBuffer);
-    if (!buffer || buffer->GetBindlessIndex() == renderer::INVALID_BINDLESS_INDEX) return false;
+    if (!buffer || buffer->GetBindlessIndex() == renderer::INVALID_BINDLESS_INDEX) {
+        return false;
+    }
     surface.constants.layerBufferIndex = buffer->GetBindlessIndex();
     surface.constants.layerCount = 1;
     surface.constants.splatColumns = surface.constants.splatRows = 1;

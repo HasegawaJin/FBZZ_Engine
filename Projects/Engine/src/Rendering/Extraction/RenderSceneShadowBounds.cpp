@@ -29,7 +29,9 @@ using SceneShadowBounds = renderer::ShadowBounds;
 
 void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
 {
-    if (bounds.radius <= 0.0f) return;
+    if (bounds.radius <= 0.0f) {
+        return;
+    }
     if (!aggregate.valid) {
         aggregate.center = bounds.center;
         aggregate.radius = bounds.radius;
@@ -39,7 +41,9 @@ void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
 
     const math::Vector3 delta = bounds.center - aggregate.center;
     const float distance = delta.Length();
-    if (distance + bounds.radius <= aggregate.radius) return;
+    if (distance + bounds.radius <= aggregate.radius) {
+        return;
+    }
     if (distance + aggregate.radius <= bounds.radius) {
         aggregate.center = bounds.center;
         aggregate.radius = bounds.radius;
@@ -66,7 +70,7 @@ std::pair<float, float> TerrainHeightExtents(const std::vector<float>& heights)
         auto maxima1 = maxima, maxima2 = maxima, maxima3 = maxima;
         auto unordered = _mm_setzero_ps();
         size_t index = 0;
-        /// @note 各極値の依存チェーンを分け、SIMD 命令の待ち時間を重ねる。
+        // 各極値の依存チェーンを分け、SIMD 命令の待ち時間を重ねる。
         for (; index + 16 <= heights.size(); index += 16) {
             const auto* block = heights.data() + index;
             const auto values0 = _mm_loadu_ps(block);
@@ -103,7 +107,9 @@ std::pair<float, float> TerrainHeightExtents(const std::vector<float>& heights)
                 minimum = (std::min)(minimum, heights[index]);
                 maximum = (std::max)(maximum, heights[index]);
             }
-            if (index == heights.size()) return {minimum, maximum};
+            if (index == heights.size()) {
+                return {minimum, maximum};
+            }
         }
     }
 #endif
@@ -113,8 +119,9 @@ std::pair<float, float> TerrainHeightExtents(const std::vector<float>& heights)
 
 bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponent& terrain, WorldBounds& outBounds)
 {
-    if (!terrain.enabled || terrain.heightData.empty() || terrain.columns < 2 || terrain.rows < 2)
+    if (!terrain.enabled || terrain.heightData.empty() || terrain.columns < 2 || terrain.rows < 2) {
         return false;
+    }
 
     const auto [minimum, maximum] = TerrainHeightExtents(terrain.heightData);
     const float minY = minimum * terrain.maxHeight;
@@ -146,8 +153,9 @@ const renderer::Mesh* FindStaticShadowMesh(GameObject& object)
 {
     const auto* meshRenderer = object.GetComponent<MeshRenderer>();
     if (!meshRenderer || !meshRenderer->enabled || !meshRenderer->mesh
-        || meshRenderer->mesh->isSkinned || !(meshRenderer->mesh->boundsRadius > 0.0f))
+        || meshRenderer->mesh->isSkinned || !(meshRenderer->mesh->boundsRadius > 0.0f)) {
         return nullptr;
+    }
     return meshRenderer->mesh;
 }
 
@@ -157,8 +165,9 @@ void AddDynamicShadowBounds(
 {
     if (auto* skin = object.GetComponent<SkinnedMeshRenderer>(); skin && skin->enabled && skin->model) {
         WorldBounds bounds{};
-        if (ComputeSkinnedWorldBounds(object, *skin, bounds))
+        if (ComputeSkinnedWorldBounds(object, *skin, bounds)) {
             add(bounds);
+        }
     }
 
     if (auto* terrain = object.GetComponent<TerrainComponent>()) {
@@ -191,7 +200,7 @@ struct StaticShadowCache {
 
 bool CanReuseRotation(const math::Quaternion& rotation)
 {
-    /// @note 近ゼロ回転の契約違反を毎回通知できるよう、十分な長さを持つ有限の四元数だけ再利用する。
+    // 近ゼロ回転の契約違反を毎回通知できるよう、十分な長さを持つ有限の四元数だけ再利用する。
     return std::isfinite(rotation.x) && std::isfinite(rotation.y)
         && std::isfinite(rotation.z) && std::isfinite(rotation.w)
         && std::max({std::abs(rotation.x), std::abs(rotation.y),
@@ -219,13 +228,17 @@ SceneShadowBounds ComputeBoundsWithStaticReuse(Scene& scene, fbzz::LayerMask cul
     cache.inUse = true;
     SceneShadowBounds result{};
     const size_t previousSize = cache.entries.size();
-    if (cache.entries.size() < candidates.size()) cache.entries.resize(candidates.size());
+    if (cache.entries.size() < candidates.size()) {
+        cache.entries.resize(candidates.size());
+    }
     size_t index = 0;
     bool recomputingAggregate = false;
     bool hasDynamicContribution = false;
     const auto startAggregate = [&] {
         for (size_t previous = 0; previous < index; ++previous)
-            if (cache.entries[previous].contributes) AccumulateBounds(result, cache.entries[previous].bounds);
+            if (cache.entries[previous].contributes) {
+                AccumulateBounds(result, cache.entries[previous].bounds);
+            }
         recomputingAggregate = true;
     };
 
@@ -240,27 +253,33 @@ SceneShadowBounds ComputeBoundsWithStaticReuse(Scene& scene, fbzz::LayerMask cul
         };
         const bool sameInputs = entry.reusable
             && std::memcmp(entry.inputs.data(), inputs.data(), inputs.size() * sizeof(float)) == 0;
-        if ((!entry.contributes || !sameInputs) && !recomputingAggregate) startAggregate();
+        if ((!entry.contributes || !sameInputs) && !recomputingAggregate) {
+            startAggregate();
+        }
         if (!sameInputs) {
             const bool reusable = CanReuseRotation(rotation);
             entry = {inputs, ComputeWorldBounds(transform, mesh), reusable, true};
         } else {
             entry.contributes = true;
         }
-        if (recomputingAggregate) AccumulateBounds(result, entry.bounds);
+        if (recomputingAggregate) {
+            AccumulateBounds(result, entry.bounds);
+        }
     };
     const auto addDynamic = [&](const WorldBounds& bounds) {
         if (!recomputingAggregate) {
             startAggregate();
-            /// @note 先行部分を復元した後、この Entity の静的な球をスキン・地形より先に合成する。
+            // 先行部分を復元した後、この Entity の静的な球をスキン・地形より先に合成する。
             const auto& entry = cache.entries[index];
-            if (entry.contributes) AccumulateBounds(result, entry.bounds);
+            if (entry.contributes) {
+                AccumulateBounds(result, entry.bounds);
+            }
         }
         hasDynamicContribution = true;
         AccumulateBounds(result, bounds);
     };
 
-    /// @note 描画候補と静的入力を現物から照合し、同じ Entity 内も静的・スキン・地形の順に合成する。
+    // 描画候補と静的入力を現物から照合し、同じ Entity 内も静的・スキン・地形の順に合成する。
     for (; index < candidates.size(); ++index) {
         const EntityID id = candidates[index];
         auto& entry = cache.entries[index];
@@ -270,14 +289,19 @@ SceneShadowBounds ComputeBoundsWithStaticReuse(Scene& scene, fbzz::LayerMask cul
         if (mesh) {
             addStatic(entry, go->transform, *mesh);
         } else if (entry.contributes) {
-            if (!recomputingAggregate) startAggregate();
+            if (!recomputingAggregate) {
+                startAggregate();
+            }
             entry.contributes = false;
         }
-        if (eligible && hasDynamicComponents)
+        if (eligible && hasDynamicComponents) {
             AddDynamicShadowBounds(*go, id, result.terrainRevision, addDynamic);
+        }
     }
     if (!recomputingAggregate) {
-        if (index == previousSize && !cache.hasDynamicContribution) return cache.aggregate;
+        if (index == previousSize && !cache.hasDynamicContribution) {
+            return cache.aggregate;
+        }
         startAggregate();
     }
     cache.entries.resize(index);
@@ -293,12 +317,17 @@ SceneShadowBounds ComputeUncachedBounds(Scene& scene, fbzz::LayerMask cullingMas
     SceneShadowBounds result{};
     for (EntityID id : candidates) {
         auto* source = scene.GetGameObject(id);
-        if (!source) continue;
+        if (!source) {
+            continue;
+        }
         auto& go = *source;
-        if (!ShouldRenderGameObject(go, cullingMask)) continue;
+        if (!ShouldRenderGameObject(go, cullingMask)) {
+            continue;
+        }
 
-        if (const auto* mesh = FindStaticShadowMesh(go))
+        if (const auto* mesh = FindStaticShadowMesh(go)) {
             AccumulateBounds(result, ComputeWorldBounds(go.transform, *mesh));
+        }
         AddDynamicShadowBounds(go, id, result.terrainRevision,
             [&](const WorldBounds& bounds) { AccumulateBounds(result, bounds); });
     }
@@ -318,23 +347,28 @@ renderer::ShadowBounds shadow_preparation_detail::ComputeSceneBounds(Scene& scen
 renderer::ShadowBounds shadow_preparation_detail::ResolveSceneBounds(
     Scene& scene, fbzz::LayerMask cullingMask)
 {
-    if (cullingMask == fbzz::Layer::Nothing) return {};
+    if (cullingMask == fbzz::Layer::Nothing) {
+        return {};
+    }
     const auto meshCount = scene.GetEntities<MeshRenderer>().size();
     const bool hasDynamicComponents = !scene.GetEntities<SkinnedMeshRenderer>().empty()
         || !scene.GetEntities<TerrainComponent>().empty();
-    if (meshCount == 0 && !hasDynamicComponents) return {};
+    if (meshCount == 0 && !hasDynamicComponents) {
+        return {};
+    }
 
     FBZZ_PROFILE_SCOPE("RenderSystem::ComputeShadowBounds");
 #if (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__SSE2__)
-    /// @note 静的な球だけを再利用し、スキニングや地形は呼び出しごとに現在の入力を読む。
+    // 静的な球だけを再利用し、スキニングや地形は呼び出しごとに現在の入力を読む。
     thread_local StaticShadowCache staticCache;
     constexpr size_t MAX_STATIC_CACHE_ENTRIES = 32768;
     if (!staticCache.inUse && meshCount != 0 && meshCount <= MAX_STATIC_CACHE_ENTRIES) {
         detail::RenderCandidateLease candidateLease;
         auto& candidates = candidateLease.Entities();
         scene.CopyRendererEntities(candidates, Scene::RendererEntitySet::GEOMETRY_AND_TERRAIN);
-        if (candidates.size() <= MAX_STATIC_CACHE_ENTRIES)
+        if (candidates.size() <= MAX_STATIC_CACHE_ENTRIES) {
             return ComputeBoundsWithStaticReuse(scene, cullingMask, candidates, staticCache, hasDynamicComponents);
+        }
         return ComputeUncachedBounds(scene, cullingMask, candidates);
     }
 #endif

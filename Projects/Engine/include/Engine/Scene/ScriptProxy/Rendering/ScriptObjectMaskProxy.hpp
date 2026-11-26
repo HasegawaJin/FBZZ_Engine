@@ -18,13 +18,13 @@ class Script;
 class GameObject;
 
 struct ScriptObjectMaskProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< オブジェクトマスク操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note 自分 (と子) を今フレームだけマスクへ描く。
-    /// @param color マスクの RGB。読む側との取り決めで意味が決まる
-    /// @param value マスクの A へ入る 0〜1 のスカラー (輪郭なら太さ、グローなら強さ)
+    /// @param[in] color マスクの RGB。読む側との取り決めで意味が決まる
+    /// @param[in] value マスクの A へ入る 0〜1 のスカラー (輪郭なら太さ、グローなら強さ)
     FBZZ_ENGINE_API void Set(const math::Vector4& color, float value = 1.0f) const;
-    /// @param visibleOnly false なら手前に何かあっても描く (壁越しのシルエット用)
+    /// @param[in] visibleOnly false なら手前に何かあっても描く (壁越しのシルエット用)
     FBZZ_ENGINE_API void Set(GameObject& target, const math::Vector4& color, float value = 1.0f,
              bool includeChildren = true, bool visibleOnly = true) const;
 
@@ -34,4 +34,4 @@ struct ScriptObjectMaskProxy {
     FBZZ_ENGINE_API void Clear(GameObject& target) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

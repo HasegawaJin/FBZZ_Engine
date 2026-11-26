@@ -43,8 +43,8 @@ namespace {
 /// @note BuildFunnelPath のセグメントを link で分割し、各セグメントの結果を連結する。
 struct PathWithLinks {
     std::vector<math::Vector3> waypoints;
-    std::vector<bool>          linkFlags; ///< @note waypoints[i] が true → オフメッシュリンク起点
-    std::vector<float>         linkTimes; ///< @note リンク起点のみ有効な通過時間
+    std::vector<bool>          linkFlags; ///< waypoints[i] が true → オフメッシュリンク起点
+    std::vector<float>         linkTimes; ///< リンク起点のみ有効な通過時間
 };
 
 PathWithLinks BuildPathWithLinks(
@@ -83,13 +83,17 @@ PathWithLinks BuildPathWithLinks(
         bool hasPortal = false;
         for (const auto& p : navMesh.Polygons()[static_cast<size_t>(fromPoly)].portals)
             if (p.neighbor == toPoly) { hasPortal = true; break; }
-        if (hasPortal) continue;
+        if (hasPortal) {
+            continue;
+        }
 
         for (const size_t linkIndex : navMesh.OffMeshLinksFrom(static_cast<size_t>(fromPoly))) {
             const auto& link = navMesh.OffMeshLinks()[linkIndex];
             const bool fwd = (link.polyA == fromPoly && link.polyB == toPoly);
             const bool bwd = link.bidirectional && (link.polyB == fromPoly && link.polyA == toPoly);
-            if (!fwd && !bwd) continue;
+            if (!fwd && !bwd) {
+                continue;
+            }
 
             const math::Vector3 posA = fwd ? link.posA : link.posB;
             const math::Vector3 posB = fwd ? link.posB : link.posA;
@@ -141,14 +145,18 @@ static float ColliderFloorOffset(GameObject& go)
     const math::Vector3& s = go.transform.worldScale;
     const float sx = std::abs(s.x), sy = std::abs(s.y), sz = std::abs(s.z);
 
-    if (const auto* cap = go.GetComponent<scene::CapsuleColliderComponent>())
+    if (const auto* cap = go.GetComponent<scene::CapsuleColliderComponent>()) {
         return cap->halfHeight * sy + cap->radius * std::max(sx, sz) - cap->center.y * sy;
-    if (const auto* cyl = go.GetComponent<scene::CylinderColliderComponent>())
+    }
+    if (const auto* cyl = go.GetComponent<scene::CylinderColliderComponent>()) {
         return (cyl->halfHeight - cyl->center.y) * sy;
-    if (const auto* box = go.GetComponent<scene::BoxColliderComponent>())
+    }
+    if (const auto* box = go.GetComponent<scene::BoxColliderComponent>()) {
         return (box->size.y * 0.5f - box->center.y) * sy;
-    if (const auto* sph = go.GetComponent<scene::SphereColliderComponent>())
+    }
+    if (const auto* sph = go.GetComponent<scene::SphereColliderComponent>()) {
         return sph->radius * std::max({ sx, sy, sz }) - sph->center.y * sy;
+    }
     return 0.0f;
 }
 
@@ -159,9 +167,13 @@ static float ColliderFloorOffset(GameObject& go)
 void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*callback)(), ScriptCallbackKind kind)
 {
     auto* scriptComp = scene.GetComponent<ScriptComponent>(eid);
-    if (!scriptComp) return;
+    if (!scriptComp) {
+        return;
+    }
     for (auto& entry : scriptComp->scripts) {
-        if (!entry.script || !entry.script->enabled) continue;
+        if (!entry.script || !entry.script->enabled) {
+            continue;
+        }
         entry.script->SetContext(&scene, &go);
         entry.script->ExecuteProfiledCallback(callback, kind, "navigation callback");
     }
@@ -206,13 +218,15 @@ void ReportInvalidTarget(NavMeshAgentComponent& agent, EntityID agentId,
     std::uint64_t reason, const char* message)
 {
     const std::uint64_t signature = TargetDiagnosticSignature(agent.target, reason);
-    if (signature == agent.lastTargetDiagnosticSignature) return;
+    if (signature == agent.lastTargetDiagnosticSignature) {
+        return;
+    }
     agent.lastTargetDiagnosticSignature = signature;
     FBZZ_LOG_WARN("NavigationSystem: agent %u:%u target is %s.",
         agentId.index, agentId.generation, message);
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess NavigationSystem::GetAccess() const
 {
@@ -233,16 +247,18 @@ NavigationSystem::AvoidanceBucket& NavigationSystem::FindAvoidanceBucket(int x, 
         ^ (static_cast<size_t>(static_cast<uint32_t>(z)) * 19349663u);
     size_t index = hash & (m_avoidanceBuckets.size() - 1);
     while (m_avoidanceBuckets[index].first != SIZE_MAX
-        && (m_avoidanceBuckets[index].x != x || m_avoidanceBuckets[index].z != z))
+        && (m_avoidanceBuckets[index].x != x || m_avoidanceBuckets[index].z != z)) {
         index = (index + 1) & (m_avoidanceBuckets.size() - 1);
+    }
     return m_avoidanceBuckets[index];
 }
 
 NavigationSystem::SurfaceEntry& NavigationSystem::FindSurfaceSlot(int agentTypeId)
 {
     size_t index = static_cast<size_t>(static_cast<uint32_t>(agentTypeId)) & (m_surfaces.size() - 1);
-    while (m_surfaces[index].surface && m_surfaces[index].agentTypeId != agentTypeId)
+    while (m_surfaces[index].surface && m_surfaces[index].agentTypeId != agentTypeId) {
         index = (index + 1) & (m_surfaces.size() - 1);
+    }
     return m_surfaces[index];
 }
 
@@ -251,18 +267,22 @@ void NavigationSystem::Update(SystemContext& ctx)
     Scene& scene = ctx.scene;
     const float dt = ctx.dt;
     const auto agentSpan = scene.GetEntities<NavMeshAgentComponent>();
-    if (agentSpan.empty()) return;
-    /// @note 通知中の Component 追加で元 span が再確保されても、フレーム先頭の処理対象と順序を保つ。
+    if (agentSpan.empty()) {
+        return;
+    }
+    // 通知中の Component 追加で元 span が再確保されても、フレーム先頭の処理対象と順序を保つ。
     m_agentEntities.assign(agentSpan.begin(), agentSpan.end());
     const auto& agentEntities = m_agentEntities;
     FlushWorldTransforms(scene);
-    /// @note agentTypeId → NavMeshSurface のマップを構築する。
-    /// @note 同じ typeId が複数ある場合は最初に見つかった有効な Surface を使う。
+    // agentTypeId → NavMeshSurface のマップを構築する。
+    // 同じ typeId が複数ある場合は最初に見つかった有効な Surface を使う。
     m_surfaces.clear();
     const auto surfaceEntities = scene.GetEntities<NavMeshSurfaceComponent>();
     if (!surfaceEntities.empty()) {
         size_t surfaceCount = 8;
-        while (surfaceCount / 2 < surfaceEntities.size()) surfaceCount *= 2;
+        while (surfaceCount / 2 < surfaceEntities.size()) {
+            surfaceCount *= 2;
+        }
         m_surfaces.assign(surfaceCount, {});
     }
     float minCellSize = 1.0f;
@@ -270,24 +290,30 @@ void NavigationSystem::Update(SystemContext& ctx)
         auto* v = scene.GetComponent<NavMeshSurfaceComponent>(veid);
         auto* surfaceGo = scene.GetGameObject(veid);
         if (!v || !surfaceGo || !surfaceGo->activeInHierarchy()
-            || !v->enabled || !v->navMesh.IsValid()) continue;
+            || !v->enabled || !v->navMesh.IsValid()) {
+            continue;
+        }
         auto& entry = FindSurfaceSlot(v->agentTypeId);
         if (!entry.surface) {
             entry = {v->agentTypeId, v};
             minCellSize = std::min(minCellSize, v->cellSize);
         }
     }
-    /// @note 占有率を半分以下に保つ flat hash と入力順の連結添字で、セルごとの確保と再ソートを避ける。
+    // 占有率を半分以下に保つ flat hash と入力順の連結添字で、セルごとの確保と再ソートを避ける。
     const float bucketSize = std::max(0.5f, minCellSize * 2.0f);
     m_avoidanceEntries.clear();
     size_t bucketCount = 8;
-    while (bucketCount / 2 < agentEntities.size()) bucketCount *= 2;
+    while (bucketCount / 2 < agentEntities.size()) {
+        bucketCount *= 2;
+    }
     m_avoidanceBuckets.assign(bucketCount, {});
     for (size_t order = 0; order < agentEntities.size(); ++order) {
         const EntityID id = agentEntities[order];
         auto* a = scene.GetComponent<NavMeshAgentComponent>(id);
         auto* g = scene.GetGameObject(id);
-        if (!a || !g || !g->activeInHierarchy() || !a->enabled) continue;
+        if (!a || !g || !g->activeInHierarchy() || !a->enabled) {
+            continue;
+        }
         const auto key = BucketKeyFor(g->transform.worldPosition, bucketSize);
         auto& bucket = FindAvoidanceBucket(key.x, key.z);
         const size_t entryIndex = m_avoidanceEntries.size();
@@ -305,7 +331,9 @@ void NavigationSystem::Update(SystemContext& ctx)
     for (EntityID eid : agentEntities) {
         auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid);
         auto* go    = scene.GetGameObject(eid);
-        if (!agent || !go || !go->activeInHierarchy() || !agent->enabled) continue;
+        if (!agent || !go || !go->activeInHierarchy() || !agent->enabled) {
+            continue;
+        }
 
         const bool hasAssignedTarget = agent->target.IsAssigned();
         GameObject* targetGo = nullptr;
@@ -331,16 +359,20 @@ void NavigationSystem::Update(SystemContext& ctx)
             agent->lastTargetDiagnosticSignature = 0;
         }
 
-        /// @note この Agent が使う NavMeshSurface を agentTypeId で引く。
-        /// @note 対応する Surface がなければスキップ (agentTypeId の Surface をまだ置いていない場合等)。
-        if (m_surfaces.empty()) continue;
+        // この Agent が使う NavMeshSurface を agentTypeId で引く。
+        // 対応する Surface がなければスキップ (agentTypeId の Surface をまだ置いていない場合等)。
+        if (m_surfaces.empty()) {
+            continue;
+        }
         const auto* surface = FindSurfaceSlot(agent->agentTypeId).surface;
-        if (!surface) continue;
+        if (!surface) {
+            continue;
+        }
         const NavMeshSurfaceComponent& surf = *surface;
         const NavMesh& navMesh = surf.navMesh;
         const float agentCellSize = surf.cellSize;
 
-        /// @name Target Follow: 追跡対象が設定されていれば定期的に destination を更新する
+        // Target Follow: 追跡対象が設定されていれば定期的に destination を更新する
         if (hasAssignedTarget) {
             agent->repathTimer -= dt;
             const float movedSq = (targetGo->transform.worldPosition - agent->lastTargetPos).LengthSq();
@@ -354,7 +386,7 @@ void NavigationSystem::Update(SystemContext& ctx)
             }
         }
 
-        /// @name パス未計算ならここで A* + Funnel を実行する
+        // パス未計算ならここで A* + Funnel を実行する
         if (agent->hasDestination && agent->path.empty() && agent->state == NavMeshAgentState::MOVING) {
             const int startPoly = FindNearestPolygon(navMesh, go->transform.worldPosition);
             const int goalPoly  = FindNearestPolygon(navMesh, agent->destination);
@@ -372,16 +404,20 @@ void NavigationSystem::Update(SystemContext& ctx)
                 agent->pathLinkTimes  = std::move(pwl.linkTimes);
                 agent->currentWaypoint = 0;
             } else {
-                if (hasAssignedTarget) HaltKeepingTarget(*agent);
-                else agent->Stop();
+                if (hasAssignedTarget) {
+                    HaltKeepingTarget(*agent);
+                }
+                else {
+                    agent->Stop();
+                }
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshPathFailed, ScriptCallbackKind::NAV_PATH_FAILED);
                 continue;
             }
         }
 
         if (agent->path.empty() || agent->currentWaypoint >= agent->path.size()) {
-            /// @note パスがない(Idle)状態でもスナップは毎フレーム適用する。
-            /// @note 例: 初期配置でエージェントが NavMesh より高い位置にいる場合に地面へ落とす。
+            // パスがない(Idle)状態でもスナップは毎フレーム適用する。
+            // 例: 初期配置でエージェントが NavMesh より高い位置にいる場合に地面へ落とす。
             if (agent->snapToNavMesh && agent->updatePosition
                 && agent->state != NavMeshAgentState::TRAVERSING_LINK) {
                 const float snappedY = SampleNavMeshHeight(navMesh, go->transform.worldPosition);
@@ -396,15 +432,16 @@ void NavigationSystem::Update(SystemContext& ctx)
 
         const math::Vector3 pos = go->transform.worldPosition;
 
-        /// @note 残り距離は isStopped 中も Script/Inspector から参照できるよう毎フレーム更新する。
+        // 残り距離は isStopped 中も Script/Inspector から参照できるよう毎フレーム更新する。
         {
             float remaining = (agent->path[agent->currentWaypoint] - pos).Length();
-            for (size_t i = agent->currentWaypoint; i + 1 < agent->path.size(); ++i)
+            for (size_t i = agent->currentWaypoint; i + 1 < agent->path.size(); ++i) {
                 remaining += (agent->path[i + 1] - agent->path[i]).Length();
+            }
             agent->remainingDistance = remaining;
         }
 
-        /// @name オフメッシュリンク通過: lerp 補間で startPos → endPos へ移動する
+        // オフメッシュリンク通過: lerp 補間で startPos → endPos へ移動する
         if (agent->state == NavMeshAgentState::TRAVERSING_LINK) {
             NavMeshLinkTraversal& lt = agent->linkTraversal;
             lt.elapsed += dt;
@@ -423,21 +460,22 @@ void NavigationSystem::Update(SystemContext& ctx)
                     std::clamp(agent->angularSpeedDeg * dt / 180.0f, 0.0f, 1.0f));
             }
             agent->velocity = (dt > 0.0f) ? ((linkPos - go->transform.worldPosition) * (1.0f / dt)) : math::Vector3::ZERO;
-            if (agent->updatePosition || agent->updateRotation)
+            if (agent->updatePosition || agent->updateRotation) {
                 WriteWorldPoseToTransform(*go,
                     agent->updatePosition ? linkPos : go->transform.worldPosition,
                     agent->updateRotation ? newRot  : go->transform.worldRotation);
+            }
 
             if (t >= 1.0f) {
                 lt.active = false;
                 agent->state = NavMeshAgentState::MOVING;
-                /// @note link endPos ウェイポイントへ進める
+                // link endPos ウェイポイントへ進める
                 ++agent->currentWaypoint;
             }
             continue;
         }
 
-        /// @note isStopped 中はパスを保持したまま移動・回転だけ止める (Resume() で再開できる)。
+        // isStopped 中はパスを保持したまま移動・回転だけ止める (Resume() で再開できる)。
         if (agent->isStopped) {
             agent->currentSpeed = 0.0f;
             agent->velocity     = math::Vector3::ZERO;
@@ -452,12 +490,12 @@ void NavigationSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        /// @name 停滞検出: 一定時間以上前進できていなければ経路を再計算する
+        // 停滞検出: 一定時間以上前進できていなければ経路を再計算する
         {
             const float movedSq = (pos - agent->lastStuckCheckPos).LengthSq();
-            /// @note 5cm
+            // 5cm
             constexpr float kStuckMoveThresholdSq = 0.05f * 0.05f;
-            /// @note [s]
+            // [s]
             constexpr float kStuckTimeout = 2.0f;
             if (movedSq > kStuckMoveThresholdSq) {
                 agent->lastStuckCheckPos = pos;
@@ -470,13 +508,13 @@ void NavigationSystem::Update(SystemContext& ctx)
                     agent->stuckTimer = 0.0f;
                     agent->path.clear();
                     agent->currentWaypoint = 0;
-                    /// @note 次フレームで現在地から再計算する
+                    // 次フレームで現在地から再計算する
                     continue;
                 }
             }
         }
 
-        /// @name 到達判定
+        // 到達判定
         math::Vector3 target = agent->path[agent->currentWaypoint];
         math::Vector3 toTarget = target - pos;
         toTarget.y = 0.0f;
@@ -488,13 +526,17 @@ void NavigationSystem::Update(SystemContext& ctx)
         if (distance <= arriveThreshold) {
             if (isLastWaypoint) {
                 agent->destinationReached = true;
-                if (hasAssignedTarget) HaltKeepingTarget(*agent);
-                else agent->Stop();
+                if (hasAssignedTarget) {
+                    HaltKeepingTarget(*agent);
+                }
+                else {
+                    agent->Stop();
+                }
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshDestinationReached, ScriptCallbackKind::NAV_DESTINATION_REACHED);
                 continue;
             }
 
-            /// @note オフメッシュリンク起点に到達したらリンク通過を開始する。
+            // オフメッシュリンク起点に到達したらリンク通過を開始する。
             const size_t wp = agent->currentWaypoint;
             if (wp < agent->pathLinkFlags.size() && agent->pathLinkFlags[wp]) {
                 const size_t nextWp = wp + 1;
@@ -506,7 +548,7 @@ void NavigationSystem::Update(SystemContext& ctx)
                     lt.elapsed   = 0.0f;
                     lt.active    = true;
                     agent->state = NavMeshAgentState::TRAVERSING_LINK;
-                    /// @note currentWaypoint は TRAVERSING_LINK 完了時に ++する
+                    // currentWaypoint は TRAVERSING_LINK 完了時に ++する
                     continue;
                 }
             }
@@ -519,7 +561,7 @@ void NavigationSystem::Update(SystemContext& ctx)
 
         math::Vector3 moveDir = (distance > 0.0001f) ? toTarget.Normalized() : math::Vector3::ZERO;
 
-        /// @name 簡易ローカル回避: 近傍 3x3 バケットの Agent から離れる方向を加算する
+        // 簡易ローカル回避: 近傍 3x3 バケットの Agent から離れる方向を加算する
         math::Vector3 avoidance = math::Vector3::ZERO;
         const BucketKey selfBucket = BucketKeyFor(pos, bucketSize);
         for (int bz = -1; bz <= 1; ++bz) {
@@ -528,10 +570,14 @@ void NavigationSystem::Update(SystemContext& ctx)
             const auto& bucket = FindAvoidanceBucket(key.x, key.z);
             for (size_t index = bucket.first; index != SIZE_MAX; index = m_avoidanceEntries[index].next) {
                 const EntityID otherEid = m_avoidanceEntries[index].entity;
-                if (otherEid == eid) continue;
+                if (otherEid == eid) {
+                    continue;
+                }
                 auto* other   = scene.GetComponent<NavMeshAgentComponent>(otherEid);
                 auto* otherGo = scene.GetGameObject(otherEid);
-                if (!other || !otherGo || !other->enabled) continue;
+                if (!other || !otherGo || !other->enabled) {
+                    continue;
+                }
 
                 math::Vector3 diff = pos - otherGo->transform.worldPosition;
                 diff.y = 0.0f;
@@ -539,10 +585,12 @@ void NavigationSystem::Update(SystemContext& ctx)
                 const float distSq  = diff.x * diff.x + diff.z * diff.z;
                 if (distSq < minDist * minDist && distSq > 0.0001f) {
                     const float d = std::sqrt(distSq);
-                    /// @note 優先度が高い Agent ほど押し出されにくい (例: プレイヤー追跡中の敵が
-                    /// @note 雑魚敵に押されて止まらないようにする)。
+                    // 優先度が高い Agent ほど押し出されにくい (例: プレイヤー追跡中の敵が
+                    // 雑魚敵に押されて止まらないようにする)。
                     float weight = 1.0f;
-                    if (other->avoidancePriority > agent->avoidancePriority)      weight = 1.5f;
+                    if (other->avoidancePriority > agent->avoidancePriority) {
+                        weight = 1.5f;
+                    }
                     else if (other->avoidancePriority < agent->avoidancePriority) weight = 0.5f;
                     avoidance += diff * (((minDist - d) / d) * weight);
                 }
@@ -550,18 +598,20 @@ void NavigationSystem::Update(SystemContext& ctx)
         }
         }
         const math::Vector3 combined = moveDir + avoidance;
-        if (combined.LengthSq() > 0.0001f)
+        if (combined.LengthSq() > 0.0001f) {
             moveDir = combined.Normalized();
+        }
 
-        /// @name 速度更新 (加速) と移動
-        /// @note autoBraking: 最終ウェイポイントへの残り距離に応じて maxSpeed を制限する。
-        /// @note ブレーキ開始距離 = v² / (2a) として、その範囲内に入ったら速度を絞る。
+        // 速度更新 (加速) と移動
+        // autoBraking: 最終ウェイポイントへの残り距離に応じて maxSpeed を制限する。
+        // ブレーキ開始距離 = v² / (2a) として、その範囲内に入ったら速度を絞る。
         float effectiveMaxSpeed = agent->maxSpeed;
         if (agent->autoBraking && isLastWaypoint && agent->acceleration > 0.0f) {
             const float brakeRadius = (agent->maxSpeed * agent->maxSpeed) / (2.0f * agent->acceleration);
-            if (distance < brakeRadius && brakeRadius > 0.0f)
+            if (distance < brakeRadius && brakeRadius > 0.0f) {
                 effectiveMaxSpeed = agent->maxSpeed * (distance / brakeRadius);
-            /// @note 最低速度を確保
+            }
+            // 最低速度を確保
             effectiveMaxSpeed = std::max(effectiveMaxSpeed, agent->maxSpeed * 0.1f);
         }
         agent->currentSpeed = std::min(agent->currentSpeed + agent->acceleration * dt, effectiveMaxSpeed);
@@ -571,16 +621,18 @@ void NavigationSystem::Update(SystemContext& ctx)
         const float t = (distance > 0.0001f) ? std::min(1.0f, moveDist / distance) : 0.0f;
         newPos.y = pos.y + (target.y - pos.y) * t;
 
-        /// @note NavMesh スナップ: 移動後の Y 座標を NavMesh ポリゴン面に合わせる。
-        /// @note 物理・重力と組み合わせる場合は snapToNavMesh=false にして物理側に Y を任せる。
+        // NavMesh スナップ: 移動後の Y 座標を NavMesh ポリゴン面に合わせる。
+        // 物理・重力と組み合わせる場合は snapToNavMesh=false にして物理側に Y を任せる。
         if (agent->snapToNavMesh) {
             const float snappedY = SampleNavMeshHeight(navMesh, newPos);
-            if (snappedY > -1e6f) newPos.y = snappedY + ColliderFloorOffset(*go);
+            if (snappedY > -1e6f) {
+                newPos.y = snappedY + ColliderFloorOffset(*go);
+            }
         }
 
-        /// @name 回転 (進行方向への定角速度補間)
-        /// @note 2*acos(|dot(a,b)|) で実際の回転角を求め、angularSpeedDeg [deg/s] に正確に
-        /// @note 一致する補間係数 t を計算する (角度や dt に依らず一定の角速度で回転する)。
+        // 回転 (進行方向への定角速度補間)
+        // 2*acos(|dot(a,b)|) で実際の回転角を求め、angularSpeedDeg [deg/s] に正確に
+        // 一致する補間係数 t を計算する (角度や dt に依らず一定の角速度で回転する)。
         math::Quaternion newRot = go->transform.worldRotation;
         if (moveDir.LengthSq() > 0.0001f) {
             const math::Quaternion targetRot = math::Quaternion::LookRotation(moveDir);
@@ -593,11 +645,12 @@ void NavigationSystem::Update(SystemContext& ctx)
             newRot = math::Quaternion::Slerp(newRot, targetRot, rotT);
         }
 
-        /// @note 速度ベクトル更新 (アニメーター連携などに使う)
+        // 速度ベクトル更新 (アニメーター連携などに使う)
         agent->velocity = (dt > 0.0f) ? ((newPos - pos) * (1.0f / dt)) : math::Vector3::ZERO;
 
-        if (agent->updatePosition && agent->updateRotation)
+        if (agent->updatePosition && agent->updateRotation) {
             WriteWorldPoseToTransform(*go, newPos, newRot);
+        }
         else if (agent->updatePosition)
             WriteWorldPoseToTransform(*go, newPos, go->transform.worldRotation);
         else if (agent->updateRotation)
@@ -609,4 +662,4 @@ void NavigationSystem::Update(SystemContext& ctx)
     m_avoidanceBuckets.clear();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

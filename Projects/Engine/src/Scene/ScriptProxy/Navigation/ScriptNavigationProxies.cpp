@@ -42,7 +42,9 @@ bool MaterializePatrolPoints(const NavMeshPatrolPointSnapshot& snapshot,
     std::vector<math::Vector3>& positions, std::vector<float>& waitTimes,
     std::vector<float>& speeds)
 {
-    if (!snapshot.valid) return false;
+    if (!snapshot.valid) {
+        return false;
+    }
     std::vector<math::Vector3> nextPositions;
     std::vector<float> nextWaitTimes;
     std::vector<float> nextSpeeds;
@@ -78,32 +80,44 @@ NavMeshAgentComponent* SelfNavAgent(const Script* script)
 
 void ScriptNavigationProxy::SetDestination(const math::Vector3& worldPos) const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->SetDestination(worldPos);
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->SetDestination(worldPos);
+    }
 }
 
 
 void ScriptNavigationProxy::CancelPath() const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->Stop();
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->Stop();
+    }
 }
 
 
 void ScriptNavigationProxy::Pause() const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->isStopped = true;
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->isStopped = true;
+    }
 }
 
 
 void ScriptNavigationProxy::Resume() const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->isStopped = false;
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->isStopped = false;
+    }
 }
 
 
 void ScriptNavigationProxy::Warp(const math::Vector3& worldPos) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* agent = SelfNavAgent(script)) agent->Stop();
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->Stop();
+    }
     script->m_gameObject->transform.position      = worldPos;
     script->m_gameObject->transform.worldPosition = worldPos;
 }
@@ -111,7 +125,9 @@ void ScriptNavigationProxy::Warp(const math::Vector3& worldPos) const
 
 void ScriptNavigationProxy::SetTarget(EntityID target, float repathInterval) const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->SetTarget(target, repathInterval);
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->SetTarget(target, repathInterval);
+    }
 }
 
 
@@ -123,7 +139,9 @@ void ScriptNavigationProxy::SetTarget(const GameObject& target, float repathInte
 
 void ScriptNavigationProxy::ClearTarget() const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->ClearTarget();
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->ClearTarget();
+    }
 }
 
 
@@ -136,12 +154,16 @@ bool ScriptNavigationProxy::IsFollowingTarget() const
 
 void ScriptNavigationProxy::BakeNavMesh() const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     auto* agent = SelfNavAgent(script);
     const int typeId = agent ? agent->agentTypeId : 0;
     for (EntityID eid : script->m_scene->GetEntities<NavMeshSurfaceComponent>()) {
         auto* surf = script->m_scene->GetComponent<NavMeshSurfaceComponent>(eid);
-        if (surf && surf->agentTypeId == typeId) surf->needsBake = true;
+        if (surf && surf->agentTypeId == typeId) {
+            surf->needsBake = true;
+        }
     }
 }
 
@@ -156,7 +178,9 @@ bool ScriptNavigationProxy::IsPaused() const
 bool ScriptNavigationProxy::IsMoving() const
 {
     auto* agent = SelfNavAgent(script);
-    if (!agent || agent->isStopped) return false;
+    if (!agent || agent->isStopped) {
+        return false;
+    }
     return agent->state == NavMeshAgentState::MOVING
         || agent->state == NavMeshAgentState::TRAVERSING_LINK;
 }
@@ -199,7 +223,9 @@ math::Vector3 ScriptNavigationProxy::GetVelocity() const
 
 void ScriptNavigationProxy::SetSpeed(float speed) const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->maxSpeed = speed > 0.0f ? speed : 0.0f;
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->maxSpeed = speed > 0.0f ? speed : 0.0f;
+    }
 }
 
 
@@ -212,7 +238,9 @@ float ScriptNavigationProxy::GetSpeed() const
 
 void ScriptNavigationProxy::SetAngularSpeed(float degPerSec) const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->angularSpeedDeg = degPerSec >= 0.0f ? degPerSec : 0.0f;
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->angularSpeedDeg = degPerSec >= 0.0f ? degPerSec : 0.0f;
+    }
 }
 
 
@@ -239,8 +267,9 @@ float ScriptNavigationProxy::GetStoppingDistance() const
 
 void ScriptNavigationProxy::SetStoppingDistance(float distance) const
 {
-    if (auto* agent = SelfNavAgent(script))
+    if (auto* agent = SelfNavAgent(script)) {
         agent->stoppingDistance = distance > 0.0f ? distance : 0.0f;
+    }
 }
 
 
@@ -253,13 +282,17 @@ int ScriptNavigationProxy::GetAreaMask() const
 
 void ScriptNavigationProxy::SetAreaMask(int mask) const
 {
-    if (auto* agent = SelfNavAgent(script)) agent->areaMask = mask;
+    if (auto* agent = SelfNavAgent(script)) {
+        agent->areaMask = mask;
+    }
 }
 
 
 bool ScriptNavigationProxy::CanSeeTarget() const
 {
-    if (!script || !script->m_gameObject) return false;
+    if (!script || !script->m_gameObject) {
+        return false;
+    }
     auto* sensor = script->m_gameObject->GetComponent<NavMeshSensorComponent>();
     return sensor && sensor->targetVisible;
 }
@@ -267,9 +300,13 @@ bool ScriptNavigationProxy::CanSeeTarget() const
 
 GameObject* ScriptNavigationProxy::GetDetectedTarget() const
 {
-    if (!script || !script->m_gameObject) return nullptr;
+    if (!script || !script->m_gameObject) {
+        return nullptr;
+    }
     auto* sensor = script->m_gameObject->GetComponent<NavMeshSensorComponent>();
-    if (!sensor || !sensor->targetVisible) return nullptr;
+    if (!sensor || !sensor->targetVisible) {
+        return nullptr;
+    }
     return script->m_scene ? script->m_scene->GetGameObject(sensor->detectedTarget) : nullptr;
 }
 
@@ -277,7 +314,9 @@ GameObject* ScriptNavigationProxy::GetDetectedTarget() const
 
 void ScriptPatrolProxy::SetEnabled(bool enabled) const
 {
-    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) patrol->enabled = enabled;
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) {
+        patrol->enabled = enabled;
+    }
 }
 
 void ScriptPatrolProxy::SetMode(ScriptPatrolMode mode) const
@@ -291,7 +330,9 @@ void ScriptPatrolProxy::SetMode(ScriptPatrolMode mode) const
 
 void ScriptPatrolProxy::SetWaitTime(float seconds) const
 {
-    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) patrol->waitTime = (std::max)(seconds, 0.0f);
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) {
+        patrol->waitTime = (std::max)(seconds, 0.0f);
+    }
 }
 
 void ScriptPatrolProxy::ClearWaypoints() const
@@ -313,23 +354,31 @@ void ScriptPatrolProxy::AddWaypoint(const math::Vector3& position, float waitTim
 {
     auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
     if (!patrol || !std::isfinite(position.x) || !std::isfinite(position.y)
-        || !std::isfinite(position.z) || patrol->waypoints.size() >= MAX_NAV_MESH_PATROL_WAYPOINTS) return;
+        || !std::isfinite(position.z) || patrol->waypoints.size() >= MAX_NAV_MESH_PATROL_WAYPOINTS) {
+        return;
+    }
     const float pointWait = waitTime < 0.0f ? patrol->waitTime : waitTime;
     const float pointSpeed = (std::max)(speed, 0.0f);
-    if (!std::isfinite(pointWait) || !std::isfinite(pointSpeed)) return;
+    if (!std::isfinite(pointWait) || !std::isfinite(pointSpeed)) {
+        return;
+    }
 
     const bool useSelectedValues = patrol->pointSourceMode == ControlPointSourceMode::POINT_OBJECTS
         || (patrol->pointRuntimeMode == ControlPointRuntimeMode::BAKED_STATIC
             && Script::IsInPlayMode());
     if (useSelectedValues) {
-        if (!script || !script->m_scene || !script->m_gameObject) return;
+        if (!script || !script->m_scene || !script->m_gameObject) {
+            return;
+        }
         auto snapshot = ResolveScriptPatrolPoints(*script->m_scene,
             script->m_gameObject->GetID(), *patrol);
         std::vector<math::Vector3> positions;
         std::vector<float> waitTimes;
         std::vector<float> speeds;
         if (!MaterializePatrolPoints(snapshot, positions, waitTimes, speeds)
-            || positions.size() >= MAX_NAV_MESH_PATROL_WAYPOINTS) return;
+            || positions.size() >= MAX_NAV_MESH_PATROL_WAYPOINTS) {
+            return;
+        }
         positions.push_back(position);
         waitTimes.push_back(pointWait);
         speeds.push_back(pointSpeed);
@@ -337,7 +386,9 @@ void ScriptPatrolProxy::AddWaypoint(const math::Vector3& position, float waitTim
         patrol->waypointWaitTimes = std::move(waitTimes);
         patrol->waypointSpeeds = std::move(speeds);
     } else {
-        if (patrol->pointSourceMode != ControlPointSourceMode::INLINE) return;
+        if (patrol->pointSourceMode != ControlPointSourceMode::INLINE) {
+            return;
+        }
         std::vector<float> waitTimes;
         std::vector<float> speeds;
         waitTimes.reserve(patrol->waypoints.size() + 1);
@@ -364,26 +415,36 @@ bool ScriptPatrolProxy::SetWaypoint(size_t index, const math::Vector3& position)
 {
     auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
     if (!patrol || !std::isfinite(position.x) || !std::isfinite(position.y)
-        || !std::isfinite(position.z)) return false;
+        || !std::isfinite(position.z)) {
+        return false;
+    }
     const bool useSelectedValues = patrol->pointSourceMode == ControlPointSourceMode::POINT_OBJECTS
         || (patrol->pointRuntimeMode == ControlPointRuntimeMode::BAKED_STATIC
             && Script::IsInPlayMode());
     if (!useSelectedValues) {
         if (patrol->pointSourceMode != ControlPointSourceMode::INLINE
-            || index >= patrol->waypoints.size()) return false;
+            || index >= patrol->waypoints.size()) {
+            return false;
+        }
         patrol->waypoints[index] = position;
         patrol->pointRuntimeMode = ControlPointRuntimeMode::LIVE;
         patrol->started = false;
         return true;
     }
-    if (!script || !script->m_scene || !script->m_gameObject) return false;
+    if (!script || !script->m_scene || !script->m_gameObject) {
+        return false;
+    }
     const auto snapshot = ResolveScriptPatrolPoints(*script->m_scene,
         script->m_gameObject->GetID(), *patrol);
-    if (!snapshot.valid || index >= snapshot.points.size()) return false;
+    if (!snapshot.valid || index >= snapshot.points.size()) {
+        return false;
+    }
     std::vector<math::Vector3> positions;
     std::vector<float> waitTimes;
     std::vector<float> speeds;
-    if (!MaterializePatrolPoints(snapshot, positions, waitTimes, speeds)) return false;
+    if (!MaterializePatrolPoints(snapshot, positions, waitTimes, speeds)) {
+        return false;
+    }
     positions[index] = position;
     patrol->waypoints = std::move(positions);
     patrol->waypointWaitTimes = std::move(waitTimes);
@@ -423,7 +484,9 @@ bool ScriptPatrolProxy::IsEnabled() const
 size_t ScriptPatrolProxy::GetWaypointCount() const
 {
     const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
-    if (!patrol || !script || !script->m_scene || !script->m_gameObject) return 0u;
+    if (!patrol || !script || !script->m_scene || !script->m_gameObject) {
+        return 0u;
+    }
     const auto snapshot = ResolveScriptPatrolPoints(*script->m_scene,
         script->m_gameObject->GetID(), *patrol);
     return snapshot.valid ? snapshot.points.size() : 0u;
@@ -432,10 +495,14 @@ size_t ScriptPatrolProxy::GetWaypointCount() const
 bool ScriptPatrolProxy::GetWaypoint(size_t index, math::Vector3& position) const
 {
     const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
-    if (!patrol || !script || !script->m_scene || !script->m_gameObject) return false;
+    if (!patrol || !script || !script->m_scene || !script->m_gameObject) {
+        return false;
+    }
     const auto snapshot = ResolveScriptPatrolPoints(*script->m_scene,
         script->m_gameObject->GetID(), *patrol);
-    if (!snapshot.valid || index >= snapshot.points.size()) return false;
+    if (!snapshot.valid || index >= snapshot.points.size()) {
+        return false;
+    }
     position = snapshot.points[index].worldPosition;
     return true;
 }

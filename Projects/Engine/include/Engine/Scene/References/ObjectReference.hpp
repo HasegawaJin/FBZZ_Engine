@@ -13,12 +13,12 @@ namespace fbzz::scene {
 /// @brief GUID と Scene 寿命付き EntityID を保持する非所有参照。
 /// @note 空 GUID は null。解決できない GUID は保持し、id は同じ Scene 世代の一時キャッシュとして扱う。
 struct ObjectReference {
-    std::string guid;
-    mutable EntityID id = EntityID::INVALID;
-    mutable uint64_t sceneGeneration = 0;
+    std::string guid; ///< 保存と参照先の再解決に使うオブジェクト GUID。
+    mutable EntityID id = EntityID::INVALID; ///< 現在のシーンで解決した参照先の Entity ID。
+    mutable uint64_t sceneGeneration = 0; ///< キャッシュした Entity ID が属するシーンの世代。
 };
 
 /// @brief 既存 Script API 名との互換 alias。
 using ScriptObjectReference = ObjectReference;
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

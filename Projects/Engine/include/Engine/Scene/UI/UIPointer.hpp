@@ -16,8 +16,8 @@ namespace fbzz::scene {
 class UIPointer {
 public:
     /// @note このフレームの UI ポインターを宣言する。毎フレーム呼ぶこと。
-    /// @param canvasPosition Canvas 空間 (左上原点) の座標
-    /// @param pressed        押下中か (マウス左 / パッド A などを畳んだ結果)
+    /// @param[in] canvasPosition Canvas 空間 (左上原点) の座標
+    /// @param[in] pressed        押下中か (マウス左 / パッド A などを畳んだ結果)
     FBZZ_ENGINE_API static void Set(const math::Vector2& canvasPosition, bool pressed);
 
     /// @note 明示的に取り下げる。次のフレームから OS のマウスへ戻る。
@@ -32,7 +32,7 @@ public:
 private:
     FBZZ_ENGINE_API static math::Vector2 s_position;
     FBZZ_ENGINE_API static bool          s_pressed;
-    FBZZ_ENGINE_API static uint64_t      s_frame;      ///< @note 最後に Set したフレーム。0 = 未設定
+    FBZZ_ENGINE_API static uint64_t      s_frame; ///< 最後に Set したフレーム。0 = 未設定
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

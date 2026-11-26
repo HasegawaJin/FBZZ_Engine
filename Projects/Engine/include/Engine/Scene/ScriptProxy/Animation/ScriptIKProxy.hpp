@@ -15,7 +15,7 @@ class Script;
 class GameObject;
 
 struct ScriptIKProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 逆運動学操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief ターゲット名でチェーンを探して有効/無効を切り替える。
     FBZZ_ENGINE_API void SetChainEnabled(std::string_view targetName, bool enabled) const;
@@ -41,4 +41,4 @@ struct ScriptIKProxy {
     FBZZ_ENGINE_API bool IsEnabled() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

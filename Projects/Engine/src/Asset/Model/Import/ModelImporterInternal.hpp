@@ -13,6 +13,7 @@
 #include <Graphics/Renderer/Geometry/Mesh.hpp>
 #include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <Math/LinearAlgebra/Matrix4.hpp>
+#include <assimp/config.h>
 #include <assimp/scene.h>
 #include <cstdint>
 #include <memory>
@@ -63,4 +64,4 @@ FBZZ_ENGINE_API std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
                                           float unitScale,
                                           renderer::ResourceManager& resources);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

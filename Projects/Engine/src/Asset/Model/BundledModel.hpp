@@ -18,5 +18,5 @@ namespace detail {
 /// @note 同期 importer と非同期の Model 経路が同じ組み立てを通るために公開する。ワーカーから呼んでよい。
 [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<Model> BuildBundledModel(std::unique_ptr<ModelAsset> asset);
 
-} /// @note namespace detail
-} /// @note namespace fbzz::asset
+} // namespace detail
+} // namespace fbzz::asset

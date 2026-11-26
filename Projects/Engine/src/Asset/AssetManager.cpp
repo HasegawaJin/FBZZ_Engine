@@ -95,25 +95,29 @@ bool ShouldReportBrokenRef(const std::string& ref)
 
 std::unique_ptr<Model> BuildBundledModelImpl(std::unique_ptr<ModelAsset> asset)
 {
-    if (!asset || asset->lods.empty()) return nullptr;
+    if (!asset || asset->lods.empty()) {
+        return nullptr;
+    }
 
     auto model = std::make_unique<Model>();
     LodLevel& lod0 = asset->lods[0];
     model->meshes.reserve(lod0.submeshes.size());
     model->materials.reserve(lod0.submeshes.size());
 
-    /// @note submesh の添字 → model->meshes の添字。下のループは mesh を持たない submesh を
-    /// @note 飛ばすため、ModelNode::meshIndices (submesh 基準) をそのまま使うと 1 個ずれた
-    /// @note メッシュを指す (ノードが別の部位を描く、という静かな壊れ方になる)。
+    // submesh の添字 → model->meshes の添字。下のループは mesh を持たない submesh を
+    // 飛ばすため、ModelNode::meshIndices (submesh 基準) をそのまま使うと 1 個ずれた
+    // メッシュを指す (ノードが別の部位を描く、という静かな壊れ方になる)。
     constexpr uint32_t kDropped = UINT32_MAX;
     std::vector<uint32_t> submeshToMesh(lod0.submeshes.size(), kDropped);
 
     for (size_t si = 0; si < lod0.submeshes.size(); ++si) {
         SubmeshEntry& submesh = lod0.submeshes[si];
-        if (!submesh.mesh) continue;
+        if (!submesh.mesh) {
+            continue;
+        }
 
-        /// @note Model は所有するメッシュ列を返す表現なので、.fzasset の LOD0 だけを移譲し、
-        /// @note マテリアルは別アセット束縛までの既定値で埋める。
+        // Model は所有するメッシュ列を返す表現なので、.fzasset の LOD0 だけを移譲し、
+        // マテリアルは別アセット束縛までの既定値で埋める。
         submeshToMesh[si] = static_cast<uint32_t>(model->meshes.size());
         model->meshes.push_back(std::move(submesh.mesh));
         model->materials.push_back(std::make_unique<renderer::Material>());
@@ -121,29 +125,34 @@ std::unique_ptr<Model> BuildBundledModelImpl(std::unique_ptr<ModelAsset> asset)
 
     model->skeleton = std::move(asset->skeleton);
 
-    /// @note ノード階層を meshes の添字系へ張り替えて引き継ぐ。
+    // ノード階層を meshes の添字系へ張り替えて引き継ぐ。
     model->nodes.reserve(asset->nodes.size());
     for (const ModelNode& source : asset->nodes) {
         ModelNode node = source;
         node.meshIndices.clear();
         for (const uint32_t submeshIndex : source.meshIndices) {
-            if (submeshIndex >= submeshToMesh.size()) continue;
+            if (submeshIndex >= submeshToMesh.size()) {
+                continue;
+            }
             const uint32_t meshIndex = submeshToMesh[submeshIndex];
-            if (meshIndex != kDropped) node.meshIndices.push_back(meshIndex);
+            if (meshIndex != kDropped) {
+                node.meshIndices.push_back(meshIndex);
+            }
         }
         model->nodes.push_back(std::move(node));
     }
     model->rootNodeIndex       = asset->nodes.empty() ? -1 : asset->rootNodeIndex;
     model->nodeTransformsBaked = asset->nodeTransformsBaked;
 
-    /// @note ベイクが v3 以前でノード情報が無い場合は、全メッシュを担当する
-    /// @note ルート 1 個として表現する。配置側にノード有無の分岐を書かせない。
+    // ベイクが v3 以前でノード情報が無い場合は、全メッシュを担当する
+    // ルート 1 個として表現する。配置側にノード有無の分岐を書かせない。
     if (model->nodes.empty() && !model->meshes.empty()) {
         ModelNode root;
         root.name = "Mesh";
         root.meshIndices.reserve(model->meshes.size());
-        for (uint32_t i = 0; i < static_cast<uint32_t>(model->meshes.size()); ++i)
+        for (uint32_t i = 0; i < static_cast<uint32_t>(model->meshes.size()); ++i) {
             root.meshIndices.push_back(i);
+        }
         model->nodes.push_back(std::move(root));
         model->rootNodeIndex       = 0;
         model->nodeTransformsBaked = true;
@@ -212,7 +221,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
         return nullptr;
     }
     mesh->indexBuffer = resources.CreateIndexBuffer(mesh->cpuIndices.data(), hdr.indexCount);
-    /// @note ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
+    // ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
     mesh->ComputeBoundsExtents();
     mesh->PublishCpuGeometry();
 
@@ -220,12 +229,14 @@ std::unique_ptr<Model> LoadFzMeshModel(
     model->meshes.push_back(std::move(mesh));
     model->materials.push_back(std::make_unique<renderer::Material>());
 
-    /// @note .mesh は単一メッシュを結合済みで持つ形式なので、階層は常にルート 1 個。
-    /// @note 配置側にノード有無の分岐を持たせないため、その 1 個を明示的に作る。
+    // .mesh は単一メッシュを結合済みで持つ形式なので、階層は常にルート 1 個。
+    // 配置側にノード有無の分岐を持たせないため、その 1 個を明示的に作る。
     ModelNode root;
     root.name = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(absPath).stem());
-    if (root.name.empty()) root.name = "Mesh";
+    if (root.name.empty()) {
+        root.name = "Mesh";
+    }
     root.meshIndices.push_back(0u);
     model->nodes.push_back(std::move(root));
     model->rootNodeIndex = 0;
@@ -256,7 +267,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
     return true;
 }();
 
-} /// @note namespace
+} // namespace
 
 /// @name 静的メンバ定義
 
@@ -285,17 +296,25 @@ std::string AssetManager::Normalize(const std::string& path)
 static bool StartsWithCI(const std::string& s, const char* prefix)
 {
     for (size_t i = 0; prefix[i]; ++i) {
-        if (i >= s.size()) return false;
+        if (i >= s.size()) {
+            return false;
+        }
         if (std::tolower(static_cast<unsigned char>(s[i])) !=
-            std::tolower(static_cast<unsigned char>(prefix[i]))) return false;
+            std::tolower(static_cast<unsigned char>(prefix[i]))) {
+            return false;
+        }
     }
     return true;
 }
 
 static bool IsAbsPath(const std::string& p)
 {
-    if (p.empty()) return false;
-    if (p[0] == '/') return true;
+    if (p.empty()) {
+        return false;
+    }
+    if (p[0] == '/') {
+        return true;
+    }
     return p.size() >= 3 && std::isalpha(static_cast<unsigned char>(p[0])) &&
            p[1] == ':' && p[2] == '/';
 }
@@ -303,38 +322,56 @@ static bool IsAbsPath(const std::string& p)
 std::string AssetManager::CacheKey(const std::string& path)
 {
     const std::string key = Normalize(path);
-    if (key.empty()) return key;
+    if (key.empty()) {
+        return key;
+    }
     const std::string logical = AssetDatabase::IsGuidRef(key)
         ? AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key)) : key;
-    if (logical.empty()) return key;
-    /// @note GUID の論理パスも同じ解決経路へ通し、Library の派生物と Engine assets の fallback を共有する。
+    if (logical.empty()) {
+        return key;
+    }
+    // GUID の論理パスも同じ解決経路へ通し、Library の派生物と Engine assets の fallback を共有する。
     const std::string resolved = ResolvePath(Normalize(logical), S_base());
-    if (resolved.empty()) return key;
+    if (resolved.empty()) {
+        return key;
+    }
     std::error_code error;
     const auto absolute = std::filesystem::absolute(util::FileSystem::PathFromUtf8(resolved), error);
-    if (error) return key;
+    if (error) {
+        return key;
+    }
     const auto fold = [](std::string value) {
         for (char& character : value) {
-            if (character == '\\') character = '/';
+            if (character == '\\') {
+                character = '/';
+            }
             character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
         }
         return value;
     };
     const std::string canonical = fold(util::FileSystem::PathToUtf8(absolute.lexically_normal()));
     const auto rootPath = std::filesystem::absolute(util::FileSystem::PathFromUtf8(S_base()), error);
-    if (error) return canonical;
+    if (error) {
+        return canonical;
+    }
     std::string root = fold(util::FileSystem::PathToUtf8(rootPath.lexically_normal()));
-    if (!root.empty() && root.back() != '/') root += '/';
+    if (!root.empty() && root.back() != '/') {
+        root += '/';
+    }
     return canonical.starts_with(root) ? "Assets/" + canonical.substr(root.size()) : canonical;
 }
 
 static bool EndsWithCI(const std::string& s, const char* suffix)
 {
     const size_t n = std::strlen(suffix);
-    if (s.size() < n) return false;
+    if (s.size() < n) {
+        return false;
+    }
     for (size_t i = 0; i < n; ++i) {
         if (std::tolower(static_cast<unsigned char>(s[s.size() - n + i])) !=
-            std::tolower(static_cast<unsigned char>(suffix[i]))) return false;
+            std::tolower(static_cast<unsigned char>(suffix[i]))) {
+            return false;
+        }
     }
     return true;
 }
@@ -361,9 +398,13 @@ static bool IsExtractableBaked(const std::string& key)
     static constexpr const char* kImageExts[] = {
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".bmp", ".hdr", ".exr"
     };
-    if (EndsWithCI(key, ".anim") || EndsWithCI(key, ".mat")) return true;
+    if (EndsWithCI(key, ".anim") || EndsWithCI(key, ".mat")) {
+        return true;
+    }
     for (const char* ext : kImageExts)
-        if (EndsWithCI(key, ext)) return true;
+        if (EndsWithCI(key, ext)) {
+            return true;
+        }
     return false;
 }
 
@@ -375,13 +416,15 @@ static bool IsExtractableBaked(const std::string& key)
 static std::string LibraryBakedPath(const std::string& absPath, const std::string& basePath)
 {
     namespace fs = std::filesystem;
-    if (!EndsWithCI(basePath, "assets/")) return {};
+    if (!EndsWithCI(basePath, "assets/")) {
+        return {};
+    }
 
     const fs::path p = util::FileSystem::PathFromUtf8(absPath);
     fs::path pkgDir  = p.parent_path();
 
-    /// @note anims/ と materials/ は 1 階層深い。Library 側でも同じサブディレクトリを維持することで、
-    /// @note 同名クリップ・同名マテリアルを持つ別モデルどうしがぶつからない。
+    // anims/ と materials/ は 1 階層深い。Library 側でも同じサブディレクトリを維持することで、
+    // 同名クリップ・同名マテリアルを持つ別モデルどうしがぶつからない。
     std::string subDir;
     {
         std::string leaf = util::FileSystem::PathToUtf8(pkgDir.filename());
@@ -398,11 +441,15 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
     for (const auto extension : asset::MODEL_SOURCE_EXTENSIONS) {
         const fs::path source = pkgDir.parent_path() / (pkg + std::string(extension));
         guid = AssetDatabase::TryGetGuidFromPath(util::FileSystem::PathToUtf8(source));
-        if (!guid.empty()) break;
+        if (!guid.empty()) {
+            break;
+        }
     }
-    if (guid.empty()) return {};
+    if (guid.empty()) {
+        return {};
+    }
 
-    /// @note "assets/" を除去
+    // "assets/" を除去
     const std::string projectRoot = basePath.substr(0, basePath.size() - 7);
     return projectRoot + "Library/Baked/" + guid + "/" + subDir +
            util::FileSystem::PathToUtf8(p.filename());
@@ -414,13 +461,17 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
 static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, const std::string& basePath)
 {
     namespace fs = std::filesystem;
-    if (!EndsWithCI(basePath, "assets/")) return {};
+    if (!EndsWithCI(basePath, "assets/")) {
+        return {};
+    }
 
     const std::string guid = AssetDatabase::TryGetGuidFromPath(fbxAbsPath);
-    if (guid.empty()) return {};
+    if (guid.empty()) {
+        return {};
+    }
 
     const fs::path fbxPath = util::FileSystem::PathFromUtf8(fbxAbsPath);
-    /// @note "assets/" を除去
+    // "assets/" を除去
     const std::string projectRoot = basePath.substr(0, basePath.size() - 7);
     return projectRoot + "Library/Baked/" + guid + "/" +
            util::FileSystem::PathToUtf8(fbxPath.stem()) + ".fzasset";
@@ -429,34 +480,42 @@ static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, c
 static std::string ResolveModelAssetPath(const std::string& key, const std::string& basePath)
 {
     namespace fs = std::filesystem;
-    if (!asset::IsModelSourcePath(key)) return AssetManager::ResolveAssetPath(key);
+    if (!asset::IsModelSourcePath(key)) {
+        return AssetManager::ResolveAssetPath(key);
+    }
 
     std::string fbxFull;
     if (IsAbsPath(key)) {
         fbxFull = key;
     } else {
         std::string k = key;
-        if (StartsWithCI(k, "Assets/")) k = k.substr(7);
+        if (StartsWithCI(k, "Assets/")) {
+            k = k.substr(7);
+        }
         fbxFull = basePath;
-        if (!fbxFull.empty() && fbxFull.back() != '/') fbxFull.push_back('/');
+        if (!fbxFull.empty() && fbxFull.back() != '/') {
+            fbxFull.push_back('/');
+        }
         fbxFull += k;
     }
 
     const std::string lib = LibraryBakedModelPathFromFbx(fbxFull, basePath);
-    if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
+    if (!lib.empty() && util::FileSystem::Exists(lib)) {
+        return lib;
+    }
 
     return fbxFull;
 }
 
 std::string AssetManager::ResolvePath(const std::string& key, const std::string& basePath)
 {
-    /// @note `guid:<32hex>` 参照は AssetDatabase で実パスへ解決する。全ロードがこの一点を
-    /// @note 通るため、ここに分岐を置くだけで .mat / .scene / コンポーネントの GUID 参照が
-    /// @note エンジン全体で有効になる。
+    // `guid:<32hex>` 参照は AssetDatabase で実パスへ解決する。全ロードがこの一点を
+    // 通るため、ここに分岐を置くだけで .mat / .scene / コンポーネントの GUID 参照が
+    // エンジン全体で有効になる。
     if (AssetDatabase::IsGuidRef(key)) {
-        /// @note GuidFromRef が併記されたパスヒントとサブアセット接尾辞を落とす。
+        // GuidFromRef が併記されたパスヒントとサブアセット接尾辞を落とす。
         std::string p = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key));
-        /// @note 索引を引けても実体が消えていれば参照は切れている。どちらも同じ「パス切れ」として報告する。
+        // 索引を引けても実体が消えていれば参照は切れている。どちらも同じ「パス切れ」として報告する。
         if ((p.empty() || !util::FileSystem::Exists(p)) && ShouldReportBrokenRef(key)) {
             const std::string hint = AssetDatabase::HintFromRef(key);
             FBZZ_LOG_ERROR("AssetManager: broken guid reference [%s]%s%s",
@@ -467,54 +526,75 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
         return p;
     }
 
-    /// @note まず論理パスを絶対化する (従来と同じ規則)。
+    // まず論理パスを絶対化する (従来と同じ規則)。
     std::string full;
     if (IsAbsPath(key)) {
         full = key;
     } else {
         std::string k = key;
-        if (StartsWithCI(k, "Assets/")) k = k.substr(7);
+        if (StartsWithCI(k, "Assets/")) {
+            k = k.substr(7);
+        }
         full = basePath;
-        if (!full.empty() && full.back() != '/') full.push_back('/');
+        if (!full.empty() && full.back() != '/') {
+            full.push_back('/');
+        }
         full += k;
     }
 
-    /// @note baked 生成物は `Library/Baked/<fbx-guid>/` から解決する。.anim / .mat だけ Assets を
-    /// @note 先に見るのは Extract の仕組みのため: これらは AssetBrowser の "Extract to Assets"
-    /// @note で Assets 側へ取り出せ、取り出した実体があればそちらが人の編集を受けた正であり
-    /// @note Library の再生成物より優先する。取り出していなければ Assets 側が存在しないので
-    /// @note そのまま Library へ落ちる。.fzasset / .mesh / .skel は取り出しの対象外なので常に
-    /// @note Library が先。
+    // baked 生成物は `Library/Baked/<fbx-guid>/` から解決する。.anim / .mat だけ Assets を
+    // 先に見るのは Extract の仕組みのため: これらは AssetBrowser の "Extract to Assets"
+    // で Assets 側へ取り出せ、取り出した実体があればそちらが人の編集を受けた正であり
+    // Library の再生成物より優先する。取り出していなければ Assets 側が存在しないので
+    // そのまま Library へ落ちる。.fzasset / .mesh / .skel は取り出しの対象外なので常に
+    // Library が先。
     if (IsBakedModelExt(key) || IsExtractableBaked(key)) {
-        if (IsExtractableBaked(key) && util::FileSystem::Exists(full)) return full;
+        if (IsExtractableBaked(key) && util::FileSystem::Exists(full)) {
+            return full;
+        }
 
         const std::string lib = LibraryBakedPath(full, basePath);
-        if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
+        if (!lib.empty() && util::FileSystem::Exists(lib)) {
+            return lib;
+        }
     }
 
-    /// @note 開いた Scene / Prefab がリネーム前の論理パスを一時的に保持していても、
-    /// @note AssetDatabase の移動 alias から現在の実体へ追従させる。保存時だけ GUID 化
-    /// @note できても、リネーム直後のプレビューや Inspector の実体ロードが旧パスのままだと
-    /// @note 「参照が切れた」と見えて編集を続けられない。
+    // 開いた Scene / Prefab がリネーム前の論理パスを一時的に保持していても、
+    // AssetDatabase の移動 alias から現在の実体へ追従させる。保存時だけ GUID 化
+    // できても、リネーム直後のプレビューや Inspector の実体ロードが旧パスのままだと
+    // 「参照が切れた」と見えて編集を続けられない。
     if (const std::string movedGuid = AssetDatabase::TryGetGuidFromPath(full);
         !movedGuid.empty()) {
         const std::string movedPath = AssetDatabase::PathFromGuid(movedGuid);
         if (!movedPath.empty() && movedPath != full
-            && util::FileSystem::Exists(movedPath))
+            && util::FileSystem::Exists(movedPath)) {
             return movedPath;
+        }
     }
 
-    if (IsAbsPath(key)) return key;
-    if (util::FileSystem::Exists(full)) return full;
+    if (IsAbsPath(key)) {
+        return key;
+    }
+    if (util::FileSystem::Exists(full)) {
+        return full;
+    }
     if (!s_engineBasePath.empty()) {
         std::string enginePath = s_engineBasePath;
-        if (enginePath.back() != '/') enginePath.push_back('/');
+        if (enginePath.back() != '/') {
+            enginePath.push_back('/');
+        }
         std::string relative = key;
-        if (StartsWithCI(relative, "Assets/")) relative = relative.substr(7);
+        if (StartsWithCI(relative, "Assets/")) {
+            relative = relative.substr(7);
+        }
         enginePath += relative;
-        if (util::FileSystem::Exists(enginePath)) return enginePath;
+        if (util::FileSystem::Exists(enginePath)) {
+            return enginePath;
+        }
     }
-    if (util::FileSystem::Exists(key))  return key;
+    if (util::FileSystem::Exists(key)) {
+        return key;
+    }
     return full;
 }
 
@@ -525,10 +605,14 @@ std::string AssetManager::ResolveAssetPath(const std::string& path)
 
 std::string AssetManager::BakedDirForSource(const std::string& sourceAbsPath)
 {
-    if (!EndsWithCI(s_basePath, "assets/")) return {};
+    if (!EndsWithCI(s_basePath, "assets/")) {
+        return {};
+    }
 
     const std::string guid = AssetDatabase::TryGetGuidFromPath(Normalize(sourceAbsPath));
-    if (guid.empty()) return {};
+    if (guid.empty()) {
+        return {};
+    }
 
     const std::string projectRoot = s_basePath.substr(0, s_basePath.size() - 7);
     return projectRoot + "Library/Baked/" + guid;
@@ -550,9 +634,13 @@ public:
         const std::string&         absPath,
         renderer::ResourceManager* resources) override
     {
-        if (!resources) return nullptr;
+        if (!resources) {
+            return nullptr;
+        }
 
-        if (EndsWithCI(absPath, ".mesh")) return LoadFzMeshModel(absPath, *resources);
+        if (EndsWithCI(absPath, ".mesh")) {
+            return LoadFzMeshModel(absPath, *resources);
+        }
 
         if (EndsWithCI(absPath, ".fzasset") || asset::IsModelSourcePath(absPath)) {
             ModelAssetImporter importer;
@@ -568,7 +656,7 @@ public:
     }
 };
 
-} /// @note namespace
+} // namespace
 
 std::unique_ptr<Model> detail::BuildBundledModel(std::unique_ptr<ModelAsset> asset)
 {
@@ -582,24 +670,26 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     assert(!s_initialized && "AssetManager::Init() must be called once");
     s_resources   = &resources;
     s_basePath    = Normalize(basePath);
-    if (!s_basePath.empty() && s_basePath.back() != '/') s_basePath.push_back('/');
+    if (!s_basePath.empty() && s_basePath.back() != '/') {
+        s_basePath.push_back('/');
+    }
     s_engineBasePath = Normalize(DiscoverEngineAssetRoot());
     s_initialized = true;
-    /// @note プロジェクトを切り替えたら、前プロジェクトで報告済みの参照は関係なくなる。
+    // プロジェクトを切り替えたら、前プロジェクトで報告済みの参照は関係なくなる。
     BrokenRefReports().clear();
 
-    /// @note GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
-    /// @note ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
+    // GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
+    // ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
     AssetDatabase::Init(s_basePath, s_engineBasePath);
 
-    /// @name インポーター登録
+    // インポーター登録
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) RegisterImporter<Type>(std::make_unique<Importer>());
 #include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
 
-    /// @name 非同期経路の登録
-    /// @note チャンネルは DLL 内で作る。AssetStore<T> は DLL / EXE ごとに別実体なので、ここで作らないと
-    /// @note 同期 Load<T> と違うストアを埋めてしまう。
+    // 非同期経路の登録
+    // チャンネルは DLL 内で作る。AssetStore<T> は DLL / EXE ごとに別実体なので、ここで作らないと
+    // 同期 Load<T> と違うストアを埋めてしまう。
     AssetStreamer::Engine().RegisterChannel(CreateTextureStreamChannel(resources));
     AssetStreamer::Engine().RegisterChannel(CreateModelStreamChannel(resources));
     AssetStreamer::Engine().RegisterChannel(CreateModelAssetStreamChannel(resources));
@@ -609,14 +699,14 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 
 void AssetManager::UnloadAll()
 {
-    /// @note ストアを畳む前に非同期要求を捨てる。転送中の GPU 候補は ResourceManager が生きているうちに返し、
-    /// @note 実行中ジョブの結果は epoch の不一致で棄却させる。
+    // ストアを畳む前に非同期要求を捨てる。転送中の GPU 候補は ResourceManager が生きているうちに返し、
+    // 実行中ジョブの結果は epoch の不一致で棄却させる。
     AssetStreamer::Engine().ResetForProjectSwitch();
     StreamedTextureResolver::Engine().Reset();
 
-    /// @note 全型を漏れなく並べる。消し忘れた型はプロジェクトを切り替えても前のプロジェクトの
-    /// @note アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
-    /// @note 当たるという、最も気付きにくい壊れ方をする。
+    // 全型を漏れなく並べる。消し忘れた型はプロジェクトを切り替えても前のプロジェクトの
+    // アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
+    // 当たるという、最も気付きにくい壊れ方をする。
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) AssetStore<Type>::Get().Clear();
 #include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
@@ -627,7 +717,7 @@ void AssetManager::UnloadAll()
     s_initialized = false;
     BrokenRefReports().clear();
 
-    /// @note GUID 索引もアセットと同じライフサイクルで破棄する (再 Init で再構築)。
+    // GUID 索引もアセットと同じライフサイクルで破棄する (再 Init で再構築)。
     AssetDatabase::Shutdown();
 }
 
@@ -638,8 +728,12 @@ template<typename T>
 static void FlushStore() {
     auto& store = AssetStore<T>::Get();
     for (auto it = store.cache.begin(); it != store.cache.end(); ) {
-        if (!it->second.IsValid()) it = store.cache.erase(it);
-        else ++it;
+        if (!it->second.IsValid()) {
+            it = store.cache.erase(it);
+        }
+        else {
+            ++it;
+        }
     }
 }
 
@@ -654,8 +748,8 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
 
     const auto it = store.cache.find(key);
     if (it != store.cache.end()) {
-        /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
-        /// @note ここで読んで埋め、実行中の非同期結果は棄却させる。計測と警告は AssetStreamer 側。
+        // 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
+        // ここで読んで埋め、実行中の非同期結果は棄却させる。計測と警告は AssetStreamer 側。
         if (store.IsPending(it->second) && store.importer) {
             (void)core::NotifyBeforeExternalCallback();
             if (std::unique_ptr<T> filled = store.importer->Import(importPathOf(), S_res())) {
@@ -663,8 +757,10 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
                 NotifyStreamerSyncFilled(AssetStreamTypeName<T>(), key);
             }
         }
-        /// @note 同期 API で配ったものは明示的な Unload まで固定する。非同期側の自動解放はこれを外さない。
-        if (!store.IsPending(it->second)) store.Pin(it->second);
+        // 同期 API で配ったものは明示的な Unload まで固定する。非同期側の自動解放はこれを外さない。
+        if (!store.IsPending(it->second)) {
+            store.Pin(it->second);
+        }
         return it->second;
     }
 
@@ -687,8 +783,10 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
 
 std::string AssetManager::StreamCacheDir()
 {
-    if (!EndsWithCI(s_basePath, "assets/")) return {};
-    /// @note "assets/" を除去
+    if (!EndsWithCI(s_basePath, "assets/")) {
+        return {};
+    }
+    // "assets/" を除去
     return s_basePath.substr(0, s_basePath.size() - 7) + "Library/StreamCache";
 }
 
@@ -709,7 +807,9 @@ void AssetManager::UnloadFromStore(const std::string& relativePath)
     const std::string key = CacheKey(relativePath);
     AssetStore<T>& store = AssetStore<T>::Get();
     const auto it = store.cache.find(key);
-    if (it == store.cache.end()) return;
+    if (it == store.cache.end()) {
+        return;
+    }
     store.Free(it->second);
     store.cache.erase(it);
     NotifyStreamerUnloaded(AssetStreamTypeName<T>(), key);
@@ -737,7 +837,7 @@ void AssetManager::NotifyStreamerUnloaded(std::string_view typeName, const std::
 
 void AssetManager::FlushFailed()
 {
-    /// @note 失敗もキャッシュするため、Init と同じ型一覧から掃除口を作り、型の追加漏れによる永続失敗を防ぐ。
+    // 失敗もキャッシュするため、Init と同じ型一覧から掃除口を作り、型の追加漏れによる永続失敗を防ぐ。
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) FlushStore<Type>();
 #include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
@@ -763,20 +863,22 @@ template<typename T>
 int AssetManager::ReloadFromStore(const std::string& absPath)
 {
     AssetStore<T>& store = AssetStore<T>::Get();
-    if (!store.importer) return 0;
+    if (!store.importer) {
+        return 0;
+    }
 
     int reloaded = 0;
     for (auto it = store.cache.begin(); it != store.cache.end(); ) {
-        /// @note 失敗した guid 参照を先に外す。ResolvePath は解決できない guid に対して
-        /// @note エラーログを出すが、ここはファイルが変わるたびに全キャッシュを走査するので
-        /// @note 触ると 1 回の保存でログが件数分あふれる。参照が切れたままの項目の掃除は
-        /// @note FlushFailed の役目。
+        // 失敗した guid 参照を先に外す。ResolvePath は解決できない guid に対して
+        // エラーログを出すが、ここはファイルが変わるたびに全キャッシュを走査するので
+        // 触ると 1 回の保存でログが件数分あふれる。参照が切れたままの項目の掃除は
+        // FlushFailed の役目。
         if (!it->second.IsValid() && AssetDatabase::IsGuidRef(it->first)) { ++it; continue; }
 
         const std::string resolved = ResolvePath(it->first, s_basePath);
         if (!SameFilePathCI(resolved, absPath)) { ++it; continue; }
 
-        /// @note 失敗として焼き付いている項目は、消しておけば次の Load が取り直す。
+        // 失敗として焼き付いている項目は、消しておけば次の Load が取り直す。
         if (!it->second.IsValid()) {
             it = store.cache.erase(it);
             ++reloaded;
@@ -786,7 +888,7 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
         (void)core::NotifyBeforeExternalCallback();
         std::unique_ptr<T> fresh = store.importer->Import(resolved, s_resources);
         if (!fresh) {
-            /// @note 書き込み途中のファイルを掴んだ可能性がある。動いている中身を捨てない。
+            // 書き込み途中のファイルを掴んだ可能性がある。動いている中身を捨てない。
             FBZZ_LOG_WARN("AssetManager: reload failed, keeping previous content [%s]",
                           it->first.c_str());
             ++it;
@@ -794,12 +896,18 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
         }
         bool unchanged = false;
         if constexpr (std::is_same_v<T, MeshInstancesAsset>) {
-            if (const auto* current = store.GetPtr(it->second)) unchanged = MeshInstancesAssetsEqual(*current, *fresh);
+            if (const auto* current = store.GetPtr(it->second)) {
+                unchanged = MeshInstancesAssetsEqual(*current, *fresh);
+            }
         } else if constexpr (std::is_same_v<T, TerrainPaintAsset>) {
-            if (const auto* current = store.GetPtr(it->second)) unchanged = TerrainPaintAssetsEqual(*current, *fresh);
+            if (const auto* current = store.GetPtr(it->second)) {
+                unchanged = TerrainPaintAssetsEqual(*current, *fresh);
+            }
         }
-        /// @note 自分の保存通知では同じ snapshot を保ち、履歴の競合判定を失効させない。
-        if (unchanged || store.Replace(it->second, std::move(fresh))) ++reloaded;
+        // 自分の保存通知では同じ snapshot を保ち、履歴の競合判定を失効させない。
+        if (unchanged || store.Replace(it->second, std::move(fresh))) {
+            ++reloaded;
+        }
         ++it;
     }
     return reloaded;
@@ -807,14 +915,14 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
 
 std::span<const std::string_view> AssetManager::HotReloadableExtensions()
 {
-    /// @note ReloadPath がストアの中身を差し替える型の拡張子 + 直読みで差し替わる型。監視側
-    /// @note から見た «差し替えたら通知が要るか» は同じ問いなので直読みのものも載せる。
-    /// @note .mask / .fzdata / .synth はストアを通らないが、BumpAssetGeneration 経由で派生
-    /// @note キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
+    // ReloadPath がストアの中身を差し替える型の拡張子 + 直読みで差し替わる型。監視側
+    // から見た «差し替えたら通知が要るか» は同じ問いなので直読みのものも載せる。
+    // .mask / .fzdata / .synth はストアを通らないが、BumpAssetGeneration 経由で派生
+    // キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
     static constexpr std::string_view kExtensions[] = {
         ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat", ".ragdoll",
         ".cloth", ".fiberpaint", ".terrainpaint", ".meshinstances", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
-        /// @note 速度場。GPU 常駐はアトラスが持つのでアセット自体は CPU データだけ。
+        // 速度場。GPU 常駐はアトラスが持つのでアセット自体は CPU データだけ。
         ".fga",
     };
     return kExtensions;
@@ -826,19 +934,23 @@ bool AssetManager::IsHotReloadableExtension(std::string_view extension)
     std::transform(lower.begin(), lower.end(), lower.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     for (const std::string_view candidate : HotReloadableExtensions())
-        if (lower == candidate) return true;
+        if (lower == candidate) {
+            return true;
+        }
     return false;
 }
 
 int AssetManager::ReloadPath(const std::string& absPath)
 {
-    if (!s_initialized || absPath.empty()) return 0;
+    if (!s_initialized || absPath.empty()) {
+        return 0;
+    }
     const std::string target = Normalize(absPath);
 
-    /// @note TextureAsset / IblAsset のような GPU 資源を持つ型はここに並べない。gpuHandle を
-    /// @note 素で持ちデストラクタで解放しないため、差し替えると前の版の GPU テクスチャが
-    /// @note 解放されないまま residual になる。画像・モデルは原本の自動再インポート経路が
-    /// @note 別にあるので、ここでは「編集されたら中身がそのまま変わる」型だけを扱う。
+    // TextureAsset / IblAsset のような GPU 資源を持つ型はここに並べない。gpuHandle を
+    // 素で持ちデストラクタで解放しないため、差し替えると前の版の GPU テクスチャが
+    // 解放されないまま residual になる。画像・モデルは原本の自動再インポート経路が
+    // 別にあるので、ここでは「編集されたら中身がそのまま変わる」型だけを扱う。
     int reloaded = 0;
     int fields = 0;
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) \
@@ -849,7 +961,9 @@ int AssetManager::ReloadPath(const std::string& absPath)
     }
 #include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
-    if (fields > 0 && s_resources != nullptr) VelocityFieldAtlas::Invalidate(*s_resources);
+    if (fields > 0 && s_resources != nullptr) {
+        VelocityFieldAtlas::Invalidate(*s_resources);
+    }
 
     if (reloaded > 0) {
         ++s_assetGeneration;
@@ -859,4 +973,4 @@ int AssetManager::ReloadPath(const std::string& absPath)
     return reloaded;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -53,7 +53,9 @@ float Saturate(float value) { return std::clamp(value, 0.0f, 1.0f); }
 /// エッジを滑らかに補間し、プロシージャル形状のジャギーを抑える。
 float SmoothStep(float edge0, float edge1, float value)
 {
-    if (edge0 == edge1) return value < edge0 ? 0.0f : 1.0f;
+    if (edge0 == edge1) {
+        return value < edge0 ? 0.0f : 1.0f;
+    }
     const float t = Saturate((value - edge0) / (edge1 - edge0));
     return t * t * (3.0f - 2.0f * t);
 }
@@ -145,8 +147,8 @@ void GenerateSmokePixel(float x, float y, float time, const ProceduralFlipbookSe
     const float noise = WarpedNoise(x, y + rise, time * 1.7f, settings, seed);
     const float shape = 1.0f - distance + (noise - 0.5f) * 0.72f;
     a = SmoothStep(0.0f, 0.28f, shape) * (1.0f - time * 0.38f);
-    /// @note Smokeは通常Alpha Blendへ割り当てるためRGBを事前乗算しない。
-    ///       アルファを二重に掛けると薄い縁が不自然に消える。
+    // Smokeは通常Alpha Blendへ割り当てるためRGBを事前乗算しない。
+    //       アルファを二重に掛けると薄い縁が不自然に消える。
     const float shade = 0.62f + noise * 0.38f;
     r = shade;
     g = shade;
@@ -187,7 +189,7 @@ void GenerateExplosionPixel(float x, float y, float time,
     const float hot = Saturate((1.0f - time * 1.45f) * 2.0f)
         * SmoothStep(radius, radius * 0.18f, irregularDistance);
     const float smoke = a * (1.0f - hot * 0.55f);
-    /// @note Premultiplied Alphaで発光する芯と遮蔽する煙を同居させる。
+    // Premultiplied Alphaで発光する芯と遮蔽する煙を同居させる。
     r = smoke * 0.18f + hot * 1.0f;
     g = smoke * 0.16f + hot * 0.34f;
     b = smoke * 0.14f + hot * 0.035f;
@@ -225,7 +227,9 @@ void GenerateDistortionPixel(float x, float y, float time,
 float AngleDistance(float a, float b)
 {
     float difference = std::fmod(std::abs(a - b), PI * 2.0f);
-    if (difference > PI) difference = PI * 2.0f - difference;
+    if (difference > PI) {
+        difference = PI * 2.0f - difference;
+    }
     return difference;
 }
 
@@ -305,12 +309,16 @@ ProceduralVFXTextureResult GenerateProceduralFlipbook(
     std::filesystem::path directory(outputDirectory);
     std::error_code error;
     std::filesystem::create_directories(directory, error);
-    if (error) return Fail("出力ディレクトリを作成できません: " + directory.string());
+    if (error) {
+        return Fail("出力ディレクトリを作成できません: " + directory.string());
+    }
 
     const std::string baseName = std::string("Procedural")
         + ProceduralFlipbookPresetName(settings.preset) + "_" + std::to_string(settings.seed);
     const std::filesystem::path base = FindAvailableBase(directory, baseName, { ".png" });
-    if (base.empty()) return Fail("空いている出力ファイル名を確保できません");
+    if (base.empty()) {
+        return Fail("空いている出力ファイル名を確保できません");
+    }
     const std::filesystem::path destination = base.string() + ".png";
 
     RgbaImage image;
@@ -353,9 +361,11 @@ ProceduralVFXTextureResult GenerateProceduralFlipbook(
     }
 
     std::string saveError;
-    if (!SavePng(image, destination, saveError)) return Fail(std::move(saveError));
+    if (!SavePng(image, destination, saveError)) {
+        return Fail(std::move(saveError));
+    }
     if (settings.preset == ProceduralFlipbookPreset::Distortion) {
-        /// @note RG変位とAlphaマスクを全て保持するためBC7。BC5ではAlphaが失われる。
+        // RG変位とAlphaマスクを全て保持するためBC7。BC5ではAlphaが失われる。
         if (!SaveTextureMeta(destination, TextureType::Data, TextureCompression::BC7,
                              AlphaMode::Straight, false, saveError)) {
             return Fail(std::move(saveError));
@@ -390,12 +400,16 @@ ProceduralVFXTextureResult GenerateProceduralImpactDecal(
     std::filesystem::path directory(outputDirectory);
     std::error_code error;
     std::filesystem::create_directories(directory, error);
-    if (error) return Fail("出力ディレクトリを作成できません: " + directory.string());
+    if (error) {
+        return Fail("出力ディレクトリを作成できません: " + directory.string());
+    }
 
     const std::string baseName = "ProceduralImpact_" + std::to_string(settings.seed);
     const std::filesystem::path base = FindAvailableBase(
         directory, baseName, { "_albedo.png", "_normal.png", "_emissive.png" });
-    if (base.empty()) return Fail("空いている出力ファイル名を確保できません");
+    if (base.empty()) {
+        return Fail("空いている出力ファイル名を確保できません");
+    }
 
     RgbaImage albedo{ settings.textureSize, settings.textureSize };
     RgbaImage normal{ settings.textureSize, settings.textureSize };
@@ -454,7 +468,7 @@ ProceduralVFXTextureResult GenerateProceduralImpactDecal(
     }
     if (!SaveTextureMeta(albedoPath, TextureType::Color, TextureCompression::Auto,
                          AlphaMode::Straight, true, saveError)
-        /// @note Decal.hlslはZを再構築せずRGBを直接読むため、Bを保持できるBC7を使う。
+        // Decal.hlslはZを再構築せずRGBを直接読むため、Bを保持できるBC7を使う。
         || !SaveTextureMeta(normalPath, TextureType::Normal, TextureCompression::BC7,
                             AlphaMode::None, true, saveError)
         || !SaveTextureMeta(emissivePath, TextureType::Color, TextureCompression::Auto,

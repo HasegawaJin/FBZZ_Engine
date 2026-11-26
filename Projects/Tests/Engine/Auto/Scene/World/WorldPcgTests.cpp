@@ -513,7 +513,9 @@ TEST_F(WorldPcgTest, DependentGrassUsesOnlyTreesRetainedByTheCellCap)
     ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, capped, m_diagnostic)) << m_diagnostic;
     std::vector<math::Vector3> trees;
     for (const auto& group : capped.groups) {
-        if (group.ruleKey != "Spruce") continue;
+        if (group.ruleKey != "Spruce") {
+            continue;
+        }
         for (const auto& plant : group.placements)
             trees.push_back(scene::WorldCellOrigin(m_profile.grid, group.cell) + plant.position);
     }
@@ -525,7 +527,9 @@ TEST_F(WorldPcgTest, DependentGrassUsesOnlyTreesRetainedByTheCellCap)
     };
     uint64_t acceptedGrass = 0, rejectedGrass = 0;
     for (const auto& group : full.groups) {
-        if (group.ruleKey != "Grass") continue;
+        if (group.ruleKey != "Grass") {
+            continue;
+        }
         for (const auto& plant : group.placements) {
             if (nearTree(scene::WorldCellOrigin(m_profile.grid, group.cell) + plant.position)) ++acceptedGrass;
             else ++rejectedGrass;
@@ -534,7 +538,9 @@ TEST_F(WorldPcgTest, DependentGrassUsesOnlyTreesRetainedByTheCellCap)
     EXPECT_EQ(capped.stats.neighborRejected, rejectedGrass);
     EXPECT_EQ(capped.stats.accepted, 3u + (std::min)(acceptedGrass, uint64_t{3}));
     for (const auto& group : capped.groups) {
-        if (group.ruleKey != "Grass") continue;
+        if (group.ruleKey != "Grass") {
+            continue;
+        }
         for (const auto& plant : group.placements)
             EXPECT_TRUE(nearTree(scene::WorldCellOrigin(m_profile.grid, group.cell) + plant.position));
     }

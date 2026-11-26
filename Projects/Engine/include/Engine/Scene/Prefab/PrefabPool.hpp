@@ -56,4 +56,4 @@ public:
     FBZZ_ENGINE_API static void ClearAll();
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

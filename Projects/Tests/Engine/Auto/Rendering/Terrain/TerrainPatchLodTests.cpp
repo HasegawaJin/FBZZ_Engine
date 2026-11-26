@@ -34,7 +34,9 @@ TEST_F(TerrainPatchLodTest, GridStripReconstructsTheOriginalOrientedLod0Triangle
                 start = index + 1;
                 continue;
             }
-            if (index < start + 2) continue;
+            if (index < start + 2) {
+                continue;
+            }
             auto first = strip[index - 2];
             auto second = strip[index - 1];
             if ((index - start) % 2 != 0) std::swap(first, second);
@@ -47,27 +49,57 @@ TEST_F(TerrainPatchLodTest, GridStripReconstructsTheOriginalOrientedLod0Triangle
 /// @brief All LODs share unit border segments including partial patches.
 TEST_F(TerrainPatchLodTest, AllLodsShareUnitBorderSegmentsIncludingPartialPatches)
 {
-    scene::TerrainComponent terrain; terrain.columns=18;terrain.rows=14;terrain.InitFlat();
-    for (const auto dimensions : {std::array<int,2>{16,12},std::array<int,2>{13,9},std::array<int,2>{1,7}}) {
-        const int width=dimensions[0],height=dimensions[1],stride=width+1;
-        std::set<std::array<uint32_t,2>> expected;
-        const auto edge=[&](uint32_t a,uint32_t b){expected.insert({std::min(a,b),std::max(a,b)});};
-        for (int x=0;x<width;++x) { edge(x,x+1);edge(height*stride+x,height*stride+x+1); }
-        for (int z=0;z<height;++z) { edge(z*stride,(z+1)*stride);edge(z*stride+width,(z+1)*stride+width); }
-        for (int step : {1,2,4,8}) {
-            std::vector<uint32_t> indices;scene::BuildTerrainPatchLodIndices(terrain,0,0,width,height,step,indices);
-            std::set<std::array<uint32_t,2>> actual;
-            for (size_t t=0;t<indices.size();t+=3) {
-                std::array<int,3> x{},z{};
-                for (size_t v=0;v<3;++v) { ASSERT_LT(indices[t+v],static_cast<uint32_t>(stride*(height+1)));x[v]=indices[t+v]%stride;z[v]=indices[t+v]/stride; }
-                EXPECT_GT((z[1]-z[0])*(x[2]-x[0])-(x[1]-x[0])*(z[2]-z[0]),0);
-                for (size_t v=0;v<3;++v) {
-                    const size_t n=(v+1)%3;
-                    if ((x[v]==x[n] && (x[v]==0 || x[v]==width)) || (z[v]==z[n] && (z[v]==0 || z[v]==height)))
-                        actual.insert({std::min(indices[t+v],indices[t+n]),std::max(indices[t+v],indices[t+n])});
+    scene::TerrainComponent terrain;
+    terrain.columns = 18;
+    terrain.rows = 14;
+    terrain.InitFlat();
+    for (const auto dimensions : {std::array{16, 12}, std::array{13, 9}, std::array{1, 7}}) {
+        const auto [width, height] = dimensions;
+        const int stride = width + 1;
+
+        // 隣のパッチと継ぎ目を共有できるよう、四辺に長さ 1 セルの辺を並べる。
+        std::set<std::array<uint32_t, 2>> expected;
+        for (int x = 0; x < width; ++x) {
+            expected.insert({static_cast<uint32_t>(x), static_cast<uint32_t>(x + 1)});
+            const auto bottomVertex = static_cast<uint32_t>(height * stride + x);
+            expected.insert({bottomVertex, bottomVertex + 1});
+        }
+        for (int z = 0; z < height; ++z) {
+            const auto leftVertex = static_cast<uint32_t>(z * stride);
+            const auto rightVertex = static_cast<uint32_t>(z * stride + width);
+            expected.insert({leftVertex, leftVertex + stride});
+            expected.insert({rightVertex, rightVertex + stride});
+        }
+
+        for (int step : {1, 2, 4, 8}) {
+            std::vector<uint32_t> indices;
+            scene::BuildTerrainPatchLodIndices(terrain, 0, 0, width, height, step, indices);
+
+            // 三角形の参照範囲と頂点順を確認し、パッチ外周にある辺を抜き出す。
+            std::set<std::array<uint32_t, 2>> actual;
+            for (size_t triangleStart = 0; triangleStart < indices.size(); triangleStart += 3) {
+                std::array<int, 3> x{};
+                std::array<int, 3> z{};
+                for (size_t vertex = 0; vertex < 3; ++vertex) {
+                    const uint32_t index = indices[triangleStart + vertex];
+                    ASSERT_LT(index, static_cast<uint32_t>(stride * (height + 1)));
+                    x[vertex] = index % stride;
+                    z[vertex] = index / stride;
+                }
+                EXPECT_GT((z[1] - z[0]) * (x[2] - x[0]) - (x[1] - x[0]) * (z[2] - z[0]), 0);
+
+                for (size_t vertex = 0; vertex < 3; ++vertex) {
+                    const size_t nextVertex = (vertex + 1) % 3;
+                    const bool onXBoundary = x[vertex] == x[nextVertex] && (x[vertex] == 0 || x[vertex] == width);
+                    const bool onZBoundary = z[vertex] == z[nextVertex] && (z[vertex] == 0 || z[vertex] == height);
+                    if (onXBoundary || onZBoundary) {
+                        const uint32_t first = indices[triangleStart + vertex];
+                        const uint32_t second = indices[triangleStart + nextVertex];
+                        actual.insert({std::min(first, second), std::max(first, second)});
+                    }
                 }
             }
-            EXPECT_EQ(actual,expected)<<"width="<<width<<" height="<<height<<" step="<<step;
+            EXPECT_EQ(actual, expected) << "width=" << width << " height=" << height << " step=" << step;
         }
     }
 }

@@ -12,7 +12,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptTimeProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 時刻操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API float DeltaTime() const;
     FBZZ_ENGINE_API float UnscaledDeltaTime() const;
@@ -28,4 +28,4 @@ struct ScriptTimeProxy {
     FBZZ_ENGINE_API int GetTargetFps() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

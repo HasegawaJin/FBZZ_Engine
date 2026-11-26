@@ -22,14 +22,18 @@ public:
     ~BoneCbBatch() { Flush(); s_current = m_previous; }
     void SetActorEligible(bool eligible)
     {
-        if (!eligible) Flush();
+        if (!eligible) {
+            Flush();
+        }
         m_actorEligible = m_enabled && eligible;
     }
     static void Update(renderer::ResourceManager& resources,
         renderer::ResourceHandle<renderer::ConstantBufferTag> handle, const void* data, size_t size)
     {
         CountAnimationCompatibilityUpdate(size);
-        if (s_current && &s_current->m_resources == &resources && s_current->Add(handle,data,size)) return;
+        if (s_current && &s_current->m_resources == &resources && s_current->Add(handle,data,size)) {
+            return;
+        }
         resources.Update(handle,data,size);
     }
     static void UpdatePalette(renderer::ResourceManager& resources,
@@ -37,19 +41,25 @@ public:
     {
         constexpr size_t size = asset::MAX_SKINNING_BONES * sizeof(math::Matrix4);
         CountAnimationCompatibilityUpdate(size);
-        if (s_current && &s_current->m_resources == &resources && s_current->AddPalette(handle,matrices)) return;
-        /// @note バイト列を使って互換 CB ごとに 128 行列を構築するコストを省き、末尾の単位行列のバイト列は保持する。
+        if (s_current && &s_current->m_resources == &resources && s_current->AddPalette(handle,matrices)) {
+            return;
+        }
+        // バイト列を使って互換 CB ごとに 128 行列を構築するコストを省き、末尾の単位行列のバイト列は保持する。
         std::array<uint8_t,size> data;
         const auto& identity=IdentityPalette();
         std::memcpy(data.data(),identity.data(),size);
         const size_t prefix=(std::min)(matrices.size(),identity.size())*sizeof(math::Matrix4);
-        if(prefix) std::memcpy(data.data(),matrices.data(),prefix);
+        if(prefix) {
+            std::memcpy(data.data(),matrices.data(),prefix);
+        }
         resources.Update(handle,data.data(),size);
     }
     /// @note ボーン生成、バインド姿勢へのフォールバック、CPU データ生成など、コールバックが起こり得る既存処理の前に送信する。
     static void BeforeBoneHierarchy(renderer::ResourceManager& resources)
     {
-        if (s_current && &s_current->m_resources == &resources) s_current->SetActorEligible(false);
+        if (s_current && &s_current->m_resources == &resources) {
+            s_current->SetActorEligible(false);
+        }
     }
     BoneCbBatch(const BoneCbBatch&) = delete;
     BoneCbBatch& operator=(const BoneCbBatch&) = delete;
@@ -61,8 +71,12 @@ private:
         static std::array<std::shared_ptr<renderer::ConstantBufferUpdateBatch>,3> packets;
         std::lock_guard lock(mutex);
         for (auto& packet : packets) {
-            if (!packet) packet = std::make_shared<renderer::ConstantBufferUpdateBatch>();
-            if (packet.use_count() != 1) continue;
+            if (!packet) {
+                packet = std::make_shared<renderer::ConstantBufferUpdateBatch>();
+            }
+            if (packet.use_count() != 1) {
+                continue;
+            }
             packet->entries.clear(); packet->bytes.clear();
             const size_t rows = (std::min)(hint,static_cast<size_t>(4096));
             packet->entries.reserve(rows); packet->bytes.reserve((std::min)(rows * 8192,MAX_PACKET_BYTES));
@@ -72,8 +86,12 @@ private:
     }
     bool Add(renderer::ResourceHandle<renderer::ConstantBufferTag> handle, const void* data, size_t size)
     {
-        if (!m_actorEligible || !data || size == 0 || size > MAX_PACKET_BYTES) return false;
-        if (!m_packet) m_packet = Acquire(m_actorHint * 2 + 16);
+        if (!m_actorEligible || !data || size == 0 || size > MAX_PACKET_BYTES) {
+            return false;
+        }
+        if (!m_packet) {
+            m_packet = Acquire(m_actorHint * 2 + 16);
+        }
         if (!m_packet) { m_actorEligible = false; return false; }
         if (size > MAX_PACKET_BYTES - m_packet->bytes.size()) {
             Flush(); m_actorEligible = m_enabled; m_packet = Acquire(m_actorHint * 2 + 16);
@@ -88,19 +106,27 @@ private:
     {
         static const auto identity=[] {
             std::array<math::Matrix4,asset::MAX_SKINNING_BONES> value{};
-            for(auto& matrix:value) matrix=math::Matrix4::Identity();
+            for(auto& matrix:value) {
+                matrix=math::Matrix4::Identity();
+            }
             return value;
         }();
         return identity;
     }
     bool AddPalette(renderer::ResourceHandle<renderer::ConstantBufferTag> handle,const std::vector<math::Matrix4>& matrices)
     {
-        if (!m_actorEligible) return false;
+        if (!m_actorEligible) {
+            return false;
+        }
         const auto& identity=IdentityPalette();
-        if (!Add(handle,identity.data(),sizeof(identity))) return false;
+        if (!Add(handle,identity.data(),sizeof(identity))) {
+            return false;
+        }
         const size_t offset = m_packet->entries.back().offset;
         const size_t bytes = (std::min)(matrices.size(),identity.size()) * sizeof(math::Matrix4);
-        if (bytes) std::memcpy(m_packet->bytes.data() + offset,matrices.data(),bytes);
+        if (bytes) {
+            std::memcpy(m_packet->bytes.data() + offset,matrices.data(),bytes);
+        }
         return true;
     }
     void Flush()
@@ -108,7 +134,9 @@ private:
         if (!m_packet || m_packet->entries.empty()) { m_packet.reset(); return; }
         AnimationWorkScope scope(AnimationWorkPart::BATCH_SUBMIT);
         m_resources.UpdateConstantBuffers(m_packet);
-        if (auto* row = CurrentAnimationWorkRow()) ++row->cbBulkPackets;
+        if (auto* row = CurrentAnimationWorkRow()) {
+            ++row->cbBulkPackets;
+        }
         m_packet.reset();
     }
     static constexpr size_t MAX_PACKET_BYTES = 32ull * 1024 * 1024;

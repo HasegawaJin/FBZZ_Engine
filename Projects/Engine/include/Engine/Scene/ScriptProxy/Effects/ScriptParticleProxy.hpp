@@ -18,7 +18,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptParticleProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 粒子操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEmitRate(float rate) const;
     FBZZ_ENGINE_API void SetEmitPosition(const math::Vector3& position) const;
@@ -109,4 +109,4 @@ struct ScriptParticleProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

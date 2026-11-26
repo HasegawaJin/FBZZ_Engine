@@ -72,7 +72,7 @@ TEST_F(StringUtilsTest, CaseConversionLeavesNonLettersAlone)
 /// @brief Wide conversion round-trips.
 TEST_F(StringUtilsTest, WideConversionRoundTrips)
 {
-    /// @note パスは Windows API へ渡すたびにこの往復を通る。落とすとファイルが開けない。
+    // パスは Windows API へ渡すたびにこの往復を通る。落とすとファイルが開けない。
     const std::string original = "Assets/Scenes/Main.scene";
 
     EXPECT_EQ(StringUtils::ToNarrow(StringUtils::ToWide(original)), original);
@@ -101,7 +101,7 @@ TEST_F(StringUtilsTest, SplitBreaksOnEveryDelimiter)
 /// @brief Split keeps empty fields in the middle.
 TEST_F(StringUtilsTest, SplitKeepsEmptyFieldsInTheMiddle)
 {
-    /// @note "a,,b" は 3 列。空の列を落とすと、CSV 的な並びの列がずれる。
+    // "a,,b" は 3 列。空の列を落とすと、CSV 的な並びの列がずれる。
     const std::vector<std::string> parts = StringUtils::Split("a,,b", ',');
 
     ASSERT_EQ(parts.size(), 3u);
@@ -111,7 +111,7 @@ TEST_F(StringUtilsTest, SplitKeepsEmptyFieldsInTheMiddle)
 /// @brief Split drops the empty tail after a trailing delimiter.
 TEST_F(StringUtilsTest, SplitDropsTheEmptyTailAfterATrailingDelimiter)
 {
-    /// @note 末尾の区切りは «空の列» を作らない契約。
+    // 末尾の区切りは «空の列» を作らない契約。
     const std::vector<std::string> parts = StringUtils::Split("a,b,", ',');
 
     ASSERT_EQ(parts.size(), 2u);

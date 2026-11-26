@@ -41,7 +41,9 @@ template <typename Enum, std::size_t LABEL_COUNT>
 Enum EnumFromLabel(std::string_view name, const char* const (&labels)[LABEL_COUNT])
 {
     for (std::size_t index = 0; index < LABEL_COUNT; ++index)
-        if (name == labels[index]) return static_cast<Enum>(index);
+        if (name == labels[index]) {
+            return static_cast<Enum>(index);
+        }
     return static_cast<Enum>(0);
 }
 
@@ -53,7 +55,9 @@ double NormalizedDouble(float value)
 {
     char buffer[32]{};
     const auto written = std::to_chars(buffer, buffer + sizeof(buffer), value);
-    if (written.ec != std::errc{}) return static_cast<double>(value);
+    if (written.ec != std::errc{}) {
+        return static_cast<double>(value);
+    }
     double parsedValue = 0.0;
     const auto parsed = std::from_chars(buffer, written.ptr, parsedValue);
     return parsed.ec == std::errc{} ? parsedValue : static_cast<double>(value);
@@ -73,7 +77,9 @@ toml::array WriteVector4(const math::Vector4& value)
 math::Vector3 ReadVector3(NodeView view, const math::Vector3& fallback)
 {
     const toml::array* array = view.as_array();
-    if (array == nullptr || array->size() < 3) return fallback;
+    if (array == nullptr || array->size() < 3) {
+        return fallback;
+    }
     return { static_cast<float>((*array)[0].value_or(static_cast<double>(fallback.x))),
              static_cast<float>((*array)[1].value_or(static_cast<double>(fallback.y))),
              static_cast<float>((*array)[2].value_or(static_cast<double>(fallback.z))) };
@@ -82,7 +88,9 @@ math::Vector3 ReadVector3(NodeView view, const math::Vector3& fallback)
 math::Vector4 ReadVector4(NodeView view, const math::Vector4& fallback)
 {
     const toml::array* array = view.as_array();
-    if (array == nullptr || array->size() < 4) return fallback;
+    if (array == nullptr || array->size() < 4) {
+        return fallback;
+    }
     return { static_cast<float>((*array)[0].value_or(static_cast<double>(fallback.x))),
              static_cast<float>((*array)[1].value_or(static_cast<double>(fallback.y))),
              static_cast<float>((*array)[2].value_or(static_cast<double>(fallback.z))),
@@ -105,7 +113,9 @@ public:
     void Bool(const char* key, bool& value) const { value = m_table[key].value_or(value); }
     void Text(const char* key, std::string& value) const
     {
-        if (const auto text = m_table[key].value<std::string>()) value = *text;
+        if (const auto text = m_table[key].value<std::string>()) {
+            value = *text;
+        }
     }
     void Vec3(const char* key, math::Vector3& value) const { value = ReadVector3(m_table[key], value); }
     void Vec4(const char* key, math::Vector4& value) const { value = ReadVector4(m_table[key], value); }
@@ -142,10 +152,16 @@ template <typename T, typename ReadElement>
 void ReadTableArray(NodeView view, std::size_t maxCount, std::vector<T>& items, ReadElement readElement)
 {
     const toml::array* array = view.as_array();
-    if (array == nullptr) return;
+    if (array == nullptr) {
+        return;
+    }
     for (const toml::node& node : *array) {
-        if (items.size() >= maxCount) break;
-        if (const toml::table* table = node.as_table()) items.push_back(readElement(NodeView{ table }));
+        if (items.size() >= maxCount) {
+            break;
+        }
+        if (const toml::table* table = node.as_table()) {
+            items.push_back(readElement(NodeView{ table }));
+        }
     }
 }
 
@@ -155,9 +171,13 @@ void ReadTableArray(NodeView view, std::size_t maxCount, std::vector<T>& items, 
 template <typename T, typename WriteElement>
 void WriteTableArray(toml::table& parent, const char* key, const std::vector<T>& items, WriteElement writeElement)
 {
-    if (items.empty()) return;
+    if (items.empty()) {
+        return;
+    }
     toml::array array;
-    for (const T& item : items) array.push_back(writeElement(item));
+    for (const T& item : items) {
+        array.push_back(writeElement(item));
+    }
     parent.insert(key, std::move(array));
 }
 
@@ -255,7 +275,7 @@ void ReadMotion(NodeView view, FluidMotion& motion)
         keyReader.Vec3("offset", key.offset);
         return key;
     });
-    /// @note 評価 (SampleFluidMotion) は昇順を前提に隣のキーと補間する。手で書いたファイルの並びを信用しない。
+    // 評価 (SampleFluidMotion) は昇順を前提に隣のキーと補間する。手で書いたファイルの並びを信用しない。
     std::stable_sort(motion.keys.begin(), motion.keys.end(),
                      [](const FluidMotionKey& left, const FluidMotionKey& right) { return left.time < right.time; });
 }
@@ -283,7 +303,7 @@ void ReadAmount(NodeView view, FluidAmount& amount)
         keyReader.Float("scale", key.scale);
         return key;
     });
-    /// @note 評価 (SampleFluidAmount) は昇順を前提に隣のキーと補間する。手で書いたファイルの並びを信用しない。
+    // 評価 (SampleFluidAmount) は昇順を前提に隣のキーと補間する。手で書いたファイルの並びを信用しない。
     std::stable_sort(amount.keys.begin(), amount.keys.end(),
                      [](const FluidAmountKey& left, const FluidAmountKey& right) { return left.time < right.time; });
 }
@@ -299,7 +319,9 @@ void WriteAmountInto(toml::table& parent, const FluidAmount& amount)
         keyWriter.Float("scale", key.scale);
         return std::move(keyWriter.table);
     });
-    if (writer.table.empty()) return;
+    if (writer.table.empty()) {
+        return;
+    }
     parent.insert("amount", std::move(writer.table));
 }
 
@@ -449,8 +471,8 @@ FluidSource ReadV1GasSource(NodeView view)
 
 FluidSource ReadV1LiquidEmitter(NodeView view)
 {
-    /// @note version 1 の液体の発生源は既定値が今の FluidSource と違う。欠けたキーを今の既定で埋めると、
-    /// @note キーを省いて書いた古いファイルが «開いただけで別の絵» になる。当時の既定から読み始める。
+    // version 1 の液体の発生源は既定値が今の FluidSource と違う。欠けたキーを今の既定で埋めると、
+    // キーを省いて書いた古いファイルが «開いただけで別の絵» になる。当時の既定から読み始める。
     FluidSource source;
     source.shape = FluidSourceShape::Sphere;
     source.center = { 0.0f, -0.6f, 0.0f };
@@ -475,16 +497,20 @@ FluidSource ReadV1LiquidEmitter(NodeView view)
 void ReadRamp(NodeView view, FluidColorRamp& ramp)
 {
     const toml::array* array = view.as_array();
-    if (array == nullptr) return;
+    if (array == nullptr) {
+        return;
+    }
     const std::size_t count = (std::min)(array->size(), ramp.stops.size());
     for (std::size_t index = 0; index < count; ++index) {
         const toml::table* table = (*array)[index].as_table();
-        if (table == nullptr) continue;
+        if (table == nullptr) {
+            continue;
+        }
         const TomlFieldReader reader{ NodeView{ table } };
         reader.Vec3("color", ramp.stops[index].color);
         reader.Float("position", ramp.stops[index].position);
     }
-    /// @note 評価は昇順を前提に隣の点と補間する (VolumeColorRamp と同じ規則)。
+    // 評価は昇順を前提に隣の点と補間する (VolumeColorRamp と同じ規則)。
     std::stable_sort(ramp.stops.begin(), ramp.stops.end(),
                      [](const FluidColorStop& left, const FluidColorStop& right) { return left.position < right.position; });
 }
@@ -652,7 +678,7 @@ void ReadRecipeParts(NodeView root, int64_t version, FluidRecipe& recipe)
 {
     const auto maxSources = static_cast<std::size_t>(kMaxFluidSources);
     if (version < 2) {
-        /// @note 版 1 は保存時の kind の発生源だけを移し、非表示だった発生源の混入を防ぐ。
+        // 版 1 は保存時の kind の発生源だけを移し、非表示だった発生源の混入を防ぐ。
         if (recipe.kind == FluidKind::Liquid) {
             ReadTableArray(root["liquid_emitter"], maxSources, recipe.sources, ReadV1LiquidEmitter);
         } else {
@@ -669,30 +695,40 @@ void ReadRecipeParts(NodeView root, int64_t version, FluidRecipe& recipe)
 void AddEmptyKeys(toml::table& part, const char* sectionName)
 {
     auto* section = part.insert(sectionName, toml::table{}).first->second.as_table();
-    if (section != nullptr) section->insert("key", toml::array{});
+    if (section != nullptr) {
+        section->insert("key", toml::array{});
+    }
 }
 
 /// @note 編集 API は空のリストやキーフレーム配列も編集先として必要とする。
 void AddEditablePartDefaults(toml::table& root, const char* partName, bool hasAmount)
 {
     auto* parts = root.insert(partName, toml::array{}).first->second.as_array();
-    if (parts == nullptr) return;
+    if (parts == nullptr) {
+        return;
+    }
 
     for (auto& node : *parts) {
         auto* part = node.as_table();
-        if (part == nullptr) continue;
+        if (part == nullptr) {
+            continue;
+        }
         AddEmptyKeys(*part, "motion");
-        if (hasAmount) AddEmptyKeys(*part, "amount");
+        if (hasAmount) {
+            AddEmptyKeys(*part, "amount");
+        }
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool LoadFluidRecipe(const std::string& absPath, FluidRecipe& outRecipe, std::string* outError)
 {
     std::ifstream stream(util::FileSystem::PathFromUtf8(absPath), std::ios::binary);
     if (!stream) {
-        if (outError != nullptr) *outError = "開けません: " + absPath;
+        if (outError != nullptr) {
+            *outError = "開けません: " + absPath;
+        }
         return false;
     }
     std::stringstream buffer;
@@ -704,7 +740,9 @@ bool LoadFluidRecipeFromToml(std::string_view text, FluidRecipe& outRecipe, std:
 {
     toml::parse_result parsed = toml::parse(text);
     if (!parsed) {
-        if (outError != nullptr) *outError = std::string(parsed.error().description());
+        if (outError != nullptr) {
+            *outError = std::string(parsed.error().description());
+        }
         return false;
     }
     const toml::table& root = parsed.table();
@@ -755,4 +793,4 @@ std::string SerializeFluidRecipe(const FluidRecipe& recipe, bool explicitDefault
     return serializedRecipe.str();
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

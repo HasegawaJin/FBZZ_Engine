@@ -36,12 +36,18 @@ bool ValidText(std::string_view value)
 
 bool PreparePose(const math::Vector3* position, const math::Quaternion* rotation, math::Quaternion& normalized)
 {
-    if (!position || !rotation) return !position && !rotation;
+    if (!position || !rotation) {
+        return !position && !rotation;
+    }
     if (!std::isfinite(position->x) || !std::isfinite(position->y) || !std::isfinite(position->z)
         || !std::isfinite(rotation->x) || !std::isfinite(rotation->y)
-        || !std::isfinite(rotation->z) || !std::isfinite(rotation->w)) return false;
+        || !std::isfinite(rotation->z) || !std::isfinite(rotation->w)) {
+        return false;
+    }
     const float length = rotation->Length();
-    if (!std::isfinite(length) || math::NearlyZero(length)) return false;
+    if (!std::isfinite(length) || math::NearlyZero(length)) {
+        return false;
+    }
     normalized = rotation->Normalized();
     return true;
 }
@@ -65,7 +71,9 @@ bool Finite(const math::Vector3& value)
 bool FiniteNormalization(const math::Quaternion& value)
 {
     if (!std::isfinite(value.x) || !std::isfinite(value.y)
-        || !std::isfinite(value.z) || !std::isfinite(value.w)) return false;
+        || !std::isfinite(value.z) || !std::isfinite(value.w)) {
+        return false;
+    }
     const float length = value.Length();
     return std::isfinite(length) && !math::NearlyZero(length);
 }
@@ -74,7 +82,9 @@ bool FiniteNormalization(const math::Quaternion& value)
 bool ApplyPrefabPose(GameObject& root, const math::Vector3* position, const math::Quaternion& rotation,
     const std::vector<uint32_t>& previous, std::vector<uint32_t>* accepted = nullptr)
 {
-    if (root.GetParent() || !root.GetScene()) return false;
+    if (root.GetParent() || !root.GetScene()) {
+        return false;
+    }
     const size_t slots = root.GetScene()->EntitySlotCount();
     struct Prepared {
         GameObject* object;
@@ -93,21 +103,31 @@ bool ApplyPrefabPose(GameObject& root, const math::Vector3* position, const math
         const EntityID entity = object.GetID();
         if (entity.index >= slots || !seen.insert(entity.index).second
             || (entity.index < previous.size() && previous[entity.index] == entity.generation)
-            || object.GetScene() != root.GetScene() || root.GetScene()->GetGameObject(entity) != &object) return false;
+            || object.GetScene() != root.GetScene() || root.GetScene()->GetGameObject(entity) != &object) {
+            return false;
+        }
         Transform& transform = prepared[index].transform;
         const Transform* parent = index == 0 ? nullptr : &prepared[prepared[index].parent].transform;
         if (!Finite(transform.position) || !Finite(transform.scale) || !FiniteNormalization(transform.rotation)
-            || (parent && (!FiniteNormalization(parent->worldRotation * transform.rotation)))) return false;
+            || (parent && (!FiniteNormalization(parent->worldRotation * transform.rotation)))) {
+            return false;
+        }
         UpdateWorldTransform(transform, parent);
         if (!Finite(transform.worldPosition) || !Finite(transform.worldScale)
-            || !FiniteNormalization(transform.worldRotation)) return false;
+            || !FiniteNormalization(transform.worldRotation)) {
+            return false;
+        }
         for (int childIndex = 0; childIndex < object.GetChildCount(); ++childIndex) {
             GameObject* child = object.GetChild(childIndex);
-            if (!child || child->GetParent() != &object || prepared.size() >= slots) return false;
+            if (!child || child->GetParent() != &object || prepared.size() >= slots) {
+                return false;
+            }
             prepared.push_back({child, child->transform, index});
         }
     }
-    for (const Prepared& entry : prepared) entry.object->transform = entry.transform;
+    for (const Prepared& entry : prepared) {
+        entry.object->transform = entry.transform;
+    }
     if (accepted) {
         accepted->resize(root.GetScene()->EntitySlotCount());
         for (const Prepared& entry : prepared) {
@@ -134,7 +154,9 @@ void SnapshotExisting(Scene& scene, std::vector<uint32_t>& generations,
     childSiblings.reserve(scene.GameObjectCount());
     for (GameObject& object : scene.GameObjects())
         for (int childIndex = 0; childIndex < object.GetChildCount(); ++childIndex)
-            if (GameObject* child = object.GetChild(childIndex)) childSiblings.emplace(child->GetID().index, childIndex);
+            if (GameObject* child = object.GetChild(childIndex)) {
+                childSiblings.emplace(child->GetID().index, childIndex);
+            }
     int rootSibling = 0;
     for (GameObject& object : scene.GameObjects()) {
         const EntityID entity = object.GetID();
@@ -151,24 +173,34 @@ void RollbackAdded(Scene& scene, const std::vector<uint32_t>& previous,
     const std::vector<ExistingObject>& originals)
 {
     for (const ExistingObject& original : originals)
-        if (GameObject* object = scene.GetGameObject(original.entity)) object->ClearParent();
+        if (GameObject* object = scene.GetGameObject(original.entity)) {
+            object->ClearParent();
+        }
     std::vector<EntityID> added;
     for (GameObject& object : scene.GameObjects())
-        if (object.GetID().index >= previous.size() || previous[object.GetID().index] != object.GetID().generation)
+        if (object.GetID().index >= previous.size() || previous[object.GetID().index] != object.GetID().generation) {
             added.push_back(object.GetID());
+        }
     scene.DestroyGameObjects(added);
     for (const ExistingObject& original : originals)
-        if (GameObject* object = scene.GetGameObject(original.entity))
+        if (GameObject* object = scene.GetGameObject(original.entity)) {
             object->SetParent(scene.GetGameObject(original.parent));
+        }
     std::vector<const ExistingObject*> siblings;
     siblings.reserve(originals.size());
-    for (const ExistingObject& original : originals) siblings.push_back(&original);
+    for (const ExistingObject& original : originals) {
+        siblings.push_back(&original);
+    }
     std::sort(siblings.begin(), siblings.end(), [](const ExistingObject* left, const ExistingObject* right) {
-        if (left->parent.index != right->parent.index) return left->parent.index < right->parent.index;
+        if (left->parent.index != right->parent.index) {
+            return left->parent.index < right->parent.index;
+        }
         return left->sibling < right->sibling;
     });
     for (const ExistingObject* original : siblings)
-        if (GameObject* object = scene.GetGameObject(original->entity)) object->SetSiblingIndex(original->sibling);
+        if (GameObject* object = scene.GetGameObject(original->entity)) {
+            object->SetSiblingIndex(original->sibling);
+        }
     for (size_t index = 0; index < originals.size(); ++index) {
         const ExistingObject& original = originals[index];
         if (GameObject* object = scene.GetGameObject(original.entity)) {
@@ -182,39 +214,58 @@ ManagedBridgeStatus InspectPrefab(Scene& scene, const std::string& reference, si
 {
     const std::string path = ResolvePrefabAssetPath(reference);
     std::string text;
-    if (path.empty() || !util::FileSystem::ReadText(path, text)) return ManagedBridgeStatus::NOT_FOUND;
+    if (path.empty() || !util::FileSystem::ReadText(path, text)) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     const toml::parse_result document = toml::parse(text);
-    if (!document) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    const toml::array* objects = document.table()["gameobjects"].as_array();
-    if (!objects || objects->empty())
+    if (!document) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    const toml::array* objects = document.table()["gameobjects"].as_array();
+    if (!objects || objects->empty()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     size_t roots = 0;
     for (const toml::node& item : *objects) {
         const toml::table* object = item.as_table();
-        if (!object) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!object) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         if ((*object)["parentInstanceId"].value_or(std::string{}).empty()
-            && (*object)["parent"].value_or(std::string{}).empty()) ++roots;
+            && (*object)["parent"].value_or(std::string{}).empty()) {
+            ++roots;
+        }
     }
-    if (roots != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (entityCount) *entityCount = objects->size();
+    if (roots != 1) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (entityCount) {
+        *entityCount = objects->size();
+    }
     return scene.CanCreateGameObjects(objects->size()) ? ManagedBridgeStatus::OK : ManagedBridgeStatus::CAPACITY_LIMIT;
 }
 
 ManagedBridgeStatus ValidateTarget(Scene& scene, const GameObject& target)
 {
-    if (target.GetScene() != &scene) return ManagedBridgeStatus::SCENE_MISMATCH;
+    if (target.GetScene() != &scene) {
+        return ManagedBridgeStatus::SCENE_MISMATCH;
+    }
     return scene.GetGameObject(target.GetID()) == &target ? ManagedBridgeStatus::OK : ManagedBridgeStatus::NOT_FOUND;
 }
 
-} /// @note namespace
+} // namespace
 
 ManagedBridgeStatus ManagedObjectLifecycle::Create(Scene& scene, std::string_view name, GameObject*& created,
     const math::Vector3* position, const math::Quaternion* rotation)
 {
     math::Quaternion normalized;
-    if (!ValidText(name) || !PreparePose(position, rotation, normalized)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!ValidText(name) || !PreparePose(position, rotation, normalized)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     GameObject* object = scene.TryCreateGameObject(std::string(name));
-    if (!object) return ManagedBridgeStatus::CAPACITY_LIMIT;
+    if (!object) {
+        return ManagedBridgeStatus::CAPACITY_LIMIT;
+    }
     ApplyPose(*object, position, normalized);
     created = object;
     return ManagedBridgeStatus::OK;
@@ -224,16 +275,20 @@ ManagedBridgeStatus ManagedObjectLifecycle::Instantiate(Scene& scene, std::strin
     const math::Vector3* position, const math::Quaternion* rotation)
 {
     math::Quaternion normalized;
-    if (!ValidText(reference) || !PreparePose(position, rotation, normalized)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!ValidText(reference) || !PreparePose(position, rotation, normalized)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const std::string prefab(reference);
     const ManagedBridgeStatus inspected = InspectPrefab(scene, prefab);
-    if (inspected != ManagedBridgeStatus::OK) return inspected;
+    if (inspected != ManagedBridgeStatus::OK) {
+        return inspected;
+    }
     std::vector<uint32_t> previous;
     std::vector<ExistingObject> originals;
     SnapshotExisting(scene, previous, originals);
     std::vector<EntityID> roots;
     if (!Script::InstantiatePrefab(scene, prefab, roots) || roots.size() != 1 || !scene.GetGameObject(roots.front())) {
-        /// @note 読取後のアセット変更や注入された生成経路の失敗でも、この操作で追加された実体だけを戻す。
+        // 読取後のアセット変更や注入された生成経路の失敗でも、この操作で追加された実体だけを戻す。
         RollbackAdded(scene, previous, originals);
         return ManagedBridgeStatus::LOAD_FAILED;
     }
@@ -249,7 +304,9 @@ ManagedBridgeStatus ManagedObjectLifecycle::Instantiate(Scene& scene, std::strin
 ManagedBridgeStatus ManagedObjectLifecycle::SpawnMany(Scene& scene, std::string_view reference, bool prefab,
     std::span<const SpawnPose> poses, std::vector<GameObject*>& created)
 {
-    if (!ValidText(reference)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!ValidText(reference)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     if (poses.empty()) {
         created.clear();
         return ManagedBridgeStatus::OK;
@@ -258,16 +315,22 @@ ManagedBridgeStatus ManagedObjectLifecycle::SpawnMany(Scene& scene, std::string_
     rotations.reserve(poses.size());
     for (const SpawnPose& pose : poses) {
         math::Quaternion normalized;
-        if (!PreparePose(&pose.position, &pose.rotation, normalized)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!PreparePose(&pose.position, &pose.rotation, normalized)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         rotations.push_back(normalized);
     }
     size_t entities = 1;
     if (prefab && !poses.empty()) {
         const ManagedBridgeStatus inspected = InspectPrefab(scene, std::string(reference), &entities);
-        if (inspected != ManagedBridgeStatus::OK) return inspected;
+        if (inspected != ManagedBridgeStatus::OK) {
+            return inspected;
+        }
     }
     if (poses.size() > (std::numeric_limits<size_t>::max)() / entities
-        || !scene.CanCreateGameObjects(entities * poses.size())) return ManagedBridgeStatus::CAPACITY_LIMIT;
+        || !scene.CanCreateGameObjects(entities * poses.size())) {
+        return ManagedBridgeStatus::CAPACITY_LIMIT;
+    }
     std::vector<uint32_t> previous;
     std::vector<ExistingObject> originals;
     SnapshotExisting(scene, previous, originals);
@@ -287,20 +350,27 @@ ManagedBridgeStatus ManagedObjectLifecycle::SpawnMany(Scene& scene, std::string_
             if (status == ManagedBridgeStatus::OK) {
                 std::vector<EntityID> roots;
                 if (!Script::InstantiatePrefab(scene, std::string(reference), roots) || roots.size() != 1
-                    || !(object = scene.GetGameObject(roots.front()))) status = ManagedBridgeStatus::LOAD_FAILED;
+                    || !(object = scene.GetGameObject(roots.front()))) {
+                    status = ManagedBridgeStatus::LOAD_FAILED;
+                }
                 else if (!ApplyPrefabPose(*object, &pose.position, rotations[index], protectedEntities, &protectedEntities))
                     status = ManagedBridgeStatus::INVALID_ARGUMENT;
                 else if (!batch.CanReuseSceneCache()) {
-                    /// @note 任意 callback の補助実体も、次の生成で既存階層へ取り込ませない。
+                    // 任意 callback の補助実体も、次の生成で既存階層へ取り込ませない。
                     protectedEntities.resize(scene.EntitySlotCount());
-                    for (GameObject& existing : scene.GameObjects())
+                    for (GameObject& existing : scene.GameObjects()) {
                         protectedEntities[existing.GetID().index] = existing.GetID().generation;
+                    }
                 }
             }
         } else {
             object = scene.TryCreateGameObject(std::string(reference));
-            if (!object) status = ManagedBridgeStatus::CAPACITY_LIMIT;
-            else ApplyPose(*object, &pose.position, rotations[index]);
+            if (!object) {
+                status = ManagedBridgeStatus::CAPACITY_LIMIT;
+            }
+            else {
+                ApplyPose(*object, &pose.position, rotations[index]);
+            }
         }
         if (status != ManagedBridgeStatus::OK || !object) {
             RollbackAdded(scene, previous, originals);
@@ -314,9 +384,13 @@ ManagedBridgeStatus ManagedObjectLifecycle::SpawnMany(Scene& scene, std::string_
 
 ManagedBridgeStatus ManagedObjectLifecycle::Destroy(Scene& scene, GameObject& target, float delay)
 {
-    if (!std::isfinite(delay) || delay < 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!std::isfinite(delay) || delay < 0) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const ManagedBridgeStatus valid = ValidateTarget(scene, target);
-    if (valid != ManagedBridgeStatus::OK) return valid;
+    if (valid != ManagedBridgeStatus::OK) {
+        return valid;
+    }
     GameObject::Destroy(target, delay);
     return ManagedBridgeStatus::OK;
 }
@@ -325,17 +399,24 @@ ManagedBridgeStatus ManagedObjectLifecycle::DestroyMany(Scene& scene, std::span<
     float delay, uint32_t& applied, uint32_t& skipped, bool publish)
 {
     applied = skipped = 0;
-    if (targets.size() > UINT32_MAX || !std::isfinite(delay) || delay < 0)
+    if (targets.size() > UINT32_MAX || !std::isfinite(delay) || delay < 0) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     std::vector<bool> seen(scene.EntitySlotCount());
     std::vector<GameObject*> unique;
     unique.reserve(std::min(targets.size(), scene.GameObjectCount()));
     for (GameObject* target : targets) {
-        if (!target) continue;
+        if (!target) {
+            continue;
+        }
         const ManagedBridgeStatus valid = ValidateTarget(scene, *target);
-        if (valid != ManagedBridgeStatus::OK) return valid;
+        if (valid != ManagedBridgeStatus::OK) {
+            return valid;
+        }
         const uint32_t index = target->GetID().index;
-        if (seen[index]) continue;
+        if (seen[index]) {
+            continue;
+        }
         seen[index] = true;
         unique.push_back(target);
     }
@@ -345,4 +426,4 @@ ManagedBridgeStatus ManagedObjectLifecycle::DestroyMany(Scene& scene, std::span<
     return ManagedBridgeStatus::OK;
 }
 
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

@@ -21,7 +21,9 @@ std::uint64_t MixByte(std::uint64_t hash, std::uint8_t byte)
 
 void BakeFingerprint::Add(std::span<const std::uint8_t> bytes)
 {
-    for (const std::uint8_t byte : bytes) m_hash = MixByte(m_hash, byte);
+    for (const std::uint8_t byte : bytes) {
+        m_hash = MixByte(m_hash, byte);
+    }
 }
 
 void BakeFingerprint::Add(std::span<const float> values)
@@ -34,13 +36,16 @@ void BakeFingerprint::Add(std::span<const float> values)
 
 void BakeFingerprint::Add(std::uint64_t value)
 {
-    for (int shift = 0; shift < 64; shift += 8)
+    for (int shift = 0; shift < 64; shift += 8) {
         m_hash = MixByte(m_hash, static_cast<std::uint8_t>((value >> shift) & 0xffu));
+    }
 }
 
 void BakeFingerprint::Add(std::string_view text)
 {
-    for (const char c : text) m_hash = MixByte(m_hash, static_cast<std::uint8_t>(c));
+    for (const char c : text) {
+        m_hash = MixByte(m_hash, static_cast<std::uint8_t>(c));
+    }
 }
 
 std::string BakeFingerprint::Finish() const

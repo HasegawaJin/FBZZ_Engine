@@ -30,13 +30,15 @@ void PrepareTrailResources(TrailComponent& trail, RenderPassContext& context)
     trail.smoothSubdivisions = (std::max)(trail.smoothSubdivisions, 0);
     trail.uvTiling = (std::max)(trail.uvTiling, 0.001f);
 
-    if (trail.pointBuffer.size() != static_cast<size_t>(trail.maxPoints))
+    if (trail.pointBuffer.size() != static_cast<size_t>(trail.maxPoints)) {
         trail_extraction_detail::ResetTrailSampleStorage(trail);
+    }
 
-    if (!trail.trailCB.IsValid())
+    if (!trail.trailCB.IsValid()) {
         trail.trailCB = resources.CreateConstantBuffer(sizeof(TrailCB));
+    }
 
-    /// @note materialPath が設定されている場合: .mat の albedo テクスチャを優先する。
+    // materialPath が設定されている場合: .mat の albedo テクスチャを優先する。
     trail.texture = resources.GetWhiteTexture();
     if (!trail.materialPath.empty()) {
         const bool matChanged = (trail.loadedMaterialPath != trail.materialPath);
@@ -59,7 +61,7 @@ void PrepareTrailResources(TrailComponent& trail, RenderPassContext& context)
             }
         }
     } else {
-        /// @note 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
+        // 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
         trail.texture = resources.GetWhiteTexture();
         trail.loadedTexturePath.clear();
     }
@@ -88,24 +90,29 @@ renderer::RenderTrailInput BuildTrailInput(const GameObject& owner, const TrailC
     input.trailCB = trail.trailCB;
     input.srgbTexture = IsEffectTextureSrgb(trail.loadedTexturePath);
     input.points.reserve(static_cast<size_t>(trail.ringCount));
-    for (int pointIndex = 0; pointIndex < trail.ringCount; ++pointIndex)
+    for (int pointIndex = 0; pointIndex < trail.ringCount; ++pointIndex) {
         input.points.push_back(trail_extraction_detail::ReadTrailPoint(trail, pointIndex));
+    }
     return input;
 }
 
-} /// @note namespace
+} // namespace
 
 void ExtractRenderTrails(RenderPassContext& context, renderer::RenderScene& output)
 {
-    if (context.scene.GetEntities<TrailComponent>().empty()) return;
+    if (context.scene.GetEntities<TrailComponent>().empty()) {
+        return;
+    }
     const float currentTime = Time::time;
     for (auto& owner : context.scene.GameObjects()) {
-        if (!owner.activeInHierarchy())
+        if (!owner.activeInHierarchy()) {
             continue;
+        }
 
         auto* trail = owner.GetComponent<TrailComponent>();
-        if (!trail)
+        if (!trail) {
             continue;
+        }
 
         if (!trail->enabled && trail->clearOnDisable) {
             trail_extraction_detail::ClearTrailSamples(*trail);
@@ -115,11 +122,12 @@ void ExtractRenderTrails(RenderPassContext& context, renderer::RenderScene& outp
         PrepareTrailResources(*trail, context);
 
         trail_extraction_detail::AdvanceTrailSamples(context.scene, owner, *trail, currentTime, context.resources.FrameStamp());
-        if (trail->ringCount < 2)
+        if (trail->ringCount < 2) {
             continue;
+        }
 
         output.trails.push_back(BuildTrailInput(owner, *trail));
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

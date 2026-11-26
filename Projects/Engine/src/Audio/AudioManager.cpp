@@ -57,7 +57,9 @@ struct FmtChunk
 std::string LowerExtension(const std::string& path)
 {
     const auto dot = path.rfind('.');
-    if (dot == std::string::npos) return {};
+    if (dot == std::string::npos) {
+        return {};
+    }
     return util::StringUtils::ToLowerCopy(path.substr(dot));
 }
 
@@ -66,11 +68,13 @@ std::string LowerExtension(const std::string& path)
 std::string ResolveClipPath(const std::string& path)
 {
     const std::string resolved = asset::ResolveAssetPath(path);
-    if (!resolved.empty() && util::FileSystem::Exists(resolved)) return resolved;
+    if (!resolved.empty() && util::FileSystem::Exists(resolved)) {
+        return resolved;
+    }
     return path;
 }
 
-} /// @note namespace
+} // namespace
 
 AudioManager::AudioManager(IAudioDevice& device)
     : m_device(device)
@@ -79,7 +83,9 @@ AudioManager::AudioManager(IAudioDevice& device)
 
 bool AudioManager::Init()
 {
-    if (!m_device.Init()) return false;
+    if (!m_device.Init()) {
+        return false;
+    }
 
     HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
     if (FAILED(hr)) {
@@ -107,7 +113,7 @@ void AudioManager::Update(float dt)
 {
     dt = (std::max)(dt, 0.0f);
 
-    /// @note 停止はクリップの解放まで連鎖して m_voices を書き換えるので、走査中には畳めない。
+    // 停止はクリップの解放まで連鎖して m_voices を書き換えるので、走査中には畳めない。
     std::vector<uint32_t> expired;
     std::vector<uint32_t> fadedOut;
     std::vector<uint32_t> finished;
@@ -132,13 +138,21 @@ void AudioManager::Update(float dt)
                 if (state.stopAtEnd) { fadedOut.push_back(voiceId); continue; }
             }
         }
-        if (!m_device.IsPlaying(voiceId)) finished.push_back(voiceId);
+        if (!m_device.IsPlaying(voiceId)) {
+            finished.push_back(voiceId);
+        }
     }
 
-    for (uint32_t voiceId : expired) StopVoice(voiceId);
-    for (uint32_t voiceId : fadedOut) StopVoiceImmediate(voiceId);
-    /// @note IsPlaying が false の時点でデバイス側は破棄済み。参照を戻すだけでよい。
-    for (uint32_t voiceId : finished) ForgetVoice(voiceId);
+    for (uint32_t voiceId : expired) {
+        StopVoice(voiceId);
+    }
+    for (uint32_t voiceId : fadedOut) {
+        StopVoiceImmediate(voiceId);
+    }
+    // IsPlaying が false の時点でデバイス側は破棄済み。参照を戻すだけでよい。
+    for (uint32_t voiceId : finished) {
+        ForgetVoice(voiceId);
+    }
 }
 
 void AudioManager::BindVoiceLifetime(uint32_t voiceId, const std::shared_ptr<VoiceLifetime>& lifetime)
@@ -156,14 +170,18 @@ void AudioManager::SetVoiceLimit(size_t limit)
 
 bool AudioManager::MakeRoomForVoice(int priority)
 {
-    if (m_voices.size() < m_voiceLimit) return true;
+    if (m_voices.size() < m_voiceLimit) {
+        return true;
+    }
 
     uint32_t victim         = 0;
     int      victimPriority = 0;
     uint64_t victimSequence = 0;
     for (const auto& [voiceId, state] : m_voices) {
-        /// @note ループ音は「鳴り続けること」が役目なので奪わない。
-        if (state.loop || voiceId == m_bgmVoiceId) continue;
+        // ループ音は「鳴り続けること」が役目なので奪わない。
+        if (state.loop || voiceId == m_bgmVoiceId) {
+            continue;
+        }
         if (victim == 0 || state.priority < victimPriority
             || (state.priority == victimPriority && state.sequence < victimSequence)) {
             victim         = voiceId;
@@ -172,9 +190,11 @@ bool AudioManager::MakeRoomForVoice(int priority)
         }
     }
 
-    /// @note 奪える相手が居ない、または相手の方が大事なら、新しい音の方を捨てる。
-    /// @note 上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
-    if (victim == 0 || victimPriority > priority) return false;
+    // 奪える相手が居ない、または相手の方が大事なら、新しい音の方を捨てる。
+    // 上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
+    if (victim == 0 || victimPriority > priority) {
+        return false;
+    }
 
     StopVoiceImmediate(victim);
     return true;
@@ -194,7 +214,7 @@ void AudioManager::ApplyBusLayout(const std::vector<BusDesc>& buses)
     if (!m_device.RebuildBuses(m_busLayout.data(), m_busLayout.size()))
         FBZZ_LOG_ERROR("AudioManager: bus layout rebuild failed (%zu buses)", m_busLayout.size());
 
-    /// @note submix ごと作り直したので残響は初期状態。次の更新を素通りさせない。
+    // submix ごと作り直したので残響は初期状態。次の更新を素通りさせない。
     m_reverbWet = -1.0f;
 }
 
@@ -203,29 +223,39 @@ void AudioManager::SetEnvironmentReverb(float wet, float decaySeconds, float hig
     wet = std::clamp(wet, 0.0f, 1.0f);
     if (std::fabs(wet - m_reverbWet) < 0.001f
         && std::fabs(decaySeconds - m_reverbDecay) < 0.001f
-        && std::fabs(highFrequencyRatio - m_reverbHfRatio) < 0.001f) return;
+        && std::fabs(highFrequencyRatio - m_reverbHfRatio) < 0.001f) {
+        return;
+    }
 
     m_reverbWet     = wet;
     m_reverbDecay   = decaySeconds;
     m_reverbHfRatio = highFrequencyRatio;
     for (size_t i = 0; i < m_busLayout.size(); ++i) {
-        if (!m_busLayout[i].reverb) continue;
+        if (!m_busLayout[i].reverb) {
+            continue;
+        }
         m_device.SetBusReverb(static_cast<BusIndex>(i), wet, decaySeconds, highFrequencyRatio);
     }
 }
 
 BusIndex AudioManager::FindBus(std::string_view name) const
 {
-    if (name.empty()) return kMasterBus;
+    if (name.empty()) {
+        return kMasterBus;
+    }
     for (size_t i = 0; i < m_busLayout.size(); ++i)
-        if (util::StringUtils::EqualsCIView(m_busLayout[i].name, name)) return static_cast<BusIndex>(i);
+        if (util::StringUtils::EqualsCIView(m_busLayout[i].name, name)) {
+            return static_cast<BusIndex>(i);
+        }
     return kMasterBus;
 }
 
 void AudioManager::SetBusVolume(std::string_view name, float volume)
 {
     const BusIndex bus = FindBus(name);
-    if (bus >= m_busLayout.size()) return;
+    if (bus >= m_busLayout.size()) {
+        return;
+    }
     m_busLayout[bus].volume = (std::max)(volume, 0.0f);
     m_device.SetBusVolume(bus, m_busLayout[bus].volume);
 }
@@ -239,7 +269,9 @@ float AudioManager::GetBusVolume(std::string_view name) const
 void AudioManager::SetBusLowPass(std::string_view name, float normalizedCutoff)
 {
     const BusIndex bus = FindBus(name);
-    if (bus >= m_busLayout.size()) return;
+    if (bus >= m_busLayout.size()) {
+        return;
+    }
     m_busLayout[bus].lowPassCutoff = std::clamp(normalizedCutoff, 0.0f, 1.0f);
     m_device.SetBusLowPass(bus, m_busLayout[bus].lowPassCutoff);
 }
@@ -257,15 +289,21 @@ AudioManager::ClipId AudioManager::InternClip(const WaveFormat& fmt,
     entry.persistent = persistent;
     entry.specHash   = specHash;
     entry.refCount   = persistent ? 1 : 0;
-    if (!persistent) m_generatedBytes += entry.pcm.size();
+    if (!persistent) {
+        m_generatedBytes += entry.pcm.size();
+    }
     m_clips.emplace(id, std::move(entry));
     return id;
 }
 
 AudioManager::ClipId AudioManager::AcquireClip(const std::string& path)
 {
-    if (path.empty()) return 0;
-    if (const auto it = m_pathToClip.find(path); it != m_pathToClip.end()) return it->second;
+    if (path.empty()) {
+        return 0;
+    }
+    if (const auto it = m_pathToClip.find(path); it != m_pathToClip.end()) {
+        return it->second;
+    }
 
     WaveFormat fmt{};
     std::vector<uint8_t> pcm;
@@ -292,7 +330,9 @@ AudioManager::ClipId AudioManager::AcquireGeneratedClip(const SynthSpec& spec)
 
     WaveFormat fmt{};
     std::vector<uint8_t> pcm = Render(spec, fmt);
-    if (pcm.empty()) return 0;
+    if (pcm.empty()) {
+        return 0;
+    }
 
     const ClipId id = InternClip(fmt, std::move(pcm), false, hash);
     m_clips[id].refCount = 1;
@@ -308,27 +348,39 @@ AudioManager::ClipId AudioManager::AcquireGeneratedClip(const SynthSpec& spec)
 void AudioManager::AddClipRef(ClipId clip)
 {
     const auto it = m_clips.find(clip);
-    if (it != m_clips.end() && !it->second.persistent) ++it->second.refCount;
+    if (it != m_clips.end() && !it->second.persistent) {
+        ++it->second.refCount;
+    }
 }
 
 void AudioManager::ReleaseClip(ClipId clip)
 {
     const auto it = m_clips.find(clip);
-    if (it == m_clips.end() || it->second.persistent) return;
-    if (it->second.refCount > 0) --it->second.refCount;
+    if (it == m_clips.end() || it->second.persistent) {
+        return;
+    }
+    if (it->second.refCount > 0) {
+        --it->second.refCount;
+    }
     DropClipIfUnused(clip);
 }
 
 void AudioManager::DropClipIfUnused(ClipId clip)
 {
     const auto it = m_clips.find(clip);
-    if (it == m_clips.end()) return;
+    if (it == m_clips.end()) {
+        return;
+    }
     const ClipEntry& entry = it->second;
-    /// @note XAudio2 は PCM をポインタで参照し続ける。鳴っている最中に捨てると解放済みメモリを鳴らす。
-    if (entry.persistent || entry.refCount > 0 || entry.voiceCount > 0) return;
+    // XAudio2 は PCM をポインタで参照し続ける。鳴っている最中に捨てると解放済みメモリを鳴らす。
+    if (entry.persistent || entry.refCount > 0 || entry.voiceCount > 0) {
+        return;
+    }
 
     m_generatedBytes -= (std::min)(m_generatedBytes, entry.pcm.size());
-    if (entry.specHash != 0) m_specToClip.erase(entry.specHash);
+    if (entry.specHash != 0) {
+        m_specToClip.erase(entry.specHash);
+    }
     m_clips.erase(it);
 }
 
@@ -337,17 +389,25 @@ void AudioManager::DropClipIfUnused(ClipId clip)
 uint32_t AudioManager::PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
                                      const PlayParams& params)
 {
-    /// @note スティールはクリップの解放まで連鎖するので、m_clips のイテレーターより先に済ませる。
-    if (m_clips.find(clip) == m_clips.end()) return 0;
-    if (!MakeRoomForVoice(params.priority)) return 0;
+    // スティールはクリップの解放まで連鎖するので、m_clips のイテレーターより先に済ませる。
+    if (m_clips.find(clip) == m_clips.end()) {
+        return 0;
+    }
+    if (!MakeRoomForVoice(params.priority)) {
+        return 0;
+    }
 
     const auto it = m_clips.find(clip);
-    if (it == m_clips.end() || it->second.pcm.empty()) return 0;
+    if (it == m_clips.end() || it->second.pcm.empty()) {
+        return 0;
+    }
 
     ClipEntry& entry = it->second;
     const uint32_t voiceId = m_device.PlayBuffer(
         entry.pcm.data(), entry.pcm.size(), entry.fmt, loop, bus);
-    if (voiceId == 0) return 0;
+    if (voiceId == 0) {
+        return 0;
+    }
 
     ++entry.voiceCount;
 
@@ -372,9 +432,13 @@ uint32_t AudioManager::PlayVoice(const std::string& path, bool loop, BusIndex bu
 {
     const auto resolved = ResolveClipPath(path);
     if (params.streaming && LowerExtension(resolved) != ".synth") {
-        if (path.empty() || !MakeRoomForVoice(params.priority)) return 0;
+        if (path.empty() || !MakeRoomForVoice(params.priority)) {
+            return 0;
+        }
         const uint32_t voiceId = m_device.PlayStream(resolved, loop, bus);
-        if (voiceId == 0) return 0;
+        if (voiceId == 0) {
+            return 0;
+        }
         VoiceState state;
         state.loop = loop;
         state.priority = params.priority;
@@ -394,26 +458,38 @@ uint32_t AudioManager::PlayVoice(const std::string& path, bool loop, BusIndex bu
 void AudioManager::ForgetVoice(uint32_t voiceId)
 {
     const auto it = m_voices.find(voiceId);
-    if (it == m_voices.end()) return;
+    if (it == m_voices.end()) {
+        return;
+    }
     const ClipId clip = it->second.clip;
     m_voices.erase(it);
     if (const auto entry = m_clips.find(clip); entry != m_clips.end()) {
-        if (entry->second.voiceCount > 0) --entry->second.voiceCount;
+        if (entry->second.voiceCount > 0) {
+            --entry->second.voiceCount;
+        }
     }
     DropClipIfUnused(clip);
-    if (m_bgmVoiceId == voiceId) m_bgmVoiceId = 0;
+    if (m_bgmVoiceId == voiceId) {
+        m_bgmVoiceId = 0;
+    }
 }
 
 void AudioManager::StopVoice(uint32_t voiceId)
 {
-    if (voiceId == 0) return;
-    if (m_bgmVoiceId == voiceId) m_bgmVoiceId = 0;
+    if (voiceId == 0) {
+        return;
+    }
+    if (m_bgmVoiceId == voiceId) {
+        m_bgmVoiceId = 0;
+    }
     FadeOutAndStop(voiceId, kStopFadeSeconds);
 }
 
 void AudioManager::StopVoiceImmediate(uint32_t voiceId)
 {
-    if (voiceId == 0) return;
+    if (voiceId == 0) {
+        return;
+    }
     m_device.StopBuffer(voiceId);
     ForgetVoice(voiceId);
 }
@@ -421,7 +497,9 @@ void AudioManager::StopVoiceImmediate(uint32_t voiceId)
 void AudioManager::FadeVoice(uint32_t voiceId, float toGain, float seconds)
 {
     const auto it = m_voices.find(voiceId);
-    if (it == m_voices.end()) return;
+    if (it == m_voices.end()) {
+        return;
+    }
 
     VoiceState& state = it->second;
     state.fadeFrom  = state.fadeGain;
@@ -437,9 +515,11 @@ void AudioManager::FadeVoice(uint32_t voiceId, float toGain, float seconds)
 
 void AudioManager::FadeOutAndStop(uint32_t voiceId, float seconds)
 {
-    if (voiceId == 0) return;
+    if (voiceId == 0) {
+        return;
+    }
     const auto it = m_voices.find(voiceId);
-    /// @note 追跡していない voice はフェードを掛ける先が無いので、そのまま畳む。
+    // 追跡していない voice はフェードを掛ける先が無いので、そのまま畳む。
     if (it == m_voices.end()) { m_device.StopBuffer(voiceId); return; }
     if (seconds <= 0.0f) { StopVoiceImmediate(voiceId); return; }
 
@@ -453,12 +533,16 @@ void AudioManager::FadeOutAndStop(uint32_t voiceId, float seconds)
 
 void AudioManager::PauseVoice(uint32_t voiceId)
 {
-    if (m_voices.contains(voiceId)) m_device.PauseBuffer(voiceId);
+    if (m_voices.contains(voiceId)) {
+        m_device.PauseBuffer(voiceId);
+    }
 }
 
 void AudioManager::ResumeVoice(uint32_t voiceId)
 {
-    if (m_voices.contains(voiceId)) m_device.ResumeBuffer(voiceId);
+    if (m_voices.contains(voiceId)) {
+        m_device.ResumeBuffer(voiceId);
+    }
 }
 
 void AudioManager::QueuePositional(PositionalRequest request)
@@ -476,7 +560,9 @@ std::vector<AudioManager::PositionalRequest> AudioManager::TakePositional()
 bool AudioManager::DescribeClip(ClipId clip, ClipInfo& out) const
 {
     const auto it = m_clips.find(clip);
-    if (it == m_clips.end() || it->second.pcm.empty()) return false;
+    if (it == m_clips.end() || it->second.pcm.empty()) {
+        return false;
+    }
 
     const ClipEntry& entry = it->second;
     out.fmt   = entry.fmt;
@@ -494,22 +580,27 @@ bool AudioManager::DescribeClip(ClipId clip, ClipInfo& out) const
 
 void AudioManager::StopAllVoices()
 {
-    /// @note 引き取られなかった位置指定要求も参照を握ったままなので、ここで手放す。
+    // 引き取られなかった位置指定要求も参照を握ったままなので、ここで手放す。
     for (const PositionalRequest& request : m_positional)
-        if (request.clip != 0) ReleaseClip(request.clip);
+        if (request.clip != 0) {
+            ReleaseClip(request.clip);
+        }
     m_positional.clear();
 
     m_bgmVoiceId = 0;
-    for (const auto& tracked : m_voices)
+    for (const auto& tracked : m_voices) {
         m_device.StopBuffer(tracked.first);
+    }
     m_voices.clear();
 
-    /// @note 生成クリップは参照数によらず全部捨てる。一括停止が起きる Play→Stop と Shutdown では
-    /// @note スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
-    /// @note (ScriptAudioProxy::SynthClip のコメントと対)
+    // 生成クリップは参照数によらず全部捨てる。一括停止が起きる Play→Stop と Shutdown では
+    // スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
+    // (ScriptAudioProxy::SynthClip のコメントと対)
     for (auto it = m_clips.begin(); it != m_clips.end();) {
         if (it->second.persistent) { it->second.voiceCount = 0; ++it; continue; }
-        if (it->second.specHash != 0) m_specToClip.erase(it->second.specHash);
+        if (it->second.specHash != 0) {
+            m_specToClip.erase(it->second.specHash);
+        }
         m_generatedBytes -= (std::min)(m_generatedBytes, it->second.pcm.size());
         it = m_clips.erase(it);
     }
@@ -517,33 +608,45 @@ void AudioManager::StopAllVoices()
 
 void AudioManager::SetVoiceVolume(uint32_t voiceId, float volume)
 {
-    if (voiceId == 0 || !std::isfinite(volume)) return;
+    if (voiceId == 0 || !std::isfinite(volume)) {
+        return;
+    }
     volume = (std::max)(volume, 0.0f);
 
     const auto it = m_voices.find(voiceId);
-    if (it == m_voices.end()) return;
+    if (it == m_voices.end()) {
+        return;
+    }
     it->second.volume = volume;
     ApplyVoiceGain(voiceId, it->second);
 }
 
 void AudioManager::SetVoicePitch(uint32_t voiceId, float pitch)
 {
-    if (m_voices.contains(voiceId) && std::isfinite(pitch)) m_device.SetPitch(voiceId, pitch);
+    if (m_voices.contains(voiceId) && std::isfinite(pitch)) {
+        m_device.SetPitch(voiceId, pitch);
+    }
 }
 
 void AudioManager::SetVoicePan(uint32_t voiceId, float pan)
 {
-    if (m_voices.contains(voiceId) && std::isfinite(pan)) m_device.SetPan(voiceId, std::clamp(pan, -1.0f, 1.0f));
+    if (m_voices.contains(voiceId) && std::isfinite(pan)) {
+        m_device.SetPan(voiceId, std::clamp(pan, -1.0f, 1.0f));
+    }
 }
 
 void AudioManager::SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff)
 {
-    if (m_voices.contains(voiceId) && std::isfinite(normalizedCutoff)) m_device.SetLowPass(voiceId, std::clamp(normalizedCutoff, 0.0f, 1.0f));
+    if (m_voices.contains(voiceId) && std::isfinite(normalizedCutoff)) {
+        m_device.SetLowPass(voiceId, std::clamp(normalizedCutoff, 0.0f, 1.0f));
+    }
 }
 
 void AudioManager::SetVoiceSend(uint32_t voiceId, std::string_view busName, float level)
 {
-    if (!m_voices.contains(voiceId)) return;
+    if (!m_voices.contains(voiceId)) {
+        return;
+    }
     BusIndex bus = kInvalidBus;
     for (size_t i = 0; i < m_busLayout.size(); ++i) {
         if (util::StringUtils::EqualsCIView(m_busLayout[i].name, busName)) {
@@ -556,8 +659,12 @@ void AudioManager::SetVoiceSend(uint32_t voiceId, std::string_view busName, floa
 
 bool AudioManager::IsVoicePlaying(uint32_t voiceId)
 {
-    if (voiceId == 0) return false;
-    if (m_device.IsPlaying(voiceId)) return true;
+    if (voiceId == 0) {
+        return false;
+    }
+    if (m_device.IsPlaying(voiceId)) {
+        return true;
+    }
     ForgetVoice(voiceId);
     return false;
 }
@@ -566,12 +673,16 @@ bool AudioManager::IsVoicePlaying(uint32_t voiceId)
 
 void AudioManager::PlayBGM(const std::string& path, bool loop, float fadeSeconds)
 {
-    /// @note クロスフェード中は新旧 2 本が鳴るが、BGM スロットが指すのは常に新しい方。
+    // クロスフェード中は新旧 2 本が鳴るが、BGM スロットが指すのは常に新しい方。
     const uint32_t previous = m_bgmVoiceId;
     m_bgmVoiceId = 0;
     if (previous != 0) {
-        if (fadeSeconds > 0.0f) FadeOutAndStop(previous, fadeSeconds);
-        else                    StopVoiceImmediate(previous);
+        if (fadeSeconds > 0.0f) {
+            FadeOutAndStop(previous, fadeSeconds);
+        }
+        else {
+            StopVoiceImmediate(previous);
+        }
     }
 
     PlayParams params;
@@ -583,11 +694,17 @@ void AudioManager::PlayBGM(const std::string& path, bool loop, float fadeSeconds
 
 void AudioManager::StopBGM(float fadeSeconds)
 {
-    if (m_bgmVoiceId == 0) return;
+    if (m_bgmVoiceId == 0) {
+        return;
+    }
     const uint32_t voiceId = m_bgmVoiceId;
     m_bgmVoiceId = 0;
-    if (fadeSeconds > 0.0f) FadeOutAndStop(voiceId, fadeSeconds);
-    else                    StopVoiceImmediate(voiceId);
+    if (fadeSeconds > 0.0f) {
+        FadeOutAndStop(voiceId, fadeSeconds);
+    }
+    else {
+        StopVoiceImmediate(voiceId);
+    }
 }
 
 void AudioManager::PlaySE(const std::string& path)
@@ -608,8 +725,12 @@ bool AudioManager::LoadClipData(const std::string& path,
     const std::string ext      = LowerExtension(path);
     const std::string resolved = ResolveClipPath(path);
 
-    if (ext == ".synth") return LoadSynth(resolved, outFmt, outPcm);
-    if (ext == ".wav")   return LoadWav(resolved, outFmt, outPcm);
+    if (ext == ".synth") {
+        return LoadSynth(resolved, outFmt, outPcm);
+    }
+    if (ext == ".wav") {
+        return LoadWav(resolved, outFmt, outPcm);
+    }
     return LoadWithMediaFoundation(resolved, outFmt, outPcm);
 }
 
@@ -617,7 +738,9 @@ bool AudioManager::LoadSynth(const std::string& path,
                              WaveFormat& outFmt, std::vector<uint8_t>& outPcm)
 {
     asset::SynthAsset synth;
-    if (!asset::LoadSynthAssetFromFile(path, synth)) return false;
+    if (!asset::LoadSynthAssetFromFile(path, synth)) {
+        return false;
+    }
     outPcm = Render(synth.spec, outFmt);
     return !outPcm.empty();
 }
@@ -626,28 +749,36 @@ bool AudioManager::LoadWav(const std::string& path,
                            WaveFormat& outFmt, std::vector<uint8_t>& outPcm)
 {
     std::ifstream file(util::FileSystem::PathFromUtf8(path), std::ios::binary);
-    if (!file) return false;
+    if (!file) {
+        return false;
+    }
 
     RiffHeader riff{};
     file.read(static_cast<char*>(static_cast<void*>(&riff)), sizeof(riff));
     if (std::strncmp(riff.id,   "RIFF", 4) != 0 ||
-        std::strncmp(riff.type, "WAVE", 4) != 0)
+        std::strncmp(riff.type, "WAVE", 4) != 0) {
         return false;
+    }
 
     bool hasFmt  = false;
     bool hasData = false;
     while (file) {
         ChunkHeader chunk{};
         file.read(static_cast<char*>(static_cast<void*>(&chunk)), sizeof(chunk));
-        if (!file) break;
+        if (!file) {
+            break;
+        }
 
         if (std::strncmp(chunk.id, "fmt ", 4) == 0) {
             FmtChunk fmt{};
             file.read(static_cast<char*>(static_cast<void*>(&fmt)), sizeof(fmt));
-            if (chunk.size > sizeof(fmt))
+            if (chunk.size > sizeof(fmt)) {
                 file.seekg(chunk.size - sizeof(fmt), std::ios::cur);
-            /// @note PCM のみ対応
-            if (fmt.audioFormat != 1) return false;
+            }
+            // PCM のみ対応
+            if (fmt.audioFormat != 1) {
+                return false;
+            }
             outFmt.sampleRate    = fmt.sampleRate;
             outFmt.channels      = fmt.channels;
             outFmt.bitsPerSample = fmt.bitsPerSample;
@@ -666,7 +797,7 @@ bool AudioManager::LoadWav(const std::string& path,
 bool AudioManager::LoadWithMediaFoundation(const std::string& path,
                                            WaveFormat& outFmt, std::vector<uint8_t>& outPcm)
 {
-    /// @note path は UTF-8。日本語フォルダへ移した配布版でも MF が正しく受け取れるようにする。
+    // path は UTF-8。日本語フォルダへ移した配布版でも MF が正しく受け取れるようにする。
     const std::wstring wpath = fbzz::util::StringUtils::ToWide(path);
 
     Microsoft::WRL::ComPtr<IMFSourceReader> reader;
@@ -676,17 +807,21 @@ bool AudioManager::LoadWithMediaFoundation(const std::string& path,
         return false;
     }
 
-    /// @note デコード出力を PCM に固定
+    // デコード出力を PCM に固定
     Microsoft::WRL::ComPtr<IMFMediaType> pcmType;
     MFCreateMediaType(&pcmType);
     pcmType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
     pcmType->SetGUID(MF_MT_SUBTYPE,    MFAudioFormat_PCM);
     hr = reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, pcmType.Get());
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        return false;
+    }
 
     Microsoft::WRL::ComPtr<IMFMediaType> outputType;
     hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &outputType);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        return false;
+    }
 
     UINT32 sampleRate = 0, channels = 0, bitsPerSample = 0;
     outputType->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &sampleRate);
@@ -702,9 +837,15 @@ bool AudioManager::LoadWithMediaFoundation(const std::string& path,
         hr = reader->ReadSample(
             MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0,
             nullptr, &flags, nullptr, &sample);
-        if (FAILED(hr)) break;
-        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
-        if (!sample) continue;
+        if (FAILED(hr)) {
+            break;
+        }
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            break;
+        }
+        if (!sample) {
+            continue;
+        }
 
         Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
         sample->ConvertToContiguousBuffer(&buffer);
@@ -719,4 +860,4 @@ bool AudioManager::LoadWithMediaFoundation(const std::string& path,
     return !outPcm.empty();
 }
 
-} /// @note namespace fbzz::audio
+} // namespace fbzz::audio

@@ -70,7 +70,9 @@ protected:
         ai::BehaviorTreeAsset asset;
         asset.nodes = nodes;
         asset.blackboard.push_back({ .name = "Counter", .type = ai::BlackboardType::Int });
-        if (!ai::CompileBehaviorTree(asset, tree)) return false;
+        if (!ai::CompileBehaviorTree(asset, tree)) {
+            return false;
+        }
         blackboard.Reset(tree.blackboard);
         ctx.actions = &actions;
         return true;

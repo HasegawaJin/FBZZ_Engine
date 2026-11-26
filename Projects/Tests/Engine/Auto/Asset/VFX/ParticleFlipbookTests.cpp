@@ -37,13 +37,13 @@ TEST(ParticleFlipbookTest, RangeIsClampedIntoTheAtlas)
 {
     auto flipbook = Grid(4, 2);
     flipbook.spriteStartFrame = 5;
-    /// @note コマ数 8 を超える
+    // コマ数 8 を超える
     flipbook.spriteEndFrame   = 40;
     auto range = asset::ResolveFlipbookRange(flipbook);
     EXPECT_EQ(range.first, 5);
     EXPECT_EQ(range.last, 7);
 
-    /// @note Start より前は Start へ詰める
+    // Start より前は Start へ詰める
     flipbook.spriteEndFrame = 2;
     range = asset::ResolveFlipbookRange(flipbook);
     EXPECT_EQ(range.last, 5);
@@ -64,11 +64,11 @@ TEST(ParticleFlipbookTest, LifetimeSpansTheRangeOverTheLifetimeWithoutWrapping)
 {
     const auto flipbook = Grid(4, 1);
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 0.0f, 0.0f).frame, 0);
-    /// @note 0.5 * 3 = 1.5
+    // 0.5 * 3 = 1.5
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.5f, 0.0f, 0.0f).frame, 1);
     const auto end = asset::EvaluateFlipbookFrame(flipbook, 1.0f, 0.0f, 0.0f);
     EXPECT_EQ(end.frame, 3);
-    /// @note 寿命の終わりで先頭へ補間し始めると、消える直前に 1 コマ目が透けて見える。
+    // 寿命の終わりで先頭へ補間し始めると、消える直前に 1 コマ目が透けて見える。
     EXPECT_EQ(end.nextFrame, 3);
 }
 
@@ -80,12 +80,12 @@ TEST(ParticleFlipbookTest, FpsLoopsAndBlendsIntoTheFirstFrame)
     flipbook.flipbookFramesPerSecond = 4.0f;
     flipbook.flipbookFrameBlending   = true;
 
-    /// @note 3.5 コマ目
+    // 3.5 コマ目
     const auto last = asset::EvaluateFlipbookFrame(flipbook, 0.0f, 0.875f, 0.0f);
     EXPECT_EQ(last.frame, 3);
     EXPECT_EQ(last.nextFrame, 0);
     EXPECT_NEAR(last.blend, 0.5f, 1.0e-4f);
-    /// @note 2 周目
+    // 2 周目
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 1.25f, 0.0f).frame, 1);
 }
 
@@ -95,7 +95,7 @@ TEST(ParticleFlipbookTest, PingPongPlaysBackwardsAfterTheLastFrame)
     auto flipbook = Grid(4, 1);
     flipbook.flipbookMode            = scene::ParticleFlipbookMode::PingPong;
     flipbook.flipbookFramesPerSecond = 1.0f;
-    /// @note 0 1 2 3 2 1 | 0 ...
+    // 0 1 2 3 2 1 | 0 ...
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 3.0f, 0.0f).frame, 3);
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 4.5f, 0.0f).frame, 1);
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 6.2f, 0.0f).frame, 0);
@@ -141,7 +141,7 @@ TEST(ParticleFlipbookTest, RandomModeNeverBlends)
     flipbook.flipbookFrameBlending = true;
     const auto sample = asset::EvaluateFlipbookFrame(flipbook, 0.3f, 1.7f, 0.42f);
     EXPECT_EQ(sample.blend, 0.0f);
-    /// @note floor(0.42 * 15)
+    // floor(0.42 * 15)
     EXPECT_EQ(sample.frame, 6);
 }
 

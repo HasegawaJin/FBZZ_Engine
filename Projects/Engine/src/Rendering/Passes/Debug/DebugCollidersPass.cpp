@@ -51,18 +51,28 @@ const physics::RigidBody* FindColliderBody(GameObject& go, const ColliderCompone
         auto* rb = object.GetComponent<RigidBodyComponent>();
         return (rb && rb->enabled && rb->rigidBody) ? rb->rigidBody.get() : nullptr;
     };
-    if (const physics::RigidBody* body = usable(go)) return body;
-    if (!collider.attachToParentBody) return nullptr;
+    if (const physics::RigidBody* body = usable(go)) {
+        return body;
+    }
+    if (!collider.attachToParentBody) {
+        return nullptr;
+    }
     for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent())
-        if (const physics::RigidBody* body = usable(*parent)) return body;
+        if (const physics::RigidBody* body = usable(*parent)) {
+            return body;
+        }
     return nullptr;
 }
 
 math::Vector4 ColliderColor(GameObject& go, const ColliderComponent& collider)
 {
-    if (collider.isTrigger) return kTriggerColor;
+    if (collider.isTrigger) {
+        return kTriggerColor;
+    }
     const physics::RigidBody* body = FindColliderBody(go, collider);
-    if (!body || body->IsStatic()) return kStaticColor;
+    if (!body || body->IsStatic()) {
+        return kStaticColor;
+    }
     return body->IsSleeping() ? kSleepingColor : kDynamicColor;
 }
 
@@ -72,24 +82,30 @@ template<typename T>
 void DrawCollider(Scene& scene, GameObject& go, T& collider,
                   renderer::IRenderer& renderer, const physics::ColliderDebugView& view)
 {
-    if (!collider.enabled) return;
-    if (!PrepareCollider(scene, go, collider)) return;
+    if (!collider.enabled) {
+        return;
+    }
+    if (!PrepareCollider(scene, go, collider)) {
+        return;
+    }
 
     const physics::ColliderDebugGeometry geometry =
         physics::BuildColliderDebugGeometry(*collider.collider, view);
     const math::Vector4 color = ColliderColor(go, collider);
 
-    /// @note プリミティブは破線。同じ位置のスクリプトの Gizmo (実線) と重なっても両方読める。
+    // プリミティブは破線。同じ位置のスクリプトの Gizmo (実線) と重なっても両方読める。
     const bool dashed = geometry.lines.size() <= DASH_LINE_LIMIT;
     for (std::size_t i = 0; i < geometry.lines.size(); ++i) {
         const physics::DebugLine& line = geometry.lines[i];
-        /// @note detailLineCount 以降は BVH ノードの箱。輪郭として読ませるだけなので落とす。
+        // detailLineCount 以降は BVH ノードの箱。輪郭として読ませるだけなので落とす。
         const math::Vector4 lineColor = i < geometry.detailLineCount ? color : CoarseColor(color);
-        if (dashed)
+        if (dashed) {
             renderer::DebugDraw::LineDashed(renderer, line.from, line.to, lineColor,
                                             DASH_LENGTH, DASH_MAX);
-        else
+        }
+        else {
             renderer::DebugDraw::Line(renderer, line.from, line.to, lineColor);
+        }
     }
 }
 
@@ -101,7 +117,9 @@ void DrawCollidersOfType(RenderPassContext& ctx, const physics::ColliderDebugVie
     for (EntityID id : ctx.scene.GetEntities<T>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         T* col = ctx.scene.GetComponent<T>(id);
-        if (!go || !col || !go->activeInHierarchy()) continue;
+        if (!go || !col || !go->activeInHierarchy()) {
+            continue;
+        }
         DrawCollider(ctx.scene, *go, *col, ctx.renderer, view);
     }
 }
@@ -115,7 +133,7 @@ bool DebugCollidersPass::IsEnabled(const RenderPassContext& ctx) const
 
 void DebugCollidersPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 {
-    /// @note この視点を見るのは BVH コライダー (Mesh / Terrain) だけ。
+    // この視点を見るのは BVH コライダー (Mesh / Terrain) だけ。
     physics::ColliderDebugView view;
     view.cameraPosition = ctx.camera.m_position;
     view.detailRadius   = DETAIL_RADIUS;
@@ -130,9 +148,10 @@ void DebugCollidersPass::Execute(renderer::PassResources&, RenderPassContext& ct
     DrawCollidersOfType<CylinderColliderComponent>(ctx, view);
     DrawCollidersOfType<MeshColliderComponent>(ctx, view);
     DrawCollidersOfType<ConvexHullColliderComponent>(ctx, view);
-    /// @note showTerrainCollision 中は TerrainCollisionDebugPass が同じ線を描くので譲る。
-    if (!ctx.settings.showTerrainCollision)
+    // showTerrainCollision 中は TerrainCollisionDebugPass が同じ線を描くので譲る。
+    if (!ctx.settings.showTerrainCollision) {
         DrawCollidersOfType<TerrainColliderComponent>(ctx, view);
+    }
 
     renderer::DebugDraw::Flush();
 }

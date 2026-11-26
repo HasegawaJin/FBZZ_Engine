@@ -15,4 +15,4 @@ void UpdateWaterfallRuntime(Scene& scene, float dt);
 
 /// @brief 準備できた滝の接続から、実行時の波の拘束条件を再構築する。
 void PrepareWaterfallSeams(Scene& scene);
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

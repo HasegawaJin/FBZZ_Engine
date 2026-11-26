@@ -30,4 +30,4 @@ namespace fbzz::asset {
 /// @note 既存の資産をそのまま持ち込めるようにするためだけの経路。
 [[nodiscard]] FBZZ_ENGINE_API bool ImportFgaFile(const std::string& absPath, fluid::VectorFieldAsset& outField);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

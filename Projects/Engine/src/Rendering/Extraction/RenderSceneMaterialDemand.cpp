@@ -46,7 +46,9 @@ BindingDemandWitness CaptureBindingDemandWitness(const View& view)
     }
     put(view.culling.projectionScaleY); put(view.culling.smallObjectScreenHeight);
     put(view.maxDistance); put(view.boundsPadding);
-    for (float distance : view.layerDistances) put(distance);
+    for (float distance : view.layerDistances) {
+        put(distance);
+    }
     result[offset++] = view.mask;
     result[offset++] = static_cast<uint32_t>(view.culling.frustum != nullptr)
         | (static_cast<uint32_t>(view.culling.distanceSpherical) << 1)
@@ -116,7 +118,9 @@ bool BindingScopeCertified(const RenderPassContext& context, bool completing = f
 void RetainPendingBindings(const RenderPassContext& context, std::shared_ptr<const renderer::RenderScene> snapshot,
                            std::vector<uint32_t> items)
 {
-    if (!BindingScopeCertified(context) || !s_bindingDemandScope || items.empty()) return;
+    if (!BindingScopeCertified(context) || !s_bindingDemandScope || items.empty()) {
+        return;
+    }
     auto pending = std::make_unique<PendingBindings>();
     pending->snapshot = std::move(snapshot);
     pending->items = std::move(items);
@@ -147,12 +151,20 @@ bool NeedsMaterialBindings(const material_demand_detail::View& view, const rende
                            std::span<const uint32_t> omittedItemIndices, Scene& scene)
 {
     for (uint32_t itemIndex : omittedItemIndices) {
-        if (itemIndex >= snapshot.items.size()) return true;
+        if (itemIndex >= snapshot.items.size()) {
+            return true;
+        }
         const auto& item = snapshot.items[itemIndex];
-        if (item.objectIndex >= snapshot.Objects().size()) return true;
-        if (LeafWindBoundsMayHaveExpanded(scene, snapshot.Objects()[item.objectIndex])) return true;
+        if (item.objectIndex >= snapshot.Objects().size()) {
+            return true;
+        }
+        if (LeafWindBoundsMayHaveExpanded(scene, snapshot.Objects()[item.objectIndex])) {
+            return true;
+        }
         const auto result = material_demand_detail::Evaluate(view, snapshot.Objects()[item.objectIndex], item);
-        if (result.reasons != 0 || (!result.cameraEvaluated && result.matchesView)) return true;
+        if (result.reasons != 0 || (!result.cameraEvaluated && result.matchesView)) {
+            return true;
+        }
     }
     return false;
 }
@@ -173,26 +185,30 @@ material_demand_detail::View CurrentMaterialDemandView(const RenderPassContext& 
     view.staticGpuFrustumPossible = context.settings.gpuInstancing
         && (context.settings.geometryDrawMode == renderer::GeometryDrawMode::GPU_INDIRECT
             || context.settings.geometryDrawMode == renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT);
-    /// @note 同期時に不透明な ErrorSurface へ切り替わり得るため、同期前の材質から影の利用先を除外しない。
+    // 同期時に不透明な ErrorSurface へ切り替わり得るため、同期前の材質から影の利用先を除外しない。
     view.directionalShadowPotential = context.settings.shadowEnabled;
     view.punctualShadowPotential = context.settings.shadowEnabled && context.punctualShadowViewCount > 0;
     view.rayPotential = rayTracingInputs;
     view.consumerScopeCertified = material_demand_detail::BindingScopeCertified(context, completing)
         && context.scene.GetUserRenderPasses().empty() && !context.objectMaskEnabled
         && context.settings.objectMaskRequests.empty() && context.settings.selectedObjects.empty();
-    /// @note ネイティブのセットアップフックはパス一覧の確認後にも利用先を追加できる。
-    /// @note ManagedScriptAdapter はネイティブの描画フックを上書きしない。
+    // ネイティブのセットアップフックはパス一覧の確認後にも利用先を追加できる。
+    // ManagedScriptAdapter はネイティブの描画フックを上書きしない。
     if (view.consumerScopeCertified) {
         for (EntityID id : context.scene.GetEntities<ScriptComponent>()) {
             const auto* scripts = context.scene.GetComponent<ScriptComponent>(id);
-            if (!scripts) continue;
+            if (!scripts) {
+                continue;
+            }
             for (const auto& entry : scripts->scripts) {
                 if (entry.script && !ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) {
                     view.consumerScopeCertified = false;
                     break;
                 }
             }
-            if (!view.consumerScopeCertified) break;
+            if (!view.consumerScopeCertified) {
+                break;
+            }
         }
     }
     for (EntityID id : context.scene.GetEntities<ReflectionProbeComponent>()) {
@@ -246,7 +262,9 @@ void CompleteBindings(RenderPassContext& context)
 {
     using namespace render_extraction_detail;
     if (s_bindingCompletionDepth != 0 || s_bindingDemandContext != &context
-        || !s_bindingDemandScope || !s_bindingDemandScope->m_pending) return;
+        || !s_bindingDemandScope || !s_bindingDemandScope->m_pending) {
+        return;
+    }
     auto& pending = *s_bindingDemandScope->m_pending;
     if (context.renderScene != pending.snapshot) {
         s_bindingDemandScope->m_pending.reset();
@@ -264,14 +282,16 @@ void CompleteBindings(RenderPassContext& context)
         });
     if (!changed) {
         const auto witness = CaptureBindingDemandWitness(view);
-        if (pending.noDemandWitness && *pending.noDemandWitness == witness) return;
+        if (pending.noDemandWitness && *pending.noDemandWitness == witness) {
+            return;
+        }
         if (!NeedsMaterialBindings(view, *pending.snapshot, pending.items, context.scene)) {
             pending.noDemandWitness = witness;
             return;
         }
     }
     FBZZ_PROFILE_SCOPE("RenderSceneExtractor::CompleteMaterialBindings");
-    /// @note 資源コールバックの前に補完対象の所有権を移し、再入時の二重補完を防ぐ。
+    // 資源コールバックの前に補完対象の所有権を移し、再入時の二重補完を防ぐ。
     auto owned = std::move(s_bindingDemandScope->m_pending);
     const auto preparedItems = FindPreparedSnapshotItems(owned->snapshot);
     auto completed = std::make_shared<renderer::RenderScene>(*owned->snapshot);
@@ -281,7 +301,9 @@ void CompleteBindings(RenderPassContext& context)
     FailOpenChangedLeafWindBounds(context.scene, *completed);
     RestoreMaterialBindings(context, *completed, owned->items);
     FailOpenChangedLeafWindBounds(context.scene, *completed);
-    if (preparedItems.known) RememberPreparedSnapshotItems(completed, preparedItems.indices);
+    if (preparedItems.known) {
+        RememberPreparedSnapshotItems(completed, preparedItems.indices);
+    }
     context.renderScene = std::move(completed);
 }
 }

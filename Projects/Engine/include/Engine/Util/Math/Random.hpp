@@ -59,7 +59,9 @@ struct RandomStream {
     /// @see https://prng.di.unimi.it/ Xorshift64* の非ゼロ状態と乗算出力。
     uint64_t NextUInt()
     {
-        if (!state) SetSeed(0);
+        if (!state) {
+            SetSeed(0);
+        }
         state ^= state >> 12;
         state ^= state << 25;
         state ^= state >> 27;
@@ -80,8 +82,12 @@ struct RandomStream {
     {
         const bool valid = std::isfinite(min) && std::isfinite(max) && min <= max;
         FBZZ_MATH_CONTRACT(valid, "RandomStream float range requires finite ordered endpoints; returning finite min or zero without advancing.");
-        if (!valid) return std::isfinite(min) ? min : 0.f;
-        if (max <= min) return min;
+        if (!valid) {
+            return std::isfinite(min) ? min : 0.f;
+        }
+        if (max <= min) {
+            return min;
+        }
         const float value = static_cast<float>(static_cast<double>(min)
             + (static_cast<double>(max) - min) * Value());
         return value < max ? value : std::nextafter(max, min);
@@ -95,12 +101,16 @@ struct RandomStream {
     int Range(int min, int max)
     {
         FBZZ_MATH_CONTRACT(min <= max, "RandomStream integer range endpoints are reversed; returning min without advancing.");
-        if (max <= min) return min;
+        if (max <= min) {
+            return min;
+        }
         const uint64_t span = static_cast<uint64_t>(static_cast<int64_t>(max) - min) + 1ull;
         const uint64_t limit = std::numeric_limits<uint64_t>::max()
             - std::numeric_limits<uint64_t>::max() % span;
         uint64_t word = NextUInt();
-        while (word > limit) word = NextUInt();
+        while (word > limit) {
+            word = NextUInt();
+        }
         return static_cast<int>(static_cast<int64_t>(min) + static_cast<int64_t>((word - 1ull) % span));
     }
 
@@ -110,7 +120,9 @@ struct RandomStream {
     {
         const bool valid = std::isfinite(probability) && probability >= 0 && probability <= 1;
         FBZZ_MATH_CONTRACT(valid, "RandomStream probability must be finite and within [0,1]; returning false without advancing.");
-        if (!valid) return false;
+        if (!valid) {
+            return false;
+        }
         return Value() < probability;
     }
 
@@ -120,4 +132,4 @@ struct RandomStream {
     FBZZ_ENGINE_API math::Vector3 OnUnitSphere();
 };
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

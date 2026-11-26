@@ -68,7 +68,7 @@ class AnimationSamplingTest : public testkit::EngineFixture {};
 /// @brief Checks empty keys fall back to the given value.
 TEST_F(AnimationSamplingTest, EmptyKeysFallBackToTheGivenValue)
 {
-    /// @note キーが無いチャンネルは «触らない» が正。0 を返すとボーンが原点へ吸われる。
+    // キーが無いチャンネルは «触らない» が正。0 を返すとボーンが原点へ吸われる。
     const math::Vector3 fallback{ 1.0f, 2.0f, 3.0f };
 
     EXPECT_VEC3_NEAR(asset::SampleVectorKeys({}, 5.0, fallback), fallback,
@@ -105,7 +105,7 @@ TEST_F(AnimationSamplingTest, ReturnsTheEndpointsExactly)
 /// @brief Clamps outside the key range.
 TEST_F(AnimationSamplingTest, ClampsOutsideTheKeyRange)
 {
-    /// @note 尺の外を «ループの先頭» や «外挿» にしない。繰り返しは呼び出し側の仕事。
+    // 尺の外を «ループの先頭» や «外挿» にしない。繰り返しは呼び出し側の仕事。
     const auto keys = VectorRamp();
 
     EXPECT_VEC3_NEAR(asset::SampleVectorKeys(keys, -50.0, math::Vector3::ZERO),
@@ -130,7 +130,7 @@ TEST_F(AnimationSamplingTest, InterpolatesLinearlyBetweenTwoKeys)
 /// @brief Step interpolation holds the previous key.
 TEST_F(AnimationSamplingTest, StepInterpolationHoldsThePreviousKey)
 {
-    /// @note 表情の切り替えやフラグは «途中の値» を作ってはいけない。
+    // 表情の切り替えやフラグは «途中の値» を作ってはいけない。
     const auto keys = VectorRamp();
 
     EXPECT_VEC3_NEAR(
@@ -141,7 +141,7 @@ TEST_F(AnimationSamplingTest, StepInterpolationHoldsThePreviousKey)
 /// @brief Picks the right segment among many keys.
 TEST_F(AnimationSamplingTest, PicksTheRightSegmentAmongManyKeys)
 {
-    /// @note upper_bound の境界。1 つずれると «常に前のキーの値» になる。
+    // upper_bound の境界。1 つずれると «常に前のキーの値» になる。
     const std::vector<asset::VectorKey> keys{
         { 0.0, { 0.0f, 0.0f, 0.0f } },
         { 1.0, { 10.0f, 0.0f, 0.0f } },
@@ -160,7 +160,7 @@ TEST_F(AnimationSamplingTest, PicksTheRightSegmentAmongManyKeys)
 /// @brief Survives two keys at the same time.
 TEST_F(AnimationSamplingTest, SurvivesTwoKeysAtTheSameTime)
 {
-    /// @note 書き出し側が同じ時刻へ 2 本置くことがある。0 除算で NaN を返さないこと。
+    // 書き出し側が同じ時刻へ 2 本置くことがある。0 除算で NaN を返さないこと。
     const std::vector<asset::VectorKey> keys{
         { 0.0, { 0.0f, 0.0f, 0.0f } },
         { 1.0, { 10.0f, 0.0f, 0.0f } },
@@ -226,7 +226,7 @@ TEST_F(AnimationSamplingTest, EmptyFloatKeysGiveZero)
 /// @brief Cubic matches linear at the keys themselves.
 TEST_F(AnimationSamplingTest, CubicMatchesLinearAtTheKeysThemselves)
 {
-    /// @note 接線が何であれ、キー上の値はキーの値。ここがずれると «キーを打った瞬間だけ飛ぶ»。
+    // 接線が何であれ、キー上の値はキーの値。ここがずれると «キーを打った瞬間だけ飛ぶ»。
     const auto keys = FloatRamp();
 
     EXPECT_NEAR(asset::SampleFloatKeys(keys, 0.0, asset::AnimInterp::Cubic), 0.0f,
@@ -238,8 +238,8 @@ TEST_F(AnimationSamplingTest, CubicMatchesLinearAtTheKeysThemselves)
 /// @brief Cubic with flat tangents stays inside the range.
 TEST_F(AnimationSamplingTest, CubicWithFlatTangentsStaysInsideTheRange)
 {
-    /// @note 接線 0 の Hermite は行き過ぎない。オーバーシュートすると
-    ///       «クリップに無いポーズ» が 1 フレームだけ出る。
+    // 接線 0 の Hermite は行き過ぎない。オーバーシュートすると
+    //       «クリップに無いポーズ» が 1 フレームだけ出る。
     const auto keys = FloatRamp();
 
     for (int step = 0; step <= 20; ++step) {
@@ -351,7 +351,9 @@ std::string ActorTraceTestEnv(const char* name)
 {
 #ifdef _MSC_VER
     char* raw=nullptr; size_t length=0;
-    if(_dupenv_s(&raw,&length,name)!=0 || !raw)return {};
+    if(_dupenv_s(&raw,&length,name)!=0 || !raw) {
+        return {};
+    }
     const std::unique_ptr<char,decltype(&std::free)> owned(raw,&std::free); return owned.get();
 #else
     const char* value=std::getenv(name); return value?value:"";
@@ -625,7 +627,9 @@ PhaseKeyType PhaseTestKey()
     for(uint64_t lifetime=1;lifetime<65536;++lifetime) {
         PhaseKeyType key{lifetime,7,9};
         const float credit=scene::animation_phase_detail::InitialCredit(key,0.25f);
-        if(credit>0.15f && credit<0.20f)return key;
+        if(credit>0.15f && credit<0.20f) {
+            return key;
+        }
     }
     return {};
 }
@@ -654,7 +658,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditRequiresSuccessfulLegacyAndConsumesAnyR
     EXPECT_TRUE(ledger.Complete(ticket,{true,true},true,credit));EXPECT_EQ(credit,InitialCredit(key,0.25f));
     ticket=ledger.Prepare(key,PhaseTestSource(3),0.25f,true);EXPECT_FALSE(ticket.canSeed);EXPECT_EQ(ticket.credit,credit);
     EXPECT_TRUE(CreditDue(false,0.10f,0.25f,ticket.credit));
-    /// @note A forced fallback refresh also consumes pending credit; it cannot re-seed the issued lifetime.
+    // A forced fallback refresh also consumes pending credit; it cannot re-seed the issued lifetime.
     EXPECT_FALSE(ledger.Complete(ticket,{true,false},true,credit));
     ticket=ledger.Prepare(key,PhaseTestSource(4),0.25f,true);EXPECT_EQ(ticket.credit,0);EXPECT_FALSE(ticket.canSeed);
     EXPECT_FALSE(ledger.Complete(ticket,{true,true},true,credit));
@@ -699,7 +703,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditSourceConfigAndRendererReplacementInval
         ticket=ledger.Prepare(key,source,.25f,true);EXPECT_EQ(ticket.credit,0);EXPECT_FALSE(ticket.canSeed);
         EXPECT_FALSE(ledger.Complete(ticket,{true,true},true,credit));
     }
-    /// @note Real component replacement gets a fresh global lifetime even when the Entity key stays the same.
+    // Real component replacement gets a fresh global lifetime even when the Entity key stays the same.
     scene::Scene worldScene;auto& object=worldScene.CreateGameObject("Actor");object.AddComponent<scene::AnimatorComponent>();
     object.AddComponent<scene::SkinnedMeshRenderer>();const auto id=object.GetID();
     const auto animatorLife=worldScene.GetComponentLifetime<scene::AnimatorComponent>(id);
@@ -727,7 +731,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditReplacementCloneAndCapacityFallbackDoNo
 TEST_F(AnimationSamplingTest, PhaseCreditCadenceHasOneEarlyCycleThenOriginalResetZero)
 {
     using namespace scene::animation_phase_detail;const auto key=PhaseTestKey();
-    /// @note The variable dt case models the measured .25s cohort; these are source arithmetic, not performance measurements.
+    // The variable dt case models the measured .25s cohort; these are source arithmetic, not performance measurements.
     const std::vector<float> varied={.041f,.046f,.039f,.050f,.044f,.043f,.038f,.047f,.049f,.040f,.045f,.042f};
     for(bool variable:{false,true}) {
         Ledger ledger(1);float legacyElapsed=0,phaseElapsed=0,credit=0;uint32_t legacyCount=1,phaseCount=1;
@@ -752,7 +756,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditCadenceHasOneEarlyCycleThenOriginalRese
         EXPECT_GT(firstEarly,0u);EXPECT_LT(firstEarly,5u);
         EXPECT_GE(phaseCount,legacyCount);EXPECT_LE(phaseCount,legacyCount+1u);
         if(!variable){EXPECT_EQ(phaseCount,25u);EXPECT_EQ(legacyCount,25u);}
-        /// @note No residual credit or overshoot is carried after the one early refresh.
+        // No residual credit or overshoot is carried after the one early refresh.
         auto end=ledger.Prepare(key,PhaseTestSource(122),.25f,true);EXPECT_EQ(end.credit,0);EXPECT_FALSE(end.canSeed);
     }
 }
@@ -776,7 +780,9 @@ TEST_F(AnimationSamplingTest, PhaseCreditIntegrationPreservesInitialPoseAndFullP
     for(uint32_t attempt=0;attempt<128;++attempt) {
         if(animator)object.RemoveComponent<scene::AnimatorComponent>();animator=&object.AddComponent<scene::AnimatorComponent>();
         key={worldScene.GetComponentLifetime<scene::AnimatorComponent>(object.GetID()),object.GetID().index,object.GetID().generation};
-        if(InitialCredit(key,.25f)>.12f && InitialCredit(key,.25f)<.20f)break;
+        if(InitialCredit(key,.25f)>.12f && InitialCredit(key,.25f)<.20f) {
+            break;
+        }
     }
     ASSERT_GT(InitialCredit(key,.25f),.12f);ASSERT_LT(InitialCredit(key,.25f),.20f);scene::AnimationState state;state.name="Hold";state.clipIndex=0;animator->states.push_back(state);
     animator->currentStateName=animator->defaultStateName=animator->poseStateName="Hold";
@@ -826,7 +832,9 @@ TEST_F(AnimationSamplingTest, PhaseCreditIntegrationRigRendererAndSameValueLodIn
     for(uint32_t attempt=0;attempt<128;++attempt) {
         if(animator)object.RemoveComponent<scene::AnimatorComponent>();animator=&object.AddComponent<scene::AnimatorComponent>();
         key={worldScene.GetComponentLifetime<scene::AnimatorComponent>(object.GetID()),object.GetID().index,object.GetID().generation};
-        if(InitialCredit(key,.25f)>.12f && InitialCredit(key,.25f)<.20f)break;
+        if(InitialCredit(key,.25f)>.12f && InitialCredit(key,.25f)<.20f) {
+            break;
+        }
     }
     ASSERT_GT(InitialCredit(key,.25f),.12f);ASSERT_LT(InitialCredit(key,.25f),.20f);scene::AnimationState state;state.name="Hold";state.clipIndex=0;animator->states.push_back(state);
     animator->currentStateName=animator->defaultStateName=animator->poseStateName="Hold";

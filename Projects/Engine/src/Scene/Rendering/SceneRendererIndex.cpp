@@ -51,15 +51,18 @@ struct RendererEntityIndex {
     std::array<uint64_t, 3> m_membershipRevisions{};
     std::array<uint64_t, 3> m_ownerRevisions{};
     bool m_revisionRejected = false;
-    /// @note validate だけで確保し、構造識別値を使わない旧照合の独立状態を保持する。
-    std::unique_ptr<RendererEntityIndex> m_legacyOracle;
+    std::unique_ptr<RendererEntityIndex> m_legacyOracle; ///< validate だけで確保し、構造識別値を使わない旧照合の独立状態を保持する。
 
     void Reset(const Scene& scene)
     {
         m_scene = &scene;
         m_generation = scene.GetRenderSceneGeneration();
-        for (auto& source : m_sources) source.clear();
-        for (auto& ordered : m_ordered) ordered.clear();
+        for (auto& source : m_sources) {
+            source.clear();
+        }
+        for (auto& ordered : m_ordered) {
+            ordered.clear();
+        }
         m_ready.fill(false);
         m_membershipRevisions.fill(0);
         m_ownerRevisions.fill(0);
@@ -74,8 +77,12 @@ RendererEntityIndex& RendererIndexFor(const Scene& scene)
     static thread_local std::array<RendererEntityIndex, 4> indices;
     static thread_local size_t nextIndex = 0;
     for (auto& index : indices) {
-        if (index.m_scene != &scene) continue;
-        if (index.m_generation != scene.GetRenderSceneGeneration()) index.Reset(scene);
+        if (index.m_scene != &scene) {
+            continue;
+        }
+        if (index.m_generation != scene.GetRenderSceneGeneration()) {
+            index.Reset(scene);
+        }
         return index;
     }
     auto& index = indices[nextIndex];
@@ -107,7 +114,9 @@ void Scene::CopyRendererEntities(std::vector<EntityID>& output, RendererEntitySe
     if (useRevision) {
         bool known = m_rendererOwnerRevision != 0;
         for (size_t source = 0; source < used.size(); ++source)
-            if (used[source] && !sources[source].empty() && revisions[source] == 0) known = false;
+            if (used[source] && !sources[source].empty() && revisions[source] == 0) {
+                known = false;
+            }
         if (!known) {
             index.m_revisionRejected = true;
             index.m_ready.fill(false);
@@ -123,8 +132,12 @@ void Scene::CopyRendererEntities(std::vector<EntityID>& output, RendererEntitySe
     const auto copyIndex = [&](RendererEntityIndex& target, bool trustRevision, bool profileRebuild) -> const std::vector<EntityID>& {
         const auto refresh = [&](size_t sourceIndex) {
             if (trustRevision && target.m_membershipRevisions[sourceIndex] == revisions[sourceIndex]
-                && target.m_ownerRevisions[sourceIndex] == m_rendererOwnerRevision) return false;
-            if (trustRevision) refreshed = true;
+                && target.m_ownerRevisions[sourceIndex] == m_rendererOwnerRevision) {
+                return false;
+            }
+            if (trustRevision) {
+                refreshed = true;
+            }
             const auto entities = sources[sourceIndex];
             auto& previous = target.m_sources[sourceIndex];
             bool changed = previous.size() != entities.size();
@@ -139,31 +152,42 @@ void Scene::CopyRendererEntities(std::vector<EntityID>& output, RendererEntitySe
             }
             if (changed) {
                 previous.resize(entities.size());
-                for (size_t position = 0; position < entities.size(); ++position)
+                for (size_t position = 0; position < entities.size(); ++position) {
                     previous[position] = {entities[position], ownerIndex(entities[position])};
+                }
             }
             target.m_membershipRevisions[sourceIndex] = revisions[sourceIndex];
             target.m_ownerRevisions[sourceIndex] = m_rendererOwnerRevision;
             return changed;
         };
 
-        /// @note span は callback を呼ばないこの照合中だけ借り、索引には ID と所有位置だけをコピーする。
-        if (refresh(1)) target.m_ready.fill(false);
+        // span は callback を呼ばないこの照合中だけ借り、索引には ID と所有位置だけをコピーする。
+        if (refresh(1)) {
+            target.m_ready.fill(false);
+        }
         if (used[0] && refresh(0)) {
             target.m_ready[0] = false;
             target.m_ready[2] = false;
         }
-        if (used[2] && refresh(2)) target.m_ready[2] = false;
+        if (used[2] && refresh(2)) {
+            target.m_ready[2] = false;
+        }
 
         auto& ordered = target.m_ordered[setIndex];
         const auto rebuild = [&] {
             ordered.clear();
             const auto append = [&](size_t sourceIndex) {
-                for (const auto& witness : target.m_sources[sourceIndex]) ordered.push_back(witness.m_entity);
+                for (const auto& witness : target.m_sources[sourceIndex]) {
+                    ordered.push_back(witness.m_entity);
+                }
             };
-            if (used[0]) append(0);
+            if (used[0]) {
+                append(0);
+            }
             append(1);
-            if (used[2]) append(2);
+            if (used[2]) {
+                append(2);
+            }
             SortEntitiesBySceneOrder(ordered);
             ordered.erase(std::unique(ordered.begin(), ordered.end()), ordered.end());
             target.m_ready[setIndex] = true;
@@ -172,7 +196,9 @@ void Scene::CopyRendererEntities(std::vector<EntityID>& output, RendererEntitySe
             if (profileRebuild) {
                 FBZZ_PROFILE_SCOPE("Scene::RendererIndexRebuild");
                 rebuild();
-            } else rebuild();
+            } else {
+                rebuild();
+            }
         }
         return ordered;
     };
@@ -184,12 +210,14 @@ void Scene::CopyRendererEntities(std::vector<EntityID>& output, RendererEntitySe
             index.m_legacyOracle->Reset(*this);
         }
         auto& oracle = *index.m_legacyOracle;
-        /// @note oracle は現在値の完全照合後に毎回整列し、候補の ready と構造識別値を信用しない。
+        // oracle は現在値の完全照合後に毎回整列し、候補の ready と構造識別値を信用しない。
         oracle.m_ready[setIndex] = false;
         const auto& expected = copyIndex(oracle, false, false);
         bool matches = ordered == expected;
         for (size_t source = 0; source < used.size(); ++source)
-            if (used[source] && index.m_sources[source] != oracle.m_sources[source]) matches = false;
+            if (used[source] && index.m_sources[source] != oracle.m_sources[source]) {
+                matches = false;
+            }
         if (!matches) {
             index.m_revisionRejected = true;
             index.m_ready.fill(false);

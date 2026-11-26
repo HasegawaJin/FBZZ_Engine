@@ -9,10 +9,12 @@ namespace fbzz::asset {
 std::unique_ptr<ParticleCurveAsset> ParticleCurveImporter::Import(
     const std::string& absPath, renderer::ResourceManager* resources)
 {
-    /// @note 曲線は GPU 資源を持たない
+    // 曲線は GPU 資源を持たない
     (void)resources;
     auto asset = std::make_unique<ParticleCurveAsset>();
-    if (!LoadParticleCurveAssetFile(absPath, *asset)) return nullptr;
+    if (!LoadParticleCurveAssetFile(absPath, *asset)) {
+        return nullptr;
+    }
     return asset;
 }
 

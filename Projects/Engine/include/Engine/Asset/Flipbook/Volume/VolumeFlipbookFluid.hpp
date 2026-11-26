@@ -25,20 +25,15 @@ namespace fbzz::asset {
 
 /// @note 1 コマぶんのボリューム。並びは x が最も速い (x + n·(y + n·z))。VolumeUpload.cs.hlsl と同じ。
 struct PackedFluidVolume {
-    int resolution = 0;
-    /// @note 何コマ目か。-1 = まだ何も入っていない。
-    int frame = -1;
-    /// @note R 密度 / G 温度 / B colorKey / A 液体の割合 (VolumeFill と同じ意味)
-    std::vector<math::Vector4> medium;
-    /// @note xyz 速度 [bake 単位/秒]
-    std::vector<math::Vector4> velocity;
+    int resolution = 0; ///< 詰めた 3D テクスチャ用データの一辺のセル数。
+    int frame = -1; ///< 何コマ目か。-1 = まだ何も入っていない。
+    std::vector<math::Vector4> medium; ///< R 密度 / G 温度 / B colorKey / A 液体の割合 (VolumeFill と同じ意味)
+    std::vector<math::Vector4> velocity; ///< xyz 速度 [bake 単位/秒]
 };
 
 struct FluidVolumeScale {
-    /// @note 媒質 R = 密度 × density
-    float density = 1.0f;
-    /// @note 媒質 G = 温度 × temperature (レイマーチは G を [0,1] の «炎の温度» として読む)
-    float temperature = 1.0f;
+    float density = 1.0f; ///< 媒質 R = 密度 × density
+    float temperature = 1.0f; ///< 媒質 G = 温度 × temperature (レイマーチは G を [0,1] の «炎の温度» として読む)
 };
 
 /// @note 解いた格子を詰める。ソルバーは立方体 (nx = ny = nz) で解いてあること (違えば out は空)。
@@ -81,23 +76,21 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API bool Poll(PackedFluidVolume& out);
 
 private:
-    fluid::FluidRecipe m_recipe;
-    std::unique_ptr<fluid::FluidGasSolver> m_solver;
-    std::unique_ptr<fluid::FluidLiquidSolver> m_liquid;
-    float m_liquidRadiusScale = 2.5f;
-    float m_liquidLifetime = 0.0f;
-    FluidVolumeScale m_scale;
-    int m_resolution = 0;
-    float m_frameDt = 1.0f / 24.0f;
-    int m_substeps = 1;
-    /// @note 焼き始めの前に進めるコマ数 (FluidWarmupFrames)。warmup も普通のコマとして解く。
-    int m_warmupFrames = 0;
+    fluid::FluidRecipe m_recipe; ///< CPU 流体計算とベイク校正に用いるレシピの写し。
+    std::unique_ptr<fluid::FluidGasSolver> m_solver; ///< 気体レシピの格子状態を所有して進める CPU ソルバー。
+    std::unique_ptr<fluid::FluidLiquidSolver> m_liquid; ///< 液体レシピの粒子状態を所有して進める CPU ソルバー。
+    float m_liquidRadiusScale = 2.5f; ///< 液滴を格子へ描き込むときの粒子半径の倍率。
+    float m_liquidLifetime = 0.0f; ///< 液体の格子変換が参照するレシピの粒子寿命 [s]。
+    FluidVolumeScale m_scale; ///< シミュレーション結果を描画チャンネルへ変換する校正値。
+    int m_resolution = 0; ///< 出力ボリューム格子の一辺のセル数。
+    float m_frameDt = 1.0f / 24.0f; ///< 隣接するベイクコマ間のシミュレーション時間 [s]。
+    int m_substeps = 1; ///< 出力コマ間の計算で行う内部積分ステップ数。
+    int m_warmupFrames = 0; ///< 焼き始めの前に進めるコマ数 (FluidWarmupFrames)。warmup も普通のコマとして解く。
     /// @note warmup の後に進めたコマ数 (frame コマ目は frame + 1 回進めた状態)。-1 = まだ Reset していない。
     /// @note 解いている間は別スレッドだけが触る (Request は Busy の間は何もしない)。
-    int m_advancedFrames = -1;
-    /// @note 走っているワーカーと共有する中止の旗。Request ごとに新しく作る。
-    std::shared_ptr<std::atomic<bool>> m_cancel;
-    std::future<PackedFluidVolume> m_job;
+    int m_advancedFrames = -1; ///< 現在のソルバーが計算済みのコマ番号。初期状態では -1。
+    std::shared_ptr<std::atomic<bool>> m_cancel; ///< 走っているワーカーと共有する中止の旗。Request ごとに新しく作る。
+    std::future<PackedFluidVolume> m_job; ///< 要求コマの流体計算とグリッド詰め込みが完了した結果を受け取る future。
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -21,15 +21,13 @@
 namespace fbzz::asset {
 
 struct IblAsset {
-    /// @note descriptor が保持する DDS を自動解放から守る。GPU 実体の所有は ResourceManager に残る。
-    std::array<AssetLease<TextureAsset>, 4> textureLeases;
-    renderer::ResourceHandle<renderer::TextureTag> environmentCubemap; ///< @note 参照用 (skybox 兼用)
-    renderer::ResourceHandle<renderer::TextureTag> irradianceCubemap;  ///< @note t16
-    renderer::ResourceHandle<renderer::TextureTag> prefilteredCubemap; ///< @note t17
-    renderer::ResourceHandle<renderer::TextureTag> brdfLut;            ///< @note t18
+    std::array<AssetLease<TextureAsset>, 4> textureLeases; ///< descriptor が保持する DDS を自動解放から守る。GPU 実体の所有は ResourceManager に残る。
+    renderer::ResourceHandle<renderer::TextureTag> environmentCubemap; ///< 参照用 (skybox 兼用)
+    renderer::ResourceHandle<renderer::TextureTag> irradianceCubemap; ///< 拡散間接照明用の照度キューブの資源ハンドル。シェーダーの t16。
+    renderer::ResourceHandle<renderer::TextureTag> prefilteredCubemap; ///< 粗さ別の鏡面反射に使う事前フィルター済み環境キューブ。シェーダーの t17。
+    renderer::ResourceHandle<renderer::TextureTag> brdfLut; ///< 鏡面 IBL の BRDF 積分結果を照会するテクスチャ。シェーダーの t18。
 
-    /// @note PBR シェーダーで prefilterMap.SampleLevel(samp, R, mip) に渡す最大 mip レベル
-    uint32_t prefilteredMipCount = 5;
+    uint32_t prefilteredMipCount = 5; ///< PBR シェーダーで prefilterMap.SampleLevel(samp, R, mip) に渡す最大 mip レベル
 
     bool IsValid() const {
         return environmentCubemap.IsValid()
@@ -39,4 +37,4 @@ struct IblAsset {
     }
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

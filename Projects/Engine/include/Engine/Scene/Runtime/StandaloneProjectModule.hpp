@@ -23,7 +23,7 @@ namespace fbzz::scene {
 class StandaloneProjectModule final : public core::IModule {
 public:
     /// @brief プロジェクトの Assets ルートと開始シーンを使って Standalone 実行を構成する。
-    /// @param settings 非 const。`graphics` プロキシ (Option 画面) が実行中に `settings.render` を書き換えるため可変で握る。配布ゲームは ProjectSettings をファイルへ書き戻さないので、書き換えはプロセスが生きている間だけ効く。
+    /// @param[in,out] settings 非 const。`graphics` プロキシ (Option 画面) が実行中に `settings.render` を書き換えるため可変で握る。配布ゲームは ProjectSettings をファイルへ書き戻さないので、書き換えはプロセスが生きている間だけ効く。
     FBZZ_ENGINE_API StandaloneProjectModule(renderer::IRenderer& renderer,
                             renderer::ResourceManager& resources,
                             std::filesystem::path projectRoot,

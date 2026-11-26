@@ -31,53 +31,46 @@ enum class UICanvasDepthMode {
 };
 
 struct UICanvas {
-    float        canvasWidth  = 1920.0f;
-    float        canvasHeight = 1080.0f;
-    int          sortOrder    = 0;
-    UIRenderMode renderMode   = UIRenderMode::ScreenSpaceOverlay;
-    UICanvasScaleMode scaleMode = UICanvasScaleMode::ConstantPixelSize;
-    float        referenceWidth = 1920.0f;
-    float        referenceHeight = 1080.0f;
-    /// @note ScaleWithScreenSize 時の幅/高さの重み。0=幅基準、1=高さ基準、0.5=両方の幾何平均
-    float        matchWidthOrHeight = 0.0f;
-    /// @note WorldSpace / ScreenSpaceCamera 時の 1 キャンバスピクセルあたりのワールド単位
-    float        worldScale    = 0.01f;
-    /// @note ScreenSpaceCamera 専用: カメラ前方に Canvas を配置する距離 (ワールド単位)
-    float        planeDistance = 2.0f;
+    float        canvasWidth  = 1920.0f; ///< UI 配置に使うキャンバス座標系の幅。
+    float        canvasHeight = 1080.0f; ///< UI 配置に使うキャンバス座標系の高さ。
+    int          sortOrder    = 0; ///< 複数のキャンバスの描画順を決める優先順位。
+    UIRenderMode renderMode   = UIRenderMode::ScreenSpaceOverlay; ///< 画面またはワールドのどの空間で描画するか。
+    UICanvasScaleMode scaleMode = UICanvasScaleMode::ConstantPixelSize; ///< 出力の解像度に応じたキャンバスの拡縮方式。
+    float        referenceWidth = 1920.0f; ///< 画面サイズに応じて拡縮する場合の基準幅 [ピクセル]。
+    float        referenceHeight = 1080.0f; ///< 画面サイズに応じて拡縮する場合の基準高さ [ピクセル]。
+    float        matchWidthOrHeight = 0.0f; ///< ScaleWithScreenSize 時の幅/高さの重み。0=幅基準、1=高さ基準、0.5=両方の幾何平均
+    float        worldScale    = 0.01f; ///< WorldSpace / ScreenSpaceCamera 時の 1 キャンバスピクセルあたりのワールド単位
+    float        planeDistance = 2.0f; ///< ScreenSpaceCamera 専用: カメラ前方に Canvas を配置する距離 (ワールド単位)
     /// @note WorldSpace 専用: true のとき Canvas を常にカメラへ正対させる (ビルボード)。
     /// @note 敵の頭上に出す体力ゲージなど、3D 空間に置きつつ常に読めるようにする UI に使う。
-    bool         faceCamera   = false;
-    UICanvasDepthMode depthMode = UICanvasDepthMode::SCENE_DEPTH;
-    /// @note WorldSpace / ScreenSpaceCamera の平面をローカル -Z (表示面の手前) へずらす距離 [m]。
-    float        surfaceOffset = 0.0f;
-    bool         enabled      = true;
+    bool         faceCamera   = false; ///< ワールド空間のキャンバスをカメラへ向けるかどうか。
+    UICanvasDepthMode depthMode = UICanvasDepthMode::SCENE_DEPTH; ///< ワールド UI をシーンの深度に対して描画する方式。
+    float        surfaceOffset = 0.0f; ///< WorldSpace / ScreenSpaceCamera の平面をローカル -Z (表示面の手前) へずらす距離 [m]。
+    bool         enabled      = true; ///< このキャンバスを描画と入力の処理対象にするかどうか。
 
     /// @note 表示を保証したい領域から外す余白 (左, 上, 右, 下 / Canvas ピクセル)。
     /// @note canvasWidth 自体を縮めないのは、アンカー 0..1 の意味が動き「別のレイアウト」に
     /// @note なるため。Canvas の広さはそのままに、子から見た親の矩形だけを内側へ寄せる。
     /// @note OS から自動取得しないのは、実測できるのはウィンドウ寸法までで、オーバースキャンや
     /// @note ウルトラワイドで避けたい量は確認できない環境の値を信じることになるため。
-    math::Vector4 safeArea = { 0.0f, 0.0f, 0.0f, 0.0f };
+    math::Vector4 safeArea = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< 画面端の安全領域をキャンバスの配置に反映する余白。
 
     /// @note キーボード / ゲームパッドの方向入力でフォーカスを移動させる。
     /// @note 立てた Canvas でだけ働く (UIControls.hpp の UINavigation を参照)。
-    bool         navigationEnabled = false;
-    /// @note 倒しっぱなしのときの初回待ちと以降の間隔 (秒)。滑って飛ばないようにする。
-    float        navigationRepeatDelay    = 0.4f;
-    float        navigationRepeatInterval = 0.12f;
+    bool         navigationEnabled = false; ///< このキャンバスでフォーカスの方向移動を扱うかどうか。
+    float        navigationRepeatDelay    = 0.4f; ///< 倒しっぱなしのときの初回待ちと以降の間隔 (秒)。滑って飛ばないようにする。
+    float        navigationRepeatInterval = 0.12f; ///< 方向入力を押し続けたときにフォーカスを再移動する間隔 [秒]。
 
-    /// @note ランタイム専用: いまフォーカスが乗っている要素。シーンへは保存しない。
-    EntityRef    focusedObject{};
+    EntityRef    focusedObject{}; ///< ランタイム専用: いまフォーカスが乗っている要素。シーンへは保存しない。
 
     /// @note 直近のフレームで UISystem が解決したマウス位置 (Canvas 空間、左上原点)。
     /// @note コンポーネントに置くのは、スクリーン → Canvas の変換が renderMode / Canvas Scaler /
     /// @note viewport 寸法で決まり、UISystem だけが全部を知るため (スクリプトが式を書き直すと
     /// @note viewport ≠ ウィンドウの場面で静かにずれる)。
     /// @note 実行時の値でシーンへは保存しない (Reflect に出さない)。UISystem が回る前は 0。
-    math::Vector2 resolvedMousePosition = {};
+    math::Vector2 resolvedMousePosition = {}; ///< 入力処理で設定したキャンバス座標系のポインター位置。
 
-    /// @note 未割り当てや解決不能の場合は従来の外観を維持する。GUID またはパスで画面間の参照を共有する。
-    DataAssetRef theme = { {}, "UIThemeAsset" };
+    DataAssetRef theme = { {}, "UIThemeAsset" }; ///< 未割り当てや解決不能の場合は従来の外観を維持する。GUID またはパスで画面間の参照を共有する。
 
     const char* GetTypeName() const { return "UICanvas"; }
     void Reflect(IReflector& r)

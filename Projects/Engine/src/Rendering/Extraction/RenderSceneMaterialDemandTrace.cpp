@@ -32,9 +32,12 @@ struct MaterialDemandTraceConfig {
     uint64_t requestedSamples = 240;
     MaterialDemandTraceConfig()
     {
-        if (const char* value = std::getenv("FBZZ_MATERIAL_DEMAND_TRACE_OUTPUT")) path = value;
-        if (const char* value = std::getenv("FBZZ_MATERIAL_DEMAND_TRACE_WARMUP"))
+        if (const char* value = std::getenv("FBZZ_MATERIAL_DEMAND_TRACE_OUTPUT")) {
+            path = value;
+        }
+        if (const char* value = std::getenv("FBZZ_MATERIAL_DEMAND_TRACE_WARMUP")) {
             warmup = static_cast<uint32_t>((std::min)(std::strtoul(value, nullptr, 10), 100000ul));
+        }
         if (const char* value = std::getenv("FBZZ_MATERIAL_DEMAND_TRACE_SAMPLES")) {
             const auto requested = std::strtoul(value, nullptr, 10);
             requestedSamples = requested > 0 ? requested : 240;
@@ -65,11 +68,13 @@ struct MaterialDemandCaptureData {
     bool sealed = false, writeStarted = false;
     ~MaterialDemandCaptureData()
     {
-        /// @note 未完了の計測を終了時に出力するのは、行を書き込む抽出スコープが存在しない場合に限る。
+        // 未完了の計測を終了時に出力するのは、行を書き込む抽出スコープが存在しない場合に限る。
         bool exportReady = false;
         {
             std::lock_guard lock(mutex);
-            if (writeStarted) return;
+            if (writeStarted) {
+                return;
+            }
             sealed = true;
             writeStarted = true;
             exportReady = activeScopes == 0;
@@ -100,9 +105,15 @@ void WriteMaterialDemandCapture(const MaterialDemandCaptureData& capture)
     uint32_t incomplete = 0, unknownOrdinals = 0, changedIdentities = 0;
     for (uint32_t index = 0; index < capture.reserved; ++index) {
         const auto& row = capture.rows[index];
-        if (row.complete == 0) ++incomplete;
-        if (row.ordinalKnown == 0) ++unknownOrdinals;
-        if (row.identityChangedDuringInvocation != 0) ++changedIdentities;
+        if (row.complete == 0) {
+            ++incomplete;
+        }
+        if (row.ordinalKnown == 0) {
+            ++unknownOrdinals;
+        }
+        if (row.identityChangedDuringInvocation != 0) {
+            ++changedIdentities;
+        }
         first = true;
 #define FBZZ_MATERIAL_DEMAND_VALUE(name) if (!first) csv << ','; first = false; csv << row.name;
         FBZZ_MATERIAL_DEMAND_COLUMNS(FBZZ_MATERIAL_DEMAND_VALUE)
@@ -132,8 +143,9 @@ void WriteMaterialDemandCapture(const MaterialDemandCaptureData& capture)
         << ",\n  \"activeScopesAtExport\":0,\n  \"sealed\":true\n}\n";
     status.flush();
     status.close();
-    if (!csvWritten || !status.good())
+    if (!csvWritten || !status.good()) {
         std::fprintf(stderr, "MaterialDemandTrace: CSV/status write failed for configured output.\n");
+    }
 }
 
 thread_local uint64_t s_materialDemandDepth = 0;
@@ -143,26 +155,35 @@ thread_local uint64_t s_materialDemandDepth = 0;
 MaterialDemandTraceScope::MaterialDemandTraceScope(const RenderPassContext& context)
 {
     const auto& config = MaterialDemandConfig();
-    if (config.path.empty()) return;
+    if (config.path.empty()) {
+        return;
+    }
     auto& capture = MaterialDemandCapture();
     const auto owner = context.resources.GetInstanceId();
     const auto epoch = context.resources.GetResetVersion();
     const auto frame = context.frameStamp;
     {
         std::lock_guard lock(capture.mutex);
-        if (capture.writeStarted) return;
+        if (capture.writeStarted) {
+            return;
+        }
         ++capture.activeScopes;
         m_tracked = true;
         ++s_materialDemandDepth;
         uint64_t passOrdinal = 0;
         for (auto& ordinal : capture.ordinals) {
-            if (ordinal.owner != 0 && ordinal.owner != owner) continue;
-            if (ordinal.owner == 0 || ordinal.epoch != epoch || ordinal.frame != frame)
+            if (ordinal.owner != 0 && ordinal.owner != owner) {
+                continue;
+            }
+            if (ordinal.owner == 0 || ordinal.epoch != epoch || ordinal.frame != frame) {
                 ordinal = {owner, epoch, frame, 0};
+            }
             passOrdinal = ++ordinal.value;
             break;
         }
-        if (capture.warmed < config.warmup) ++capture.warmed;
+        if (capture.warmed < config.warmup) {
+            ++capture.warmed;
+        }
         else if (!capture.sealed) {
             m_index = capture.reserved++;
             m_row.emplace();
@@ -174,10 +195,14 @@ MaterialDemandTraceScope::MaterialDemandTraceScope(const RenderPassContext& cont
             row.reentryDepth = s_materialDemandDepth - 1;
             row.passOrdinalWithinResourceFrame = passOrdinal;
             row.ordinalKnown = passOrdinal != 0;
-            if (capture.reserved == config.samples) capture.sealed = true;
+            if (capture.reserved == config.samples) {
+                capture.sealed = true;
+            }
         }
     }
-    if (!m_row) return;
+    if (!m_row) {
+        return;
+    }
     auto& row = *m_row;
     row.sceneObjects = context.scene.GameObjectCount();
     row.sceneMeshRenderers = context.scene.GetEntities<MeshRenderer>().size();
@@ -189,19 +214,25 @@ MaterialDemandTraceScope::MaterialDemandTraceScope(const RenderPassContext& cont
     if (hasProbes) {
         for (auto& object : context.scene.GameObjects()) {
             ++row.probeCensusObjects;
-            if (!object.activeInHierarchy()) continue;
+            if (!object.activeInHierarchy()) {
+                continue;
+            }
             if (const auto* probe = object.GetComponent<ReflectionProbeComponent>(); probe && probe->enabled
-                && probe->captureMode == ReflectionProbeCaptureMode::DynamicScene)
+                && probe->captureMode == ReflectionProbeCaptureMode::DynamicScene) {
                 ++row.activeReflectionProbes;
-            if (const auto* volume = object.GetComponent<LightProbeVolumeComponent>(); volume && volume->enabled)
+            }
+            if (const auto* volume = object.GetComponent<LightProbeVolumeComponent>(); volume && volume->enabled) {
                 ++row.activeLightProbeVolumes;
+            }
         }
     }
 }
 
 MaterialDemandTraceScope::~MaterialDemandTraceScope()
 {
-    if (!m_tracked) return;
+    if (!m_tracked) {
+        return;
+    }
     auto& capture = MaterialDemandCapture();
     bool exportCapture = false;
     {
@@ -217,12 +248,16 @@ MaterialDemandTraceScope::~MaterialDemandTraceScope()
         }
     }
     --s_materialDemandDepth;
-    if (exportCapture) WriteMaterialDemandCapture(capture);
+    if (exportCapture) {
+        WriteMaterialDemandCapture(capture);
+    }
 }
 
 void MaterialDemandTraceScope::Complete(const RenderPassContext& context)
 {
-    if (!m_row) return;
+    if (!m_row) {
+        return;
+    }
     m_row->identityChangedDuringInvocation = m_row->resourceEpoch != context.resources.GetResetVersion()
         || m_row->sceneGeneration != context.scene.GetRenderSceneGeneration() || m_row->resourceFrame != context.resources.FrameStamp();
     m_row->complete = 1;
@@ -231,9 +266,15 @@ void MaterialDemandTraceScope::Complete(const RenderPassContext& context)
 void MaterialDemandTraceScope::CountPotential(const material_demand_detail::View& view, const renderer::RenderMeshItem& item,
     const material_demand_detail::Result& result)
 {
-    if (m_row->syncEligibleItems == 1) m_row->consumerScopeCertified = view.consumerScopeCertified;
-    else m_row->consumerScopeCertified = m_row->consumerScopeCertified != 0 && view.consumerScopeCertified;
-    if (result.KnownConsumerPotential()) m_row->knownPotentialDeclaredVertices += item.vertexCount;
+    if (m_row->syncEligibleItems == 1) {
+        m_row->consumerScopeCertified = view.consumerScopeCertified;
+    }
+    else {
+        m_row->consumerScopeCertified = m_row->consumerScopeCertified != 0 && view.consumerScopeCertified;
+    }
+    if (result.KnownConsumerPotential()) {
+        m_row->knownPotentialDeclaredVertices += item.vertexCount;
+    }
     material_demand_detail::CountPotential(*m_row, result);
 }
 

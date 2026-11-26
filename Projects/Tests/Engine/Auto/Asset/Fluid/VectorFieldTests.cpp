@@ -89,7 +89,7 @@ TEST_F(VectorFieldTest, PngRoundTripPreservesSignedVelocityBoundsAndGuid)
     std::string meta;
     ASSERT_TRUE(util::FileSystem::ReadText(path + ".meta", meta));
     EXPECT_NE(meta.find("preserved-field-guid"), std::string::npos);
-    /// @note 通常のテクスチャ設定を保存しても格子情報を失わない。
+    // 通常のテクスチャ設定を保存しても格子情報を失わない。
     asset::TextureAsset texture;
     asset::TexDescSerializer serializer;
     ASSERT_TRUE(serializer.Load(path + ".meta", texture));
@@ -133,8 +133,8 @@ TEST_F(VectorFieldTest, PngImporterDoesNotRenormalizeZeroFieldQuantization)
 /// @brief Checks normalize resamples to the atlas tile resolution.
 TEST_F(VectorFieldTest, NormalizeResamplesToTheAtlasTileResolution)
 {
-    /// @note 焼いた解像度がいくつでも、取り込み後は必ずタイル寸法に揃う。
-    ///       ここがずれると GPU アトラスの添字計算が全部ずれる。
+    // 焼いた解像度がいくつでも、取り込み後は必ずタイル寸法に揃う。
+    // ここがずれると GPU アトラスの添字計算が全部ずれる。
     fluid::VectorFieldAsset field;
     fluid::BakeVectorField(fluid::VectorFieldRecipe::Vortex, /*resolution=*/8,
                            { 4.0f, 4.0f, 4.0f }, /*seed=*/1, /*strength=*/2.0f, field);
@@ -153,7 +153,7 @@ TEST_F(VectorFieldTest, NormalizeResamplesToTheAtlasTileResolution)
 /// @brief Normalize is idempotent.
 TEST_F(VectorFieldTest, NormalizeIsIdempotent)
 {
-    /// @note 2 回通しても値が動かないこと。動くと、再ベイクのたびに補間が重なって場が鈍る。
+    // 2 回通しても値が動かないこと。動くと、再ベイクのたびに補間が重なって場が鈍る。
     fluid::VectorFieldAsset field;
     fluid::BakeVectorField(fluid::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
                            7, 1.0f, field);
@@ -172,14 +172,14 @@ TEST_F(VectorFieldTest, NormalizeIsIdempotent)
 /// @brief CPU data matches what the GPU decodes.
 TEST_F(VectorFieldTest, CpuDataMatchesWhatTheGpuDecodes)
 {
-    /// @note CPU が保持する値は «GPU が RGBA8 から復元する値» と一致していなければならない。
-    ///       一致していないと、同じ場なのに CPU 経路と GPU 経路で粒子の軌跡が分かれる。
+    // CPU が保持する値は «GPU が RGBA8 から復元する値» と一致していなければならない。
+    // 一致していないと、同じ場なのに CPU 経路と GPU 経路で粒子の軌跡が分かれる。
     fluid::VectorFieldAsset field;
     fluid::BakeVectorField(fluid::VectorFieldRecipe::Tornado, 32, { 3.0f, 9.0f, 3.0f },
                            3, 1.5f, field);
     fluid::NormalizeVectorField(field);
 
-    /// @note 素数間隔で疎にサンプル
+    // 素数間隔で疎にサンプル
     for (size_t i = 0; i < field.data.size(); i += 977) {
         const math::Vector3 decoded =
             fluid::QuantizeVectorFieldValue(field.data[i], field.maxMagnitude);
@@ -190,8 +190,8 @@ TEST_F(VectorFieldTest, CpuDataMatchesWhatTheGpuDecodes)
 /// @brief Sampling outside the bounds returns zero.
 TEST_F(VectorFieldTest, SamplingOutsideTheBoundsReturnsZero)
 {
-    /// @note 場の外へ出た粒子が縁の値を引きずり続けないこと。
-    ///       HLSL 側も uvw の範囲外で continue する。挙動を揃えておく。
+    // 場の外へ出た粒子が縁の値を引きずり続けないこと。
+    // HLSL 側も uvw の範囲外で continue する。挙動を揃えておく。
     fluid::VectorFieldAsset field;
     fluid::BakeVectorField(fluid::VectorFieldRecipe::Sphere, 16, { 2.0f, 2.0f, 2.0f },
                            1, 1.0f, field);
@@ -205,9 +205,9 @@ TEST_F(VectorFieldTest, SamplingOutsideTheBoundsReturnsZero)
 /// @brief The tile resolution fits the atlas depth limit.
 TEST_F(VectorFieldTest, TheTileResolutionFitsTheAtlasDepthLimit)
 {
-    /// @note アトラスは 1 枚の Texture3D に Z 方向でタイルを積む。D3D11 の 3D テクスチャは
-    ///       1 辺 2048 まで。ここを超える設定にすると、常駐は成功したように見えて
-    ///       テクスチャ生成だけが黙って失敗する。
+    // アトラスは 1 枚の Texture3D に Z 方向でタイルを積む。D3D11 の 3D テクスチャは
+    // 1 辺 2048 まで。ここを超える設定にすると、常駐は成功したように見えて
+    // テクスチャ生成だけが黙って失敗する。
     EXPECT_LE(asset::VelocityFieldAtlas::AtlasDepth(), 2048u);
     EXPECT_EQ(asset::VelocityFieldAtlas::kTileResolution, fluid::kVelocityFieldTileResolution);
 }

@@ -10,7 +10,7 @@
 namespace fbzz::scene {
 
 struct PrefabRef {
-    std::string path;
+    std::string path; ///< プレファブを読み込むためのアセットパス。
     bool operator==(const PrefabRef&) const = default;
 };
 

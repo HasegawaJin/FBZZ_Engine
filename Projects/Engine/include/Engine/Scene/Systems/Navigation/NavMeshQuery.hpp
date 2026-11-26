@@ -36,4 +36,4 @@ FBZZ_ENGINE_API std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMes
 /// @note 最近傍ポリゴンが見つからない場合は -1e7f を返す (呼び出し側が「面の外」と判定できる番兵)。
 FBZZ_ENGINE_API float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

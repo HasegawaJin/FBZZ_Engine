@@ -29,12 +29,14 @@ namespace {
 /// @brief 1 台も接続されていない場合は 0 を返す (未接続スロットへの問い合わせは false / 0)。
 int ResolveScriptPad(int pad)
 {
-    if (pad >= 0) return pad;
+    if (pad >= 0) {
+        return pad;
+    }
     const int first = input::Gamepad::GetFirstConnectedPad();
     return first >= 0 ? first : 0;
 }
 
-} /// @note namespace
+} // namespace
 bool ScriptInputProxy::GetKey(input::KeyCode key) const { return input::Input::GameKeyHeld(key); }
 
 bool ScriptInputProxy::GetKeyDown(input::KeyCode key) const { return input::Input::GameKeyDown(key); }
@@ -113,7 +115,9 @@ float ScriptInputProxy::GetPadAxis(input::GamepadAxis axis, int pad) const
 
 bool ScriptInputProxy::IsPadConnected(int pad) const
 {
-    if (pad >= 0) return input::Gamepad::IsConnected(pad);
+    if (pad >= 0) {
+        return input::Gamepad::IsConnected(pad);
+    }
     return input::Gamepad::GetFirstConnectedPad() >= 0;
 }
 
@@ -121,7 +125,9 @@ bool ScriptInputProxy::IsPadConnected(int pad) const
 void ScriptInputProxy::SetVibration(float lowFrequency, float highFrequency,
                                     float durationSeconds, int pad) const
 {
-    if (!core::Cursor::CanReadGameInput()) return;
+    if (!core::Cursor::CanReadGameInput()) {
+        return;
+    }
     input::Gamepad::SetVibration(lowFrequency, highFrequency, durationSeconds,
                                  ResolveScriptPad(pad));
 }
@@ -144,7 +150,9 @@ int ScriptInputProxy::GetActionBindingCount(std::string_view action) const
 ScriptInputBinding ScriptInputProxy::GetActionBinding(std::string_view action, int index) const
 {
     const auto* found = input::InputActionMap::FindAction(action);
-    if (!found || index < 0 || index >= static_cast<int>(found->bindings.size())) return {};
+    if (!found || index < 0 || index >= static_cast<int>(found->bindings.size())) {
+        return {};
+    }
 
     const input::InputBinding& binding = found->bindings[static_cast<size_t>(index)];
     return { static_cast<int>(binding.source), binding.code };
@@ -155,10 +163,12 @@ bool ScriptInputProxy::SetActionBinding(std::string_view action, int index,
                                         ScriptInputBinding binding) const
 {
     auto* found = input::InputActionMap::FindAction(action);
-    if (!found || !binding.IsValid()) return false;
+    if (!found || !binding.IsValid()) {
+        return false;
+    }
 
-    /// @note scale / padIndex / buttonThreshold は既存のバインドのものを引き継ぐ。閾値 0.5 のボタン扱い等の
-    /// @note 設定は割り当てを差し替えても効いてほしく、値まで初期化するとリバインドした軸だけ既定へ戻る。
+    // scale / padIndex / buttonThreshold は既存のバインドのものを引き継ぐ。閾値 0.5 のボタン扱い等の
+    // 設定は割り当てを差し替えても効いてほしく、値まで初期化するとリバインドした軸だけ既定へ戻る。
     if (index >= 0 && index < static_cast<int>(found->bindings.size())) {
         input::InputBinding& slot = found->bindings[static_cast<size_t>(index)];
         slot.source = static_cast<input::BindingSource>(binding.source);
@@ -177,7 +187,9 @@ bool ScriptInputProxy::SetActionBinding(std::string_view action, int index,
 std::string ScriptInputProxy::DescribeActionBinding(std::string_view action, int index) const
 {
     const auto* found = input::InputActionMap::FindAction(action);
-    if (!found || index < 0 || index >= static_cast<int>(found->bindings.size())) return {};
+    if (!found || index < 0 || index >= static_cast<int>(found->bindings.size())) {
+        return {};
+    }
     return input::InputActionMap::DescribeBinding(found->bindings[static_cast<size_t>(index)]);
 }
 
@@ -206,4 +218,4 @@ void ScriptInputProxy::CancelRebind() const
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

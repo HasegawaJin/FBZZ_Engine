@@ -36,8 +36,9 @@ std::filesystem::path FindDefaultProjectPath()
 {
     std::filesystem::path dir = FileSystem::GetExecutableDirectory();
     for (int i = 0; i < 6 && !dir.empty(); ++i) {
-        if (FileSystem::Exists(dir / L".fbzz_proj"))
+        if (FileSystem::Exists(dir / L".fbzz_proj")) {
             return dir;
+        }
         dir = dir.parent_path();
     }
     return {};
@@ -53,10 +54,11 @@ std::filesystem::path ParseProjectPath()
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (argv) {
-        /// @note Editor は --standalone も渡してくるが、この exe は常に Standalone なので読み捨てる。
+        // Editor は --standalone も渡してくるが、この exe は常に Standalone なので読み捨てる。
         for (int i = 1; i < argc; ++i) {
-            if (std::wstring(argv[i]) == L"--project" && i + 1 < argc)
+            if (std::wstring(argv[i]) == L"--project" && i + 1 < argc) {
                 projectPath = argv[++i];
+            }
         }
         LocalFree(argv);
     }
@@ -75,7 +77,9 @@ struct FileLogSink final : fbzz::core::ILogSink {
 
     void OnLog(const fbzz::core::LogEntry& entry) override
     {
-        if (!file.is_open()) return;
+        if (!file.is_open()) {
+            return;
+        }
         const char* prefix = "";
         switch (entry.level) {
         case fbzz::core::LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
@@ -91,7 +95,9 @@ struct FileLogSink final : fbzz::core::ILogSink {
 void OpenGameLog(FileLogSink& sink, const char* applicationName)
 {
     sink.file = FileSystem::OpenBinaryWriter(FileSystem::GetExecutableDirectory() / L"game.log");
-    if (!sink.file.is_open()) return;
+    if (!sink.file.is_open()) {
+        return;
+    }
 
     const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     char timeBuf[64] = {};
@@ -110,8 +116,10 @@ void OpenGameLog(FileLogSink& sink, const char* applicationName)
         return 1;
     }
 
-    /// @note ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する (--renderer= があれば Application::Init 内でそちらが優先)。
-    if (!app.Init(fbzz::scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
+    // ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する (--renderer= があれば Application::Init 内でそちらが優先)。
+    if (!app.Init(fbzz::scene::MakeWindowConfig(settings), settings.app.rendererBackend)) {
+        return 1;
+    }
 
     auto& renderer = app.GetRenderer();
     fbzz::renderer::ResourceManager resources(renderer);
@@ -124,11 +132,13 @@ void OpenGameLog(FileLogSink& sink, const char* applicationName)
     return 0;
 }
 
-} /// @note namespace
+} // namespace
 
 int RunStandaloneApplication(const char* applicationName)
 {
-    if (!applicationName) return 1;
+    if (!applicationName) {
+        return 1;
+    }
     const std::filesystem::path projectPath = ParseProjectPath();
     if (projectPath.empty()) {
         MessageBoxW(nullptr,
@@ -144,9 +154,9 @@ int RunStandaloneApplication(const char* applicationName)
     }
     const fbzz::LaunchProject& project = resolver.Get();
 
-    /// @note 配布物は exe 隣に Assets があるため exeDir を CWD にする。Editor の Tools > Standalone から
-    /// @note Binaries/Development の exe を起動する場合は Assets が project.root にあるため、相対 shader path が
-    /// @note 解決できるよう CWD を切り替える。
+    // 配布物は exe 隣に Assets があるため exeDir を CWD にする。Editor の Tools > Standalone から
+    // Binaries/Development の exe を起動する場合は Assets が project.root にあるため、相対 shader path が
+    // 解決できるよう CWD を切り替える。
     const std::filesystem::path executableDirectory = FileSystem::GetExecutableDirectory();
     const std::filesystem::path workingDirectory = FileSystem::Exists(executableDirectory / L".fbzz_proj")
         ? executableDirectory
@@ -156,7 +166,7 @@ int RunStandaloneApplication(const char* applicationName)
     FileLogSink logSink;
     OpenGameLog(logSink, applicationName);
 
-    /// @note 終了処理で落ちても残すため Uninstall しない。配布物では exe の隣の Saved/Crashes に残る。
+    // 終了処理で落ちても残すため Uninstall しない。配布物では exe の隣の Saved/Crashes に残る。
     fbzz::core::CrashHandler::Install(workingDirectory, applicationName);
     fbzz::core::CrashHandler::NotifyUnreported(workingDirectory, applicationName, true);
     fbzz::core::DeveloperMode::InitFromCommandLine();
@@ -170,4 +180,4 @@ int RunStandaloneApplication(const char* applicationName)
     return result;
 }
 
-} /// @note namespace fbzz
+} // namespace fbzz

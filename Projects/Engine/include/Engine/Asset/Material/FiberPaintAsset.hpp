@@ -9,9 +9,8 @@
 
 namespace fbzz::asset {
 struct FiberPaintAsset {
-    renderer::FiberPaintData data;
-    /// @note 読込・編集・Undo ごとに更新するランタイム世代。ファイルへ保存しない。
-    uint64_t revision = 0;
+    renderer::FiberPaintData data; ///< ファイバーの配置や外観を頂点上の筆跡から決めるペイントデータ。
+    uint64_t revision = 0; ///< 読込・編集・Undo ごとに更新するランタイム世代。ファイルへ保存しない。
 };
 FBZZ_ENGINE_API void TouchFiberPaintAsset(FiberPaintAsset& asset);
 /// @return 不正形式・上限超過・I/O 失敗時は false。out は未変更。
@@ -23,7 +22,9 @@ public:
     std::unique_ptr<FiberPaintAsset> Import(const std::string& path, renderer::ResourceManager*) override
     {
         auto result = std::make_unique<FiberPaintAsset>();
-        if (!LoadFiberPaintAssetFromFile(path,*result)) return nullptr;
+        if (!LoadFiberPaintAssetFromFile(path,*result)) {
+            return nullptr;
+        }
         return result;
     }
     std::span<const std::string_view> SupportedExtensions() const override
@@ -32,4 +33,4 @@ public:
         return extensions;
     }
 };
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -28,15 +28,19 @@ constexpr float kPi = 3.14159265358979323846f;
 void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*callback)(), ScriptCallbackKind kind)
 {
     auto* scriptComp = scene.GetComponent<ScriptComponent>(eid);
-    if (!scriptComp) return;
+    if (!scriptComp) {
+        return;
+    }
     for (auto& entry : scriptComp->scripts) {
-        if (!entry.script || !entry.script->enabled) continue;
+        if (!entry.script || !entry.script->enabled) {
+            continue;
+        }
         entry.script->SetContext(&scene, &go);
         entry.script->ExecuteProfiledCallback(callback, kind, "NavMesh sensor callback");
     }
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess NavMeshSensorSystem::GetAccess() const
 {
@@ -50,28 +54,30 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
     Scene& scene = ctx.scene;
     const physics::World* world = &ctx.world;
     const float dt = ctx.dt;
-    /// @note 検知 callback の Prefab 生成で同型 Component が増えても、開始時の対象を一度ずつ処理する。
+    // 検知 callback の Prefab 生成で同型 Component が増えても、開始時の対象を一度ずつ処理する。
     const auto sensorSpan = scene.GetEntities<NavMeshSensorComponent>();
     const std::vector<EntityID> sensorEntities(sensorSpan.begin(), sensorSpan.end());
     for (EntityID eid : sensorEntities) {
         auto* sensor = scene.GetComponent<NavMeshSensorComponent>(eid);
         auto* go     = scene.GetGameObject(eid);
-        if (!sensor || !go || !go->activeInHierarchy() || !sensor->enabled) continue;
+        if (!sensor || !go || !go->activeInHierarchy() || !sensor->enabled) {
+            continue;
+        }
 
-        /// @name Behavior Tree との共存
-        /// @note BT がある GO では autoChase を無視し、判断は BT に一本化する (両方が agent を
-        /// @note 掴むと追跡先が振動する)。検知情報 (targetVisible 等) は BT の有無に関わらず更新する。
+        // Behavior Tree との共存
+        // BT がある GO では autoChase を無視し、判断は BT に一本化する (両方が agent を
+        // 掴むと追跡先が振動する)。検知情報 (targetVisible 等) は BT の有無に関わらず更新する。
         const auto* behaviorTree = scene.GetComponent<BehaviorTreeComponent>(eid);
         const bool btOwnsAgent = behaviorTree != nullptr
                               && behaviorTree->enabled
                               && behaviorTree->runtime != nullptr;
         const bool autoChase = sensor->autoChase && !btOwnsAgent;
 
-        /// @name scanInterval: 指定秒数ごとにのみ検知チェックを実行する
+        // scanInterval: 指定秒数ごとにのみ検知チェックを実行する
         if (sensor->scanInterval > 0.0f) {
             sensor->scanTimer -= dt;
             if (sensor->scanTimer > 0.0f) {
-                /// @note スキャンスキップ中も memoryTimer は減算し続ける
+                // スキャンスキップ中も memoryTimer は減算し続ける
                 if (sensor->targetVisible && sensor->memoryTime > 0.0f) {
                     sensor->memoryTimer -= dt;
                     if (sensor->memoryTimer <= 0.0f) {
@@ -80,8 +86,9 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
                         sensor->memoryTimer    = 0.0f;
                         NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost, ScriptCallbackKind::NAV_TARGET_LOST);
                         if (autoChase) {
-                            if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
+                            if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid)) {
                                 agent->SetDestination(sensor->lastKnownTargetPos);
+                            }
                         }
                     }
                 }
@@ -90,8 +97,8 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
             sensor->scanTimer = sensor->scanInterval;
         }
 
-        /// @name 検知判定
-        /// @note 親ごと無効化された対象は «居ない» として扱う (Scene::FindWithTag は無効な物も返すので自前で探す)。
+        // 検知判定
+        // 親ごと無効化された対象は «居ない» として扱う (Scene::FindWithTag は無効な物も返すので自前で探す)。
         GameObject* targetGo = nullptr;
         if (!sensor->targetTag.empty()) {
             for (auto& candidate : scene.GameObjects()) {
@@ -104,7 +111,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
             const math::Vector3 origin    = go->transform.worldPosition;
             const math::Vector3 targetPos = targetGo->transform.worldPosition;
 
-            /// @note heightThreshold: Y 差が閾値を超えたら検知しない (0 = 無制限)
+            // heightThreshold: Y 差が閾値を超えたら検知しない (0 = 無制限)
             const bool heightOk = (sensor->heightThreshold <= 0.0f) ||
                                   (std::abs(targetPos.y - origin.y) <= sensor->heightThreshold);
 
@@ -123,11 +130,12 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
                         if (math::Vector3::Dot(forward, dir) >= cosHalfAngle) {
                             detected = true;
                             if (sensor->useLineOfSight && world) {
-                                /// @note 目線の高さを軽く持ち上げてから Raycast する (地面との誤交差を避ける)
+                                // 目線の高さを軽く持ち上げてから Raycast する (地面との誤交差を避ける)
                                 const math::Vector3 eyePos = origin + math::Vector3::UP * 0.5f;
                                 physics::World::RaycastHit hit;
-                                if (world->Raycast(eyePos, dir, dist, hit))
+                                if (world->Raycast(eyePos, dir, dist, hit)) {
                                     detected = (hit.distance >= dist - 0.1f);
+                                }
                             }
                         }
                     }
@@ -135,45 +143,50 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
             }
         }
 
-        /// @name 状態遷移
+        // 状態遷移
         const bool wasVisible = sensor->targetVisible;
 
         if (detected) {
-            /// @note 視界内: memoryTimer をリセットして検知状態を維持
+            // 視界内: memoryTimer をリセットして検知状態を維持
             sensor->targetVisible      = true;
             sensor->detectedTarget     = targetGo->GetID();
             sensor->lastKnownTargetPos = targetGo->transform.worldPosition;
             sensor->memoryTimer        = sensor->memoryTime;
 
-            if (!wasVisible)
+            if (!wasVisible) {
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetSpotted, ScriptCallbackKind::NAV_TARGET_SPOTTED);
+            }
 
             if (autoChase) {
-                if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
+                if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid)) {
                     agent->SetTarget(targetGo->GetID(), sensor->chaseRepathInterval);
+                }
             }
         } else {
-            /// @note 視界外
+            // 視界外
             if (wasVisible) {
                 if (sensor->memoryTime > 0.0f) {
-                    /// @note memoryTime 中は検知状態を保持し、タイマーを減算する
+                    // memoryTime 中は検知状態を保持し、タイマーを減算する
                     sensor->memoryTimer -= dt;
-                    /// @note まだ記憶中
-                    if (sensor->memoryTimer > 0.0f) continue;
+                    // まだ記憶中
+                    if (sensor->memoryTimer > 0.0f) {
+                        continue;
+                    }
                 }
-                /// @note 記憶時間切れ (または memoryTime==0): 検知状態をクリア
+                // 記憶時間切れ (または memoryTime==0): 検知状態をクリア
                 sensor->targetVisible  = false;
                 sensor->detectedTarget = EntityID::INVALID;
                 sensor->memoryTimer    = 0.0f;
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost, ScriptCallbackKind::NAV_TARGET_LOST);
 
                 if (autoChase) {
-                    if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
+                    if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid)) {
                         agent->SetDestination(sensor->lastKnownTargetPos);
+                    }
                 }
             }
         }
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -30,7 +30,7 @@ uint64_t AllocateStoreRevision()
     assert(value != std::numeric_limits<uint64_t>::max() && "SaveStore revision space exhausted");
     return value != std::numeric_limits<uint64_t>::max() ? value : 0;
 }
-} /// @note namespace
+} // namespace
 
 /// @note メモリ上の正本を toml::table で持つ。型ごとの variant を自前で持たずに済み、
 /// @note 保存も oss << table で完結する。
@@ -43,9 +43,11 @@ struct SaveStore::Impl {
     [[nodiscard]] std::string ResolveAbsolutePath() const
     {
         const std::filesystem::path slot = FileSystem::PathFromUtf8(path);
-        if (slot.is_absolute()) return FileSystem::PathToUtf8(slot);
-        /// @note カレントディレクトリはエディタ/GameHub/スタンドアロンで異なるため、実行ファイルの
-        /// @note ディレクトリを基準にし、保存先が起動元依存で別ファイルになるのを避ける。
+        if (slot.is_absolute()) {
+            return FileSystem::PathToUtf8(slot);
+        }
+        // カレントディレクトリはエディタ/GameHub/スタンドアロンで異なるため、実行ファイルの
+        // ディレクトリを基準にし、保存先が起動元依存で別ファイルになるのを避ける。
         return FileSystem::PathToUtf8(FileSystem::GetExecutableDirectory() / slot);
     }
 };
@@ -56,7 +58,9 @@ template<std::size_t N>
 void WriteFloats(toml::table& table, std::string_view key, const float (&values)[N])
 {
     toml::array arr;
-    for (std::size_t i = 0; i < N; ++i) arr.push_back(static_cast<double>(values[i]));
+    for (std::size_t i = 0; i < N; ++i) {
+        arr.push_back(static_cast<double>(values[i]));
+    }
     table.insert_or_assign(std::string(key), std::move(arr));
 }
 
@@ -66,7 +70,7 @@ void WriteFloats(toml::table& table, std::string_view key, const float (&values)
     return it == table.end() ? nullptr : it->second.as_array();
 }
 
-} /// @note namespace
+} // namespace
 
 SaveStore::SaveStore(std::string defaultPath)
     : m_impl(std::make_unique<Impl>())
@@ -85,9 +89,9 @@ const std::string& SaveStore::GetPath() const { return m_impl->path; }
 
 bool SaveStore::Write(std::string_view key, scene::IScriptSerializable& object)
 {
-    /// @note Reflect callback が呼出し側のキー文字列を変更しても、開始時の保存先を使う。
+    // Reflect callback が呼出し側のキー文字列を変更しても、開始時の保存先を使う。
     std::string ownedKey(key);
-    /// @note 完成するまで独立した heap table を所有し、nested pointer は writer の生存中に移さない。
+    // 完成するまで独立した heap table を所有し、nested pointer は writer の生存中に移さない。
     auto candidate = std::make_unique<toml::table>();
     { TomlWriteReflector writer(*candidate); object.Reflect(writer); }
     m_impl->table.insert_or_assign(std::move(ownedKey), std::move(*candidate));
@@ -99,11 +103,15 @@ bool SaveStore::Write(std::string_view key, scene::IScriptSerializable& object)
 bool SaveStore::Read(std::string_view key, scene::IScriptSerializable& object)
 {
     const auto it = m_impl->table.find(std::string(key));
-    if (it == m_impl->table.end()) return false;
+    if (it == m_impl->table.end()) {
+        return false;
+    }
     const toml::table* source = it->second.as_table();
-    if (!source) return false;
+    if (!source) {
+        return false;
+    }
 
-    /// @note Reflect の再入で同じキーの置換・Clear・Load が起きても、入れ子の参照を失効させない。
+    // Reflect の再入で同じキーの置換・Clear・Load が起きても、入れ子の参照を失効させない。
     const toml::table snapshot = *source;
     TomlReadReflector reader(snapshot);
     object.Reflect(reader);
@@ -179,11 +187,15 @@ int SaveStore::GetInt(std::string_view key, int defaultValue) const
 
 float SaveStore::GetFloat(std::string_view key, float defaultValue) const
 {
-    /// @note TOML は 1.0 を書いても整数として読み戻る場合があるため int64 も見る。
-    /// @note SetFloat(1.0f) → GetFloat() が既定値に落ちる事故を防ぐ。
+    // TOML は 1.0 を書いても整数として読み戻る場合があるため int64 も見る。
+    // SetFloat(1.0f) → GetFloat() が既定値に落ちる事故を防ぐ。
     const auto node = m_impl->table[std::string(key)];
-    if (const auto asDouble = node.value<double>()) return static_cast<float>(*asDouble);
-    if (const auto asInt = node.value<int64_t>())   return static_cast<float>(*asInt);
+    if (const auto asDouble = node.value<double>()) {
+        return static_cast<float>(*asDouble);
+    }
+    if (const auto asInt = node.value<int64_t>()) {
+        return static_cast<float>(*asInt);
+    }
     return defaultValue;
 }
 
@@ -195,7 +207,9 @@ std::string SaveStore::GetString(std::string_view key, std::string_view defaultV
 bool SaveStore::TryGetStringView(std::string_view key, std::string_view& out) const
 {
     const auto it = m_impl->table.find(std::string(key));
-    if (it == m_impl->table.end() || !it->second.is_string()) return false;
+    if (it == m_impl->table.end() || !it->second.is_string()) {
+        return false;
+    }
     out = it->second.as_string()->get();
     return true;
 }
@@ -224,13 +238,17 @@ bool SaveStore::Has(std::string_view key) const
 
 void SaveStore::Remove(std::string_view key)
 {
-    if (m_impl->table.erase(std::string(key)) > 0) m_impl->dirty = true;
+    if (m_impl->table.erase(std::string(key)) > 0) {
+        m_impl->dirty = true;
+    }
     m_impl->revision = AllocateStoreRevision();
 }
 
 void SaveStore::Clear()
 {
-    if (m_impl->table.empty()) return;
+    if (m_impl->table.empty()) {
+        return;
+    }
     m_impl->table.clear();
     m_impl->dirty = true;
     m_impl->revision = AllocateStoreRevision();
@@ -240,7 +258,9 @@ std::vector<std::string> SaveStore::Keys() const
 {
     std::vector<std::string> keys;
     keys.reserve(m_impl->table.size());
-    for (const auto& [key, value] : m_impl->table) keys.emplace_back(key.str());
+    for (const auto& [key, value] : m_impl->table) {
+        keys.emplace_back(key.str());
+    }
     std::sort(keys.begin(), keys.end());
     return keys;
 }
@@ -303,7 +323,9 @@ uint64_t SaveStore::GetRevision() const { return m_impl->revision; }
 
 bool SaveStore::CommitString(std::string_view key, std::string&& value, uint64_t expectedRevision, std::string_view expectedPath)
 {
-    if (!expectedRevision || m_impl->revision != expectedRevision || m_impl->path != expectedPath) return false;
+    if (!expectedRevision || m_impl->revision != expectedRevision || m_impl->path != expectedPath) {
+        return false;
+    }
     m_impl->table.insert_or_assign(std::string(key), std::move(value));
     m_impl->dirty = true;
     m_impl->revision = AllocateStoreRevision();
@@ -313,8 +335,12 @@ bool SaveStore::CommitString(std::string_view key, std::string&& value, uint64_t
 bool SaveStore::CommitDocument(std::string_view key, std::string type, std::string schema, std::string&& json,
     uint64_t expectedRevision, std::string_view expectedPath)
 {
-    if (!expectedRevision || m_impl->revision != expectedRevision || m_impl->path != expectedPath || type.empty() || schema.empty()) return false;
-    if (!ValidatePortableStoreDocument(json, type, schema)) return false;
+    if (!expectedRevision || m_impl->revision != expectedRevision || m_impl->path != expectedPath || type.empty() || schema.empty()) {
+        return false;
+    }
+    if (!ValidatePortableStoreDocument(json, type, schema)) {
+        return false;
+    }
     auto candidate = std::make_unique<toml::table>();
     candidate->insert("formatVersion", 1); candidate->insert("type", std::move(type));
     candidate->insert("schema", std::move(schema)); candidate->insert("json", std::move(json));
@@ -326,11 +352,15 @@ bool SaveStore::TryGetDocumentView(std::string_view key, std::string_view& type,
 {
     const auto found = m_impl->table.find(std::string(key));
     const auto* table = found == m_impl->table.end() ? nullptr : found->second.as_table();
-    if (!table || (*table)["formatVersion"].value_or(0) != 1) return false;
+    if (!table || (*table)["formatVersion"].value_or(0) != 1) {
+        return false;
+    }
     const auto* storedType = (*table)["type"].as_string(); const auto* storedSchema = (*table)["schema"].as_string();
     const auto* storedJson = (*table)["json"].as_string();
-    if (!storedType || !storedSchema || !storedJson) return false;
+    if (!storedType || !storedSchema || !storedJson) {
+        return false;
+    }
     type = storedType->get(); schema = storedSchema->get(); json = storedJson->get(); return true;
 }
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

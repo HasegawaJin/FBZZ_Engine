@@ -52,7 +52,9 @@ public:
     uint32_t GetStride() const override { return m_stride; }
     bool CopyData(size_t offset, size_t size, void* output) const override
     {
-        if (!output || offset > m_data.size() || size > m_data.size() - offset) return false;
+        if (!output || offset > m_data.size() || size > m_data.size() - offset) {
+            return false;
+        }
         std::memcpy(output, m_data.data() + offset, size);
         return true;
     }

@@ -20,37 +20,31 @@ enum class UILayoutAxis { Horizontal, Vertical, Grid };
 enum class UILayoutAlign { Start, Center, End };
 
 struct UILayoutGroup {
-    UILayoutAxis axis    = UILayoutAxis::Horizontal;
-    float spacing        = 8.0f;   ///< @note 子要素間の余白 (px)
-    /// @note Grid のときの行間。Horizontal / Vertical では spacing だけを使う。
-    float spacingCross   = 8.0f;
-    float paddingLeft    = 0.0f;
-    float paddingRight   = 0.0f;
-    float paddingTop     = 0.0f;
-    float paddingBottom  = 0.0f;
-    bool  reverseOrder   = false;   ///< @note 右から左、または下から上へ並べる
+    UILayoutAxis axis    = UILayoutAxis::Horizontal; ///< 子要素を並べるレイアウトの主軸。
+    float spacing        = 8.0f; ///< 子要素間の余白 (px)
+    float spacingCross   = 8.0f; ///< Grid のときの行間。Horizontal / Vertical では spacing だけを使う。
+    float paddingLeft    = 0.0f; ///< グループの左端から子要素までの内側余白。
+    float paddingRight   = 0.0f; ///< グループの右端から子要素までの内側余白。
+    float paddingTop     = 0.0f; ///< グループの上端から子要素までの内側余白。
+    float paddingBottom  = 0.0f; ///< グループの下端から子要素までの内側余白。
+    bool  reverseOrder   = false; ///< 右から左、または下から上へ並べる
 
-    /// @note 送り方向の揃え。コンテナに余りがあるとき、束をどちらへ寄せるか。
-    UILayoutAlign alignMain  = UILayoutAlign::Start;
-    /// @note 交差方向の揃え。各子を行 (列) の中でどこへ置くか。
-    UILayoutAlign alignCross = UILayoutAlign::Start;
+    UILayoutAlign alignMain  = UILayoutAlign::Start; ///< 送り方向の揃え。コンテナに余りがあるとき、束をどちらへ寄せるか。
+    UILayoutAlign alignCross = UILayoutAlign::Start; ///< 交差方向の揃え。各子を行 (列) の中でどこへ置くか。
 
     /// @note 余った幅 (高さ) を子へ配り、送り方向いっぱいに広げる。
     /// @note タブ等の等分配置で子の幅を手計算しなくて済むようにする。文字だけの要素は
     /// @note 実測が正なので対象外 (UIText 単体は広げない)。
-    bool  expandChildren = false;
-    /// @note 交差方向のサイズをコンテナへ合わせる。横並びのボタンの高さを揃える等。
-    bool  stretchCross   = false;
+    bool  expandChildren = false; ///< 主軸に余った領域を子要素のサイズへ配分するかどうか。
+    bool  stretchCross   = false; ///< 交差方向のサイズをコンテナへ合わせる。横並びのボタンの高さを揃える等。
 
-    /// @note Grid の 1 マスの大きさ。0 の軸は子の実サイズを使う。
-    math::Vector2 cellSize = { 0.0f, 0.0f };
-    /// @note Grid で折り返すまでの個数。0 なら幅に入るだけ詰める。
-    int   gridColumns    = 0;
+    math::Vector2 cellSize = { 0.0f, 0.0f }; ///< Grid の 1 マスの大きさ。0 の軸は子の実サイズを使う。
+    int   gridColumns    = 0; ///< Grid で折り返すまでの個数。0 なら幅に入るだけ詰める。
 
-    bool  enabled        = true;
+    bool  enabled        = true; ///< 子要素の位置とサイズのレイアウトを更新するかどうか。
 
-    bool overrideThemeSpacing = false;
-    bool overrideThemePadding = false;
+    bool overrideThemeSpacing = false; ///< 子の間隔にテーマの値の代わりにグループの設定を使うかどうか。
+    bool overrideThemePadding = false; ///< 内側余白にテーマの値の代わりにグループの設定を使うかどうか。
 
     const char* GetTypeName() const { return "UILayoutGroup"; }
     void Reflect(IReflector& r)
@@ -109,14 +103,12 @@ enum class UISizeFitMode {
 /// @note 解く順は「文字の実測 → フィッター (帰りがけ) → レイアウト (行きがけ)」。同じコンポーネントに
 /// @note すると向きが設定依存になり循環 (親が子を測り子が親に合わせる) を作りやすい。
 struct UIContentSizeFitter {
-    bool enabled = true;
-    UISizeFitMode horizontalFit = UISizeFitMode::None;
-    UISizeFitMode verticalFit   = UISizeFitMode::PreferChild;
-    /// @note 子の外接矩形へ足す余白 (左, 上, 右, 下)。
-    math::Vector4 padding = { 0.0f, 0.0f, 0.0f, 0.0f };
-    /// @note 縮みすぎ・伸びすぎの歯止め。0 で無制限。
-    math::Vector2 minSize = { 0.0f, 0.0f };
-    math::Vector2 maxSize = { 0.0f, 0.0f };
+    bool enabled = true; ///< 内容の大きさからこの要素のサイズを自動調整するかどうか。
+    UISizeFitMode horizontalFit = UISizeFitMode::None; ///< 内容を参照して横幅を求めるときのフィット方式。
+    UISizeFitMode verticalFit   = UISizeFitMode::PreferChild; ///< 内容を参照して高さを求めるときのフィット方式。
+    math::Vector4 padding = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< 子の外接矩形へ足す余白 (左, 上, 右, 下)。
+    math::Vector2 minSize = { 0.0f, 0.0f }; ///< 縮みすぎ・伸びすぎの歯止め。0 で無制限。
+    math::Vector2 maxSize = { 0.0f, 0.0f }; ///< 自動フィット時に許す幅と高さの上限。0 の軸は制限しない。
 
     const char* GetTypeName() const { return "UI Content Size Fitter"; }
     void Reflect(IReflector& r)

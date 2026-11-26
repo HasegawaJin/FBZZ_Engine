@@ -85,7 +85,7 @@ TEST_F(ManagedInputBridgeTest, DistinguishesRegisteredZeroValuesFromUnknownNames
     EXPECT_EQ(Bridge::Read("MoveX", static_cast<uint32_t>(Value::HELD), reply), Status::NOT_FOUND);
     EXPECT_EQ(Bridge::Read("Horizontal", static_cast<uint32_t>(Value::AXIS), reply), Status::NOT_FOUND);
     EXPECT_FLOAT_EQ(reply.x, 17.0f);
-    /// @note C++ の既存の未知名に対する false / 0 の契約は変更しない。
+    // C++ の既存の未知名に対する false / 0 の契約は変更しない。
     EXPECT_FALSE(input::InputActionMap::GetAction("fire"));
     EXPECT_FLOAT_EQ(input::InputActionMap::GetAxis("Horizontal"), 0.0f);
 }

@@ -27,86 +27,85 @@ using renderer::TrailWidthEasing;
 struct TrailComponentGpuState {
     /// @brief GPU リソースは保存対象ではない。帯の頂点は TrailRenderPass がビューごとにプールから借りる。
     /// @note Scene View と Game View で帯の形が違うため、Component に 1 本持たせると奪い合う。
-    renderer::ResourceHandle<renderer::TextureTag> texture;
-    renderer::OwnedResource<renderer::ConstantBufferTag> trailCB;
-    std::string loadedTexturePath;
-    std::string loadedMaterialPath; ///< @note materialPath の変更検出用。シーン保存対象外。
+    renderer::ResourceHandle<renderer::TextureTag> texture; ///< 材質から解決した帯のアルベドテクスチャ。
+    renderer::OwnedResource<renderer::ConstantBufferTag> trailCB; ///< 帯の色・幅・UV などを描画に渡す定数バッファ。
+    std::string loadedTexturePath; ///< 現在の帯のアルベドテクスチャを取得した参照パス。
+    std::string loadedMaterialPath; ///< materialPath の変更検出用。シーン保存対象外。
 
 };
 
 struct TrailComponent : TransientGpuState<TrailComponentGpuState> {
-    bool enabled = true;
+    bool enabled = true; ///< リボン描画に向けて新しい軌跡サンプルを取得する。
 
-    float duration       = 1.0f;
-    int   maxPoints      = 64;
-    float sampleInterval = 1.0f / 30.0f;
-    float minVertexDist  = 0.02f;
+    float duration       = 1.0f; ///< 軌跡のサンプルを保持してから消すまでの時間（秒）。
+    int   maxPoints      = 64; ///< 軌跡に同時に保持する制御点数の上限。
+    float sampleInterval = 1.0f / 30.0f; ///< 軌跡点を追加できる最小時間間隔（秒）。
+    float minVertexDist  = 0.02f; ///< 既存の先端から点を追加するための最小移動距離（ワールド m）。
 
-    float widthStart = 0.20f;
-    float widthEnd   = 0.02f;
+    float widthStart = 0.20f; ///< 軌跡の新しい先端の帯の幅（m）。
+    float widthEnd   = 0.02f; ///< 軌跡の古い端の帯の幅（m）。幅カーブが無効なときに使う。
 
     /// @brief 1 フレームでこれ以上跳んだら点列を捨てて描き直す [ワールド]。0 で «切らない»。
     /// @note 既定 0 (opt-in) の理由: 瞬間移動をするかどうかは実体ごとに違うため、一律のしきい値だと
     /// @note 速い剣閃や乗り物の軌跡を誤って切ってしまう。手動 Clear() では、テレポートを書く側と
     /// @note トレイルを持つ GameObject (武器の子など) が別なことがあり呼び忘れが起きるため不十分。
-    float breakDistance = 0.0f;
+    float breakDistance = 0.0f; ///< 軌跡を切って新しい帯にする 1 フレームの移動距離（ワールド m）。0 で無効。
 
     /// @brief 幅の多キー化。無効 (既定) なら widthStart/widthEnd + widthEasing の 2 点のまま。
     /// @note 新しいカーブ型を作らない理由: ParticleCurve は Inspector のカーブエディタ・.curve の
     /// @note 読み書き・TOML シリアライズが既に通っている。widthStart を倍率の基準として残すのは、
     /// @note カーブは形だけを持たせ実寸を 1 か所で決められるようにするため。
-    bool widthCurveEnabled = false;
-    ParticleCurve widthCurve; ///< @note age に対する倍率。実寸 = widthStart × この値
+    bool widthCurveEnabled = false; ///< 帯の幅を widthCurve に従って変化させる。
+    ParticleCurve widthCurve; ///< age に対する倍率。実寸 = widthStart × この値
 
     /// @brief 色の多キー化。無効 (既定) なら colorStart/colorEnd の 2 点のまま。時刻 0 が帯の
     /// @note 先端 (colorStart 側)、1 が消え際 (colorEnd 側)。
     /// @note 補間は GPU (Trail.hlsl) 側で行うため、キーの間はリニア空間で混ざる。
     /// @note ParticleGradient::colorSpace は帯では効かない (キーの色そのものは一致する)。
-    bool colorGradientEnabled = false;
-    ParticleGradient colorGradient;
-    /// @brief Beam は移動履歴ではなくローカル2端点を毎フレーム固定リボンとして描く。
-    bool beamMode = false;
-    math::Vector3 beamStart = math::Vector3::ZERO;
-    math::Vector3 beamEnd = { 0.0f, 0.0f, 5.0f };
+    bool colorGradientEnabled = false; ///< 帯の色を二点間の補間に代えて colorGradient から求める。
+    ParticleGradient colorGradient; ///< 軌跡の新しい先端を 0、古い端を 1 とする帯の RGBA 色。
+    bool beamMode = false; ///< Beam は移動履歴ではなくローカル2端点を毎フレーム固定リボンとして描く。
+    math::Vector3 beamStart = math::Vector3::ZERO; ///< ビームの始点。beamWorldSpace でワールド、通常はオブジェクトローカル。
+    math::Vector3 beamEnd = { 0.0f, 0.0f, 5.0f }; ///< ビームの終点。beamWorldSpace でワールド、通常はオブジェクトローカル。
 
     /// @brief beamStart / beamEnd の間を通す中間点。空なら 2 端点の直線。
     /// @note VFXBeamComponent が毎フレーム作り直すため、シーンへは保存しない
     /// @note (保存すると「止めた瞬間の形」がアセットに焼き付く)。
-    std::vector<math::Vector3> beamPoints;
+    std::vector<math::Vector3> beamPoints; ///< 直線の代わりにビームが通る内部の折れ点。空なら両端を直結する。
 
     /// @brief beamPoints / beamStart / beamEnd をワールド座標として解釈する。
     /// @note 2 つの実体を結ぶビームは、どちらか一方のローカル空間では表せない。
-    bool beamWorldSpace = false;
+    bool beamWorldSpace = false; ///< ビームの端点と折れ点をワールド座標として解釈する。
 
-    TrailWidthEasing widthEasing = TrailWidthEasing::Linear;
-    math::Vector4 colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
-    math::Vector4 colorEnd   = { 1.0f, 1.0f, 1.0f, 0.0f };
+    TrailWidthEasing widthEasing = TrailWidthEasing::Linear; ///< 二点で指定した帯の幅を補間する方式。幅カーブを使う場合は無視する。
+    math::Vector4 colorStart = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< 帯の新しい先端に使う RGBA 色。
+    math::Vector4 colorEnd   = { 1.0f, 1.0f, 1.0f, 0.0f }; ///< 消える側の帯の端に使う RGBA 色。
 
-    TrailAlignment alignment = TrailAlignment::CameraFacing;
-    int smoothSubdivisions = 0;
+    TrailAlignment alignment = TrailAlignment::CameraFacing; ///< リボン面をカメラなどに向ける際の姿勢合わせ方式。
+    int smoothSubdivisions = 0; ///< 帯を滑らかにするためサンプル間に追加する補間分割数。
     /// @brief attachBone / attachOffset — SkinnedMeshRenderer のボーン GameObject にサンプル位置を追従させる。
     /// @note 武器の先端や手首など、GameObject 原点以外から Trail を発生させたいケースを Component 単体で扱う。
-    std::string attachBone;
-    math::Vector3 attachOffset = math::Vector3::ZERO;
+    std::string attachBone; ///< 軌跡点の取得に使う骨の名前。空ならオブジェクト自身。
+    math::Vector3 attachOffset = math::Vector3::ZERO; ///< サンプリングする点の、追従先ローカルでの位置オフセット。
     /// @brief clearOnDisable — enabled=false 時に点列を即破棄するか、duration による自然消滅を待つか。
     /// @note ScriptTrailProxy::SetEnabled(false, false) で「記録だけ止めてフェードアウト」を選べるようにする。
-    bool clearOnDisable = true;
+    bool clearOnDisable = true; ///< 無効化時に保存済みの軌跡点を破棄する。false では寿命まで残す。
 
     /// @brief .mat アセットへの参照。albedo テクスチャを .mat から解決する。
     /// @note テクスチャを .mat に集約することで複数 Trail 間での共有と Editor ピッカーによるアセット管理を可能にする。
-    std::string materialPath;
-    TrailUVMode uvMode = TrailUVMode::Stretch;
-    float uvScrollSpeed = 0.0f;
-    float uvTiling      = 1.0f;
+    std::string materialPath; ///< 帯に使うアルベドテクスチャなどを解決する .mat の参照。
+    TrailUVMode uvMode = TrailUVMode::Stretch; ///< 帯の長手方向の UV を引き伸ばすか繰り返すかを選ぶ。
+    float uvScrollSpeed = 0.0f; ///< 帯の長手方向の UV を時間で移動する速度（UV/秒）。
+    float uvTiling      = 1.0f; ///< 帯の長手方向に設定する UV の繰り返し倍率。
 
     /// @brief 固定サイズリングバッファ。maxPoints 変更時は TrailRenderSystem が再初期化する。
     /// @note std::deque ではなく連続メモリにすることで、毎フレームの走査と頂点展開のキャッシュ効率を保つ。
-    std::vector<TrailPoint> pointBuffer;
-    int   ringHead       = 0;
-    int   ringTail       = 0;
-    int   ringCount      = 0;
-    float lastSampleTime = -1.0f;
-    uint64_t lastExtractionFrame = UINT64_MAX;
+    std::vector<TrailPoint> pointBuffer; ///< 軌跡の位置と時刻を保持する固定容量のリングバッファ。
+    int   ringHead       = 0; ///< pointBuffer 内の最も古い有効な点の添字。
+    int   ringTail       = 0; ///< pointBuffer 内で次に点を書き込む位置の添字。
+    int   ringCount      = 0; ///< pointBuffer に記録した有効な点数。
+    float lastSampleTime = -1.0f; ///< 前回の軌跡サンプルを取得した時刻（秒）。負値は未取得。
+    uint64_t lastExtractionFrame = UINT64_MAX; ///< 履歴を最後に更新したリソースフレームの番号。UINT64_MAX は未抽出。
 
     const char* GetTypeName() const { return "Trail"; }
 
@@ -174,17 +173,20 @@ struct TrailComponent : TransientGpuState<TrailComponentGpuState> {
                                                const math::Vector3& previous,
                                                const math::Vector3& current)
 {
-    if (trail.breakDistance <= 0.0f) return false;
+    if (trail.breakDistance <= 0.0f) {
+        return false;
+    }
     return (current - previous).LengthSq() > trail.breakDistance * trail.breakDistance;
 }
 
 /// @brief age (0 = 最古の点, 1 = 最新の点) に対する帯の幅 [ワールド]。
-/// @param easedAge widthEasing を掛けた age。カーブが有効なときは使わない
+/// @param[in] easedAge widthEasing を掛けた age。カーブが有効なときは使わない
 /// @note (カーブ自身が形を持っているため、二重に曲げない)。
 [[nodiscard]] inline float TrailWidthAt(const TrailComponent& trail, float age, float easedAge)
 {
-    if (TrailUsesWidthCurve(trail))
+    if (TrailUsesWidthCurve(trail)) {
         return trail.widthStart * trail.widthCurve.Evaluate(age);
+    }
     return trail.widthEnd + (trail.widthStart - trail.widthEnd) * easedAge;
 }
 

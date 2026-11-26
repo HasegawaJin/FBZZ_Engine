@@ -55,16 +55,21 @@ ManagedBridgeStatus ComponentAccess(GameObject& target, ManagedBridgeOp op, bool
 {
     exists = target.GetComponent<T>() != nullptr;
     if (op == ManagedBridgeOp::COMPONENT_ADD) {
-        if (!exists) target.AddComponent<T>();
+        if (!exists) {
+            target.AddComponent<T>();
+        }
         exists = true;
     } else if (op == ManagedBridgeOp::COMPONENT_REMOVE) {
-        if (exists) target.RemoveComponent<T>();
+        if (exists) {
+            target.RemoveComponent<T>();
+        }
     } else if (op != ManagedBridgeOp::COMPONENT_READ) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (lifetime && exists && target.GetScene())
+    if (lifetime && exists && target.GetScene()) {
         *lifetime = target.GetScene()->GetComponentLifetime<T>(target.GetID());
+    }
     return ManagedBridgeStatus::OK;
 }
-} /// @note namespace
+} // namespace
 
 ManagedBridgeStatus ManagedObjectControls::Read(GameObject& target, uint32_t selector, ManagedBridgeReply& reply, std::string& text)
 {
@@ -84,16 +89,24 @@ ManagedBridgeStatus ManagedObjectControls::Write(GameObject& target, uint32_t se
 {
     switch (selector) {
     case 0:
-        if (value != 0 && value != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (value != 0 && value != 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         target.SetActive(value != 0); break;
     case 2:
-        if (value < 0 || value >= 32) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (value < 0 || value >= 32) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         target.layer = static_cast<int>(value); break;
     case 3:
-        if (!Text(text)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!Text(text)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         target.name.assign(text); break;
     case 4:
-        if (!Text(text)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!Text(text)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         target.tag.assign(text); break;
     default: return ManagedBridgeStatus::INVALID_ARGUMENT;
     }
@@ -103,16 +116,28 @@ ManagedBridgeStatus ManagedObjectControls::Write(GameObject& target, uint32_t se
 ManagedBridgeStatus ManagedObjectControls::Component(GameObject& target, uint32_t kind, ManagedBridgeOp op, bool& exists, uint64_t* lifetime)
 {
     exists = false;
-    if (lifetime) *lifetime = 0;
-    if (kind == 7) return ManagedBridgeStatus::UNSUPPORTED;
-    if (kind >= target.m_pendingManagedComponentRemovals.size()) return ManagedBridgeStatus::UNSUPPORTED;
+    if (lifetime) {
+        *lifetime = 0;
+    }
+    if (kind == 7) {
+        return ManagedBridgeStatus::UNSUPPORTED;
+    }
+    if (kind >= target.m_pendingManagedComponentRemovals.size()) {
+        return ManagedBridgeStatus::UNSUPPORTED;
+    }
     if (target.m_pendingManagedComponentRemovals.test(kind)) {
-        if (op == ManagedBridgeOp::COMPONENT_READ) return ManagedBridgeStatus::OK;
-        if (op == ManagedBridgeOp::COMPONENT_ADD) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (op == ManagedBridgeOp::COMPONENT_READ) {
+            return ManagedBridgeStatus::OK;
+        }
+        if (op == ManagedBridgeOp::COMPONENT_ADD) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
     }
     if (kind > 0 && op == ManagedBridgeOp::COMPONENT_REMOVE) {
         const auto status = Component(target, kind, ManagedBridgeOp::COMPONENT_READ, exists);
-        if (status == ManagedBridgeStatus::OK && exists) target.m_pendingManagedComponentRemovals.set(kind);
+        if (status == ManagedBridgeStatus::OK && exists) {
+            target.m_pendingManagedComponentRemovals.set(kind);
+        }
         return status;
     }
     switch (kind) {
@@ -125,17 +150,22 @@ ManagedBridgeStatus ManagedObjectControls::Component(GameObject& target, uint32_
                 const float length = pose.worldRotation.Length();
                 if (!std::isfinite(pose.worldPosition.x) || !std::isfinite(pose.worldPosition.y) || !std::isfinite(pose.worldPosition.z)
                     || !std::isfinite(pose.worldRotation.x) || !std::isfinite(pose.worldRotation.y) || !std::isfinite(pose.worldRotation.z)
-                    || !std::isfinite(pose.worldRotation.w) || !std::isfinite(length) || length < math::EPSILON)
+                    || !std::isfinite(pose.worldRotation.w) || !std::isfinite(length) || length < math::EPSILON) {
                     return ManagedBridgeStatus::INVALID_ARGUMENT;
-                /// @note Component 追加と同じ呼出で facade を公開する。World の登録は既存 PrePhysics 同期が行う。
+                }
+                // Component 追加と同じ呼出で facade を公開する。World の登録は既存 PrePhysics 同期が行う。
                 auto body = std::make_unique<physics::RigidBody>();
                 body->SetPosition(pose.worldPosition); body->SetRotation(pose.worldRotation);
-                if (!body->IsFiniteState()) return ManagedBridgeStatus::INVALID_ARGUMENT;
-                if (!component) component = &target.AddComponent<RigidBodyComponent>();
+                if (!body->IsFiniteState()) {
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
+                if (!component) {
+                    component = &target.AddComponent<RigidBodyComponent>();
+                }
                 component->rigidBody = std::move(body);
             }
         }
-        /// @note authored row の寿命は Physics 実体の初期化から独立する。Physics 操作は各 service が実体を検証する。
+        // authored row の寿命は Physics 実体の初期化から独立する。Physics 操作は各 service が実体を検証する。
         return ComponentAccess<RigidBodyComponent>(target, op, exists, lifetime);
     }
     case 2: return ComponentAccess<BoxColliderComponent>(target, op, exists, lifetime);
@@ -206,12 +236,16 @@ bool ManagedObjectControls::IsPendingComponentRemoval(const GameObject& target, 
 bool ManagedObjectControls::SetParent(GameObject& target, GameObject* parent)
 {
     Scene* scene = target.GetScene();
-    if (!scene || (parent && parent->GetScene() != scene)) return false;
+    if (!scene || (parent && parent->GetScene() != scene)) {
+        return false;
+    }
     const size_t slots = scene->EntitySlotCount();
     std::vector<bool> ancestors(slots);
     for (GameObject* current = parent; current; current = current->GetParent()) {
         const uint32_t index = current->GetID().index;
-        if (current == &target || index >= slots || ancestors[index] || scene->GetGameObject(current->GetID()) != current) return false;
+        if (current == &target || index >= slots || ancestors[index] || scene->GetGameObject(current->GetID()) != current) {
+            return false;
+        }
         ancestors[index] = true;
     }
     const auto finite = [](const math::Vector3& value) { return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z); };
@@ -226,40 +260,60 @@ bool ManagedObjectControls::SetParent(GameObject& target, GameObject* parent)
     for (size_t index = 0; index < prepared.size(); ++index) {
         GameObject* object = prepared[index].object;
         if (!object || object->GetID().index >= slots || object->GetScene() != scene || seen[object->GetID().index]
-            || scene->GetGameObject(object->GetID()) != object) return false;
+            || scene->GetGameObject(object->GetID()) != object) {
+            return false;
+        }
         seen[object->GetID().index] = true;
         Transform& transform = prepared[index].transform;
         const Transform* parentTransform = index == 0 ? (parent ? &parent->transform : nullptr) : &prepared[prepared[index].parentIndex].transform;
         if (!finite(transform.position) || !finite(transform.scale) || !rotation(transform.rotation)
-            || (parentTransform && !rotation(parentTransform->worldRotation * transform.rotation))) return false;
+            || (parentTransform && !rotation(parentTransform->worldRotation * transform.rotation))) {
+            return false;
+        }
         UpdateWorldTransform(transform, parentTransform);
-        if (!finite(transform.worldPosition) || !finite(transform.worldScale) || !rotation(transform.worldRotation)) return false;
+        if (!finite(transform.worldPosition) || !finite(transform.worldScale) || !rotation(transform.worldRotation)) {
+            return false;
+        }
         for (int childIndex = 0; childIndex < object->GetChildCount(); ++childIndex) {
             GameObject* child = object->GetChild(childIndex);
-            if (!child || child->GetParent() != object || prepared.size() >= slots) return false;
+            if (!child || child->GetParent() != object || prepared.size() >= slots) {
+                return false;
+            }
             prepared.push_back({child, child->transform, index});
         }
     }
-    if (!target.SetParent(parent)) return false;
-    for (const Prepared& item : prepared) item.object->transform = item.transform;
+    if (!target.SetParent(parent)) {
+        return false;
+    }
+    for (const Prepared& item : prepared) {
+        item.object->transform = item.transform;
+    }
     return true;
 }
 
 void ManagedObjectControls::FlushScriptRemovals(Scene& scene)
 {
     std::vector<EntityID> objects;
-    for (GameObject& object : scene.GameObjects()) objects.push_back(object.GetID());
+    for (GameObject& object : scene.GameObjects()) {
+        objects.push_back(object.GetID());
+    }
     for (EntityID id : objects) {
         GameObject* object = scene.GetGameObject(id);
-        if (!object) continue;
+        if (!object) {
+            continue;
+        }
         const auto removed = object->m_pendingManagedComponentRemovals;
         object->m_pendingManagedComponentRemovals.reset();
         const auto remove = [&]<typename T>(uint32_t kind) {
-            if (kind >= removed.size() || !removed.test(kind)) return;
+            if (kind >= removed.size() || !removed.test(kind)) {
+                return;
+            }
             if constexpr (std::is_base_of_v<ColliderComponent, T>) {
                 if (auto* collider = object->GetComponent<T>())
                     for (RigidBodyComponent* body : scene.GetComponents<RigidBodyComponent>())
-                        if (body->rigidBody && body->rigidBody->GetInertiaCollider() == collider->collider.get()) body->rigidBody->SetInertiaFromCollider(nullptr);
+                        if (body->rigidBody && body->rigidBody->GetInertiaCollider() == collider->collider.get()) {
+                            body->rigidBody->SetInertiaFromCollider(nullptr);
+                        }
             }
             object->RemoveComponent<T>();
         };
@@ -321,10 +375,14 @@ void ManagedObjectControls::FlushScriptRemovals(Scene& scene)
     for (EntityID id : snapshot) {
         auto* component = scene.GetComponent<ScriptComponent>(id);
         auto* object = scene.GetGameObject(id);
-        if (!component || !object) continue;
+        if (!component || !object) {
+            continue;
+        }
         for (size_t index = component->scripts.size(); index > 0; --index) {
             ScriptEntry& entry = component->scripts[index - 1];
-            if (!entry.m_pendingRemoval) continue;
+            if (!entry.m_pendingRemoval) {
+                continue;
+            }
             if (entry.script) {
                 entry.script->SetContext(&scene, object);
                 entry.script->ExecuteProfiledCallback(&Script::OnDestroy, ScriptCallbackKind::DESTROY, "OnDestroy");
@@ -337,15 +395,23 @@ void ManagedObjectControls::FlushScriptRemovals(Scene& scene)
 ManagedBridgeStatus ManagedObjectControls::Query(Scene& scene, GameObject* root, uint32_t scope, std::string_view name,
     std::string_view tag, std::string_view part, bool includeInactive, std::vector<GameObject*>& results)
 {
-    if (scope > 3 || (scope != 0 && !root)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (root && root->GetScene() != &scene) return ManagedBridgeStatus::SCENE_MISMATCH;
+    if (scope > 3 || (scope != 0 && !root)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (root && root->GetScene() != &scene) {
+        return ManagedBridgeStatus::SCENE_MISMATCH;
+    }
     struct Node { GameObject* object; bool active; uint32_t depth; };
     std::vector<Node> stack;
     std::vector<GameObject*> roots;
     if (scope == 0) {
         for (GameObject& object : scene.GameObjects()) if (!object.GetParent()) roots.push_back(&object);
-    } else roots.push_back(root);
-    for (auto item = roots.rbegin(); item != roots.rend(); ++item) stack.push_back({*item, true, 0});
+    } else {
+        roots.push_back(root);
+    }
+    for (auto item = roots.rbegin(); item != roots.rend(); ++item) {
+        stack.push_back({*item, true, 0});
+    }
     const size_t slots = scene.EntitySlotCount();
     std::vector<bool> seen(slots);
     std::vector<GameObject*> prepared;
@@ -354,34 +420,44 @@ ManagedBridgeStatus ManagedObjectControls::Query(Scene& scene, GameObject* root,
         Node node = stack.back(); stack.pop_back();
         GameObject* object = node.object;
         if (!object || object->GetScene() != &scene || object->GetID().index >= slots
-            || scene.GetGameObject(object->GetID()) != object || seen[object->GetID().index])
+            || scene.GetGameObject(object->GetID()) != object || seen[object->GetID().index]) {
             return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         seen[object->GetID().index] = true; ++visited;
         const bool active = node.active && object->activeSelf();
         const bool inScope = scope == 0 || (scope == 1 && node.depth == 1) || (scope == 2 && node.depth != 0) || scope == 3;
         if (inScope && (includeInactive || active) && (name.empty() || object->name == name)
-            && (tag.empty() || object->tag == tag) && (part.empty() || object->prefabSourceId == part)) prepared.push_back(object);
+            && (tag.empty() || object->tag == tag) && (part.empty() || object->prefabSourceId == part)) {
+            prepared.push_back(object);
+        }
         for (int index = object->GetChildCount() - 1; index >= 0; --index) {
             GameObject* child = object->GetChild(index);
-            if (!child || child->GetParent() != object) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!child || child->GetParent() != object) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             stack.push_back({child, active, node.depth + 1});
         }
     }
-    if (scope == 0 && visited != scene.GameObjectCount()) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    /// @note 指定 root より上の有効状態も条件に含め、破損した親経路は有限回で拒否する。
+    if (scope == 0 && visited != scene.GameObjectCount()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    // 指定 root より上の有効状態も条件に含め、破損した親経路は有限回で拒否する。
     if (scope != 0 && !includeInactive) {
         GameObject* parent = root->GetParent();
         std::vector<bool> ancestors(slots);
         while (parent) {
             const uint32_t index = parent->GetID().index;
-            if (index >= slots || ancestors[index] || seen[index] || scene.GetGameObject(parent->GetID()) != parent)
+            if (index >= slots || ancestors[index] || seen[index] || scene.GetGameObject(parent->GetID()) != parent) {
                 return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             ancestors[index] = true;
-            if (!parent->activeSelf()) prepared.clear();
+            if (!parent->activeSelf()) {
+                prepared.clear();
+            }
             parent = parent->GetParent();
         }
     }
     results = std::move(prepared);
     return ManagedBridgeStatus::OK;
 }
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

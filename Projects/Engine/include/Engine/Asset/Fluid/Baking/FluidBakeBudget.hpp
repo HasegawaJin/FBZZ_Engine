@@ -15,10 +15,10 @@ namespace fbzz::asset { struct VolumeFlipbookBakeSettings; }
 namespace fbzz::asset {
 
 struct FluidBakeBudget {
-    std::uint64_t atlasPixels = 0;
-    std::uint64_t cpuBytes = 0;
-    std::uint64_t gpuBytes = 0;
-    std::uint64_t diskBytes = 0;
+    std::uint64_t atlasPixels = 0; ///< 生成するアトラスで確保するテクセル数の見積もり。
+    std::uint64_t cpuBytes = 0; ///< 流体ベイクに必要な CPU メモリ容量の見積もり [byte]。
+    std::uint64_t gpuBytes = 0; ///< 流体ベイクに必要な GPU 資源容量の見積もり [byte]。
+    std::uint64_t diskBytes = 0; ///< 成果物を保存するためのディスク容量の見積もり [byte]。
 };
 
 /// @brief 全コマ画像・Atlas・書き出しの同時保持量を安全側に見積もる。
@@ -31,4 +31,4 @@ struct FluidBakeBudget {
                                            const std::filesystem::path& outputDirectory,
                                            std::string& outError);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

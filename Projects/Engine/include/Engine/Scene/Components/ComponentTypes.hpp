@@ -27,5 +27,5 @@ template<> struct ComponentStorageAccess<Type> { \
 #include "ComponentRegistry.inl"
 #undef FBZZ_COMPONENT_FIRST
 #undef FBZZ_COMPONENT_ENTRY
-} /// @note namespace detail
-} /// @note namespace fbzz::scene
+} // namespace detail
+} // namespace fbzz::scene

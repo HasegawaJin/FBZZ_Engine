@@ -13,4 +13,4 @@ namespace fbzz::profiler {
 FBZZ_ENGINE_API void BeginApplicationProfileFrame(const renderer::ResourceManager* resources = nullptr);
 FBZZ_ENGINE_API void EndApplicationProfileFrame();
 
-} /// @note namespace fbzz::profiler
+} // namespace fbzz::profiler

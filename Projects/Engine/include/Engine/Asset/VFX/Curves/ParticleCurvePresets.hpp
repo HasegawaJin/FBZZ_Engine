@@ -59,7 +59,9 @@ struct ParticleCurvePreset {
 [[nodiscard]] inline const ParticleCurvePreset* FindParticleCurvePreset(std::string_view name)
 {
     for (const ParticleCurvePreset& preset : ParticleCurvePresets())
-        if (preset.name == name) return &preset;
+        if (preset.name == name) {
+            return &preset;
+        }
     return nullptr;
 }
 

@@ -21,4 +21,4 @@ inline constexpr const char* FIBER_MASK_TEXTURE_KEY = "tex5";
 /// @note 資源のコールバックをまたいで値を渡す間、呼び出し側が不変のスナップショットを所有する。
 [[nodiscard]] FBZZ_ENGINE_API FiberMaterialSettings ResolveFiberMaterial(const MaterialAssetAuthoring& values);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

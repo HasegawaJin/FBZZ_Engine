@@ -44,12 +44,15 @@ void AppendSaggedPath(std::vector<math::Vector3>& points, const math::Vector3& f
 
 void DrawPath(RenderPassContext& ctx, const std::vector<math::Vector3>& points, bool closed)
 {
-    if (points.empty()) return;
+    if (points.empty()) {
+        return;
+    }
     renderer::DebugDraw::Polyline(ctx.renderer, points, closed, kPathColor);
     const float distance = (points.front() - ctx.camera.m_position).Length();
     const float marker = std::clamp(distance * 0.004f, 0.005f, 0.1f);
-    for (const math::Vector3& point : points)
+    for (const math::Vector3& point : points) {
         renderer::DebugDraw::Box(ctx.renderer, point, { marker, marker, marker }, kSampleColor);
+    }
     renderer::DebugDraw::Sphere(ctx.renderer, points.front(), marker * 3.0f, kEndColor);
 }
 
@@ -66,7 +69,9 @@ void VFXPathDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 {
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeInHierarchy() || !IsSelectedForDebug(go, ctx)) continue;
+        if (!go.activeInHierarchy() || !IsSelectedForDebug(go, ctx)) {
+            continue;
+        }
         const Transform& tf = go.transform;
 
         if (const auto* trail = go.GetComponent<TrailComponent>(); trail && trail->enabled) {
@@ -76,15 +81,18 @@ void VFXPathDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
                     return trail->beamWorldSpace ? p : LocalToWorld(tf, p);
                 };
                 m_points.push_back(place(trail->beamStart));
-                for (const math::Vector3& p : trail->beamPoints) m_points.push_back(place(p));
+                for (const math::Vector3& p : trail->beamPoints) {
+                    m_points.push_back(place(p));
+                }
                 m_points.push_back(place(trail->beamEnd));
             } else if (!trail->pointBuffer.empty()) {
-                /// @note リングバッファ。論理順は ringHead から ringCount 個 (ワールド座標)。
+                // リングバッファ。論理順は ringHead から ringCount 個 (ワールド座標)。
                 const size_t capacity = trail->pointBuffer.size();
                 const int count = std::clamp(trail->ringCount, 0, static_cast<int>(capacity));
-                for (int i = 0; i < count; ++i)
+                for (int i = 0; i < count; ++i) {
                     m_points.push_back(
                         trail->pointBuffer[static_cast<size_t>(trail->ringHead + i) % capacity].position);
+                }
             }
             DrawPath(ctx, m_points, false);
         }
@@ -93,16 +101,18 @@ void VFXPathDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
             m_points.clear();
             const size_t capacity = meshTrail->samples.size();
             const int count = std::clamp(meshTrail->sampleCount, 0, static_cast<int>(capacity));
-            for (int i = 0; i < count; ++i)
+            for (int i = 0; i < count; ++i) {
                 m_points.push_back(
                     meshTrail->samples[static_cast<size_t>(meshTrail->sampleHead + i) % capacity].position);
+            }
             DrawPath(ctx, m_points, false);
         }
 
         if (const auto* line = go.GetComponent<LineRendererComponent>(); line && line->enabled) {
             m_points.clear();
-            for (const math::Vector3& p : line->points)
+            for (const math::Vector3& p : line->points) {
                 m_points.push_back(line->space == LineSpace::World ? p : LocalToWorld(tf, p));
+            }
             DrawPath(ctx, m_points, line->loop);
         }
 

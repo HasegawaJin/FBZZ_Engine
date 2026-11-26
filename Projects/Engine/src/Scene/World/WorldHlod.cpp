@@ -51,7 +51,9 @@ bool Finite(const math::Vector3& value)
 bool Finite(const math::Matrix4& value)
 {
     for (const auto& row : value.m) for (float element : row)
-        if (!std::isfinite(element)) return false;
+        if (!std::isfinite(element)) {
+            return false;
+        }
     return true;
 }
 
@@ -69,7 +71,9 @@ bool PositiveScale(const math::Vector3& value)
 bool Decompose(const math::Matrix4& matrix, renderer::InstancePlacement& out)
 {
     if (!Finite(matrix) || matrix.m[3][0] != 0.0f || matrix.m[3][1] != 0.0f
-        || matrix.m[3][2] != 0.0f || matrix.m[3][3] != 1.0f) return false;
+        || matrix.m[3][2] != 0.0f || matrix.m[3][3] != 1.0f) {
+        return false;
+    }
     double axes[3][3]{};
     double scales[3]{};
     for (size_t column = 0; column < 3; ++column) {
@@ -79,19 +83,29 @@ bool Decompose(const math::Matrix4& matrix, renderer::InstancePlacement& out)
         }
         scales[column] = std::sqrt(scales[column]);
         if (!std::isfinite(scales[column]) || scales[column] < 0.00001
-            || scales[column] > std::numeric_limits<float>::max()) return false;
-        for (double& value : axes[column]) value /= scales[column];
+            || scales[column] > std::numeric_limits<float>::max()) {
+            return false;
+        }
+        for (double& value : axes[column]) {
+            value /= scales[column];
+        }
     }
     for (size_t a = 0; a < 3; ++a) for (size_t b = a + 1; b < 3; ++b) {
         double dot = 0.0;
-        for (size_t row = 0; row < 3; ++row) dot += axes[a][row] * axes[b][row];
-        if (std::abs(dot) > AXIS_TOLERANCE) return false;
+        for (size_t row = 0; row < 3; ++row) {
+            dot += axes[a][row] * axes[b][row];
+        }
+        if (std::abs(dot) > AXIS_TOLERANCE) {
+            return false;
+        }
     }
     const double determinant = axes[0][0] * (axes[1][1] * axes[2][2] - axes[1][2] * axes[2][1])
         - axes[1][0] * (axes[0][1] * axes[2][2] - axes[0][2] * axes[2][1])
         + axes[2][0] * (axes[0][1] * axes[1][2] - axes[0][2] * axes[1][1]);
-    if (determinant <= 0.0 || std::abs(determinant - 1.0) > AXIS_TOLERANCE * 3.0) return false;
-    /// @note Quaternion::FromEuler は YXZ 順。特異点では合成したヨー角を保ちながらロールを 0 に固定する。
+    if (determinant <= 0.0 || std::abs(determinant - 1.0) > AXIS_TOLERANCE * 3.0) {
+        return false;
+    }
+    // Quaternion::FromEuler は YXZ 順。特異点では合成したヨー角を保ちながらロールを 0 に固定する。
     const double cosinePitch = std::hypot(axes[2][0], axes[2][2]);
     const double pitch = std::atan2(-axes[2][1], cosinePitch);
     const double yaw = cosinePitch > 0.000001
@@ -105,7 +119,9 @@ bool Decompose(const math::Matrix4& matrix, renderer::InstancePlacement& out)
         math::Quaternion::FromEuler(result.eulerRadians), result.scale);
     for (size_t column = 0; column < 3; ++column) for (size_t row = 0; row < 3; ++row)
         if (std::abs(static_cast<double>(rebuilt.m[row][column]) - matrix.m[row][column])
-            > scales[column] * 0.00003) return false;
+            > scales[column] * 0.00003) {
+            return false;
+        }
     out = result;
     return true;
 }
@@ -113,16 +129,22 @@ bool Decompose(const math::Matrix4& matrix, renderer::InstancePlacement& out)
 bool LowestParts(const WorldHlodSource& source, std::vector<PartKey>& out)
 {
     if (source.parts.empty() || source.parts.size() > 64 || source.lodHeights.empty()
-        || source.lodHeights.size() > 4) return false;
+        || source.lodHeights.size() > 4) {
+        return false;
+    }
     float previous = 2.0f;
     for (float height : source.lodHeights) {
-        if (!std::isfinite(height) || height < 0.0f || height > 1.0f || height >= previous) return false;
+        if (!std::isfinite(height) || height < 0.0f || height > 1.0f || height >= previous) {
+            return false;
+        }
         previous = height;
     }
     std::array<bool, 4> present{};
     uint32_t lowest = 0;
     for (const auto& part : source.parts) {
-        if (part.meshPath.empty() || part.materialPath.empty() || part.lod >= source.lodHeights.size()) return false;
+        if (part.meshPath.empty() || part.materialPath.empty() || part.lod >= source.lodHeights.size()) {
+            return false;
+        }
         present[part.lod] = true;
         lowest = (std::max)(lowest, part.lod);
     }
@@ -154,17 +176,23 @@ bool IncludeBounds(const WorldCellBounds& local, const math::Matrix4& world, Sta
                 value += term;
                 magnitude += std::abs(term);
             }
-            /// @note 演算誤差の余裕と単精度での外向き丸めにより、設定値と再構築後の代理形状の頂点をともに境界内へ収める。
+            // 演算誤差の余裕と単精度での外向き丸めにより、設定値と再構築後の代理形状の頂点をともに境界内へ収める。
             const double margin = (magnitude + 1.0) * 8.0 * std::numeric_limits<float>::epsilon();
             const double minimum = value - margin, maximum = value + margin;
             low[row] = static_cast<float>(minimum);
             high[row] = static_cast<float>(maximum);
-            if (!std::isfinite(low[row]) || !std::isfinite(high[row])) return false;
-            if (static_cast<double>(low[row]) > minimum)
+            if (!std::isfinite(low[row]) || !std::isfinite(high[row])) {
+                return false;
+            }
+            if (static_cast<double>(low[row]) > minimum) {
                 low[row] = std::nextafter(low[row], -std::numeric_limits<float>::infinity());
-            if (static_cast<double>(high[row]) < maximum)
+            }
+            if (static_cast<double>(high[row]) < maximum) {
                 high[row] = std::nextafter(high[row], std::numeric_limits<float>::infinity());
-            if (!std::isfinite(low[row]) || !std::isfinite(high[row])) return false;
+            }
+            if (!std::isfinite(low[row]) || !std::isfinite(high[row])) {
+                return false;
+            }
         }
         const math::Vector3 minimum{low[0], low[1], low[2]}, maximum{high[0], high[1], high[2]};
         if (!group.initializedBounds) {
@@ -184,64 +212,91 @@ bool IncludeBounds(const WorldCellBounds& local, const math::Matrix4& world, Sta
 bool BuildWorldHlod(std::span<const WorldHlodSource> sources, const WorldHlodBuildSettings& settings,
     std::vector<WorldHlodGroup>& out, std::string& diagnostic)
 {
-    if (!ValidateWorldCellGrid(settings.grid, diagnostic)) return false;
-    if (settings.maxGroups == 0 || settings.maxInstances == 0)
+    if (!ValidateWorldCellGrid(settings.grid, diagnostic)) {
+        return false;
+    }
+    if (settings.maxGroups == 0 || settings.maxInstances == 0) {
         return Fail(diagnostic, "HLOD group and instance budgets must be positive");
+    }
     std::map<GroupKey, StagedGroup> groups;
     std::set<std::string> sourceKeys;
     uint64_t total = 0;
     for (const auto& source : sources) {
-        if (!source.includeHlod) continue;
-        if (source.sourceKey.empty() || !sourceKeys.insert(source.sourceKey).second)
+        if (!source.includeHlod) {
+            continue;
+        }
+        if (source.sourceKey.empty() || !sourceKeys.insert(source.sourceKey).second) {
             return Fail(diagnostic, "HLOD source keys must be nonempty and unique");
+        }
         std::vector<PartKey> parts;
-        if (!LowestParts(source, parts)) return Fail(diagnostic, "HLOD source has invalid mesh parts or LOD thresholds");
+        if (!LowestParts(source, parts)) {
+            return Fail(diagnostic, "HLOD source has invalid mesh parts or LOD thresholds");
+        }
         renderer::InstancePlacement owner;
-        if (!Decompose(source.worldTransform, owner))
+        if (!Decompose(source.worldTransform, owner)) {
             return Fail(diagnostic, "HLOD owner transform must be a finite positive-scale affine TRS without shear");
-        if (source.hasLocalBounds && !ValidBounds(source.localBounds))
+        }
+        if (source.hasLocalBounds && !ValidBounds(source.localBounds)) {
             return Fail(diagnostic, "HLOD source bounds are invalid");
+        }
         std::set<uint32_t> ids;
         for (const auto& placement : source.placements) {
-            if (!placement.active) continue;
+            if (!placement.active) {
+                continue;
+            }
             if (placement.id == 0 || placement.id > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())
                 || !ids.insert(placement.id).second || !Finite(placement.position)
-                || !Finite(placement.eulerRadians) || !PositiveScale(placement.scale))
+                || !Finite(placement.eulerRadians) || !PositiveScale(placement.scale)) {
                 return Fail(diagnostic, "HLOD source has invalid placement IDs or transforms");
-            if (++total > settings.maxInstances) return Fail(diagnostic, "HLOD instance budget exceeded");
+            }
+            if (++total > settings.maxInstances) {
+                return Fail(diagnostic, "HLOD instance budget exceeded");
+            }
             const auto world = source.worldTransform * math::Matrix4::TRS(placement.position,
                 math::Quaternion::FromEuler(placement.eulerRadians), placement.scale);
-            if (!Finite(world)) return Fail(diagnostic, "HLOD composed transform is not finite");
+            if (!Finite(world)) {
+                return Fail(diagnostic, "HLOD composed transform is not finite");
+            }
             const math::Vector3 position{world.m[0][3], world.m[1][3], world.m[2][3]};
             WorldCellId cell;
-            if (!TryLocateWorldCell(settings.grid, position, cell))
+            if (!TryLocateWorldCell(settings.grid, position, cell)) {
                 return Fail(diagnostic, "HLOD placement lies outside the representable world grid");
+            }
             const auto origin = WorldCellOrigin(settings.grid, cell);
-            if (!Finite(origin)) return Fail(diagnostic, "HLOD cell origin is not finite");
+            if (!Finite(origin)) {
+                return Fail(diagnostic, "HLOD cell origin is not finite");
+            }
             auto relative = world;
             relative.m[0][3] = static_cast<float>(static_cast<double>(position.x) - origin.x);
             relative.m[1][3] = static_cast<float>(static_cast<double>(position.y) - origin.y);
             relative.m[2][3] = static_cast<float>(static_cast<double>(position.z) - origin.z);
             renderer::InstancePlacement proxyPlacement;
-            if (!Decompose(relative, proxyPlacement))
+            if (!Decompose(relative, proxyPlacement)) {
                 return Fail(diagnostic, "HLOD composed transform cannot be represented by a positive-scale TRS");
+            }
             GroupKey key{cell, source.layer, source.castShadows, parts};
             auto found = groups.find(key);
             if (found == groups.end()) {
-                if (groups.size() >= settings.maxGroups) return Fail(diagnostic, "HLOD group budget exceeded");
+                if (groups.size() >= settings.maxGroups) {
+                    return Fail(diagnostic, "HLOD group budget exceeded");
+                }
                 found = groups.emplace(std::move(key), StagedGroup{}).first;
                 found->second.origin = origin;
             }
             auto& group = found->second;
-            if (group.placements.size() >= MAX_ASSET_INSTANCES)
+            if (group.placements.size() >= MAX_ASSET_INSTANCES) {
                 return Fail(diagnostic, "HLOD proxy asset instance capacity exceeded");
+            }
             if (source.hasLocalBounds) {
                 const auto proxyWorld = math::Matrix4::Translate(origin) * math::Matrix4::TRS(proxyPlacement.position,
                     math::Quaternion::FromEuler(proxyPlacement.eulerRadians), proxyPlacement.scale);
                 if (!Finite(proxyWorld) || !IncludeBounds(source.localBounds, world, group)
-                    || !IncludeBounds(source.localBounds, proxyWorld, group))
+                    || !IncludeBounds(source.localBounds, proxyWorld, group)) {
                     return Fail(diagnostic, "HLOD world bounds exceed the supported finite range");
-            } else group.completeBounds = false;
+                }
+            } else {
+                group.completeBounds = false;
+            }
             group.placements.push_back({proxyPlacement, {source.sourceKey, placement.id}});
         }
     }
@@ -262,7 +317,9 @@ bool BuildWorldHlod(std::span<const WorldHlodSource> sources, const WorldHlodBui
         group.hasWorldBounds = staged.completeBounds && staged.initializedBounds;
         std::vector<asset::InstanceMeshPart> definition;
         definition.reserve(key.parts.size());
-        for (const auto& part : key.parts) definition.push_back({part.first, part.second, 0});
+        for (const auto& part : key.parts) {
+            definition.push_back({part.first, part.second, 0});
+        }
         std::vector<renderer::InstancePlacement> placements;
         placements.reserve(staged.placements.size());
         group.sources.reserve(staged.placements.size());
@@ -271,8 +328,9 @@ bool BuildWorldHlod(std::span<const WorldHlodSource> sources, const WorldHlodBui
             placements.push_back(value.placement);
             group.sources.push_back(std::move(value.source));
         }
-        if (!group.proxy.instances.Replace(definition, heights, placements))
+        if (!group.proxy.instances.Replace(definition, heights, placements)) {
             return Fail(diagnostic, "HLOD proxy definition failed instance asset validation");
+        }
         result.push_back(std::move(group));
     }
     out = std::move(result);

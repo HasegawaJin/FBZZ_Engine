@@ -78,5 +78,5 @@ void RestoreMaterialBindings(RenderPassContext& context, renderer::RenderScene& 
 [[nodiscard]] bool LeafWindBoundsMayHaveExpanded(Scene& scene, const renderer::RenderObject& object);
 void FailOpenChangedLeafWindBounds(Scene& scene, renderer::RenderScene& snapshot);
 
-} /// @note namespace render_extraction_detail
-} /// @note namespace fbzz::scene
+} // namespace render_extraction_detail
+} // namespace fbzz::scene

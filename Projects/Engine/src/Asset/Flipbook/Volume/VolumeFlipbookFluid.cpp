@@ -51,17 +51,19 @@ void PackLiquidVolume(const fluid::FluidLiquidSolver& solver, int resolution, fl
     out.velocity.assign(cells, { 0.0f, 0.0f, 0.0f, 0.0f });
     std::vector<float> weights(cells, 0.0f);
 
-    /// @note bake 空間 [-1,1] の 1 辺を n セルに割る。セル中心は (i + 0.5) / n * 2 - 1。
+    // bake 空間 [-1,1] の 1 辺を n セルに割る。セル中心は (i + 0.5) / n * 2 - 1。
     const float cellsPerUnit = static_cast<float>(n) * 0.5f;
     const float radius = solver.ParticleRadius() * (std::max)(radiusScale, 0.5f);
-    /// @note 低い解像度 (プレビューや 16³) では粒子がセルより小さく、そのまま塗ると 1 セルにも
-    ///       届かず液体が丸ごと消えるため、半径をセル 1 つ分弱まで広げ、広げた分だけ量を
-    ///       減らして体積を保つ。
+    // 低い解像度 (プレビューや 16³) では粒子がセルより小さく、そのまま塗ると 1 セルにも
+    //       届かず液体が丸ごと消えるため、半径をセル 1 つ分弱まで広げ、広げた分だけ量を
+    //       減らして体積を保つ。
     constexpr float kMinSplatCells = 0.75f;
     for (const fluid::FluidLiquidSolver::Particle& particle : solver.Particles()) {
-        /// @note 寿命がある飛沫は細りながら消える。いきなり消すとコマ間でポツポツ抜けて見える (2D と同じ)。
+        // 寿命がある飛沫は細りながら消える。いきなり消すとコマ間でポツポツ抜けて見える (2D と同じ)。
         const float life = lifetime > 0.0f ? std::clamp(1.0f - particle.age / lifetime, 0.0f, 1.0f) : 1.0f;
-        if (life <= 0.0f) continue;
+        if (life <= 0.0f) {
+            continue;
+        }
         const float trueRadius = radius * std::sqrt(life) * cellsPerUnit;
         const float r = (std::max)(trueRadius, kMinSplatCells);
         const float shrink = trueRadius / r;
@@ -83,7 +85,9 @@ void PackLiquidVolume(const fluid::FluidLiquidSolver& solver, int resolution, fl
                     const float dy = (static_cast<float>(y) - cy) * inverseRadius;
                     const float dz = (static_cast<float>(z) - cz) * inverseRadius;
                     const float q2 = dx * dx + dy * dy + dz * dz;
-                    if (q2 >= 1.0f) continue;
+                    if (q2 >= 1.0f) {
+                        continue;
+                    }
                     const float falloff = (1.0f - q2) * (1.0f - q2) * (1.0f - q2) * amount;
                     const std::size_t i = static_cast<std::size_t>(x)
                         + static_cast<std::size_t>(n) * (static_cast<std::size_t>(y) + static_cast<std::size_t>(n) * z);
@@ -98,8 +102,10 @@ void PackLiquidVolume(const fluid::FluidLiquidSolver& solver, int resolution, fl
         }
     }
     for (std::size_t i = 0; i < cells; ++i) {
-        /// @note 量を減らした粒の縁は重みが極小になる。閾値で切ると «密度はあるのに液体でないセル» ができる。
-        if (weights[i] <= 0.0f) continue;
+        // 量を減らした粒の縁は重みが極小になる。閾値で切ると «密度はあるのに液体でないセル» ができる。
+        if (weights[i] <= 0.0f) {
+            continue;
+        }
         out.medium[i].w = 1.0f;
         const float inverse = 1.0f / weights[i];
         out.medium[i].z = std::clamp(out.medium[i].z * inverse, 0.0f, 1.0f);
@@ -113,7 +119,9 @@ float FluidRecipeTemperatureScale(const fluid::FluidRecipe& recipe)
 {
     float peak = 0.0f;
     for (const fluid::FluidSource& source : recipe.sources)
-        if (source.enabled) peak = (std::max)(peak, source.temperature);
+        if (source.enabled) {
+            peak = (std::max)(peak, source.temperature);
+        }
     return peak > 1.0e-4f ? 1.0f / peak : 1.0f;
 }
 
@@ -147,13 +155,17 @@ bool FluidVolumeStream::Open(const fluid::FluidRecipe& recipe, int resolution, f
 
 void FluidVolumeStream::Cancel() noexcept
 {
-    if (m_cancel) m_cancel->store(true, std::memory_order_relaxed);
+    if (m_cancel) {
+        m_cancel->store(true, std::memory_order_relaxed);
+    }
 }
 
 void FluidVolumeStream::Close()
 {
     Cancel();
-    if (m_job.valid()) m_job.wait();
+    if (m_job.valid()) {
+        m_job.wait();
+    }
     m_job = {};
     m_cancel.reset();
     m_solver.reset();
@@ -163,27 +175,39 @@ void FluidVolumeStream::Close()
 
 bool FluidVolumeStream::Request(int frame)
 {
-    if (!IsOpen() || m_job.valid()) return false;
+    if (!IsOpen() || m_job.valid()) {
+        return false;
+    }
     frame = (std::max)(frame, 0);
     const bool restart = m_advancedFrames < 0 || frame + 1 < m_advancedFrames;
-    /// @note 旗をコマごとに作り直す。前のコマへの Cancel が次のコマまで残って «頼んだそばから畳まれる» のを防ぐ。
+    // 旗をコマごとに作り直す。前のコマへの Cancel が次のコマまで残って «頼んだそばから畳まれる» のを防ぐ。
     auto cancel = std::make_shared<std::atomic<bool>>(false);
     m_cancel = cancel;
     m_job = std::async(std::launch::async, [this, frame, restart, cancel]() {
         TaskSystem::ExternalWorkerScope workerScope(TaskSystem::ExternalWorkerCategory::VolumeFluid);
         const auto cancelled = [&cancel]() { return cancel->load(std::memory_order_relaxed); };
         const auto advance = [this](float dt) {
-            if (m_liquid) m_liquid->Advance(dt);
-            else          m_solver->Advance(dt);
+            if (m_liquid) {
+                m_liquid->Advance(dt);
+            }
+            else {
+                m_solver->Advance(dt);
+            }
         };
         const float stepDt = m_frameDt / static_cast<float>(m_substeps);
         if (restart) {
-            if (m_liquid) m_liquid->Reset(m_recipe, /*volumetric=*/true);
-            else          m_solver->Reset(m_recipe, m_resolution, m_resolution, m_resolution);
-            /// @note warmup も «普通のコマ» として解く (刻みの正本は FluidStepping)。
+            if (m_liquid) {
+                m_liquid->Reset(m_recipe, /*volumetric=*/true);
+            }
+            else {
+                m_solver->Reset(m_recipe, m_resolution, m_resolution, m_resolution);
+            }
+            // warmup も «普通のコマ» として解く (刻みの正本は FluidStepping)。
             for (int i = 0; i < m_warmupFrames; ++i) {
                 for (int step = 0; step < m_substeps; ++step) {
-                    if (cancelled()) return PackedFluidVolume{};
+                    if (cancelled()) {
+                        return PackedFluidVolume{};
+                    }
                     advance(stepDt);
                 }
             }
@@ -192,7 +216,7 @@ bool FluidVolumeStream::Request(int frame)
         while (m_advancedFrames < frame + 1) {
             for (int step = 0; step < m_substeps; ++step) {
                 if (cancelled()) {
-                    /// @note 途中まで進めた場はどのコマでもない。続きの起点にせず、次の Request で頭から解き直す。
+                    // 途中まで進めた場はどのコマでもない。続きの起点にせず、次の Request で頭から解き直す。
                     m_advancedFrames = -1;
                     return PackedFluidVolume{};
                 }
@@ -201,8 +225,12 @@ bool FluidVolumeStream::Request(int frame)
             ++m_advancedFrames;
         }
         PackedFluidVolume volume;
-        if (m_liquid) PackLiquidVolume(*m_liquid, m_resolution, m_liquidRadiusScale, m_liquidLifetime, volume);
-        else          PackFluidVolume(*m_solver, m_scale, volume);
+        if (m_liquid) {
+            PackLiquidVolume(*m_liquid, m_resolution, m_liquidRadiusScale, m_liquidLifetime, volume);
+        }
+        else {
+            PackFluidVolume(*m_solver, m_scale, volume);
+        }
         volume.frame = frame;
         return volume;
     });
@@ -211,12 +239,16 @@ bool FluidVolumeStream::Request(int frame)
 
 bool FluidVolumeStream::Poll(PackedFluidVolume& out)
 {
-    if (!m_job.valid() || m_job.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+    if (!m_job.valid() || m_job.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return false;
+    }
     PackedFluidVolume volume = m_job.get();
-    /// @note 畳まれたワーカーの空手形。out を潰すと今出している絵まで消える。
-    if (volume.frame < 0) return false;
+    // 畳まれたワーカーの空手形。out を潰すと今出している絵まで消える。
+    if (volume.frame < 0) {
+        return false;
+    }
     out = std::move(volume);
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

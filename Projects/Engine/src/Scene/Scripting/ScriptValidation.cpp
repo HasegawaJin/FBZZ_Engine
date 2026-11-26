@@ -25,7 +25,9 @@ std::size_t CountScriptMatches(GameObject& go, const char* type)
     std::size_t matches = 0;
     if (const auto* component = go.GetComponent<ScriptComponent>())
         for (const auto& entry : component->scripts)
-            if (entry.script && entry.script->FbzzAsType(type)) ++matches;
+            if (entry.script && entry.script->FbzzAsType(type)) {
+                ++matches;
+            }
     return matches;
 }
 
@@ -69,23 +71,33 @@ public:
     void RequireAsset(const char* name, const DataAssetRef& reference) override
     {
         std::string reason;
-        if (reference.path.empty()) reason = "required asset is not assigned";
+        if (reference.path.empty()) {
+            reason = "required asset is not assigned";
+        }
         else {
             const auto path = asset::AssetManager::ResolveAssetPath(reference.path);
-            if (path.empty() || !util::FileSystem::Exists(util::FileSystem::PathFromUtf8(path)))
+            if (path.empty() || !util::FileSystem::Exists(util::FileSystem::PathFromUtf8(path))) {
                 reason = "required asset file cannot be found: " + reference.path;
+            }
             else {
                 std::string actualType = asset::DataAssetRegistry::TypeOf(reference.path);
                 if (m_resolveAssets) {
                     const auto* value = asset::DataAssetRegistry::Resolve(reference.path);
-                    if (!value) reason = "required asset cannot be loaded: " + reference.path;
-                    else actualType = value->GetTypeName();
+                    if (!value) {
+                        reason = "required asset cannot be loaded: " + reference.path;
+                    }
+                    else {
+                        actualType = value->GetTypeName();
+                    }
                 }
-                if (reason.empty() && !actualType.empty() && actualType != reference.type)
+                if (reason.empty() && !actualType.empty() && actualType != reference.type) {
                     reason = "required asset expects '" + reference.type + "', got '" + actualType + "'";
+                }
             }
         }
-        if (!reason.empty()) Add(ScriptRequirementKind::Asset, name, std::move(reason));
+        if (!reason.empty()) {
+            Add(ScriptRequirementKind::Asset, name, std::move(reason));
+        }
     }
 
     void RequireReference(const char* name, const EntityRef& reference, const char* type) override
@@ -97,23 +109,29 @@ public:
                 reference.IsValid() ? "required reference target no longer exists" : "required reference is not assigned");
             return;
         }
-        if (!type || !*type || std::string_view(type) == "GameObject") return;
+        if (!type || !*type || std::string_view(type) == "GameObject") {
+            return;
+        }
         if (const auto* component = FindComponentOps(type)) {
-            if (!component->has || !component->has(*target))
+            if (!component->has || !component->has(*target)) {
                 Add(ScriptRequirementKind::Reference, name, "required reference lacks component '" + std::string(type) + "'");
+            }
             return;
         }
         const auto matches = CountScriptMatches(*target, type);
-        if (matches != 1)
+        if (matches != 1) {
             Add(ScriptRequirementKind::Reference, name,
                 "required reference expects one '" + std::string(type) + "', found " + std::to_string(matches));
+        }
     }
 
 private:
     void Add(ScriptRequirementKind kind, const char* name, std::string reason)
     {
         std::string key;
-        for (const auto& part : m_scope) key += part + ".";
+        for (const auto& part : m_scope) {
+            key += part + ".";
+        }
         key += PersistentKey(name);
         m_issues.push_back(MakeIssue(m_go, m_script, kind, std::move(key), std::move(reason)));
     }
@@ -132,11 +150,15 @@ void CollectGroup(GameObject& go,
                   std::vector<ScriptRequirementIssue>& out)
 {
     for (const std::string& typeName : requirements) {
-        if (typeName.empty()) continue;
+        if (typeName.empty()) {
+            continue;
+        }
 
         const ComponentOps* ops = FindComponentOps(typeName);
-        /// @note 登録済みで、かつ実際に付いているなら何も言うことはない。
-        if (ops && ops->has && ops->has(go)) continue;
+        // 登録済みで、かつ実際に付いているなら何も言うことはない。
+        if (ops && ops->has && ops->has(go)) {
+            continue;
+        }
 
         ScriptRequirementIssue issue;
         issue.entity           = go.GetID();
@@ -160,16 +182,18 @@ void CollectScriptRequirementIssues(GameObject& go,
                                     bool includeOptional, bool resolveAssets)
 {
     CollectGroup(go, script, script.RequiredComponents(), false, out);
-    if (includeOptional)
+    if (includeOptional) {
         CollectGroup(go, script, script.OptionalComponents(), true, out);
+    }
     for (const auto& type : script.RequiredScripts()) {
         const auto matches = CountScriptMatches(go, type.c_str());
-        if (matches != 1)
+        if (matches != 1) {
             out.push_back(MakeIssue(go, script, ScriptRequirementKind::Script, type,
                 "requires one attached script '" + type + "', found " + std::to_string(matches)));
+        }
     }
     if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(const_cast<Script*>(&script))) {
-        /// @note 所有者の割り当て後、Host が入れ子の必須参照を既存トークンと照合する。Inspector の収集では停止状態を確定しない。
+        // 所有者の割り当て後、Host が入れ子の必須参照を既存トークンと照合する。Inspector の収集では停止状態を確定しない。
         adapter->SetContext(go.GetScene(), &go);
         if (!adapter->RefreshOwnerBinding() || !adapter->ValidateReferences()) {
             std::string diagnostic = ManagedScriptRuntime::Instance().LastDiagnostic();
@@ -184,19 +208,23 @@ void CollectScriptRequirementIssues(GameObject& go,
                     break;
                 }
             }
-            if (diagnostic.empty()) diagnostic = "Managed settings or required references could not be validated.";
+            if (diagnostic.empty()) {
+                diagnostic = "Managed settings or required references could not be validated.";
+            }
             out.push_back(MakeIssue(go, script, ScriptRequirementKind::Reference, std::move(fieldKey), std::move(diagnostic)));
         }
         return;
     }
     RequirementReflector reflector(go, script, out, resolveAssets);
-    /// @note Reflect の既存 ABI は非 const。検証用 reflector は値・参照を書き換えず観測 getter も呼ばない。
+    // Reflect の既存 ABI は非 const。検証用 reflector は値・参照を書き換えず観測 getter も呼ばない。
     const_cast<Script&>(script).Reflect(reflector);
 }
 
 bool ValidateScriptRequirementsForStart(GameObject& go, Script& script)
 {
-    if (script.RequirementsBlocked()) return false;
+    if (script.RequirementsBlocked()) {
+        return false;
+    }
     std::vector<ScriptRequirementIssue> issues;
     CollectScriptRequirementIssues(go, script, issues, false, true);
     bool blocked = false;
@@ -204,7 +232,9 @@ bool ValidateScriptRequirementsForStart(GameObject& go, Script& script)
         FBZZ_LOG_ERROR("Script requirement: %s", FormatScriptRequirementIssue(issue).c_str());
         blocked = blocked || issue.blocksStart;
     }
-    if (blocked) script.BlockForMissingRequirements();
+    if (blocked) {
+        script.BlockForMissingRequirements();
+    }
     return !blocked;
 }
 
@@ -216,12 +246,16 @@ std::vector<ScriptRequirementIssue> ValidateSceneScriptRequirements(Scene& scene
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !go) continue;
+        if (!sc || !go) {
+            continue;
+        }
 
         for (const ScriptEntry& entry : sc->scripts) {
-            /// @note 実体が無いもの (Missing Script) は要求を宣言しようがないので飛ばす。
-            /// @note        その状態自体は Inspector が別途「Missing Script」として表示している。
-            if (!entry.script) continue;
+            // 実体が無いもの (Missing Script) は要求を宣言しようがないので飛ばす。
+            // その状態自体は Inspector が別途「Missing Script」として表示している。
+            if (!entry.script) {
+                continue;
+            }
             CollectScriptRequirementIssues(*go, *entry.script, issues, includeOptional, true);
         }
     }
@@ -232,17 +266,20 @@ std::vector<ScriptRequirementIssue> ValidateSceneScriptRequirements(Scene& scene
 std::string FormatScriptRequirementIssue(const ScriptRequirementIssue& issue)
 {
     std::string text = issue.objectName + " / " + issue.scriptType + ": ";
-    if (issue.kind != ScriptRequirementKind::Component)
+    if (issue.kind != ScriptRequirementKind::Component) {
         return text + issue.fieldKey + ": " + issue.reason;
+    }
     if (issue.unknown) {
-        /// @note 宣言側の誤り。足しても直らないので、文面もそう読めるようにする。
+        // 宣言側の誤り。足しても直らないので、文面もそう読めるようにする。
         text += "unknown component type '" + issue.componentType +
                 "' in RequireComponentAttribute";
         return text;
     }
     text += (issue.optional ? "optional component '" : "requires '")
           + issue.componentDisplay + "'";
-    if (!issue.optional) text += " but it is not attached";
+    if (!issue.optional) {
+        text += " but it is not attached";
+    }
     return text;
 }
 

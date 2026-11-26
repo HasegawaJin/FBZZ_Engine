@@ -54,7 +54,7 @@ TEST_F(FileSystemPathTest, FilenameOfABareNameIsTheNameItself)
 /// @brief Directory keeps the trailing separator.
 TEST_F(FileSystemPathTest, DirectoryKeepsTheTrailingSeparator)
 {
-    /// @note 呼び出し側は連結して使う。末尾を落とすと "Assets/ScenesMain.scene" になる。
+    // 呼び出し側は連結して使う。末尾を落とすと "Assets/ScenesMain.scene" になる。
     EXPECT_EQ(FileSystem::GetDirectory("Assets/Scenes/Main.scene"), "Assets/Scenes/");
     EXPECT_EQ(FileSystem::GetDirectory("Assets\\Scenes\\Main.scene"), "Assets\\Scenes\\");
 }
@@ -83,7 +83,7 @@ TEST_F(FileSystemPathTest, TrimsTrailingSlashesByDefault)
 /// @brief Keeps trailing slashes when asked.
 TEST_F(FileSystemPathTest, KeepsTrailingSlashesWhenAsked)
 {
-    /// @note ルート表現 (`"<proj>/Assets/"`) は末尾のスラッシュ込みで意味を持つ。
+    // ルート表現 (`"<proj>/Assets/"`) は末尾のスラッシュ込みで意味を持つ。
     EXPECT_EQ(FileSystem::NormalizePathSeparators("Assets/Scenes/", false), "Assets/Scenes/");
 }
 
@@ -106,7 +106,7 @@ TEST_F(FileSystemPathTest, NormalisationIsIdempotent)
 /// @brief Same path ignores separator style and case.
 TEST_F(FileSystemPathTest, SamePathIgnoresSeparatorStyleAndCase)
 {
-    /// @note Windows のパスは大文字小文字を区別しない。同じ実体を別参照にしない。
+    // Windows のパスは大文字小文字を区別しない。同じ実体を別参照にしない。
     EXPECT_TRUE(FileSystem::SamePathText("Assets/Scenes/Main.scene",
                                          "assets\\scenes\\MAIN.SCENE"));
 }
@@ -162,14 +162,14 @@ TEST_F(FileSystemPathTest, ChildPathAcceptsNestedPaths)
 /// @brief Child path rejects a sibling with a shared prefix.
 TEST_F(FileSystemPathTest, ChildPathRejectsASiblingWithASharedPrefix)
 {
-    /// @note "Assets/Scenes2" は "Assets/Scenes" の配下ではない。素の前方一致だと通ってしまう。
+    // "Assets/Scenes2" は "Assets/Scenes" の配下ではない。素の前方一致だと通ってしまう。
     EXPECT_FALSE(FileSystem::IsChildPathText("Assets/Scenes2/Main.scene", "Assets/Scenes"));
 }
 
 /// @brief Child path rejects anything when the root is empty.
 TEST_F(FileSystemPathTest, ChildPathRejectsAnythingWhenTheRootIsEmpty)
 {
-    /// @note 空ルートを «全部が配下» と解釈すると、マウント外のファイルまで書き込み対象になる。
+    // 空ルートを «全部が配下» と解釈すると、マウント外のファイルまで書き込み対象になる。
     EXPECT_FALSE(FileSystem::IsChildPathText("Assets/Scenes/Main.scene", ""));
 }
 

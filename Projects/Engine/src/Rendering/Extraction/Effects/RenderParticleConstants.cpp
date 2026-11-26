@@ -26,7 +26,7 @@ renderer::ParticleRenderCB BuildParticleRenderConstants(ParticleEmitter& emitter
     constants.softParticleFadeDistance = (std::max)(emitter.runtime.material.softParticleFadeDistance, 0.001f);
     constants.softParticles = emitter.runtime.material.softParticles ? 1u : 0u;
     constants.maxParticles = static_cast<uint32_t>((std::max)(maxParticles, 0));
-    /// @note ビット割り当ては Rendering/ParticleCommon.hlsli の FBZZ_PFX_* / FBZZ_PALPHA_* と一致させること。
+    // ビット割り当ては Rendering/ParticleCommon.hlsli の FBZZ_PFX_* / FBZZ_PALPHA_* と一致させること。
     constants.effectsFlags = (emitter.runtime.material.distortion ? kParticleFxDistortion : 0u)
         | (emitter.runtime.material.sixWayLighting ? kParticleFxSixWay : 0u)
         | (emitter.runtime.material.flipbook.motionVectorFlipbook && emitter.runtime.motionVectorTexture.IsValid()
@@ -50,7 +50,7 @@ renderer::ParticleRenderCB BuildParticleRenderConstants(ParticleEmitter& emitter
     constants.lightingStrength = (std::max)(emitter.runtime.material.lightingStrength, 0.0f);
     constants.smokeWrap = std::clamp(emitter.runtime.material.smokeWrap, 0.0f, 1.0f);
     constants.smokeTransmission = (std::max)(emitter.runtime.material.smokeTransmission, 0.0f);
-    /// @note 0 以下だと pow が発散する。シェーダー側でも下限を切るが、値の意味をここで固定する。
+    // 0 以下だと pow が発散する。シェーダー側でも下限を切るが、値の意味をここで固定する。
     constants.smokeBackScatterPower = (std::max)(emitter.runtime.material.smokeBackScatterPower, 0.1f);
     constants.tintColor = emitter.runtime.materialTint;
     constants.emissiveScale = (std::max)(emitter.runtime.material.emissiveScale, 0.0f);
@@ -59,29 +59,29 @@ renderer::ParticleRenderCB BuildParticleRenderConstants(ParticleEmitter& emitter
                           (std::max)(sixWayEmission.z, 0.0f),
                           (std::max)(emitter.runtime.material.sixWayEmissionScale, 0.0f) };
     constants.motionVectorStrength = (std::max)(emitter.runtime.material.flipbook.motionVectorStrength, 0.0f);
-    /// @note 歪みの画面UV算出に使う。0 だとUVが右下隅へ張り付いて屈折が出ない。
+    // 歪みの画面UV算出に使う。0 だとUVが右下隅へ張り付いて屈折が出ない。
     constants.screenWidth = static_cast<float>((std::max)(screenWidth, 1u));
     constants.screenHeight = static_cast<float>((std::max)(screenHeight, 1u));
-    /// @note 0 以下だと粒子が潰れて一切見えなくなるため、下限で切って「消える」事故を防ぐ。
+    // 0 以下だと粒子が潰れて一切見えなくなるため、下限で切って「消える」事故を防ぐ。
     constants.sizeAxisScaleX = (std::max)(emitter.settings.sizeAxisScale.x, 0.0001f);
     constants.sizeAxisScaleY = (std::max)(emitter.settings.sizeAxisScale.y, 0.0001f);
     constants.shadowStrength = std::clamp(emitter.runtime.material.shadowStrength, 0.0f, 1.0f);
-    /// @note ステップ数はピクセルあたりのループ回数に直結する。上限を切って
-    /// @note 設定ミスで GPU が張り付くのを防ぐ。
+    // ステップ数はピクセルあたりのループ回数に直結する。上限を切って
+    // 設定ミスで GPU が張り付くのを防ぐ。
     constants.volumetricSteps = static_cast<std::uint32_t>(std::clamp(emitter.runtime.material.volumetricSteps, 1, 64));
     constants.volumetricDensity = (std::max)(emitter.runtime.material.volumetricDensity, 0.0f);
-    /// @note g = ±1 は位相関数が発散するため内側へ寄せる。
+    // g = ±1 は位相関数が発散するため内側へ寄せる。
     constants.volumetricAnisotropy = std::clamp(emitter.runtime.material.volumetricAnisotropy, -0.95f, 0.95f);
     constants.volumetricNoiseScale = (std::max)(emitter.runtime.material.volumetricNoiseScale, 0.0f);
-    /// @note GPU 経路の VS がソート済み index (t15) を経由するかどうか。CPU 経路では常に 0。
+    // GPU 経路の VS がソート済み index (t15) を経由するかどうか。CPU 経路では常に 0。
     constants.gpuSortEnabled = gpuSortEnabled ? 1u : 0u;
-    /// @note 自己影。密度バッファ (t9) が無いフレームでも 0 なら参照しないので安全。
+    // 自己影。密度バッファ (t9) が無いフレームでも 0 なら参照しないので安全。
     constants.selfShadowStrength = (std::max)(emitter.runtime.material.selfShadowStrength, 0.0f);
-    /// @note カメラ距離フェード。負値だけ潰す。near >= far (既定の 0 / 0 を含む) は
-    /// @note シェーダー側が «無効» として扱うので、ここで組み替えたり警告したりはしない。
+    // カメラ距離フェード。負値だけ潰す。near >= far (既定の 0 / 0 を含む) は
+    // シェーダー側が «無効» として扱うので、ここで組み替えたり警告したりはしない。
     constants.cameraFadeNear = (std::max)(emitter.runtime.material.cameraFadeNear, 0.0f);
     constants.cameraFadeFar = (std::max)(emitter.runtime.material.cameraFadeFar, 0.0f);
     return constants;
 }
 
-} /// @note namespace fbzz::scene::particle_extraction_detail
+} // namespace fbzz::scene::particle_extraction_detail

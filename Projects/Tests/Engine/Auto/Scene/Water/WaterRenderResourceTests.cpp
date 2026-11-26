@@ -83,7 +83,9 @@ public:
     uint32_t GetStride() const override { return m_stride; }
     bool CopyData(size_t offset, size_t bytes, void* output) const override
     {
-        if (!output || offset > m_data.size() || bytes > m_data.size() - offset) return false;
+        if (!output || offset > m_data.size() || bytes > m_data.size() - offset) {
+            return false;
+        }
         std::memcpy(output, m_data.data() + offset, bytes);
         return true;
     }
@@ -117,31 +119,60 @@ public:
         std::shared_ptr<size_t> uploads, std::vector<WaterTextureUpdate>* updates = nullptr)
         : m_width(width), m_height(height), m_pixels(pixels), m_uploads(std::move(uploads)), m_updates(updates)
     {
-        m_pixels[this].assign(static_cast<size_t>(width) * height * 4u, 0u);
+        m_pixels[this].assign(static_cast<size_t>(width) * height * BYTES_PER_PIXEL, 0u);
     }
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
+    /// @brief RGBA8 の矩形をテクスチャに書き込み、成功時だけ転送を記録する。
+    /// @param[in] x テクスチャ左端からの位置 [px]。
+    /// @param[in] y テクスチャ上端からの位置 [px]。
+    /// @param[in] width 転送する矩形の幅 [px]。
+    /// @param[in] height 転送する矩形の高さ [px]。
+    /// @param[in] pixels コピー元の RGBA8 データ。呼び出し中だけ参照する。
+    /// @param[in] srcRowPitch コピー元の隣接行の間隔 [byte]。
+    /// @return 無効な入力では false。テクスチャと転送記録は更新しない。
     bool UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
         const void* pixels, uint32_t srcRowPitch) override
     {
-        if (!pixels || width == 0 || height == 0 || x > m_width || y > m_height
-            || width > m_width - x || height > m_height - y || srcRowPitch < width * 4u) return false;
+        if (!pixels || width == 0 || height == 0) {
+            return false;
+        }
+
+        // 符号なしの残り幅・高さを求める前に、矩形の原点が範囲内か確認する。
+        if (x > m_width || y > m_height) {
+            return false;
+        }
+        if (width > m_width - x || height > m_height - y) {
+            return false;
+        }
+        if (srcRowPitch < width * BYTES_PER_PIXEL) {
+            return false;
+        }
+
+        // 各行を転送し、成功した書き込みだけをテスト側へ通知する。
         auto& destination = m_pixels[this];
-        destination.resize(static_cast<size_t>(m_width) * m_height * 4u);
+        destination.resize(static_cast<size_t>(m_width) * m_height * BYTES_PER_PIXEL);
         const auto* source = static_cast<const uint8_t*>(pixels);
-        for (uint32_t row = 0; row < height; ++row)
-            std::memcpy(destination.data() + (static_cast<size_t>(y + row) * m_width + x) * 4u,
-                source + static_cast<size_t>(row) * srcRowPitch, static_cast<size_t>(width) * 4u);
-        if (m_uploads) ++*m_uploads;
-        if (m_updates) m_updates->push_back({x, y, width, height});
+        for (uint32_t row = 0; row < height; ++row) {
+            const size_t destinationOffset = (static_cast<size_t>(y + row) * m_width + x) * BYTES_PER_PIXEL;
+            std::memcpy(destination.data() + destinationOffset,
+                source + static_cast<size_t>(row) * srcRowPitch, static_cast<size_t>(width) * BYTES_PER_PIXEL);
+        }
+        if (m_uploads) {
+            ++*m_uploads;
+        }
+        if (m_updates) {
+            m_updates->push_back({x, y, width, height});
+        }
         return true;
     }
 private:
-    uint32_t m_width, m_height;
-    std::unordered_map<const renderer::ITexture*, std::vector<uint8_t>>& m_pixels;
-    /// @note The fixture keeps the counter alive independently of texture destruction, so replacement failures remain observable.
-    std::shared_ptr<size_t> m_uploads;
-    std::vector<WaterTextureUpdate>* m_updates;
+    static constexpr uint32_t BYTES_PER_PIXEL = 4u;
+    uint32_t m_width; ///< テクスチャの幅 [px]。
+    uint32_t m_height; ///< テクスチャの高さ [px]。
+    std::unordered_map<const renderer::ITexture*, std::vector<uint8_t>>& m_pixels; ///< フィクスチャが所有するテクスチャ別の RGBA8 データ。
+    std::shared_ptr<size_t> m_uploads; ///< 成功した転送の件数。テクスチャ破棄後もフィクスチャが参照できる。
+    std::vector<WaterTextureUpdate>* m_updates; ///< 成功した転送の矩形を追記する。不要な場合は nullptr。
 };
 
 /// @note 資源生成・返却だけを提供し、Shader と描画は実行しない CPU のバックエンド境界。
@@ -192,13 +223,24 @@ private:
     std::unique_ptr<renderer::ITexture> CreateNativeDynamicTexture(
         uint32_t width, uint32_t height, renderer::DynamicTextureFormat format) override
     {
-        if (recordRuntimeTextures) return std::make_unique<WaterCpuTexture>(width, height, 1, &runtimeTexturesAlive);
-        if (recordDynamicDepthUploads && format == renderer::DynamicTextureFormat::RGBA8
-            && ((width == scene::MAX_HORIZON_WATER_TERRAIN_RESOLUTION && height == width)
-                || (width == 64u && height == 64u)))
+        if (recordRuntimeTextures) {
+            return std::make_unique<WaterCpuTexture>(width, height, 1, &runtimeTexturesAlive);
+        }
+        // 転送を記録するスタブは RGBA8 専用。深度と波紋のテクスチャは解像度で識別する。
+        if (format != renderer::DynamicTextureFormat::RGBA8) {
+            return {};
+        }
+        constexpr uint32_t TEST_DEPTH_FIELD_RESOLUTION = 64u;
+        const bool depthExtent = height == width
+            && (width == scene::MAX_HORIZON_WATER_TERRAIN_RESOLUTION || width == TEST_DEPTH_FIELD_RESOLUTION);
+        if (recordDynamicDepthUploads && depthExtent) {
             return std::make_unique<WaterCpuDynamicTexture>(width, height, texturePixels, nullptr, &depthTextureUpdates);
-        if (!recordDynamicRippleUploads || format != renderer::DynamicTextureFormat::RGBA8
-            || width != scene::kWaterRippleTextureSize || height != scene::kWaterRippleTextureSize) return {};
+        }
+        if (!recordDynamicRippleUploads || width != scene::kWaterRippleTextureSize
+            || height != scene::kWaterRippleTextureSize) {
+            return {};
+        }
+
         ++rippleTextureCreations;
         rippleTextureUploads = std::make_shared<size_t>(0);
         return std::make_unique<WaterCpuDynamicTexture>(width, height, texturePixels, rippleTextureUploads);
@@ -347,7 +389,7 @@ protected:
     }
     void TearDown() override
     {
-        /// @note 各テストの Scene は先に破棄し、共有 Noise / Atlas を含む manager 自身は最後に畳む。
+        // 各テストの Scene は先に破棄し、共有 Noise / Atlas を含む manager 自身は最後に畳む。
         if (m_assetsInitialized) asset::AssetManager::UnloadAll();
         if (m_resources) m_resources->Reset();
         EXPECT_EQ(m_renderer.buffersAlive, 0u);
@@ -393,7 +435,9 @@ protected:
     std::string SaveMaterial(const std::string& name, const asset::MaterialAssetAuthoring& material)
     {
         const auto path = m_temp.File(name);
-        if (!asset::SaveMaterialAssetToFile(path.generic_string(), material)) return {};
+        if (!asset::SaveMaterialAssetToFile(path.generic_string(), material)) {
+            return {};
+        }
         return path.generic_string();
     }
 
@@ -420,10 +464,14 @@ protected:
                 math::Vector2 offset = math::Vector2::ZERO;
                 float height = 0.0f;
                 for (const auto& ripple : water->ripples) {
-                    if (ripple.amplitude <= 0.0f) continue;
+                    if (ripple.amplitude <= 0.0f) {
+                        continue;
+                    }
                     const math::Vector2 delta{point.x - ripple.center.x, point.z - ripple.center.y};
                     const float distance = std::sqrt(delta.LengthSq());
-                    if (distance <= math::EPSILON) continue;
+                    if (distance <= math::EPSILON) {
+                        continue;
+                    }
                     const float wave = scene::WaterComponent::WaterRippleWave(ripple, distance) * ripple.amplitude;
                     offset += (delta / distance) * wave;
                     height += wave * ripple.meshFade * scene::kWaterRippleHeightAmplitude;
@@ -937,7 +985,9 @@ TEST_F(WaterRenderResourceTest, RippleZeroTailRejectionPreservesTheCanonicalBake
         for (const auto& ripple : water->ripples) {
             const math::Vector2 delta{point.x - ripple.center.x, point.z - ripple.center.y};
             const float distance = delta.Length();
-            if (distance <= math::EPSILON) continue;
+            if (distance <= math::EPSILON) {
+                continue;
+            }
             const float wave = scene::WaterComponent::WaterRippleWave(ripple, distance) * ripple.amplitude;
             offset += delta.Normalized() * wave;
             height += wave * ripple.meshFade * scene::kWaterRippleHeightAmplitude;
@@ -1719,8 +1769,15 @@ TEST_F(WaterRenderResourceTest, SplineClusterBuffersFollowModeAndSplineEdits)
     EXPECT_EQ(water.splineSnapshot, simulation);
     EXPECT_EQ(Extract(scene, 2, nullptr, mode).surfaceClusterIndices, first.surfaceClusterIndices);
     EXPECT_FALSE(Extract(scene, 3).surfaceClusterIndices.IsValid());
+    // 通常のインデックス描画でも、湖・川が要求したときだけ同じ LOD 階層を使う。
+    water.adaptivePatchLod = true;
+    water.lodTargetPixels = 2.5f;
+    const auto indexed = Extract(scene, 4);
+    EXPECT_EQ(indexed.surfaceClusterIndices, first.surfaceClusterIndices);
+    EXPECT_FLOAT_EQ(indexed.surfaceClusterErrorPixels, 2.5f);
+    EXPECT_FALSE(indexed.adaptivePatchLod);
     water.splinePoints[1].flowSpeed = 3.0f;
-    const auto edited = Extract(scene, 4, nullptr, mode);
+    const auto edited = Extract(scene, 5, nullptr, mode);
     ASSERT_TRUE(edited.surfaceClusters);
     EXPECT_NE(edited.surfaceClusterIndices, first.surfaceClusterIndices);
     EXPECT_EQ(m_resources->Get(first.surfaceClusterIndices), nullptr);

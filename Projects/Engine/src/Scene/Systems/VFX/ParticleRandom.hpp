@@ -8,8 +8,8 @@
 namespace fbzz::scene::particle_runtime_detail {
 inline uint32_t NextParticleRandom(ParticleEmitter& emitter)
 {
-    /// @note Numerical Recipes 系 LCG。軽量で、エミッターごとの seed から決定的な乱数列を作る。
-    /// @note `std::rand()` はグローバル状態のため、複数エミッターや再生順序で結果が変わりやすい。
+    // Numerical Recipes 系 LCG。軽量で、エミッターごとの seed から決定的な乱数列を作る。
+    // `std::rand()` はグローバル状態のため、複数エミッターや再生順序で結果が変わりやすい。
     if (emitter.runtime.randomState == 0) {
         emitter.runtime.randomState = emitter.settings.randomSeed != 0 ? emitter.settings.randomSeed : 1;
     }
@@ -28,4 +28,4 @@ inline float Random01(ParticleEmitter& emitter)
     return (std::max)(0.0f, (std::min)(RandomSigned01(emitter) * 0.5f + 0.5f, 1.0f));
 }
 
-} /// @note namespace fbzz::scene::particle_runtime_detail
+} // namespace fbzz::scene::particle_runtime_detail

@@ -29,7 +29,9 @@ namespace {
 
 void SetError(std::string* outError, const std::string& message)
 {
-    if (outError) *outError = message;
+    if (outError) {
+        *outError = message;
+    }
 }
 
 /// @name Vector3 ⇔ TOML 配列
@@ -44,7 +46,9 @@ toml::array WriteVector3(const math::Vector3& value)
 math::Vector3 ReadVector3(const toml::node* node, const math::Vector3& fallback)
 {
     const auto* array = node ? node->as_array() : nullptr;
-    if (!array || array->size() < 3) return fallback;
+    if (!array || array->size() < 3) {
+        return fallback;
+    }
     return { static_cast<float>((*array)[0].value_or(static_cast<double>(fallback.x))),
              static_cast<float>((*array)[1].value_or(static_cast<double>(fallback.y))),
              static_cast<float>((*array)[2].value_or(static_cast<double>(fallback.z))) };
@@ -72,7 +76,9 @@ toml::table WriteNode(const BTNodeDef& node)
     table.insert("successPolicy",      static_cast<std::int64_t>(node.successPolicy));
 
     toml::array weights;
-    for (const float weight : node.childWeights) weights.push_back(static_cast<double>(weight));
+    for (const float weight : node.childWeights) {
+        weights.push_back(static_cast<double>(weight));
+    }
     table.insert("childWeights", std::move(weights));
 
     table.insert("keyName",       node.keyName);
@@ -95,7 +101,7 @@ toml::table WriteNode(const BTNodeDef& node)
 
     table.insert("animatorTrigger",  node.animatorTrigger);
     table.insert("waitForAnimation", node.waitForAnimation);
-    /// @note soundPath はアセット参照。GuidRefCodec が保存直前に guid: へ変換する。
+    // soundPath はアセット参照。GuidRefCodec が保存直前に guid: へ変換する。
     table.insert("soundPath",        node.soundPath);
     table.insert("volume",           static_cast<double>(node.volume));
     table.insert("scriptMethod",     node.scriptMethod);
@@ -128,8 +134,9 @@ BTNodeDef ReadNode(const toml::table& table)
 
     if (const auto* weights = table["childWeights"].as_array()) {
         node.childWeights.reserve(weights->size());
-        for (const auto& element : *weights)
+        for (const auto& element : *weights) {
             node.childWeights.push_back(static_cast<float>(element.value_or(1.0)));
+        }
     }
 
     node.keyName       = table["keyName"].value_or(std::string{});
@@ -198,14 +205,18 @@ BlackboardDef ReadBlackboardDef(const toml::table& table)
 const BTNodeDef* BehaviorTreeAsset::FindNode(int id) const
 {
     for (const BTNodeDef& node : nodes)
-        if (node.id == id) return &node;
+        if (node.id == id) {
+            return &node;
+        }
     return nullptr;
 }
 
 BTNodeDef* BehaviorTreeAsset::FindNode(int id)
 {
     for (BTNodeDef& node : nodes)
-        if (node.id == id) return &node;
+        if (node.id == id) {
+            return &node;
+        }
     return nullptr;
 }
 
@@ -213,7 +224,9 @@ std::vector<int> BehaviorTreeAsset::FindRootIds() const
 {
     std::vector<int> roots;
     for (const BTNodeDef& node : nodes)
-        if (node.parentId == 0) roots.push_back(node.id);
+        if (node.parentId == 0) {
+            roots.push_back(node.id);
+        }
     return roots;
 }
 
@@ -221,16 +234,20 @@ void EnsureReservedBlackboardKeys(BehaviorTreeAsset& asset)
 {
     const std::vector<BlackboardDef>& reserved = ReservedBlackboardDefs();
 
-    /// @note 予約キーと同名のユーザー定義は上書きせず取り除く。予約キーの型は PerceptionSystem の
-    /// @note 書き込む型と一致している必要があり、型を変えた定義を残すと書き込みが
-    /// @note 静かに失敗し続ける (Set*() は false を返すだけ)。
+    // 予約キーと同名のユーザー定義は上書きせず取り除く。予約キーの型は PerceptionSystem の
+    // 書き込む型と一致している必要があり、型を変えた定義を残すと書き込みが
+    // 静かに失敗し続ける (Set*() は false を返すだけ)。
     std::vector<BlackboardDef> userDefs;
     userDefs.reserve(asset.blackboard.size());
     for (const BlackboardDef& def : asset.blackboard) {
-        if (def.name.empty()) continue;
+        if (def.name.empty()) {
+            continue;
+        }
         const bool clashes = std::any_of(reserved.begin(), reserved.end(),
             [&def](const BlackboardDef& r) { return r.name == def.name; });
-        if (clashes) continue;
+        if (clashes) {
+            continue;
+        }
         userDefs.push_back(def);
     }
 
@@ -245,7 +262,7 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
         return false;
     }
 
-    /// @name id の一意性
+    // id の一意性
     std::unordered_map<int, std::size_t> indexOfId;
     indexOfId.reserve(asset.nodes.size());
     for (std::size_t i = 0; i < asset.nodes.size(); ++i) {
@@ -260,7 +277,7 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
         }
     }
 
-    /// @name ルートは 1 個
+    // ルートは 1 個
     const std::vector<int> roots = asset.FindRootIds();
     if (roots.empty()) {
         SetError(outError, "ルートノードがありません (親を持たないノードが 0 個)");
@@ -271,11 +288,13 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
         return false;
     }
 
-    /// @name 親の存在と子の個数
+    // 親の存在と子の個数
     std::unordered_map<int, int> childCount;
     childCount.reserve(asset.nodes.size());
     for (const BTNodeDef& node : asset.nodes) {
-        if (node.parentId == 0) continue;
+        if (node.parentId == 0) {
+            continue;
+        }
         if (indexOfId.find(node.parentId) == indexOfId.end()) {
             SetError(outError, "親 id " + std::to_string(node.parentId)
                                + " が存在しません (node id " + std::to_string(node.id) + ")");
@@ -286,8 +305,10 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
 
     for (const BTNodeDef& node : asset.nodes) {
         const int maxChildren = BTNodeMaxChildren(node.type);
-        /// @note 無制限
-        if (maxChildren < 0) continue;
+        // 無制限
+        if (maxChildren < 0) {
+            continue;
+        }
 
         const auto it = childCount.find(node.id);
         const int actual = it == childCount.end() ? 0 : it->second;
@@ -300,8 +321,8 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
         }
     }
 
-    /// @name 循環の検出
-    /// @note 各ノードから親を辿ってルートへ到達できることを確認する。
+    // 循環の検出
+    // 各ノードから親を辿ってルートへ到達できることを確認する。
     for (const BTNodeDef& node : asset.nodes) {
         std::unordered_set<int> seen;
         int current = node.id;
@@ -312,18 +333,24 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
                 return false;
             }
             const auto it = indexOfId.find(current);
-            if (it == indexOfId.end()) break;
+            if (it == indexOfId.end()) {
+                break;
+            }
             current = asset.nodes[it->second].parentId;
         }
     }
 
-    /// @name abortMode は純粋条件にのみ
-    /// @note observerAborts は Running 中に毎 tick 条件を再評価するため、副作用のあるノードを
-    /// @note 指定すると中断のたびに Blackboard 書き換えやアニメ再生が起きて木が非決定的になる。
-    /// @note 実行時に気付くのは困難なため保存時点で止める。
+    // abortMode は純粋条件にのみ
+    // observerAborts は Running 中に毎 tick 条件を再評価するため、副作用のあるノードを
+    // 指定すると中断のたびに Blackboard 書き換えやアニメ再生が起きて木が非決定的になる。
+    // 実行時に気付くのは困難なため保存時点で止める。
     for (const BTNodeDef& node : asset.nodes) {
-        if (node.abortMode == AbortMode::None) continue;
-        if (BTNodeIsPureCondition(node.type)) continue;
+        if (node.abortMode == AbortMode::None) {
+            continue;
+        }
+        if (BTNodeIsPureCondition(node.type)) {
+            continue;
+        }
 
         SetError(outError, std::string(BTNodeTypeName(node.type))
                            + " は副作用を持つため abortMode を設定できません (node id "
@@ -339,9 +366,11 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
 bool SaveBehaviorTreeAsset(const std::string& path, const BehaviorTreeAsset& asset,
                            std::string* outError)
 {
-    /// @note 壊れた木をディスクへ書くと次にロードしたプロジェクトが起動時に落ちるため、
-    /// @note エディタ上で直せるうちに保存前検証で止める。
-    if (!ValidateBehaviorTreeAsset(asset, outError)) return false;
+    // 壊れた木をディスクへ書くと次にロードしたプロジェクトが起動時に落ちるため、
+    // エディタ上で直せるうちに保存前検証で止める。
+    if (!ValidateBehaviorTreeAsset(asset, outError)) {
+        return false;
+    }
 
     toml::table root;
     root.insert("version",     static_cast<std::int64_t>(asset.version));
@@ -350,16 +379,19 @@ bool SaveBehaviorTreeAsset(const std::string& path, const BehaviorTreeAsset& ass
     root.insert("nextNodeId",  static_cast<std::int64_t>(asset.nextNodeId));
 
     toml::array nodes;
-    for (const BTNodeDef& node : asset.nodes) nodes.push_back(WriteNode(node));
+    for (const BTNodeDef& node : asset.nodes) {
+        nodes.push_back(WriteNode(node));
+    }
     root.insert("nodes", std::move(nodes));
 
     toml::array blackboard;
-    for (const BlackboardDef& def : asset.blackboard)
+    for (const BlackboardDef& def : asset.blackboard) {
         blackboard.push_back(WriteBlackboardDef(def));
+    }
     root.insert("blackboard", std::move(blackboard));
 
-    /// @note アセット参照 (soundPath 等) を guid: へ変換する。リネーム・移動しても参照が切れない
-    /// @note ようにするためで、ディスク上だけが guid、メモリ上は常に "Assets/..." パス (GuidRefCodec の規約)。
+    // アセット参照 (soundPath 等) を guid: へ変換する。リネーム・移動しても参照が切れない
+    // ようにするためで、ディスク上だけが guid、メモリ上は常に "Assets/..." パス (GuidRefCodec の規約)。
     asset::EncodeGuidRefs(root);
 
     std::ostringstream stream;
@@ -401,22 +433,26 @@ bool ParseBehaviorTreeAsset(const std::string& path, BehaviorTreeAsset& out,
     if (const auto* nodes = result["nodes"].as_array()) {
         loaded.nodes.reserve(nodes->size());
         for (const auto& element : *nodes)
-            if (const auto* table = element.as_table()) loaded.nodes.push_back(ReadNode(*table));
+            if (const auto* table = element.as_table()) {
+                loaded.nodes.push_back(ReadNode(*table));
+            }
     }
 
     if (const auto* blackboard = result["blackboard"].as_array()) {
         loaded.blackboard.reserve(blackboard->size());
         for (const auto& element : *blackboard)
-            if (const auto* table = element.as_table())
+            if (const auto* table = element.as_table()) {
                 loaded.blackboard.push_back(ReadBlackboardDef(*table));
+            }
     }
 
-    /// @note nextNodeId が既存 id と衝突していたら押し上げる。手書きの .behaviortree や
-    /// @note クラッシュ中保存で id が重複すると、次に追加したノードが既存を上書きする。
-    for (const BTNodeDef& node : loaded.nodes)
+    // nextNodeId が既存 id と衝突していたら押し上げる。手書きの .behaviortree や
+    // クラッシュ中保存で id が重複すると、次に追加したノードが既存を上書きする。
+    for (const BTNodeDef& node : loaded.nodes) {
         loaded.nextNodeId = std::max(loaded.nextNodeId, node.id + 1);
+    }
 
-    /// @note 予約キーの並びを正す (旧アセット / 手書きアセットの自動移行)。
+    // 予約キーの並びを正す (旧アセット / 手書きアセットの自動移行)。
     EnsureReservedBlackboardKeys(loaded);
 
     out = std::move(loaded);
@@ -427,8 +463,12 @@ bool LoadBehaviorTreeAsset(const std::string& path, BehaviorTreeAsset& out,
                            std::string* outError)
 {
     BehaviorTreeAsset loaded;
-    if (!ParseBehaviorTreeAsset(path, loaded, outError)) return false;
-    if (!ValidateBehaviorTreeAsset(loaded, outError)) return false;
+    if (!ParseBehaviorTreeAsset(path, loaded, outError)) {
+        return false;
+    }
+    if (!ValidateBehaviorTreeAsset(loaded, outError)) {
+        return false;
+    }
     out = std::move(loaded);
     return true;
 }
@@ -439,20 +479,26 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
 
     std::unordered_map<int, int> childCount;
     for (const BTNodeDef& node : asset.nodes)
-        if (node.parentId != 0) ++childCount[node.parentId];
+        if (node.parentId != 0) {
+            ++childCount[node.parentId];
+        }
 
     const auto hasKey = [&asset](const std::string& name) {
-        /// @note 未指定は警告しない
-        if (name.empty()) return true;
+        // 未指定は警告しない
+        if (name.empty()) {
+            return true;
+        }
         return std::any_of(asset.blackboard.begin(), asset.blackboard.end(),
                            [&name](const BlackboardDef& def) { return def.name == name; });
     };
 
-    /// @note 親ごとの子を order 順に持つ。BT の挙動は order で決まるため、木の形だけでは足りず、
-    /// @note 「どの枝が先に試されるか」を復元しないと中断も到達性も判定できない。
+    // 親ごとの子を order 順に持つ。BT の挙動は order で決まるため、木の形だけでは足りず、
+    // 「どの枝が先に試されるか」を復元しないと中断も到達性も判定できない。
     std::unordered_map<int, std::vector<const BTNodeDef*>> childrenOf;
     for (const BTNodeDef& node : asset.nodes)
-        if (node.parentId != 0) childrenOf[node.parentId].push_back(&node);
+        if (node.parentId != 0) {
+            childrenOf[node.parentId].push_back(&node);
+        }
     for (auto& entry : childrenOf) {
         std::sort(entry.second.begin(), entry.second.end(),
                   [](const BTNodeDef* a, const BTNodeDef* b) { return a->order < b->order; });
@@ -461,34 +507,45 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
         return node.name.empty() ? std::string(BTNodeTypeName(node.type)) : node.name;
     };
 
-    /// @note 「この枝を守っている条件」を返す。枝そのものが条件のことも、
-    /// @note Sequence(条件, 行動...) の先頭が条件のこともある。無ければ nullptr。
+    // 「この枝を守っている条件」を返す。枝そのものが条件のことも、
+    // Sequence(条件, 行動...) の先頭が条件のこともある。無ければ nullptr。
     const auto guardConditionOf = [&childrenOf](const BTNodeDef& branch) -> const BTNodeDef* {
         const auto isGuard = [](const BTNodeDef& node) {
             return BTNodeIsPureCondition(node.type)
                 || node.type == BTNodeType::BlackboardCondition;
         };
-        if (isGuard(branch)) return &branch;
-        if (branch.type != BTNodeType::Sequence) return nullptr;
+        if (isGuard(branch)) {
+            return &branch;
+        }
+        if (branch.type != BTNodeType::Sequence) {
+            return nullptr;
+        }
         const auto found = childrenOf.find(branch.id);
-        if (found == childrenOf.end() || found->second.empty()) return nullptr;
+        if (found == childrenOf.end() || found->second.empty()) {
+            return nullptr;
+        }
         const BTNodeDef* first = found->second.front();
         return isGuard(*first) ? first : nullptr;
     };
 
-    /// @note その子が「後続の兄弟へ制御を渡さない」種別か。
-    /// @note Sequence では Running を返し続ける子、Selector では必ず Success する子が該当する。
+    // その子が「後続の兄弟へ制御を渡さない」種別か。
+    // Sequence では Running を返し続ける子、Selector では必ず Success する子が該当する。
     const auto blocksFollowingSiblings = [](const BTNodeDef& parent, const BTNodeDef& child) {
         if (parent.type == BTNodeType::Sequence || parent.type == BTNodeType::Selector) {
-            if (child.type == BTNodeType::AlwaysRunning) return true;
-            /// @note 無限 Repeat は Failure でも抜けない設定のときだけ永久に Running。
+            if (child.type == BTNodeType::AlwaysRunning) {
+                return true;
+            }
+            // 無限 Repeat は Failure でも抜けない設定のときだけ永久に Running。
             if (child.type == BTNodeType::Repeat && child.repeatCount == 0
-                && !child.repeatUntilFailure) return true;
+                && !child.repeatUntilFailure) {
+                return true;
+            }
         }
         if (parent.type == BTNodeType::Selector) {
-            /// @note Selector は最初に Success した子で打ち切る。
-            if (child.type == BTNodeType::AlwaysSucceed || child.type == BTNodeType::Succeeder)
+            // Selector は最初に Success した子で打ち切る。
+            if (child.type == BTNodeType::AlwaysSucceed || child.type == BTNodeType::Succeeder) {
                 return true;
+            }
         }
         return false;
     };
@@ -537,14 +594,14 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
             warnings.push_back({ node.id, "empty-sound-path",
                 "Play Audio の soundPath が空です (音が鳴りません)" });
         }
-        /// @note Wait は 0 秒だと 1 tick で Success する。「待つ」意図が消えているのに
-        /// @note 木としては成立するので、実行しても待たない理由が最後まで判らない。
+        // Wait は 0 秒だと 1 tick で Success する。「待つ」意図が消えているのに
+        // 木としては成立するので、実行しても待たない理由が最後まで判らない。
         if (node.type == BTNodeType::Wait && node.duration <= 0.0f && node.durationRandom <= 0.0f) {
             warnings.push_back({ node.id, "zero-duration-wait",
                 "Wait の duration が 0 です (待機になりません)" });
         }
-        /// @note キーを引く種別で keyName が空 = 参照先が無い。unresolved-key (綴り違い) と
-        /// @note 区別して出す。直し方が違う (片方は改名、片方は設定) ため。
+        // キーを引く種別で keyName が空 = 参照先が無い。unresolved-key (綴り違い) と
+        // 区別して出す。直し方が違う (片方は改名、片方は設定) ため。
         const bool needsKey = node.type == BTNodeType::BlackboardCondition
                            || node.type == BTNodeType::BlackboardCompare
                            || node.type == BTNodeType::SetBlackboard;
@@ -554,21 +611,27 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
                 "(参照先の Blackboard キーがありません)" });
         }
 
-        /// @name 優先度に依存する検査
+        // 優先度に依存する検査
         const auto children = childrenOf.find(node.id);
-        if (children == childrenOf.end()) continue;
+        if (children == childrenOf.end()) {
+            continue;
+        }
         const std::vector<const BTNodeDef*>& list = children->second;
 
-        /// @note 最も重要な検査。Selector の高優先枝を守る条件に lowerPriority 中断が無いと、
-        /// @note 「巡回中にプレイヤーを発見しても、現在のウェイポイントに着くまで反応しない」
-        /// @note という BT を採用する意味の大半を失った木になる。木の形は正しいので、
-        /// @note 実行して観察する以外に気づく手段が無い類の壊れ方。
+        // 最も重要な検査。Selector の高優先枝を守る条件に lowerPriority 中断が無いと、
+        // 「巡回中にプレイヤーを発見しても、現在のウェイポイントに着くまで反応しない」
+        // という BT を採用する意味の大半を失った木になる。木の形は正しいので、
+        // 実行して観察する以外に気づく手段が無い類の壊れ方。
         if (node.type == BTNodeType::Selector) {
             for (std::size_t index = 0; index + 1 < list.size(); ++index) {
                 const BTNodeDef* guard = guardConditionOf(*list[index]);
-                if (guard == nullptr) continue;
+                if (guard == nullptr) {
+                    continue;
+                }
                 if (guard->abortMode == AbortMode::LowerPriority
-                    || guard->abortMode == AbortMode::Both) continue;
+                    || guard->abortMode == AbortMode::Both) {
+                    continue;
+                }
                 warnings.push_back({ guard->id, "no-lower-priority-abort",
                     "\"" + displayName(*guard) + "\" は Selector \"" + displayName(node)
                     + "\" の高優先枝 (order " + std::to_string(list[index]->order)
@@ -576,10 +639,12 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
                       "(下位の枝が Running 中は割り込めず、条件が真に立っても反応しません)" });
             }
         }
-        /// @note 後続の兄弟へ制御が渡らない子。木には見えているのに絶対に実行されない枝は、
-        /// @note 「書いたのに効かない」形でしか現れず、木を読んでも気づけない。
+        // 後続の兄弟へ制御が渡らない子。木には見えているのに絶対に実行されない枝は、
+        // 「書いたのに効かない」形でしか現れず、木を読んでも気づけない。
         for (std::size_t index = 0; index + 1 < list.size(); ++index) {
-            if (!blocksFollowingSiblings(node, *list[index])) continue;
+            if (!blocksFollowingSiblings(node, *list[index])) {
+                continue;
+            }
             warnings.push_back({ list[index]->id, "unreachable-sibling",
                 "\"" + displayName(*list[index]) + "\" より後ろの "
                 + std::to_string(list.size() - index - 1)
@@ -594,4 +659,4 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
     return warnings;
 }
 
-} /// @note namespace fbzz::ai
+} // namespace fbzz::ai

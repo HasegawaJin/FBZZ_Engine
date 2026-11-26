@@ -111,18 +111,18 @@ enum class SpriteResolveStatus {
 };
 
 struct ResolvedSprite {
-    std::string   texturePath;                  ///< @note 元画像パス (Sprite 参照でなければ入力そのまま)
-    std::string   spriteId;                     ///< @note Sprite 参照のときだけ非空 (ID か名前)
+    std::string   texturePath; ///< 元画像パス (Sprite 参照でなければ入力そのまま)
+    std::string   spriteId; ///< Sprite 参照のときだけ非空 (ID か名前)
     math::Vector2 uvMin      = { 0.0f, 0.0f };
     math::Vector2 uvMax      = { 1.0f, 1.0f };
-    math::Vector4 border     = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note 9-slice の余白 L,T,R,B (ピクセル)
-    math::Vector2 sizePixels = { 0.0f, 0.0f };  ///< @note 切り抜きのピクセル寸法 (未解決なら 0)
+    math::Vector4 border     = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< 9-slice の余白 L,T,R,B (ピクセル)
+    math::Vector2 sizePixels = { 0.0f, 0.0f }; ///< 切り抜きのピクセル寸法 (未解決なら 0)
     math::Vector2 pivot      = { 0.5f, 0.5f };
     float pixelsPerUnit      = 100.0f;
-    bool  isSpriteReference  = false;           ///< @note 入力が "::sprite::" 形式だった
-    bool  resolved           = false;           ///< @note .meta から矩形を取り出せた
+    bool  isSpriteReference  = false; ///< 入力が "::sprite::" 形式だった
+    bool  resolved           = false; ///< .meta から矩形を取り出せた
     SpriteResolveStatus status = SpriteResolveStatus::NotASpriteReference;
-    std::string displayName;                    ///< @note 解決できたときの表示名 (Inspector 用)
+    std::string displayName; ///< 解決できたときの表示名 (Inspector 用)
 
     /// @note 参照が指す Sprite に辿り着けなかった。呼ぶ側はここで «壊れている» と言ってよい。
     /// @note 読み込み待ち (TextureSizeUnknown) は含めない。待てば直るものを赤くしないため。
@@ -134,8 +134,8 @@ struct ResolvedSprite {
 };
 /// @}
 
-/// @param textureWidth  元画像の実ピクセル幅。0 以下だと UV へ直せないため矩形は解決しない。
-/// @param textureHeight 同・高さ。
+/// @param[in] textureWidth  元画像の実ピクセル幅。0 以下だと UV へ直せないため矩形は解決しない。
+/// @param[in] textureHeight 同・高さ。
 [[nodiscard]] FBZZ_ENGINE_API ResolvedSprite ResolveSpriteReference(
     std::string_view reference, float textureWidth, float textureHeight);
 
@@ -151,7 +151,7 @@ struct ResolvedSprite {
 /// @note .meta のインポート設定を、書き込み時刻で無効化しながら共有キャッシュから読む。
 /// @note Sprite の解決は毎フレーム・毎ドローで走る。素直に読むと 1 件につき数千行の TOML を毎回
 /// @note パースすることになる (SpriteRenderer が実際そうだった)。
-/// @param texturePathOrRef 元画像パス。Sprite 参照を渡してもよい (接尾辞は落とす)。
+/// @param[in] texturePathOrRef 元画像パス。Sprite 参照を渡してもよい (接尾辞は落とす)。
 [[nodiscard]] FBZZ_ENGINE_API bool GetCachedTextureImportSettings(
     std::string_view texturePathOrRef, TextureImportSettings& outSettings);
 
@@ -160,14 +160,13 @@ struct ResolvedSprite {
 FBZZ_ENGINE_API void InvalidateTextureImportSettings(std::string_view texturePathOrRef);
 
 struct TextureAsset {
-    /// @note .tex なら source フィールドが指す画像パス、直参照なら自身のパス
-    std::string                                    sourcePath;
+    std::string                                    sourcePath; ///< .tex なら source フィールドが指す画像パス、直参照なら自身のパス
     TextureImportSettings                          settings;
-    renderer::ResourceHandle<renderer::TextureTag> gpuHandle; ///< @note ロード後に設定
+    renderer::ResourceHandle<renderer::TextureTag> gpuHandle; ///< ロード後に設定
     /// @note 元画像の寸法。品質段で縮小して常駐していても元の値。0 は未知 (GPU 実体の寸法を使う)。
     /// @note スプライト矩形はピクセル単位で書かれているので、UV への換算は必ずこの寸法で行う。
     uint32_t                                       sourceWidth  = 0;
     uint32_t                                       sourceHeight = 0;
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

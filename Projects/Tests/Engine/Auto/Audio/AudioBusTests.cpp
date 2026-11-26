@@ -31,7 +31,9 @@ audio::BusDesc Bus(std::string name, std::string parent = {})
 std::size_t IndexOf(const std::vector<audio::BusDesc>& buses, std::string_view name)
 {
     for (std::size_t i = 0; i < buses.size(); ++i)
-        if (buses[i].name == name) return i;
+        if (buses[i].name == name) {
+            return i;
+        }
     return buses.size();
 }
 
@@ -95,7 +97,7 @@ TEST_F(AudioBusTest, PutsMasterFirstEvenIfItWasDeclaredLast)
 /// @brief Places every parent before its child.
 TEST_F(AudioBusTest, PlacesEveryParentBeforeItsChild)
 {
-    /// @note submix は親が先に無いと繋げられない。ここが唯一の順序保証。
+    // submix は親が先に無いと繋げられない。ここが唯一の順序保証。
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
         Bus("Footsteps", "SE"),
         Bus("SE", audio::kMasterBusName),
@@ -128,7 +130,7 @@ TEST_F(AudioBusTest, KeepsDeepChainsInOrder)
 /// @brief Treats a missing parent as master.
 TEST_F(AudioBusTest, TreatsAMissingParentAsMaster)
 {
-    /// @note プロジェクト設定を手で書き換えれば普通に起きる。落とさず拾い上げる。
+    // プロジェクト設定を手で書き換えれば普通に起きる。落とさず拾い上げる。
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
         Bus(audio::kMasterBusName),
         Bus("Orphan", "DoesNotExist"),
@@ -141,7 +143,7 @@ TEST_F(AudioBusTest, TreatsAMissingParentAsMaster)
 /// @brief Breaks a cycle instead of hanging.
 TEST_F(AudioBusTest, BreaksACycleInsteadOfHanging)
 {
-    /// @note A→B→A。並べ替えが素朴だと無限ループになる場所。
+    // A→B→A。並べ替えが素朴だと無限ループになる場所。
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
         Bus(audio::kMasterBusName),
         Bus("A", "B"),
@@ -172,7 +174,7 @@ TEST_F(AudioBusTest, CollapsesDuplicateNamesToTheLastOne)
 /// @brief Adds master when it is missing.
 TEST_F(AudioBusTest, AddsMasterWhenItIsMissing)
 {
-    /// @note Master が無い構成は «最終出力が無い» ので鳴らせない。補って成立させる。
+    // Master が無い構成は «最終出力が無い» ので鳴らせない。補って成立させる。
     const std::vector<audio::BusDesc> normalised =
         audio::NormalizeBusLayout({ Bus("SE", audio::kMasterBusName) });
 
@@ -192,7 +194,7 @@ TEST_F(AudioBusTest, AnEmptyLayoutStillYieldsMaster)
 /// @brief Keeps the settings of each bus.
 TEST_F(AudioBusTest, KeepsTheSettingsOfEachBus)
 {
-    /// @note 並べ替えで音量や残響の設定が落ちないこと。
+    // 並べ替えで音量や残響の設定が落ちないこと。
     audio::BusDesc se = Bus("SE", audio::kMasterBusName);
     se.volume        = 0.5f;
     se.lowPassCutoff = 0.25f;

@@ -45,7 +45,9 @@ public:
     void Field(const char*, math::Quaternion&) override {}
     void Field(const char* name, std::string& value) override
     {
-        if (std::string_view(name) != "name") return;
+        if (std::string_view(name) != "name") {
+            return;
+        }
         if (m_index == renamedIndex) value = renamedName;
         else if (value.empty()) value = newEntryName;
     }
@@ -101,7 +103,9 @@ protected:
     asset::RenderPipelineAsset* Resolve(const std::string& path) const
     {
         auto* data = asset::DataAssetRegistry::Resolve(path);
-        if (!data || std::string(data->GetTypeName()) != asset::RenderPipelineAsset::TYPE_NAME) return nullptr;
+        if (!data || std::string(data->GetTypeName()) != asset::RenderPipelineAsset::TYPE_NAME) {
+            return nullptr;
+        }
         return static_cast<asset::RenderPipelineAsset*>(data);
     }
     renderer::RenderSettings Distinct() const

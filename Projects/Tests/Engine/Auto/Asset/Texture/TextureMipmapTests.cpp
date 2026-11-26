@@ -143,7 +143,9 @@ public:
     std::unique_ptr<renderer::ITexture> CreateNativeTexture(const std::string& path) override
     {
         renderer::DecodedTextureRGBA8 image;
-        if (!renderer::DecodeTextureFileRGBA8(path, image)) return {};
+        if (!renderer::DecodeTextureFileRGBA8(path, image)) {
+            return {};
+        }
         m_uploaded = std::move(image.mips);
         return std::make_unique<MipmapTexture>(m_uploaded[0].width, m_uploaded[0].height);
     }

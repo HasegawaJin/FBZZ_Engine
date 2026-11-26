@@ -77,10 +77,8 @@ struct View {
     bool reflectionProbePotential = false;
     bool lightProbePotential = false;
     bool rayPotential = false;
-    /// @note 抽出後に利用先を追加できるネイティブのスクリプトフックがある場合は false。
-    bool consumerScopeCertified = false;
-    /// @note 同期に失敗したマテリアルは不透明な ErrorSurface へ切り替わり得るため、同期前の透明度だけで除外しない。
-    bool materialCoverageKnown = false;
+    bool consumerScopeCertified = false; ///< 抽出後に利用先を追加できるネイティブのスクリプトフックがある場合は false。
+    bool materialCoverageKnown = false; ///< 同期に失敗したマテリアルは不透明な ErrorSurface へ切り替わり得るため、同期前の透明度だけで除外しない。
 };
 
 struct Result {
@@ -105,16 +103,29 @@ inline bool SafeVector(const math::Vector3& value)
 
 inline bool SafeCulling(const View& view, const renderer::RenderObject& object)
 {
-    if (!SafeVector(object.boundsCenter) || !SafeScalar(object.boundsRadius)
-        || !SafeScalar(view.boundsPadding) || !SafeVector(view.culling.position)
-        || !SafeVector(view.culling.forward) || !SafeScalar(view.culling.projectionScaleY)
-        || !SafeScalar(view.culling.smallObjectScreenHeight) || !SafeScalar(view.maxDistance)) return false;
+    if (!SafeVector(object.boundsCenter) || !SafeScalar(object.boundsRadius) || !SafeScalar(view.boundsPadding)) {
+        return false;
+    }
+
+    // 投影サイズと距離の計算に使うカメラとカリング設定を確認する。
+    if (!SafeVector(view.culling.position) || !SafeVector(view.culling.forward)) {
+        return false;
+    }
+    if (!SafeScalar(view.culling.projectionScaleY) || !SafeScalar(view.culling.smallObjectScreenHeight)
+        || !SafeScalar(view.maxDistance)) {
+        return false;
+    }
+
     const float layerDistance = view.layerDistances[object.layer & 31u];
-    if (!SafeScalar(layerDistance)) return false;
+    if (!SafeScalar(layerDistance)) {
+        return false;
+    }
     if (view.culling.frustum) {
         for (int index = 0; index < math::Frustum::PLANE_COUNT; ++index) {
             const auto plane = view.culling.frustum->GetPlane(index);
-            if (!SafeVector(plane.normal) || !SafeScalar(plane.distance)) return false;
+            if (!SafeVector(plane.normal) || !SafeScalar(plane.distance)) {
+                return false;
+            }
         }
     }
     const double x = static_cast<double>(object.boundsCenter.x) - view.culling.position.x;
@@ -122,7 +133,7 @@ inline bool SafeCulling(const View& view, const renderer::RenderObject& object)
     const double z = static_cast<double>(object.boundsCenter.z) - view.culling.position.z;
     const double distance = view.culling.distanceSpherical ? std::sqrt(x*x + y*y + z*z)
         : x*view.culling.forward.x + y*view.culling.forward.y + z*view.culling.forward.z;
-    /// @note 入力がすべて有限でも、正の深度が極小なら小物判定の投影除算はオーバーフローし得る。
+    // 入力がすべて有限でも、正の深度が極小なら小物判定の投影除算はオーバーフローし得る。
     return distance <= 0.0 || distance >= 1.0e-10;
 }
 
@@ -130,16 +141,23 @@ inline bool SafeCulling(const View& view, const renderer::RenderObject& object)
 inline Result Evaluate(const View& view, const renderer::RenderObject& object, const renderer::RenderMeshItem& item)
 {
     Result result;
-    if (!object.colorEligible || !item.visible || !item.slotVisible) return result;
-    if (!view.consumerScopeCertified) result.reasons |= UNKNOWN_CONSUMER;
+    if (!object.colorEligible || !item.visible || !item.slotVisible) {
+        return result;
+    }
+    if (!view.consumerScopeCertified) {
+        result.reasons |= UNKNOWN_CONSUMER;
+    }
     result.matchesView = object.lodVisible && object.layer < 32
         && (view.mask & (uint32_t{1} << object.layer)) != 0;
     const bool hasVertices = item.vertexBuffer.IsValid() || (object.skinned
         && (item.skinningVertexBuffer.IsValid() || item.deformedVertexBuffer.IsValid()));
     const bool hasGeometry = hasVertices && item.indexBuffer.IsValid();
-    if (view.rayPotential && (object.rayVisible || object.rayLodSelectionRequired))
+    if (view.rayPotential && (object.rayVisible || object.rayLodSelectionRequired)) {
         result.reasons |= RAY_POTENTIAL;
-    if (!result.matchesView || !hasGeometry) return result;
+    }
+    if (!result.matchesView || !hasGeometry) {
+        return result;
+    }
     if (!SafeCulling(view, object)) {
         result.numericUnproven = true;
         result.reasons |= NUMERIC_FALLBACK;
@@ -152,25 +170,38 @@ inline Result Evaluate(const View& view, const renderer::RenderObject& object, c
     const renderer::RenderCullingItem bounds{object.boundsCenter, radius, distance};
     result.cameraResult = renderer::EvaluateVisibility(view.culling, bounds);
     result.cameraEvaluated = true;
-    if (result.cameraResult == renderer::VisibilityResult::VISIBLE) result.reasons |= COLOR;
+    if (result.cameraResult == renderer::VisibilityResult::VISIBLE) {
+        result.reasons |= COLOR;
+    }
     else if (!object.skinned && object.lodDither == 0.0f && view.staticGpuFrustumPossible) {
         auto gpuView = view.culling;
         gpuView.frustum = nullptr;
-        if (renderer::EvaluateVisibility(gpuView, bounds) == renderer::VisibilityResult::VISIBLE)
+        if (renderer::EvaluateVisibility(gpuView, bounds) == renderer::VisibilityResult::VISIBLE) {
             result.reasons |= GPU_FRUSTUM_POTENTIAL;
+        }
     }
     const bool opaque = item.material.capabilities.blend == renderer::BlendMode::OPAQUE_BLEND;
     const bool opaqueOrUnproven = opaque || !view.materialCoverageKnown;
     if ((result.reasons & (COLOR | GPU_FRUSTUM_POTENTIAL)) != 0 && opaqueOrUnproven
-        && (!object.skinned || object.previousSkinningValid)) result.reasons |= VELOCITY;
+        && (!object.skinned || object.previousSkinningValid)) {
+        result.reasons |= VELOCITY;
+    }
     const bool withinShadowDistance = radius <= 0.0f || renderer::IsWithinDrawDistance(view.culling, bounds);
     if (object.castShadows && opaqueOrUnproven && withinShadowDistance) {
-        if (view.directionalShadowPotential) result.reasons |= DIRECTIONAL_SHADOW_POTENTIAL;
-        if (view.punctualShadowPotential) result.reasons |= PUNCTUAL_SHADOW_POTENTIAL;
+        if (view.directionalShadowPotential) {
+            result.reasons |= DIRECTIONAL_SHADOW_POTENTIAL;
+        }
+        if (view.punctualShadowPotential) {
+            result.reasons |= PUNCTUAL_SHADOW_POTENTIAL;
+        }
     }
     if (!object.skinned) {
-        if (view.reflectionProbePotential) result.reasons |= REFLECTION_PROBE_POTENTIAL;
-        if (view.lightProbePotential && opaqueOrUnproven) result.reasons |= LIGHT_PROBE_POTENTIAL;
+        if (view.reflectionProbePotential) {
+            result.reasons |= REFLECTION_PROBE_POTENTIAL;
+        }
+        if (view.lightProbePotential && opaqueOrUnproven) {
+            result.reasons |= LIGHT_PROBE_POTENTIAL;
+        }
     }
     return result;
 }
@@ -192,7 +223,9 @@ struct PreparedView {
             }
         }
         for (uint32_t layer = 0; layer < 32; ++layer)
-            if (SafeScalar(view.layerDistances[layer])) safeLayerDistances |= uint32_t{1} << layer;
+            if (SafeScalar(view.layerDistances[layer])) {
+                safeLayerDistances |= uint32_t{1} << layer;
+            }
     }
 
     const View& view;
@@ -203,7 +236,9 @@ struct PreparedView {
 inline bool SafeObjectCulling(const PreparedView& prepared, const renderer::RenderObject& object)
 {
     if (!prepared.safeCulling || !SafeVector(object.boundsCenter) || !SafeScalar(object.boundsRadius)
-        || (prepared.safeLayerDistances & (uint32_t{1} << (object.layer & 31u))) == 0) return false;
+        || (prepared.safeLayerDistances & (uint32_t{1} << (object.layer & 31u))) == 0) {
+        return false;
+    }
     const auto& view = prepared.view;
     const double x = static_cast<double>(object.boundsCenter.x) - view.culling.position.x;
     const double y = static_cast<double>(object.boundsCenter.y) - view.culling.position.y;
@@ -221,38 +256,59 @@ public:
         : m_prepared(prepared), m_object(object)
     {
         const auto& view = prepared.view;
-        if (!view.consumerScopeCertified) m_base.reasons |= UNKNOWN_CONSUMER;
+        if (!view.consumerScopeCertified) {
+            m_base.reasons |= UNKNOWN_CONSUMER;
+        }
         m_base.matchesView = object.lodVisible && object.layer < 32
             && (view.mask & (uint32_t{1} << object.layer)) != 0;
-        if (view.rayPotential && (object.rayVisible || object.rayLodSelectionRequired))
+        if (view.rayPotential && (object.rayVisible || object.rayLodSelectionRequired)) {
             m_base.reasons |= RAY_POTENTIAL;
+        }
     }
 
     Result Evaluate(const renderer::RenderMeshItem& item)
     {
-        if (!m_object.colorEligible || !item.visible || !item.slotVisible) return {};
+        if (!m_object.colorEligible || !item.visible || !item.slotVisible) {
+            return {};
+        }
         Result result = m_base;
         const bool hasVertices = item.vertexBuffer.IsValid() || (m_object.skinned
             && (item.skinningVertexBuffer.IsValid() || item.deformedVertexBuffer.IsValid()));
-        if (!result.matchesView || !hasVertices || !item.indexBuffer.IsValid()) return result;
-        if (!m_cameraPrepared) PrepareCamera();
+        if (!result.matchesView || !hasVertices || !item.indexBuffer.IsValid()) {
+            return result;
+        }
+        if (!m_cameraPrepared) {
+            PrepareCamera();
+        }
         result.cameraResult = m_camera.cameraResult;
         result.cameraEvaluated = m_camera.cameraEvaluated;
         result.numericUnproven = m_camera.numericUnproven;
         result.reasons |= m_camera.reasons;
-        if (result.numericUnproven) return result;
+        if (result.numericUnproven) {
+            return result;
+        }
         const auto& view = m_prepared.view;
         const bool opaqueOrUnproven = item.material.capabilities.blend == renderer::BlendMode::OPAQUE_BLEND
             || !view.materialCoverageKnown;
         if ((result.reasons & (COLOR | GPU_FRUSTUM_POTENTIAL)) != 0 && opaqueOrUnproven
-            && (!m_object.skinned || m_object.previousSkinningValid)) result.reasons |= VELOCITY;
+            && (!m_object.skinned || m_object.previousSkinningValid)) {
+            result.reasons |= VELOCITY;
+        }
         if (m_object.castShadows && opaqueOrUnproven && m_withinShadowDistance) {
-            if (view.directionalShadowPotential) result.reasons |= DIRECTIONAL_SHADOW_POTENTIAL;
-            if (view.punctualShadowPotential) result.reasons |= PUNCTUAL_SHADOW_POTENTIAL;
+            if (view.directionalShadowPotential) {
+                result.reasons |= DIRECTIONAL_SHADOW_POTENTIAL;
+            }
+            if (view.punctualShadowPotential) {
+                result.reasons |= PUNCTUAL_SHADOW_POTENTIAL;
+            }
         }
         if (!m_object.skinned) {
-            if (view.reflectionProbePotential) result.reasons |= REFLECTION_PROBE_POTENTIAL;
-            if (view.lightProbePotential && opaqueOrUnproven) result.reasons |= LIGHT_PROBE_POTENTIAL;
+            if (view.reflectionProbePotential) {
+                result.reasons |= REFLECTION_PROBE_POTENTIAL;
+            }
+            if (view.lightProbePotential && opaqueOrUnproven) {
+                result.reasons |= LIGHT_PROBE_POTENTIAL;
+            }
         }
         return result;
     }
@@ -274,12 +330,15 @@ private:
         const renderer::RenderCullingItem bounds{m_object.boundsCenter, radius, distance};
         m_camera.cameraResult = renderer::EvaluateVisibility(view.culling, bounds);
         m_camera.cameraEvaluated = true;
-        if (m_camera.cameraResult == renderer::VisibilityResult::VISIBLE) m_camera.reasons |= COLOR;
+        if (m_camera.cameraResult == renderer::VisibilityResult::VISIBLE) {
+            m_camera.reasons |= COLOR;
+        }
         else if (!m_object.skinned && m_object.lodDither == 0.0f && view.staticGpuFrustumPossible) {
             auto gpuView = view.culling;
             gpuView.frustum = nullptr;
-            if (renderer::EvaluateVisibility(gpuView, bounds) == renderer::VisibilityResult::VISIBLE)
+            if (renderer::EvaluateVisibility(gpuView, bounds) == renderer::VisibilityResult::VISIBLE) {
                 m_camera.reasons |= GPU_FRUSTUM_POTENTIAL;
+            }
         }
         m_withinShadowDistance = radius <= 0.0f || renderer::IsWithinDrawDistance(view.culling, bounds);
     }
@@ -317,21 +376,51 @@ struct Row {
 
 inline void CountPotential(Row& row, const Result& result)
 {
-    if (result.reasons == 0) ++row.provenNoDemandItems;
-    if (result.KnownConsumerPotential()) ++row.knownConsumerPotentialItems;
-    else ++row.knownConsumerNoDemandItems;
-    if (result.reasons != 0) ++row.conservativeUnionItems;
-    if ((result.reasons & UNKNOWN_CONSUMER) != 0) ++row.unknownConsumerItems;
-    if ((result.reasons & COLOR) != 0) ++row.colorPotentialItems;
-    if ((result.reasons & GPU_FRUSTUM_POTENTIAL) != 0) ++row.gpuFrustumPotentialItems;
-    if ((result.reasons & VELOCITY) != 0) ++row.velocityPotentialItems;
-    if ((result.reasons & DIRECTIONAL_SHADOW_POTENTIAL) != 0) ++row.directionalShadowPotentialItems;
-    if ((result.reasons & PUNCTUAL_SHADOW_POTENTIAL) != 0) ++row.punctualShadowPotentialItems;
-    if ((result.reasons & REFLECTION_PROBE_POTENTIAL) != 0) ++row.reflectionProbePotentialItems;
-    if ((result.reasons & LIGHT_PROBE_POTENTIAL) != 0) ++row.lightProbePotentialItems;
-    if ((result.reasons & RAY_POTENTIAL) != 0) ++row.rayPotentialItems;
-    if ((result.reasons & NUMERIC_FALLBACK) != 0) ++row.numericFallbackItems;
-    if (!result.matchesView) ++row.cameraMaskOrLodRejectedItems;
+    if (result.reasons == 0) {
+        ++row.provenNoDemandItems;
+    }
+    if (result.KnownConsumerPotential()) {
+        ++row.knownConsumerPotentialItems;
+    }
+    else {
+        ++row.knownConsumerNoDemandItems;
+    }
+    if (result.reasons != 0) {
+        ++row.conservativeUnionItems;
+    }
+    if ((result.reasons & UNKNOWN_CONSUMER) != 0) {
+        ++row.unknownConsumerItems;
+    }
+    if ((result.reasons & COLOR) != 0) {
+        ++row.colorPotentialItems;
+    }
+    if ((result.reasons & GPU_FRUSTUM_POTENTIAL) != 0) {
+        ++row.gpuFrustumPotentialItems;
+    }
+    if ((result.reasons & VELOCITY) != 0) {
+        ++row.velocityPotentialItems;
+    }
+    if ((result.reasons & DIRECTIONAL_SHADOW_POTENTIAL) != 0) {
+        ++row.directionalShadowPotentialItems;
+    }
+    if ((result.reasons & PUNCTUAL_SHADOW_POTENTIAL) != 0) {
+        ++row.punctualShadowPotentialItems;
+    }
+    if ((result.reasons & REFLECTION_PROBE_POTENTIAL) != 0) {
+        ++row.reflectionProbePotentialItems;
+    }
+    if ((result.reasons & LIGHT_PROBE_POTENTIAL) != 0) {
+        ++row.lightProbePotentialItems;
+    }
+    if ((result.reasons & RAY_POTENTIAL) != 0) {
+        ++row.rayPotentialItems;
+    }
+    if ((result.reasons & NUMERIC_FALLBACK) != 0) {
+        ++row.numericFallbackItems;
+    }
+    if (!result.matchesView) {
+        ++row.cameraMaskOrLodRejectedItems;
+    }
     else if (result.cameraEvaluated) {
         switch (result.cameraResult) {
         case renderer::VisibilityResult::VISIBLE: ++row.cameraVisibleItems; break;

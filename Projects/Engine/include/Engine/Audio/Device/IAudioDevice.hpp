@@ -35,15 +35,15 @@ public:
 
     /// @note BusDesc::reverb が true のバスの残響を更新する。false のバスでは何も起きない。
     /// @note 残響 DSP は鳴っていなくても回り続けるため、ゾーンの外にいる間は明示的に止めないと常時 CPU を食う。
-    /// @param wet 0-1。0 で残響を止める。
-    /// @param decaySeconds 残響が -60dB まで落ちるまでの秒数。
-    /// @param highFrequencyRatio 1 で高域も同じだけ残り、0 に近いほど高域が早く減る。
+    /// @param[in] wet 0-1。0 で残響を止める。
+    /// @param[in] decaySeconds 残響が -60dB まで落ちるまでの秒数。
+    /// @param[in] highFrequencyRatio 1 で高域も同じだけ残り、0 に近いほど高域が早く減る。
     virtual void SetBusReverb(BusIndex bus, float wet,
                               float decaySeconds, float highFrequencyRatio) = 0;
 
     /// @note pcmData は voice が終わるまで呼び出し側が生かしておくこと。
     /// @note XAudio2 はサブミットされたバッファをコピーせずポインタで参照し続ける。
-    /// @param bus 出力先。範囲外なら Master へ落とす。
+    /// @param[in] bus 出力先。範囲外なら Master へ落とす。
     /// @return 0 は無効ハンドル。loop が true ならループ再生。
     [[nodiscard]] virtual uint32_t PlayBuffer(
         const void* pcmData, size_t bytes,
@@ -70,4 +70,4 @@ public:
     [[nodiscard]] virtual bool IsPlaying(uint32_t voiceId) = 0;
 };
 
-} /// @note namespace fbzz::audio
+} // namespace fbzz::audio

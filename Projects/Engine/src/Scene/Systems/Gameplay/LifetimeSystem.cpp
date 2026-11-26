@@ -29,8 +29,12 @@ void LifetimeSystem::Update(SystemContext& ctx)
     for (EntityID id : scene.GetEntities<LifetimeComponent>()) {
         auto* lc = scene.GetComponent<LifetimeComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!lc || !go || !go->activeInHierarchy()) continue;
-        if (!lc->enabled) continue;
+        if (!lc || !go || !go->activeInHierarchy()) {
+            continue;
+        }
+        if (!lc->enabled) {
+            continue;
+        }
         lc->remaining -= dt;
         if (lc->remaining <= 0.0f) {
             GameObject::Destroy(*go, 0.0f);
@@ -49,4 +53,4 @@ void FlushDestroyQueueSystem::Update(SystemContext& ctx)
     ctx.scene.FlushDestroyQueue(ctx.dt);
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

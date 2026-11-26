@@ -8,11 +8,15 @@ namespace fbzz::scene::coroutine_detail {
 
 Coroutine RunFrames(std::function<bool()> step)
 {
-    if (!step) co_return;
+    if (!step) {
+        co_return;
+    }
     while (true) {
         co_await WaitForFrames(1);
-        if (!step()) co_return;
+        if (!step()) {
+            co_return;
+        }
     }
 }
 
-} /// @note namespace fbzz::scene::coroutine_detail
+} // namespace fbzz::scene::coroutine_detail

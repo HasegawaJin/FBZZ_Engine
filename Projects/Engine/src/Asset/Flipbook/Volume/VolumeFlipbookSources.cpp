@@ -63,7 +63,7 @@ std::vector<VolumePuff> BuildFireball(const VolumeSourceSettings& settings, cons
     std::vector<VolumePuff> puffs;
     VolumePuff center;
     center.birthTime = range.start;
-    /// @note 最終コマでちょうど消え切るよう、寿命をベイクの長さに合わせる。
+    // 最終コマでちょうど消え切るよう、寿命をベイクの長さに合わせる。
     center.lifetime = duration * 1.001f;
     center.fadeOut = duration * 0.5f;
     center.startCenter = { 0.0f, -0.3f, 0.0f };
@@ -119,7 +119,7 @@ VolumePuff MakePlumePuff(std::uint32_t seed, std::uint32_t variant, float birthT
     puff.radius = 0.16f + Hash01(seed, variant, 7) * 0.04f;
     puff.density = 1.2f;
     puff.temperature = 1.0f;
-    /// @note 0.5 秒だと見えている puff の大半が冷え切り、炎の芯が暗赤にしかならなかった (発光の最大 0.22)。
+    // 0.5 秒だと見えている puff の大半が冷え切り、炎の芯が暗赤にしかならなかった (発光の最大 0.22)。
     puff.coolingTime = 0.8f;
     puff.noiseSeedOffset = Hash01(seed, variant, 8) * 97.0f;
     return puff;
@@ -138,7 +138,7 @@ VolumePuff MakeTorchPuff(std::uint32_t seed, std::uint32_t variant, float birthT
     puff.fadeIn = 0.08f;
     puff.fadeOut = 0.45f;
     puff.startCenter = { Signed(seed, variant, 1) * 0.07f, -0.72f, Signed(seed, variant, 2) * 0.07f };
-    /// @note 外側で生まれた puff ほど芯へ寄せる。炎が根元から先へ細る。
+    // 外側で生まれた puff ほど芯へ寄せる。炎が根元から先へ細る。
     puff.velocity = { -puff.startCenter.x * 0.6f + Signed(seed, variant, 3) * 0.05f,
                       0.95f + Signed(seed, variant, 4) * 0.15f,
                       -puff.startCenter.z * 0.6f + Signed(seed, variant, 5) * 0.05f };
@@ -146,7 +146,7 @@ VolumePuff MakeTorchPuff(std::uint32_t seed, std::uint32_t variant, float birthT
     puff.angularVelocity = RandomAxis(seed, variant) * (2.0f + Hash01(seed, variant, 6) * 1.5f);
     puff.expansionRate = std::log(1.7f) / kTorchLifetime;
     puff.radius = 0.1f + Hash01(seed, variant, 7) * 0.03f;
-    /// @note 上へ伸ばして «舌» にする (速度が上向きなので伸びる向きも上)。
+    // 上へ伸ばして «舌» にする (速度が上向きなので伸びる向きも上)。
     puff.stretch = 1.5f;
     puff.density = 1.1f;
     puff.temperature = 1.0f;
@@ -232,7 +232,7 @@ std::vector<VolumePuff> BuildWaterSplash(const VolumeSourceSettings& settings, c
     const math::Vector3 origin = { 0.0f, -0.62f, 0.0f };
     std::vector<VolumePuff> puffs;
 
-    /// @note 王冠: 輪から外へ、上へ飛んで落ちる。
+    // 王冠: 輪から外へ、上へ飛んで落ちる。
     constexpr std::uint32_t kCrown = 32;
     for (std::uint32_t i = 0; i < kCrown; ++i) {
         const float angle = 2.0f * kPi * (static_cast<float>(i) + 0.3f * Signed(seed, i, 1)) / static_cast<float>(kCrown);
@@ -247,7 +247,7 @@ std::vector<VolumePuff> BuildWaterSplash(const VolumeSourceSettings& settings, c
         puffs.push_back(drop);
     }
 
-    /// @note 中央の水柱: 王冠より少し遅れて、細く高く上がる。
+    // 中央の水柱: 王冠より少し遅れて、細く高く上がる。
     const float columnDelay = duration * 0.18f;
     const float speeds[] = { 2.0f, 2.35f, 2.7f };
     const float radii[] = { 0.07f, 0.06f, 0.05f };
@@ -261,7 +261,7 @@ std::vector<VolumePuff> BuildWaterSplash(const VolumeSourceSettings& settings, c
         puffs.push_back(column);
     }
 
-    /// @note 水煙: 着水点の周りに白く漂う。
+    // 水煙: 着水点の周りに白く漂う。
     for (std::uint32_t i = 0; i < 5; ++i) {
         const std::uint32_t index = kCrown + 3 + i;
         const float angle = 2.0f * kPi * (static_cast<float>(i) + Hash01(seed, index, 1)) / 5.0f;
@@ -284,7 +284,7 @@ std::vector<VolumePuff> BuildBloodSpray(const VolumeSourceSettings& settings, co
     const math::Vector3 axis = math::Vector3{ 1.0f, 0.35f, 0.0f }.NormalizedOr(math::Vector3::RIGHT);
     std::vector<VolumePuff> puffs;
 
-    /// @note 細かい飛沫: 円錐に広がり、速いものほど細長い筋になる。
+    // 細かい飛沫: 円錐に広がり、速いものほど細長い筋になる。
     constexpr std::uint32_t kDroplets = 56;
     for (std::uint32_t i = 0; i < kDroplets; ++i) {
         const math::Vector3 direction = VolumeRandomInCone(axis, 20.0f * kDegreesToRadians, seed, i, 1);
@@ -301,7 +301,7 @@ std::vector<VolumePuff> BuildBloodSpray(const VolumeSourceSettings& settings, co
         puffs.push_back(drop);
     }
 
-    /// @note 太い塊: 遅れて続けて出て、互いに繋がって «流れ» に見える。
+    // 太い塊: 遅れて続けて出て、互いに繋がって «流れ» に見える。
     for (std::uint32_t i = 0; i < 6; ++i) {
         const std::uint32_t index = kDroplets + i;
         const math::Vector3 direction = VolumeRandomInCone(axis, 8.0f * kDegreesToRadians, seed, index, 1);
@@ -318,7 +318,7 @@ std::vector<VolumePuff> BuildBloodSpray(const VolumeSourceSettings& settings, co
         puffs.push_back(gush);
     }
 
-    /// @note 赤い霧: 出どころにだけ薄く残る。
+    // 赤い霧: 出どころにだけ薄く残る。
     for (std::uint32_t i = 0; i < 3; ++i) {
         const std::uint32_t index = kDroplets + 6 + i;
         VolumePuff mist = MakeMist(range.start, duration, origin + axis * (0.05f * static_cast<float>(i)),
@@ -339,7 +339,7 @@ std::vector<VolumePuff> BuildBloodBurst(const VolumeSourceSettings& settings, co
     const math::Vector3 origin = { 0.0f, -0.05f, 0.0f };
     std::vector<VolumePuff> puffs;
 
-    /// @note 着弾点から上半球へ散る。下向きに飛ぶ飛沫は箱の底をすぐ抜けるので出さない。
+    // 着弾点から上半球へ散る。下向きに飛ぶ飛沫は箱の底をすぐ抜けるので出さない。
     constexpr std::uint32_t kDroplets = 48;
     for (std::uint32_t i = 0; i < kDroplets; ++i) {
         const math::Vector3 direction = VolumeRandomInCone(math::Vector3::UP, 80.0f * kDegreesToRadians, seed, i, 1);
@@ -355,7 +355,7 @@ std::vector<VolumePuff> BuildBloodBurst(const VolumeSourceSettings& settings, co
         puffs.push_back(drop);
     }
 
-    /// @note 芯: 一瞬膨らんで砕ける塊。
+    // 芯: 一瞬膨らんで砕ける塊。
     VolumePuff core = MakeDroplet(range.start, duration, origin, { 0.0f, 0.1f, 0.0f }, 0.0f, 0.1f, 0.0f);
     core.lifetime = duration * 0.45f;
     core.fadeOut = duration * 0.3f;
@@ -396,7 +396,7 @@ VolumePuff MakeEmitterPuff(const VolumeEmitterSettings& emitter, std::uint32_t s
     puff.lifetime = lifetime;
     puff.fadeIn = (std::max)(emitter.fadeIn, 0.0f);
     puff.fadeOut = (std::max)(emitter.fadeOut, 0.0f);
-    /// @note 球の中で一様にするため、半径は一様乱数の立方根。
+    // 球の中で一様にするため、半径は一様乱数の立方根。
     const float offset = (std::max)(emitter.originRadius, 0.0f) * std::cbrt(Hash01(seed, variant, 23));
     puff.startCenter = emitter.origin + VolumeRandomDirection(seed, variant, 21) * offset;
     const math::Vector3 direction = VolumeRandomInCone(emitter.direction.NormalizedOr(math::Vector3::UP),
@@ -429,8 +429,9 @@ std::vector<VolumePuff> BuildEmitter(const VolumeSourceSettings& settings, const
     std::vector<VolumePuff> puffs;
     if (emitter.burst) {
         const int count = std::clamp(emitter.count, 1, static_cast<int>(kVolumeFillMaxPuffs));
-        for (int i = 0; i < count; ++i)
+        for (int i = 0; i < count; ++i) {
             puffs.push_back(MakeEmitterPuff(emitter, settings.seed, static_cast<std::uint32_t>(i), range.start));
+        }
         return puffs;
     }
     const float period = 1.0f / static_cast<float>((std::max)(emitter.count, 1));
@@ -446,7 +447,7 @@ std::vector<VolumePuff> BuildEmitter(const VolumeSourceSettings& settings, const
 
 void ApplyTorchLook(VolumeFlipbookBakeSettings& settings)
 {
-    /// @note 冷えた puff は煤けた暗い煙になる。
+    // 冷えた puff は煤けた暗い煙になる。
     settings.albedoRamp = UniformVolumeRamp({ 0.28f, 0.26f, 0.25f });
     settings.extinction = 8.0f;
     settings.emissionIntensity = 8.0f;
@@ -455,7 +456,7 @@ void ApplyTorchLook(VolumeFlipbookBakeSettings& settings)
 
 void ApplyWaterLook(VolumeFlipbookBakeSettings& settings)
 {
-    /// @note colorKey 0 = 泡の白 → 1 = 深い青。水煙 (colorKey 0) も白くなる。
+    // colorKey 0 = 泡の白 → 1 = 深い青。水煙 (colorKey 0) も白くなる。
     settings.albedoRamp = EvenVolumeRamp({ 0.9f, 0.95f, 1.0f }, { 0.6f, 0.78f, 0.95f },
                                          { 0.32f, 0.56f, 0.86f }, { 0.2f, 0.42f, 0.78f });
     settings.liquid.threshold = 0.3f;
@@ -497,8 +498,8 @@ std::deque<VolumeSourceDesc> MakeBuiltinSources()
     sources.push_back({ "RisingPlume", "下から煙が湧き続け、熱い芯が冷えて煙になる (ループ可)",
         [](const VolumeSourceSettings& settings, const VolumeSourceRange& range) {
             std::vector<VolumePuff> puffs;
-            /// @note duration が周期のちょうど M 倍なら puff j と j+M が同じ見た目で duration だけ
-            ///       ずれて生まれ、場が厳密に元へ戻るため、周期は割り切れる値へ寄せる。
+            // duration が周期のちょうど M 倍なら puff j と j+M が同じ見た目で duration だけ
+            //       ずれて生まれ、場が厳密に元へ戻るため、周期は割り切れる値へ寄せる。
             AppendPeriodicVolumePuffs(settings, range, kPlumeSpawnPeriod, kPlumeLifetime,
                 [seed = settings.seed](std::uint32_t variant, float birthTime) {
                     return MakePlumePuff(seed, variant, birthTime);
@@ -506,7 +507,7 @@ std::deque<VolumeSourceDesc> MakeBuiltinSources()
                 puffs);
             return puffs;
         },
-        /// @note 湧き始めの 1 本目から焼くと «細い柱» から始まってしまう。寿命ぶん先へ進めて定常状態を 0 コマ目にする。
+        // 湧き始めの 1 本目から焼くと «細い柱» から始まってしまう。寿命ぶん先へ進めて定常状態を 0 コマ目にする。
         StartAfter(kPlumeLifetime), AlwaysLoopable(), {} });
     sources.push_back({ "Fireball", "中心から放射状に弾けて急冷する (一発もの)", BuildFireball, {}, {}, {} });
     sources.push_back({ "Torch", "松明の炎。細い舌が昇って煤になる (ループ可)",
@@ -557,7 +558,9 @@ std::deque<VolumeSourceDesc>& Registry()
 
 void RegisterVolumeSource(VolumeSourceDesc desc)
 {
-    if (desc.name.empty() || !desc.build) return;
+    if (desc.name.empty() || !desc.build) {
+        return;
+    }
     std::deque<VolumeSourceDesc>& registry = Registry();
     for (VolumeSourceDesc& existing : registry) {
         if (existing.name == desc.name) {
@@ -571,7 +574,9 @@ void RegisterVolumeSource(VolumeSourceDesc desc)
 const VolumeSourceDesc* FindVolumeSource(std::string_view name)
 {
     for (const VolumeSourceDesc& desc : Registry())
-        if (desc.name == name) return &desc;
+        if (desc.name == name) {
+            return &desc;
+        }
     return nullptr;
 }
 
@@ -605,7 +610,9 @@ bool VolumeSourceLoops(const VolumeSourceSettings& settings)
 std::vector<VolumePuff> BuildVolumePuffs(const VolumeSourceSettings& settings)
 {
     const VolumeSourceDesc* desc = FindVolumeSource(settings.preset);
-    if (desc == nullptr || !desc->build) return {};
+    if (desc == nullptr || !desc->build) {
+        return {};
+    }
     const VolumeSourceRange range{ ResolveVolumeStartTime(settings), BakeDuration(settings) };
     return desc->build(settings, range);
 }
@@ -625,7 +632,9 @@ void ApplyVolumeSourceLook(VolumeFlipbookBakeSettings& settings)
     settings.raySteps = defaults.raySteps;
     settings.shadowSteps = defaults.shadowSteps;
     const VolumeSourceDesc* desc = FindVolumeSource(settings.source.preset);
-    if (desc != nullptr && desc->applyLook) desc->applyLook(settings);
+    if (desc != nullptr && desc->applyLook) {
+        desc->applyLook(settings);
+    }
 }
 
 float VolumeHash01(std::uint32_t seed, std::uint32_t index, std::uint32_t channel)
@@ -651,7 +660,7 @@ math::Vector3 VolumeRandomInCone(const math::Vector3& axis, float halfAngleRadia
                                  std::uint32_t seed, std::uint32_t index, std::uint32_t channel)
 {
     const math::Vector3 a = axis.NormalizedOr(math::Vector3::UP);
-    /// @note cosθ を [cos(half), 1] で一様にすると、円錐の中で立体角が一様になる。
+    // cosθ を [cos(half), 1] で一様にすると、円錐の中で立体角が一様になる。
     const float cosHalf = std::cos(std::clamp(halfAngleRadians, 0.0f, kPi));
     const float cosTheta = 1.0f - VolumeHash01(seed, index, channel) * (1.0f - cosHalf);
     const float sinTheta = std::sqrt((std::max)(0.0f, 1.0f - cosTheta * cosTheta));

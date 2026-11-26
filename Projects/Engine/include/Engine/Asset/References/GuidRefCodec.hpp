@@ -36,4 +36,4 @@ namespace fbzz::asset {
 FBZZ_ENGINE_API void EncodeGuidRefs(toml::table& root);
 FBZZ_ENGINE_API void DecodeGuidRefs(toml::table& root);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

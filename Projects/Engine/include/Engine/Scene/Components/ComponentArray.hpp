@@ -38,15 +38,13 @@ public:
     FBZZ_ENGINE_API size_t Count() const;
     FBZZ_ENGINE_API void* Get(size_t index) const;
 private:
-    /// @note 各ブロックを、元の要素型に合う解放関数と一緒に所有する。
-    std::vector<Allocation> m_chunks;
+    std::vector<Allocation> m_chunks; ///< 各ブロックを、元の要素型に合う解放関数と一緒に所有する。
 };
 
 template<typename T>
 class ComponentArray {
 public:
-    /// @note EntityID の invalid sentinel による数値表現限界。固定確保量や制作上の個体数上限ではない。
-    static constexpr uint32_t MAX = EntityID::INVALID_INDEX;
+    static constexpr uint32_t MAX = EntityID::INVALID_INDEX; ///< EntityID の invalid sentinel による数値表現限界。固定確保量や制作上の個体数上限ではない。
 
     /// @note 固定長 Span と同じ対象数を保持し、chunk の境界を越えて Component の参照を返す。
     template<bool IS_CONST>
@@ -66,8 +64,9 @@ public:
             Reference operator*() const { return m_chunk[m_index % CHUNK_ELEMENTS]; }
             Iterator& operator++() {
                 ++m_index;
-                if (m_index < m_count && m_index % CHUNK_ELEMENTS == 0)
+                if (m_index < m_count && m_index % CHUNK_ELEMENTS == 0) {
                     m_chunk = &m_owner->DenseAt(m_index);
+                }
                 return *this;
             }
             bool operator==(const Iterator& other) const {
@@ -90,7 +89,9 @@ public:
     ComponentArray& operator=(const ComponentArray&) = delete;
     ComponentArray(ComponentArray&& other) noexcept { MoveFrom(std::move(other)); }
     ComponentArray& operator=(ComponentArray&& other) noexcept {
-        if (this != &other) MoveFrom(std::move(other));
+        if (this != &other) {
+            MoveFrom(std::move(other));
+        }
         return *this;
     }
 
@@ -114,7 +115,7 @@ public:
         uint32_t di   = m_sparseToIndex[id.index];
         uint32_t last = m_count - 1;
 
-        /// @note 末尾要素を削除位置に swap して穴を埋める。O(1) だが順序は保たない。
+        // 末尾要素を削除位置に swap して穴を埋める。O(1) だが順序は保たない。
         if (di != last) {
             DenseAt(di) = std::move(DenseAt(last));
             m_denseToEntity[di] = m_denseToEntity[last];
@@ -122,7 +123,7 @@ public:
             m_sparseToIndex[m_denseToEntity[last].index] = di;
         }
 
-        /// @note 論理削除だけでは末尾が所有する Script や音声の寿命が次の Add まで残る。
+        // 論理削除だけでは末尾が所有する Script や音声の寿命が次の Add まで残る。
         DenseAt(last) = {};
         m_denseToEntity.pop_back();
         m_lifetimes.pop_back();
@@ -132,10 +133,14 @@ public:
     }
 
     bool Has(EntityID id) const {
-        if (!id.IsValid() || id.index >= m_sparseToIndex.size()) return false;
+        if (!id.IsValid() || id.index >= m_sparseToIndex.size()) {
+            return false;
+        }
         uint32_t di = m_sparseToIndex[id.index];
-        if (di == EMPTY || di >= m_count) return false;
-        /// @note generation を含む EntityID 全体で比較し、同じ index に再割り当てされた別 Entity を弾く。
+        if (di == EMPTY || di >= m_count) {
+            return false;
+        }
+        // generation を含む EntityID 全体で比較し、同じ index に再割り当てされた別 Entity を弾く。
         return m_denseToEntity[di] == id;
     }
 
@@ -201,13 +206,14 @@ public:
         m_lifetimes.clear();
         ResetSparse();
         m_count = 0;
-        if (changed) m_structureRevision = AllocateComponentLifetime();
+        if (changed) {
+            m_structureRevision = AllocateComponentLifetime();
+        }
     }
 
 private:
     static constexpr uint32_t EMPTY = 0xFFFFFFFFu;
-    /// @note 確保の粒度だけを定める。必要な chunk を追加でき、Component 件数を制限しない。
-    static constexpr size_t CHUNK_ELEMENTS = 64;
+    static constexpr size_t CHUNK_ELEMENTS = 64; ///< 確保の粒度だけを定める。必要な chunk を追加でき、Component 件数を制限しない。
 
     T& DenseAt(size_t index) { return static_cast<T*>(m_chunks.Get(index / CHUNK_ELEMENTS))[index % CHUNK_ELEMENTS]; }
     const T& DenseAt(size_t index) const { return static_cast<const T*>(m_chunks.Get(index / CHUNK_ELEMENTS))[index % CHUNK_ELEMENTS]; }
@@ -218,7 +224,9 @@ private:
     /// @note dense は実要素数、sparse は到達した Entity index に応じて確保し、未使用型は確保しない。
     void EnsureStorage(uint32_t entityIndex) {
         const size_t sparseSize = static_cast<size_t>(entityIndex) + 1;
-        if (m_sparseToIndex.size() < sparseSize) m_sparseToIndex.resize(sparseSize, EMPTY);
+        if (m_sparseToIndex.size() < sparseSize) {
+            m_sparseToIndex.resize(sparseSize, EMPTY);
+        }
         if (m_count / CHUNK_ELEMENTS >= m_chunks.Count()) {
             auto chunk = std::make_unique<T[]>(CHUNK_ELEMENTS);
             m_chunks.Add(chunk.get(), &ReleaseChunk);
@@ -246,18 +254,12 @@ private:
         other.m_sparseToIndex.clear();
     }
 
-    /// @note 一定個数ずつまとめて確保し、コンポーネントが増えても既存のブロックを動かさずに済む。
-    ComponentChunkStorage m_chunks;
-    /// @note 格納位置から持ち主を引く表。削除の穴を末尾の要素で埋めるとき、その持ち主の逆引きも更新する。
-    std::vector<EntityID> m_denseToEntity;
-    /// @note 追加のたびに新しい識別値を持たせ、同じ個体に付け直したコンポーネントを古い参照と区別する。
-    std::vector<uint64_t> m_lifetimes;
-    /// @note 個体の番号から現在の格納位置を引く表。コンポーネントを持たない個体には EMPTY を置く。
-    std::vector<uint32_t> m_sparseToIndex;
-    /// @note 確保したブロックのうち、先頭から何要素までが使用中かを表す。
-    uint32_t m_count = 0;
-    /// @note 並びに依存するキャッシュが、前回の参照以降に追加・削除があったか判定するための値。
-    uint64_t m_structureRevision = 0;
+    ComponentChunkStorage m_chunks; ///< 一定個数ずつまとめて確保し、コンポーネントが増えても既存のブロックを動かさずに済む。
+    std::vector<EntityID> m_denseToEntity; ///< 格納位置から持ち主を引く表。削除の穴を末尾の要素で埋めるとき、その持ち主の逆引きも更新する。
+    std::vector<uint64_t> m_lifetimes; ///< 追加のたびに新しい識別値を持たせ、同じ個体に付け直したコンポーネントを古い参照と区別する。
+    std::vector<uint32_t> m_sparseToIndex; ///< 個体の番号から現在の格納位置を引く表。コンポーネントを持たない個体には EMPTY を置く。
+    uint32_t m_count = 0; ///< 確保したブロックのうち、先頭から何要素までが使用中かを表す。
+    uint64_t m_structureRevision = 0; ///< 並びに依存するキャッシュが、前回の参照以降に追加・削除があったか判定するための値。
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

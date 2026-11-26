@@ -120,7 +120,7 @@ TEST_F(ParticleLoopInspectionTest, BurstRequestsSaturateWithoutIntegerOverflow)
     emitter.Burst(10);
     EXPECT_EQ(emitter.runtime.burstPending, 0);
 
-    /// @note Serialized burst schedules must share the same saturation contract as the public Burst API.
+    // 保存したバースト予定数にも公開 Burst API と同じ飽和上限を適用する。
     scene::GameObject& object = m_scene.CreateGameObject("BurstOverflow");
     scene::ParticleEmitter& scheduled = object.AddComponent<scene::ParticleEmitter>();
     scheduled.settings.maxParticles = 16;
@@ -164,7 +164,7 @@ TEST_F(ParticleLoopInspectionTest, StretchedRotatedCardsFitTheAutomaticBounds)
     particle.rotation = 0.7853981634f;
     emitter.runtime.particles.push_back(particle);
     scene::UpdateParticleCpuSimulation(m_scene, m_world, 0.0f, 0.0f);
-    /// @note A rotated (1,1) corner lies sqrt(2) along up; stretch = 2 + 4*0.5 = 4.
+    // 回転後の隅 (1,1) は上方向に √2 の位置にある。伸びは 2 + 4 × 0.5 = 4 になる。
     const math::Vector3 renderedCorner = particle.position + math::Vector3{0.0f, std::sqrt(2.0f) * 12.0f, 0.0f};
     EXPECT_LE((renderedCorner - emitter.runtime.boundsCenter).Length(), emitter.runtime.boundsRadius);
     EXPECT_LT(emitter.runtime.boundsRadius, 18.0f);
@@ -200,7 +200,7 @@ TEST_F(ParticleLoopInspectionTest, BillboardAndRibbonHistoryBoundsFollowSimulati
             const math::Vector3 expectedCenter = localSpace ? math::Vector3{11.5f, 9.0f, 0.0f} : particle.position;
             const math::Vector3 tail = localSpace ? math::Vector3{8.0f, 6.0f, -8.0f} : particle.trailPoints[1];
             EXPECT_VEC3_NEAR(emitter.runtime.boundsCenter, expectedCenter, testkit::kLooseTolerance);
-            /// @note The oldest ribbon has a 1.2m half width; billboard half width is 0.6m.
+            // 最も古いリボンの半幅は 1.2 m、ビルボードの半幅は 0.6 m。
             const math::Vector3 visibleEdge = tail + math::Vector3{0.0f, ribbon ? -1.2f : -0.6f, 0.0f};
             EXPECT_LE((visibleEdge - emitter.runtime.boundsCenter).Length(), emitter.runtime.boundsRadius);
             EXPECT_TRUE(std::isfinite(emitter.runtime.boundsRadius));
@@ -228,7 +228,7 @@ TEST_F(ParticleLoopInspectionTest, EmptyPoolBoundsContainSpawnShapeAndLocalMotio
     emitter.settings.culling.cullingBoundsPadding = 0.0f;
     scene::UpdateParticleCpuSimulation(m_scene, m_world, 0.0f, 0.0f);
     EXPECT_VEC3_NEAR(emitter.runtime.boundsCenter, object.transform.worldPosition, testkit::kTolerance);
-    /// @note The negative 3x X scale places a 5m spawn point plus 2m local travel 21m from the origin.
+    // X 軸方向の倍率が −3 なので、発生点の 5 m とローカル移動の 2 m を合わせて原点から 21 m に達する。
     EXPECT_GE(emitter.runtime.boundsRadius, 21.0f);
     EXPECT_LT(emitter.runtime.boundsRadius, 23.0f);
 }
@@ -256,7 +256,7 @@ TEST_F(ParticleLoopInspectionTest, NonFiniteInputsAndHugeFiniteDistancesDoNotPoi
             && std::isfinite(emitter.runtime.boundsCenter.z));
         EXPECT_TRUE(std::isfinite(emitter.runtime.boundsRadius));
         EXPECT_EQ(emitter.runtime.boundsRadius, (std::numeric_limits<float>::max)());
-        /// @note Keep a known center for LOD; only overflowing distances require the origin fallback.
+        // 既知の中心を LOD 判定に使い、距離計算がオーバーフローした場合だけ原点で代用する。
         EXPECT_VEC3_NEAR(emitter.runtime.boundsCenter, invalid ? particle.position : math::Vector3{}, testkit::kTolerance);
     }
 }

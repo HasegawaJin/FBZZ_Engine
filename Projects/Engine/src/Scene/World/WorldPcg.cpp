@@ -89,7 +89,7 @@ float Unit(uint64_t key,uint64_t stream) { return static_cast<float>(Mix(key+str
 
 float PlacementScale(const WorldPcgRule& rule, uint64_t key)
 {
-    /// @note 累積分布 F(t)=t^(1/scaleBias) の逆変換で尺度をサンプリングする。恒等写像の分岐は既存プロファイルの結果をビット単位で維持する。
+    // 累積分布 F(t)=t^(1/scaleBias) の逆変換で尺度をサンプリングする。恒等写像の分岐は既存プロファイルの結果をビット単位で維持する。
     /// @see https://www.pbr-book.org/4ed/Monte_Carlo_Integration/Sampling_Using_the_Inversion_Method PBRT 4e, Sampling Using the Inversion Method.
     const float unit = Unit(key, 5);
     return std::lerp(rule.minScale, rule.maxScale, rule.scaleBias == 1.0f ? unit : std::pow(unit, rule.scaleBias));
@@ -134,7 +134,9 @@ bool LatticeRange(const WorldPcgProfile& profile,const WorldPcgRule& rule,int32_
     const double c=std::floor((static_cast<double>(profile.bounds.min.z)-margin)/rule.spacing);
     const double d=std::ceil((static_cast<double>(profile.bounds.max.z)+margin)/rule.spacing);
     constexpr double LOW=static_cast<double>(INT32_MIN)+1.0,HIGH=static_cast<double>(INT32_MAX)-1.0;
-    if(a<LOW||b>HIGH||c<LOW||d>HIGH)return false;
+    if(a<LOW||b>HIGH||c<LOW||d>HIGH) {
+        return false;
+    }
     x0=static_cast<int32_t>(a);x1=static_cast<int32_t>(b);z0=static_cast<int32_t>(c);z1=static_cast<int32_t>(d);return true;
 }
 
@@ -152,21 +154,26 @@ math::Vector3 Rotation(const WorldPcgRule& rule, uint64_t key, const math::Vecto
 {
     const float sample = Unit(key, 4);
     const float yaw = math::ToRad(std::lerp(rule.minYaw, rule.maxYaw, sample));
-    if (!rule.alignToSurface && !rule.alignDownslope) return {0, yaw, 0};
+    if (!rule.alignToSurface && !rule.alignDownslope) {
+        return {0, yaw, 0};
+    }
     const auto spin = math::Quaternion::FromAxisAngle(math::Vector3::UP, yaw);
     const auto axis=math::Vector3::Cross(math::Vector3::UP,normal);
     auto rotation=math::Quaternion{axis.x,axis.y,axis.z,1.0f+normal.y}.Normalized()*spin;
     if (rule.alignDownslope) {
         const auto downhill = normal * normal.y - math::Vector3::UP;
-        if (downhill.LengthSq() > 0.000001f)
+        if (downhill.LengthSq() > 0.000001f) {
             rotation = math::Quaternion::LookRotation(downhill.Normalized(), normal)
                 * math::Quaternion::FromAxisAngle(math::Vector3::UP,
                     math::ToRad(std::lerp(-rule.downslopeJitter, rule.downslopeJitter, sample)));
+        }
     }
-    /// @note オイラー角は Quaternion::FromEuler と同じ YXZ 順で保存し、表面に沿う姿勢を再現する。
+    // オイラー角は Quaternion::FromEuler と同じ YXZ 順で保存し、表面に沿う姿勢を再現する。
     const auto matrix=math::Matrix4::Rotate(rotation);
     const float pitch=std::asin(std::clamp(-matrix.m[1][2],-1.0f,1.0f));
-    if(std::abs(std::cos(pitch))<=0.000001f)return {pitch,std::atan2(-matrix.m[2][0],matrix.m[0][0]),0};
+    if(std::abs(std::cos(pitch))<=0.000001f) {
+        return {pitch,std::atan2(-matrix.m[2][0],matrix.m[0][0]),0};
+    }
     return {pitch,std::atan2(matrix.m[0][2],matrix.m[2][2]),std::atan2(matrix.m[1][0],matrix.m[1][1])};
 }
 
@@ -180,8 +187,7 @@ struct PlacementSiteIndex {
         }
     };
     float size=0;
-    /// @note 隣接セルを明示した順序で調べ、各セルの挿入順を保つことで、棄却と予算適用の結果を決定的にする。
-    std::unordered_map<Cell, std::vector<Site>, CellHash> cells;
+    std::unordered_map<Cell, std::vector<Site>, CellHash> cells; ///< 隣接セルを明示した順序で調べ、各セルの挿入順を保つことで、棄却と予算適用の結果を決定的にする。
     Cell Locate(const math::Vector3& p) const
     { return {static_cast<int64_t>(std::floor(static_cast<double>(p.x)/size)),static_cast<int64_t>(std::floor(static_cast<double>(p.z)/size))}; }
     void Insert(const math::Vector3& position, float radius = 0.0f)
@@ -194,21 +200,29 @@ struct PlacementSiteIndex {
     }
     int CountNear(const math::Vector3& p, float distance, bool inclusive, int stopAt, uint64_t* remainingTests) const
     {
-        if(distance<=0||size<=0||cells.empty())return 0;
-        if(std::abs(static_cast<double>(p.x)/size)>9.0e18||std::abs(static_cast<double>(p.z)/size)>9.0e18)return 0;
+        if(distance<=0||size<=0||cells.empty()) {
+            return 0;
+        }
+        if(std::abs(static_cast<double>(p.x)/size)>9.0e18||std::abs(static_cast<double>(p.z)/size)>9.0e18) {
+            return 0;
+        }
         int count = 0;
         const auto [x,z]=Locate(p);
         for(int dx=-1;dx<=1;++dx)for(int dz=-1;dz<=1;++dz){
             const auto found=cells.find({x+dx,z+dz});if(found==cells.end())continue;
             for(const auto& item:found->second){
                 if (remainingTests) {
-                    if (*remainingTests == 0) return count;
+                    if (*remainingTests == 0) {
+                        return count;
+                    }
                     --*remainingTests;
                 }
                 const double a=static_cast<double>(item.position.x)-p.x,b=static_cast<double>(item.position.z)-p.z;
                 const double reach = static_cast<double>(distance) + item.radius;
                 const double squared=a*a+b*b, limit=reach*reach;
-                if ((squared < limit || (inclusive && squared == limit)) && ++count == stopAt) return count;
+                if ((squared < limit || (inclusive && squared == limit)) && ++count == stopAt) {
+                    return count;
+                }
             }
         }
         return count;
@@ -228,41 +242,63 @@ bool BuildRuleStages(const WorldPcgProfile& profile, RuleStages& stages, std::st
     std::map<std::string_view, std::vector<RuleVisit*>> canopySources;
     for (const auto& rule : profile.rules) {
         const auto entry = visits.emplace(rule.key, RuleVisit{&rule}).first;
-        if (!rule.canopySourceGroup.empty()) canopySources[rule.canopySourceGroup].push_back(&entry->second);
+        if (!rule.canopySourceGroup.empty()) {
+            canopySources[rule.canopySourceGroup].push_back(&entry->second);
+        }
     }
     const auto visit = [&](auto&& self, RuleVisit& entry) -> bool {
-        if (entry.stage >= 0) return true;
-        if (entry.visiting) return Fail(diagnostic, "Cyclic PCG placement dependency: " + entry.rule->key);
+        if (entry.stage >= 0) {
+            return true;
+        }
+        if (entry.visiting) {
+            return Fail(diagnostic, "Cyclic PCG placement dependency: " + entry.rule->key);
+        }
         entry.visiting = true;
         int stage = 0;
         const auto dependOn = [&](RuleVisit& source) {
-            if (!self(self, source)) return false;
+            if (!self(self, source)) {
+                return false;
+            }
             stage = (std::max)(stage, source.stage + 1);
             return true;
         };
         if (!entry.rule->neighborRule.empty()) {
             const auto source = visits.find(entry.rule->neighborRule);
-            if (source == visits.end()) return Fail(diagnostic, "Unknown PCG neighbor rule: " + entry.rule->neighborRule);
-            if (!dependOn(source->second)) return false;
+            if (source == visits.end()) {
+                return Fail(diagnostic, "Unknown PCG neighbor rule: " + entry.rule->neighborRule);
+            }
+            if (!dependOn(source->second)) {
+                return false;
+            }
         }
         if (!entry.rule->canopyGroup.empty()) {
             const auto group = canopySources.find(entry.rule->canopyGroup);
-            if (group == canopySources.end()) return Fail(diagnostic, "Unknown PCG canopy source group: " + entry.rule->canopyGroup);
+            if (group == canopySources.end()) {
+                return Fail(diagnostic, "Unknown PCG canopy source group: " + entry.rule->canopyGroup);
+            }
             for (auto* source : group->second)
-                if (!dependOn(*source)) return false;
+                if (!dependOn(*source)) {
+                    return false;
+                }
         }
         entry.stage = stage;
         return true;
     };
     for (auto& [key, entry] : visits) {
         (void)key;
-        if (!visit(visit, entry)) return false;
-        if (static_cast<std::size_t>(entry.stage) >= stages.size()) stages.resize(entry.stage + 1);
+        if (!visit(visit, entry)) {
+            return false;
+        }
+        if (static_cast<std::size_t>(entry.stage) >= stages.size()) {
+            stages.resize(entry.stage + 1);
+        }
         stages[entry.stage].push_back(entry.rule);
     }
     for (auto& stage : stages) {
         std::sort(stage.begin(), stage.end(), [](const auto* left, const auto* right) {
-            if (left->competitionPriority != right->competitionPriority) return left->competitionPriority > right->competitionPriority;
+            if (left->competitionPriority != right->competitionPriority) {
+                return left->competitionPriority > right->competitionPriority;
+            }
             return left->key < right->key;
         });
     }
@@ -271,23 +307,31 @@ bool BuildRuleStages(const WorldPcgProfile& profile, RuleStages& stages, std::st
 
 float MaterialWeight(const WorldPcgSurfaceSample& sample, std::string_view material, float fallback)
 {
-    if (material.empty()) return fallback;
+    if (material.empty()) {
+        return fallback;
+    }
     for (const auto& entry : sample.materialWeights)
-        if (entry.material == material) return entry.weight;
+        if (entry.material == material) {
+            return entry.weight;
+        }
     return 0.0f;
 }
 
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Curve Remap Density.
 float FadeFromEdge(float distance, float width)
 {
-    if (width == 0.0f) return 1.0f;
+    if (width == 0.0f) {
+        return 1.0f;
+    }
     const float t = std::clamp(distance / width, 0.0f, 1.0f);
     return t * t * (3.0f - 2.0f * t);
 }
 
 float WaterDensity(const WorldPcgRule& rule, float distance)
 {
-    if (rule.waterFade == 0.0f) return 1.0f;
+    if (rule.waterFade == 0.0f) {
+        return 1.0f;
+    }
     const float nearWeight = FadeFromEdge(distance - rule.minWaterDistance, rule.waterFade);
     return rule.maxWaterDistance == 1000000.0f ? nearWeight
         : (std::min)(nearWeight, FadeFromEdge(rule.maxWaterDistance - distance, rule.waterFade));
@@ -295,7 +339,9 @@ float WaterDensity(const WorldPcgRule& rule, float distance)
 
 float ReliefDensity(const WorldPcgRule& rule, float height, float slope)
 {
-    if (rule.heightFade == 0.0f && rule.slopeFade == 0.0f) return 1.0f;
+    if (rule.heightFade == 0.0f && rule.slopeFade == 0.0f) {
+        return 1.0f;
+    }
     const float heightWeight = FadeFromEdge((std::min)(height - rule.minHeight, rule.maxHeight - height), rule.heightFade);
     const float lowerSlope = rule.minSlope > 0.0f ? FadeFromEdge(slope - rule.minSlope, rule.slopeFade) : 1.0f;
     const float upperSlope = rule.maxSlope < 90.0f ? FadeFromEdge(rule.maxSlope - slope, rule.slopeFade) : 1.0f;
@@ -310,9 +356,13 @@ class PlacementExclusions {
 public:
     explicit PlacementExclusions(std::span<const WorldCellBounds> boxes) : m_boxes(boxes)
     {
-        if (boxes.size() <= LEAF_SIZE) return;
+        if (boxes.size() <= LEAF_SIZE) {
+            return;
+        }
         m_order.reserve(boxes.size());
-        for (uint32_t i = 0; i < static_cast<uint32_t>(boxes.size()); ++i) m_order.push_back(i);
+        for (uint32_t i = 0; i < static_cast<uint32_t>(boxes.size()); ++i) {
+            m_order.push_back(i);
+        }
         Build(0, static_cast<uint32_t>(m_order.size()));
     }
 
@@ -329,7 +379,9 @@ public:
                 continue;
             }
             for (uint32_t offset = 0; offset < node.count; ++offset)
-                if (Inside(m_boxes[m_order[node.first + offset]], point)) return true;
+                if (Inside(m_boxes[m_order[node.first + offset]], point)) {
+                    return true;
+                }
             ++index;
         }
         return false;
@@ -370,7 +422,7 @@ private:
             Build(first, half);
             Build(first + half, count - half);
         }
-        /// @note 先行順では部分木が連続するため、範囲外の点では次の兄弟へ直接進める。
+        // 先行順では部分木が連続するため、範囲外の点では次の兄弟へ直接進める。
         m_nodes[index].next = static_cast<uint32_t>(m_nodes.size());
     }
 
@@ -401,11 +453,19 @@ uint64_t ProfileHash(const WorldPcgProfile& profile,const std::vector<const Worl
         for (const auto& [field, member, initial] : OPTIONAL_RULE_COUNTS) {
             if (rule->*member != initial) { Hash(hash, field); Hash(hash, static_cast<uint64_t>(rule->*member)); }
         }
-        if (rule->scaleCompetitionRadius) Hash(hash, "scaleCompetitionRadius");
-        if (rule->useWaterLevel) Hash(hash, "useWaterLevel");
-        if (rule->alignDownslope) Hash(hash, "alignDownslope");
+        if (rule->scaleCompetitionRadius) {
+            Hash(hash, "scaleCompetitionRadius");
+        }
+        if (rule->useWaterLevel) {
+            Hash(hash, "useWaterLevel");
+        }
+        if (rule->alignDownslope) {
+            Hash(hash, "alignDownslope");
+        }
         for(const auto& part:rule->parts){Hash(hash,part.meshPath);Hash(hash,part.materialPath);Hash(hash,part.lod);}
-        for(float height:rule->lodHeights)HashFloat(hash,height);
+        for(float height:rule->lodHeights) {
+            HashFloat(hash,height);
+        }
     }
     return hash;
 }
@@ -472,93 +532,340 @@ WorldPcgProfile CreateRockNaturePcgProfile(std::string_view rockPrototype, std::
     return profile;
 }
 
-bool ValidateWorldPcgProfile(const WorldPcgProfile& profile,std::string& diagnostic)
+namespace world_pcg_detail {
+namespace {
+
+/// @brief プロファイル共通の識別情報、配置範囲、処理予算を確認する。
+/// @param[in] profile 配置範囲、セル格子、配置件数の上限を持つプロファイル。
+/// @param[out] diagnostic 失敗した場合に最初の理由を格納する。
+bool ValidateProfileSettings(const WorldPcgProfile& profile, std::string& diagnostic)
 {
-    using namespace world_pcg_detail;
-    if(!ValidateWorldCellGrid(profile.grid,diagnostic))return false;
-    if(profile.key.empty()||profile.key.size()>256||profile.name.size()>256||profile.pathMaterial.size()>4096
-        ||profile.rules.empty()||profile.rules.size()>256)
-        return Fail(diagnostic,"PCG requires a key and 1..256 uniquely named rules");
-    if(!Finite(profile.bounds.min)||!Finite(profile.bounds.max)||profile.bounds.min.x>=profile.bounds.max.x||profile.bounds.min.z>=profile.bounds.max.z)
-        return Fail(diagnostic,"PCG requires finite, increasing half-open XZ bounds");
-    if(profile.maxInstances==0||profile.maxInstances>MAX_PCG_PLACEMENTS||profile.maxCandidates==0||profile.maxCandidates>10000000||profile.exclusions.size()>4096)
-        return Fail(diagnostic,"PCG candidate, instance or exclusion budget is out of range");
-    if (profile.maxPlacementsPerCell > MAX_PCG_PLACEMENTS)
+    // セル座標へ変換する前に格子、識別情報、生成する範囲を確認する。
+    if (!ValidateWorldCellGrid(profile.grid, diagnostic)) {
+        return false;
+    }
+    if (profile.key.empty() || profile.key.size() > 256 || profile.name.size() > 256
+        || profile.pathMaterial.size() > 4096 || profile.rules.empty() || profile.rules.size() > 256) {
+        return Fail(diagnostic, "PCG requires a key and 1..256 uniquely named rules");
+    }
+    if (!Finite(profile.bounds.min) || !Finite(profile.bounds.max)
+        || profile.bounds.min.x >= profile.bounds.max.x || profile.bounds.min.z >= profile.bounds.max.z) {
+        return Fail(diagnostic, "PCG requires finite, increasing half-open XZ bounds");
+    }
+
+    // 配置全体の処理量と任意のセル別上限を確認する。
+    if (profile.maxInstances == 0 || profile.maxInstances > MAX_PCG_PLACEMENTS
+        || profile.maxCandidates == 0 || profile.maxCandidates > 10000000 || profile.exclusions.size() > 4096) {
+        return Fail(diagnostic, "PCG candidate, instance or exclusion budget is out of range");
+    }
+    if (profile.maxPlacementsPerCell > MAX_PCG_PLACEMENTS) {
         return Fail(diagnostic, "PCG maxPlacementsPerCell exceeds 1048576");
+    }
+
+    // 保存用格子と、セル別の件数制限を有効にした場合の 128 m 格子で端点を照合する。
     WorldCellId cell;
-    if(!TryLocateWorldCell(profile.grid,profile.bounds.min,cell)||!TryLocateWorldCell(profile.grid,profile.bounds.max,cell))
-        return Fail(diagnostic,"PCG bounds exceed the world cell coordinate range");
+    if (!TryLocateWorldCell(profile.grid, profile.bounds.min, cell)
+        || !TryLocateWorldCell(profile.grid, profile.bounds.max, cell)) {
+        return Fail(diagnostic, "PCG bounds exceed the world cell coordinate range");
+    }
     const WorldCellGrid budgetGrid{profile.grid.origin, VEGETATION_BUDGET_CELL_SIZE};
     if (profile.maxPlacementsPerCell && (!TryLocateWorldCell(budgetGrid, profile.bounds.min, cell)
-        || !TryLocateWorldCell(budgetGrid, profile.bounds.max, cell)))
+        || !TryLocateWorldCell(budgetGrid, profile.bounds.max, cell))) {
         return Fail(diagnostic, "PCG bounds exceed the 128 m placement cell coordinate range");
-    for(const auto& box:profile.exclusions)if(!Finite(box.min)||!Finite(box.max)||box.min.x>box.max.x||box.min.y>box.max.y||box.min.z>box.max.z)
-        return Fail(diagnostic,"PCG exclusion bounds are invalid");
-    std::unordered_set<std::string> keys;
-    for(const auto& rule:profile.rules){
-        if(rule.key.empty()||rule.key.size()>256||rule.name.size()>256||rule.biome.size()>256||rule.prototypeRef.size()>4096||!keys.insert(rule.key).second)
-            return Fail(diagnostic,"PCG rule keys must be nonempty and unique");
-        if(!Range(rule.spacing,0.25f,100000.0f)||!Range(rule.density,0,1)||!Range(rule.noiseScale,0.25f,1000000.0f)||!Range(rule.clusterStrength,0,1)
-            ||!Range(rule.minHeight,-10000000.0f,10000000.0f)||!Range(rule.maxHeight,rule.minHeight,10000000.0f)
-            ||!Range(rule.minSlope,0,90)||!Range(rule.maxSlope,rule.minSlope,90)
-            ||!Range(rule.minWaterDistance,0,1000000)||!Range(rule.maxWaterDistance,rule.minWaterDistance,1000000)
-            ||!Range(rule.minScale,0.001f,1000)||!Range(rule.maxScale,rule.minScale,1000)
-            ||!Range(rule.minYaw,-360,360)||!Range(rule.maxYaw,rule.minYaw,360)
-            ||!Range(rule.embedDepth,0,1000)||!Range(rule.protectedDistance,0,100000)
-            || !Range(rule.scaleBias, 0.1f, 8.0f) || !Range(rule.embedJitter, 0.0f, 1000.0f - rule.embedDepth)
-            || !Range(rule.waterLevelFade, 0.0f, 1000.0f) || (rule.waterLevelFade > 0 && !rule.useWaterLevel)
-            || !Range(rule.downslopeJitter, 0.0f, 180.0f))return Fail(diagnostic,"PCG rule range is invalid: "+rule.key);
-        const auto distanceValid = [](float value) { return value == 0.0f || Range(value, 0.25f, 1000.0f); };
-        if (rule.patchGroup.size() > 256 || rule.neighborRule.size() > 256
-            || !Range(rule.minPatch, 0.0f, 1.0f) || !Range(rule.maxPatch, rule.minPatch, 1.0f)
-            || rule.minPatch == rule.maxPatch || !distanceValid(rule.minSpacing)
-            || !Range(rule.waterFade, 0.0f, 1000.0f) || !distanceValid(rule.minNeighborDistance)
-            || !distanceValid(rule.maxNeighborDistance)
-            || (rule.maxNeighborDistance != 0.0f && rule.maxNeighborDistance < rule.minNeighborDistance)
-            || (rule.neighborRule.empty() != (rule.minNeighborDistance == 0.0f && rule.maxNeighborDistance == 0.0f)))
-            return Fail(diagnostic, "PCG vegetation rule range is invalid: " + rule.key);
-        if (rule.includeMaterial.size() > 4096 || rule.excludeMaterial.size() > 4096 || rule.competitionGroup.size() > 256
-            || !Range(rule.minMaterialWeight, 0.0001f, 1.0f) || !Range(rule.excludeMaterialWeight, 0.0001f, 1.0f)
-            || !Range(rule.competitionPriority, -1000.0f, 1000.0f)
-            || (rule.competitionGroup.empty() ? (rule.competitionRadius != 0.0f || rule.competitionPriority != 0.0f || rule.scaleCompetitionRadius)
-                : !Range(rule.competitionRadius, 0.25f, 1000.0f) || CompetitionRadius(rule, rule.maxScale) > 1000.0f))
-            return Fail(diagnostic, "PCG material or competition rule is invalid: " + rule.key);
-        const bool hasCanopyCount = rule.minCanopyCount != 0 || rule.maxCanopyCount != -1;
-        if (rule.canopySourceGroup.size() > 256 || rule.canopyGroup.size() > 256
-            || rule.minCanopyCount < 0 || rule.minCanopyCount > MAX_CANOPY_COUNT
-            || rule.maxCanopyCount < -1 || rule.maxCanopyCount > MAX_CANOPY_COUNT
-            || (rule.maxCanopyCount >= 0 && rule.maxCanopyCount < rule.minCanopyCount)
-            || (rule.canopyGroup.empty() ? (rule.canopyRadius != 0.0f || hasCanopyCount)
-                : (!Range(rule.canopyRadius, 0.25f, 1000.0f) || !hasCanopyCount)))
-            return Fail(diagnostic, "PCG canopy rule is invalid: " + rule.key);
-        if (!Range(rule.heightFade, 0.0f, 100000.0f) || !Range(rule.slopeFade, 0.0f, 90.0f)
-            || !Range(rule.aspectHeading, 0.0f, 360.0f) || !Range(rule.aspectHalfAngle, 0.1f, 180.0f)
-            || !Range(rule.aspectMinSlope, 0.0f, 90.0f) || !Range(rule.aspectFade, 0.0f, rule.aspectHalfAngle))
-            return Fail(diagnostic, "PCG terrain density or aspect rule is invalid: " + rule.key);
-        if (!Range(rule.minWaterOffset, -1000000.0f, 1000000.0f) || !Range(rule.maxWaterOffset, rule.minWaterOffset, 1000000.0f)
-            || !Range(rule.minNearRelief, -1000000.0f, 1000000.0f) || !Range(rule.maxNearRelief, rule.minNearRelief, 1000000.0f)
-            || !Range(rule.minFarRelief, -1000000.0f, 1000000.0f) || !Range(rule.maxFarRelief, rule.minFarRelief, 1000000.0f)
-            || !Range(rule.maxCliffDistance, 0.0f, 256.0f) || !Range(rule.cliffFarScale, 0.01f, 1.0f)
-            || !Range(rule.minPathDistance, 0.0f, 10000.0f) || !Range(rule.pathFade, 0.0f, 10000.0f)
-            || (!Range(rule.maxPathDistance, rule.minPathDistance, 10000.0f) && rule.maxPathDistance != 1000000.0f)
-            || (rule.UsesPathBand() && profile.pathMaterial.empty())
-            || (rule.maxPathDistance == 1000000.0f && rule.minPathDistance + rule.pathFade > 10000.0f))
-            return Fail(diagnostic, "PCG water level, relief, cliff, or path band is invalid: " + rule.key);
-        if((rule.parts.empty()&&rule.prototypeRef.empty())||rule.parts.size()>64||rule.lodHeights.empty()||rule.lodHeights.size()>4)
-            return Fail(diagnostic,"PCG mesh/LOD definition is invalid: "+rule.key);
-        std::array<bool,4> levels{};float previous=2;
-        for(float height:rule.lodHeights){if(!Range(height,0,1)||height>=previous)return Fail(diagnostic,"PCG LOD heights must strictly descend");previous=height;}
-        for(const auto& part:rule.parts){if(part.meshPath.empty()||part.materialPath.empty()||part.meshPath.size()>4096||part.materialPath.size()>4096||part.lod>=rule.lodHeights.size())
-                return Fail(diagnostic,"PCG mesh parts require valid material and LOD references");levels[part.lod]=true;}
-        if(!rule.parts.empty())for(size_t index=0;index<rule.lodHeights.size();++index)if(!levels[index])return Fail(diagnostic,"Every PCG LOD requires a mesh part");
-        int32_t x0,x1,z0,z1;if(!LatticeRange(profile,rule,x0,x1,z0,z1))return Fail(diagnostic,"PCG bounds exceed the global lattice coordinate range");
-        const double noiseBound=std::max({std::abs(static_cast<double>(profile.bounds.min.x)),std::abs(static_cast<double>(profile.bounds.max.x)),
-            std::abs(static_cast<double>(profile.bounds.min.z)),std::abs(static_cast<double>(profile.bounds.max.z))})/rule.noiseScale;
-        if(noiseBound>static_cast<double>(INT32_MAX)-2)return Fail(diagnostic,"PCG noise coordinates exceed the supported range");
     }
+
+    // 除外ボックスは境界を含むため、各軸で下限と上限の一致も受け入れる。
+    for (const auto& box : profile.exclusions) {
+        if (!Finite(box.min) || !Finite(box.max)) {
+            return Fail(diagnostic, "PCG exclusion bounds are invalid");
+        }
+        if (box.min.x > box.max.x || box.min.y > box.max.y || box.min.z > box.max.z) {
+            return Fail(diagnostic, "PCG exclusion bounds are invalid");
+        }
+    }
+    return true;
+}
+
+/// @brief 候補を作る間隔・密度、基本の地表条件、採用後の姿勢設定を検証する。
+/// @param[in] rule 散布ルールの基本設定。
+/// @param[out] diagnostic 失敗した場合にルールのキーを含む理由を格納する。
+bool ValidatePlacementRule(const WorldPcgRule& rule, std::string& diagnostic)
+{
+    const auto invalidPlacementRange = [&] {
+        return Fail(diagnostic, "PCG rule range is invalid: " + rule.key);
+    };
+    // 候補の間隔と密度分布を確認する。
+    if (!Range(rule.spacing, 0.25f, 100000.0f) || !Range(rule.density, 0, 1)
+        || !Range(rule.noiseScale, 0.25f, 1000000.0f) || !Range(rule.clusterStrength, 0, 1)) {
+        return invalidPlacementRange();
+    }
+
+    // 候補を選ぶ高さ・傾斜・水辺距離は、上限を下限以上に設定する。
+    if (!Range(rule.minHeight, -10000000.0f, 10000000.0f) || !Range(rule.maxHeight, rule.minHeight, 10000000.0f)
+        || !Range(rule.minSlope, 0, 90) || !Range(rule.maxSlope, rule.minSlope, 90)
+        || !Range(rule.minWaterDistance, 0, 1000000) || !Range(rule.maxWaterDistance, rule.minWaterDistance, 1000000)) {
+        return invalidPlacementRange();
+    }
+
+    // 採用した候補の姿勢、地面への埋め込み量、既存配置を守る間隔を確認する。
+    if (!Range(rule.minScale, 0.001f, 1000) || !Range(rule.maxScale, rule.minScale, 1000)
+        || !Range(rule.minYaw, -360, 360) || !Range(rule.maxYaw, rule.minYaw, 360)) {
+        return invalidPlacementRange();
+    }
+    if (!Range(rule.embedDepth, 0, 1000) || !Range(rule.protectedDistance, 0, 100000)
+        || !Range(rule.scaleBias, 0.1f, 8.0f) || !Range(rule.embedJitter, 0.0f, 1000.0f - rule.embedDepth)) {
+        return invalidPlacementRange();
+    }
+    if (!Range(rule.waterLevelFade, 0.0f, 1000.0f) || (rule.waterLevelFade > 0 && !rule.useWaterLevel)
+        || !Range(rule.downslopeJitter, 0.0f, 180.0f)) {
+        return invalidPlacementRange();
+    }
+    return true;
+}
+
+/// @brief マテリアル選別と候補間の競合設定の有効性を調べる。
+/// @param[in] rule 配置時の倍率範囲を検証済みのルール。
+bool ValidMaterialCompetition(const WorldPcgRule& rule)
+{
+    // マテリアルによる選別を確認し、競合の優先度と半径がグループの指定に合うか調べる。
+    if (rule.includeMaterial.size() > 4096 || rule.excludeMaterial.size() > 4096 || rule.competitionGroup.size() > 256) {
+        return false;
+    }
+    if (!Range(rule.minMaterialWeight, 0.0001f, 1.0f) || !Range(rule.excludeMaterialWeight, 0.0001f, 1.0f)) {
+        return false;
+    }
+    if (!Range(rule.competitionPriority, -1000.0f, 1000.0f)) {
+        return false;
+    }
+    if (rule.competitionGroup.empty()) {
+        if (rule.competitionRadius != 0.0f || rule.competitionPriority != 0.0f || rule.scaleCompetitionRadius) {
+            return false;
+        }
+    } else if (!Range(rule.competitionRadius, 0.25f, 1000.0f) || CompetitionRadius(rule, rule.maxScale) > 1000.0f) {
+        return false;
+    }
+    return true;
+}
+
+/// @brief 樹冠を参照するグループと、検索半径・個数の指定が対応するかを調べる。
+/// @param[in] rule 樹冠の設定を含む散布ルール。
+bool ValidCanopyRule(const WorldPcgRule& rule)
+{
+    // グループの名前と個数の範囲を確認する。樹冠を使う場合は半径と個数の下限または上限が必要。
+    const bool hasCanopyCount = rule.minCanopyCount != 0 || rule.maxCanopyCount != -1;
+    if (rule.canopySourceGroup.size() > 256 || rule.canopyGroup.size() > 256) {
+        return false;
+    }
+    if (rule.minCanopyCount < 0 || rule.minCanopyCount > MAX_CANOPY_COUNT
+        || rule.maxCanopyCount < -1 || rule.maxCanopyCount > MAX_CANOPY_COUNT
+        || (rule.maxCanopyCount >= 0 && rule.maxCanopyCount < rule.minCanopyCount)) {
+        return false;
+    }
+    if (rule.canopyGroup.empty()) {
+        if (rule.canopyRadius != 0.0f || hasCanopyCount) {
+            return false;
+        }
+    } else if (!Range(rule.canopyRadius, 0.25f, 1000.0f) || !hasCanopyCount) {
+        return false;
+    }
+    return true;
+}
+
+/// @brief パッチ、近傍、マテリアル、樹冠で植生を絞り込む設定を検証する。
+/// @param[in] rule 基本の配置条件を検証済みの散布ルール。
+/// @param[out] diagnostic 失敗した場合に最初の理由を格納する。
+bool ValidateVegetationRule(const WorldPcgRule& rule, std::string& diagnostic)
+{
+    // パッチ選別の範囲と間隔を確認してから、別ルールを参照する近傍距離を調べる。
+    const auto invalidVegetationRange = [&] {
+        return Fail(diagnostic, "PCG vegetation rule range is invalid: " + rule.key);
+    };
+    const auto distanceValid = [](float value) { return value == 0.0f || Range(value, 0.25f, 1000.0f); };
+    if (rule.patchGroup.size() > 256 || rule.neighborRule.size() > 256) {
+        return invalidVegetationRange();
+    }
+    if (!Range(rule.minPatch, 0.0f, 1.0f) || !Range(rule.maxPatch, rule.minPatch, 1.0f)
+        || rule.minPatch == rule.maxPatch || !distanceValid(rule.minSpacing) || !Range(rule.waterFade, 0.0f, 1000.0f)) {
+        return invalidVegetationRange();
+    }
+    if (!distanceValid(rule.minNeighborDistance) || !distanceValid(rule.maxNeighborDistance)
+        || (rule.maxNeighborDistance != 0.0f && rule.maxNeighborDistance < rule.minNeighborDistance)
+        || (rule.neighborRule.empty() != (rule.minNeighborDistance == 0.0f && rule.maxNeighborDistance == 0.0f))) {
+        return invalidVegetationRange();
+    }
+
+    if (!ValidMaterialCompetition(rule)) {
+        return Fail(diagnostic, "PCG material or competition rule is invalid: " + rule.key);
+    }
+    if (!ValidCanopyRule(rule)) {
+        return Fail(diagnostic, "PCG canopy rule is invalid: " + rule.key);
+    }
+    return true;
+}
+
+/// @brief 地形の密度・方位と水面、起伏、崖、道の選別範囲を検証する。
+/// @param[in] profile 道の判定に使うマテリアルを含むプロファイル。
+/// @param[in] rule 検証する散布ルール。
+/// @param[out] diagnostic 失敗した場合に最初の理由を格納する。
+bool ValidateTerrainRule(const WorldPcgProfile& profile, const WorldPcgRule& rule, std::string& diagnostic)
+{
+    // 高さと傾斜による密度フェードと、斜面の方位を許容する角度を確認する。
+    if (!Range(rule.heightFade, 0.0f, 100000.0f) || !Range(rule.slopeFade, 0.0f, 90.0f)
+        || !Range(rule.aspectHeading, 0.0f, 360.0f) || !Range(rule.aspectHalfAngle, 0.1f, 180.0f)
+        || !Range(rule.aspectMinSlope, 0.0f, 90.0f) || !Range(rule.aspectFade, 0.0f, rule.aspectHalfAngle)) {
+        return Fail(diagnostic, "PCG terrain density or aspect rule is invalid: " + rule.key);
+    }
+    const auto invalidSurfaceBand = [&] {
+        return Fail(diagnostic, "PCG water level, relief, cliff, or path band is invalid: " + rule.key);
+    };
+    // 水面からの高さと近距離・遠距離の起伏を確認する。
+    if (!Range(rule.minWaterOffset, -1000000.0f, 1000000.0f) || !Range(rule.maxWaterOffset, rule.minWaterOffset, 1000000.0f)
+        || !Range(rule.minNearRelief, -1000000.0f, 1000000.0f) || !Range(rule.maxNearRelief, rule.minNearRelief, 1000000.0f)
+        || !Range(rule.minFarRelief, -1000000.0f, 1000000.0f) || !Range(rule.maxFarRelief, rule.minFarRelief, 1000000.0f)) {
+        return invalidSurfaceBand();
+    }
+    if (!Range(rule.maxCliffDistance, 0.0f, 256.0f) || !Range(rule.cliffFarScale, 0.01f, 1.0f)) {
+        return invalidSurfaceBand();
+    }
+
+    // 道との距離を使うルールには対象マテリアルが必要。上限なしでも探索する帯は 10 km に収める。
+    constexpr float MAX_PATH_BAND_DISTANCE = 10000.0f;
+    constexpr float UNBOUNDED_PATH_DISTANCE = 1000000.0f;
+    if (!Range(rule.minPathDistance, 0.0f, MAX_PATH_BAND_DISTANCE) || !Range(rule.pathFade, 0.0f, MAX_PATH_BAND_DISTANCE)) {
+        return invalidSurfaceBand();
+    }
+    if (!Range(rule.maxPathDistance, rule.minPathDistance, MAX_PATH_BAND_DISTANCE)
+        && rule.maxPathDistance != UNBOUNDED_PATH_DISTANCE) {
+        return invalidSurfaceBand();
+    }
+    if (rule.UsesPathBand() && profile.pathMaterial.empty()) {
+        return invalidSurfaceBand();
+    }
+    if (rule.maxPathDistance == UNBOUNDED_PATH_DISTANCE && rule.minPathDistance + rule.pathFade > MAX_PATH_BAND_DISTANCE) {
+        return invalidSurfaceBand();
+    }
+    return true;
+}
+
+/// @brief プロトタイプ参照またはメッシュ構成と、対応する表示切り替えの境界を検証する。
+/// @param[in] rule 参照、メッシュ部品、LOD を持つ散布ルール。
+/// @param[out] diagnostic 失敗した場合に最初の理由を格納する。
+bool ValidateMeshLods(const WorldPcgRule& rule, std::string& diagnostic)
+{
+    constexpr size_t MAX_MESH_PARTS = 64;
+    constexpr size_t MAX_LOD_LEVELS = 4;
+    const bool missingMeshSource = rule.parts.empty() && rule.prototypeRef.empty();
+    if (missingMeshSource || rule.parts.size() > MAX_MESH_PARTS
+        || rule.lodHeights.empty() || rule.lodHeights.size() > MAX_LOD_LEVELS) {
+        return Fail(diagnostic, "PCG mesh/LOD definition is invalid: " + rule.key);
+    }
+
+    // 画面上の高さの比率は [0, 1] で、近い段から遠い段への切り替え順に並べる。
+    float previousHeight = 2.0f;
+    for (float height : rule.lodHeights) {
+        if (!Range(height, 0, 1) || height >= previousHeight) {
+            return Fail(diagnostic, "PCG LOD heights must strictly descend");
+        }
+        previousHeight = height;
+    }
+
+    // 部品の参照を検証し、部品が割り当てられた LOD を記録する。
+    std::array<bool, MAX_LOD_LEVELS> levelsWithParts{};
+    for (const auto& part : rule.parts) {
+        if (part.meshPath.empty() || part.materialPath.empty()
+            || part.meshPath.size() > 4096 || part.materialPath.size() > 4096 || part.lod >= rule.lodHeights.size()) {
+            return Fail(diagnostic, "PCG mesh parts require valid material and LOD references");
+        }
+        levelsWithParts[part.lod] = true;
+    }
+
+    // プロトタイプ参照だけのルールは、部品を展開する前でも保存できる。
+    if (rule.parts.empty()) {
+        return true;
+    }
+
+    // メッシュを直接指定したルールには、すべての LOD に描画する部品が必要。
+    for (size_t level = 0; level < rule.lodHeights.size(); ++level) {
+        if (!levelsWithParts[level]) {
+            return Fail(diagnostic, "Every PCG LOD requires a mesh part");
+        }
+    }
+    return true;
+}
+
+/// @brief 候補とノイズの格子を 32 ビット整数で扱えるか確認する。
+/// @param[in] profile 検証済みのワールド空間の配置範囲を持つプロファイル。
+/// @param[in] rule 間隔、埋め込み、ノイズの尺度を検証済みのルール。
+/// @param[out] diagnostic 失敗した場合に最初の理由を格納する。
+bool ValidateRuleCoordinates(const WorldPcgProfile& profile, const WorldPcgRule& rule, std::string& diagnostic)
+{
+    // 候補の格子は生成と同じ範囲計算を使い、埋め込み変位を含めて調べる。
+    int32_t firstX;
+    int32_t endX;
+    int32_t firstZ;
+    int32_t endZ;
+    if (!LatticeRange(profile, rule, firstX, endX, firstZ, endZ)) {
+        return Fail(diagnostic, "PCG bounds exceed the global lattice coordinate range");
+    }
+
+    // 値ノイズが隣接点も参照できるよう、最大の格子座標に余裕を残す。
+    const double noiseBound = std::max({
+        std::abs(static_cast<double>(profile.bounds.min.x)),
+        std::abs(static_cast<double>(profile.bounds.max.x)),
+        std::abs(static_cast<double>(profile.bounds.min.z)),
+        std::abs(static_cast<double>(profile.bounds.max.z)),
+    }) / rule.noiseScale;
+    if (noiseBound > static_cast<double>(INT32_MAX) - 2) {
+        return Fail(diagnostic, "PCG noise coordinates exceed the supported range");
+    }
+    return true;
+}
+
+} // namespace
+} // namespace world_pcg_detail
+
+bool ValidateWorldPcgProfile(const WorldPcgProfile& profile, std::string& diagnostic)
+{
+    using namespace world_pcg_detail;
+    if (!ValidateProfileSettings(profile, diagnostic)) {
+        return false;
+    }
+
+    // ルールを保存順に確認する。同じキーが現れたら、そのルールの設定を検証する前に拒否する。
+    std::unordered_set<std::string> keys;
+    for (const auto& rule : profile.rules) {
+        if (rule.key.empty() || rule.key.size() > 256 || rule.name.size() > 256
+            || rule.biome.size() > 256 || rule.prototypeRef.size() > 4096) {
+            return Fail(diagnostic, "PCG rule keys must be nonempty and unique");
+        }
+        if (!keys.insert(rule.key).second) {
+            return Fail(diagnostic, "PCG rule keys must be nonempty and unique");
+        }
+
+        if (!ValidatePlacementRule(rule, diagnostic)) {
+            return false;
+        }
+        if (!ValidateVegetationRule(rule, diagnostic)) {
+            return false;
+        }
+        if (!ValidateTerrainRule(profile, rule, diagnostic)) {
+            return false;
+        }
+        if (!ValidateMeshLods(rule, diagnostic)) {
+            return false;
+        }
+        if (!ValidateRuleCoordinates(profile, rule, diagnostic)) {
+            return false;
+        }
+    }
+
+    // 全ルールのキーと設定が有効になってから、近傍・樹冠の参照関係と生成順を確認する。
     RuleStages stages;
-    if (!BuildRuleStages(profile, stages, diagnostic)) return false;
-    diagnostic.clear();return true;
+    if (!BuildRuleStages(profile, stages, diagnostic)) {
+        return false;
+    }
+    diagnostic.clear();
+    return true;
 }
 
 bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& sample,std::span<const math::Vector3> protectedPositions,
@@ -571,15 +878,23 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
     WorldPcgResult& out,std::string& diagnostic,const WorldPcgHabitatSampler& sampleHabitat, WorldPcgDiagnostics* diagnostics)
 {
     using namespace world_pcg_detail;
-    if(!ValidateWorldPcgProfile(profile,diagnostic))return false;
-    if(!sample)return Fail(diagnostic,"PCG requires a surface sampler");
+    if(!ValidateWorldPcgProfile(profile,diagnostic)) {
+        return false;
+    }
+    if(!sample) {
+        return Fail(diagnostic,"PCG requires a surface sampler");
+    }
     for(const auto& rule:profile.rules)if(rule.parts.empty())return Fail(diagnostic,"Resolve PCG prototype definitions before generation");
-    if(protectedPositions.size()>1048576)return Fail(diagnostic,"PCG protected-placement budget exceeded");
+    if(protectedPositions.size()>1048576) {
+        return Fail(diagnostic,"PCG protected-placement budget exceeded");
+    }
     PlacementSiteIndex protectedIndex;
     std::vector<const WorldPcgRule*> rules;for(const auto& rule:profile.rules){rules.push_back(&rule);protectedIndex.size=std::max(protectedIndex.size,rule.protectedDistance);}
     std::sort(rules.begin(),rules.end(),[](const auto* a,const auto* b){return a->key<b->key;});
     RuleStages stages;
-    if (!BuildRuleStages(profile, stages, diagnostic)) return false;
+    if (!BuildRuleStages(profile, stages, diagnostic)) {
+        return false;
+    }
     std::map<std::string_view, PlacementSiteIndex> neighborSources;
     std::map<std::string_view, PlacementSiteIndex> competition;
     std::map<std::string_view, PlacementSiteIndex> canopy;
@@ -592,13 +907,17 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             auto& index = canopy[rule->canopyGroup];
             index.size = (std::max)(index.size, rule->canopyRadius);
         }
-        if (rule->neighborRule.empty()) continue;
+        if (rule->neighborRule.empty()) {
+            continue;
+        }
         auto& index = neighborSources[rule->neighborRule];
         index.size = (std::max)({index.size, rule->minNeighborDistance, rule->maxNeighborDistance});
     }
     for(const auto& position:protectedPositions){if(!Finite(position))return Fail(diagnostic,"PCG protected positions must be finite");
         if(protectedIndex.size>0){const auto x=static_cast<double>(position.x)/protectedIndex.size,z=static_cast<double>(position.z)/protectedIndex.size;
-            if(std::abs(x)>9.0e18||std::abs(z)>9.0e18)return Fail(diagnostic,"PCG protected-position index exceeds its range");
+            if(std::abs(x)>9.0e18||std::abs(z)>9.0e18) {
+                return Fail(diagnostic,"PCG protected-position index exceeds its range");
+            }
             protectedIndex.Insert(position);}}
     uint64_t estimated=0;
     for(const auto* rule:rules){int32_t x0,x1,z0,z1;(void)LatticeRange(profile,*rule,x0,x1,z0,z1);
@@ -607,7 +926,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
     const PlacementExclusions exclusions(profile.exclusions);
     WorldPcgResult staged;
     const std::size_t sampleLimit = diagnostics ? diagnostics->maxSamples : 0;
-    if (sampleLimit > MAX_WORLD_PCG_DEBUG_SAMPLES) return Fail(diagnostic, "PCG rejection sample limit exceeded");
+    if (sampleLimit > MAX_WORLD_PCG_DEBUG_SAMPLES) {
+        return Fail(diagnostic, "PCG rejection sample limit exceeded");
+    }
     struct RejectedSite {
         uint64_t rank;
         math::Vector3 position;
@@ -619,14 +940,20 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
     const auto reject = [&](uint64_t& count, std::string_view reason, const WorldPcgRule& rule,
         uint64_t candidate, const math::Vector3& position) {
         ++count;
-        if (sampleLimit == 0) return;
+        if (sampleLimit == 0) {
+            return;
+        }
         constexpr uint64_t REJECTION_STREAM = 0x9c87db62a4e59531ull;
         const RejectedSite site{Mix(candidate ^ REJECTION_STREAM), position, rule.key, reason};
         if (rejected.size() == sampleLimit) {
-            if (!rankLess(site, rejected.front())) return;
+            if (!rankLess(site, rejected.front())) {
+                return;
+            }
             std::pop_heap(rejected.begin(), rejected.end(), rankLess);
             rejected.back() = site;
-        } else rejected.push_back(site);
+        } else {
+            rejected.push_back(site);
+        }
         std::push_heap(rejected.begin(), rejected.end(), rankLess);
     };
     using GroupKey = std::pair<WorldCellId, std::string_view>;
@@ -636,13 +963,15 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
     };
     std::map<GroupKey, OutputGroup> groups;
     const auto emit = [&](const PlacementCandidate& candidate) {
-        if (staged.stats.accepted >= profile.maxInstances)
+        if (staged.stats.accepted >= profile.maxInstances) {
             return Fail(diagnostic, "PCG instance budget exceeded; no partial result was published");
+        }
         WorldCellId cell;
         const auto& rule = *candidate.rule;
         const auto position = candidate.groundPosition - candidate.normal * Embedding(rule, candidate.key);
-        if (!TryLocateWorldCell(profile.grid, position, cell))
+        if (!TryLocateWorldCell(profile.grid, position, cell)) {
             return Fail(diagnostic, "PCG candidate has no valid world cell");
+        }
         auto& output = groups[{cell, rule.key}];
         auto& group = output.data;
         if (group.ruleKey.empty()) {
@@ -653,28 +982,31 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             group.parts = rule.parts;
             group.lodHeights = rule.lodHeights;
         }
-        /// @note 密なセルで誕生日衝突を避けるため座標値のビットを使う。折り返しと、離れた点が 0 に対応する場合は拒否する。
+        // 密なセルで誕生日衝突を避けるため座標値のビットを使う。折り返しと、離れた点が 0 に対応する場合は拒否する。
         const uint32_t packed = (static_cast<uint32_t>(candidate.lattice.x) & 0xffffu)
             | ((static_cast<uint32_t>(candidate.lattice.z) & 0x7fffu) << 16);
         const uint32_t id = packed == 0 ? 0x40008000u : packed;
-        if (!output.ids.insert(id).second)
+        if (!output.ids.insert(id).second) {
             return Fail(diagnostic, "PCG stable ID range collided; reduce the owning cell size");
+        }
         renderer::InstancePlacement placement;
         placement.id = id;
         placement.position = position - WorldCellOrigin(profile.grid, cell);
         placement.eulerRadians = Rotation(rule, candidate.key, candidate.normal);
         const float scale = PlacementScale(rule, candidate.key) * candidate.sizeMultiplier;
         placement.scale = {scale, scale, scale};
-        if (!Finite(placement.position) || !Finite(placement.eulerRadians))
+        if (!Finite(placement.position) || !Finite(placement.eulerRadians)) {
             return Fail(diagnostic, "PCG generated a nonfinite transform");
+        }
         group.placements.push_back(placement);
         group.candidateKeys.push_back(candidate.key);
         if (const auto source = neighborSources.find(rule.key); source != neighborSources.end()) {
             auto& index = source->second;
             index.Insert(candidate.groundPosition);
         }
-        if (const auto source = canopy.find(rule.canopySourceGroup); source != canopy.end())
+        if (const auto source = canopy.find(rule.canopySourceGroup); source != canopy.end()) {
             source->second.Insert(candidate.groundPosition);
+        }
         ++staged.stats.accepted;
         return true;
     };
@@ -716,7 +1048,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 if(x>=profile.bounds.min.x&&x<profile.bounds.max.x&&z>=profile.bounds.min.z&&z<profile.bounds.max.z){++staged.stats.candidates;++staged.stats.noSurface;}continue;}
             const auto normal=surface.normal.Normalized();math::Vector3 position{x,surface.position.y,z};
             const auto authoredPosition=position-normal*Embedding(*rule, candidate);
-            if(authoredPosition.x<profile.bounds.min.x||authoredPosition.x>=profile.bounds.max.x||authoredPosition.z<profile.bounds.min.z||authoredPosition.z>=profile.bounds.max.z)continue;
+            if(authoredPosition.x<profile.bounds.min.x||authoredPosition.x>=profile.bounds.max.x||authoredPosition.z<profile.bounds.min.z||authoredPosition.z>=profile.bounds.max.z) {
+                continue;
+            }
             ++staged.stats.candidates;
             if(!rule->biome.empty()&&surface.biome!=rule->biome){reject(staged.stats.biomeRejected,"biome",*rule,candidate,position);continue;}
             if(surface.excluded || exclusions.Contains(position))
@@ -730,7 +1064,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             if (filterAspect && slope >= rule->aspectMinSlope) {
                 const float horizontal = std::hypot(normal.x, normal.z);
                 if (horizontal > 0.000001f) {
-                    /// @note 上向き地形法線の水平投影は斜面の下り方向を指す。
+                    // 上向き地形法線の水平投影は斜面の下り方向を指す。
                     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Normal To Density.
                     const float dot = std::clamp((normal.x * aspectX + normal.z * aspectZ) / horizontal, -1.0f, 1.0f);
                     const float angle = math::ToDeg(std::acos(dot));
@@ -765,7 +1099,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                     continue;
                 }
             }
-            if (needsHabitat && sampleHabitat) sampleHabitat(*rule, surface);
+            if (needsHabitat && sampleHabitat) {
+                sampleHabitat(*rule, surface);
+            }
             if (rule->useWaterLevel && !Range(surface.waterOffset, rule->minWaterOffset, rule->maxWaterOffset)) {
                 reject(staged.stats.waterLevelRejected, "waterLevel", *rule, candidate, position);
                 continue;
@@ -799,8 +1135,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                     continue;
                 }
                 habitatWeight *= FadeFromEdge(surface.pathDistance - rule->minPathDistance, rule->pathFade);
-                if (rule->maxPathDistance < 1000000.0f)
+                if (rule->maxPathDistance < 1000000.0f) {
                     habitatWeight *= FadeFromEdge(rule->maxPathDistance - surface.pathDistance, rule->pathFade);
+                }
             }
             const float clusterWeight = rule->clusterStrength == 0.0f ? 1.0f
                 : std::lerp(1.0f, Noise(ruleSeed, x, z, rule->noiseScale), rule->clusterStrength);
@@ -811,8 +1148,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Point Neighborhood.
             if (canopyGroup != canopy.end()) {
                 const int count = canopyGroup->second.CountNear(position, rule->canopyRadius, true, canopyStopAt, &remainingCanopyTests);
-                if (remainingCanopyTests == 0)
+                if (remainingCanopyTests == 0) {
                     return Fail(diagnostic, "PCG canopy distance test budget exceeded; narrow the region or canopy radius");
+                }
                 if (count < rule->minCanopyCount || (rule->maxCanopyCount >= 0 && count > rule->maxCanopyCount)) {
                     reject(staged.stats.canopyRejected, "canopy", *rule, candidate, position);
                     continue;
@@ -822,39 +1160,45 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 reject(staged.stats.spacingRejected, "spacing", *rule, candidate, position);
                 continue;
             }
-            /// @note 仮採用地点はセルごとの上限を適用する前に、排他円の全域を確保する。
+            // 仮採用地点はセルごとの上限を適用する前に、排他円の全域を確保する。
             /// @see https://dev.epicgames.com/documentation/unreal-engine/open-world-tools-property-reference-in-unreal-engine Epic Open World Tools: Collision Radius and Overlap Priority.
             if (competitors != competition.end()) {
                 auto& index = competitors->second;
                 const float radius = CompetitionRadius(*rule, rule->scaleCompetitionRadius
                     ? PlacementScale(*rule, candidate) * sizeMultiplier : 1.0f);
                 const bool overlaps = index.Near(position, radius, false, &remainingCompetitionTests);
-                if (remainingCompetitionTests == 0)
+                if (remainingCompetitionTests == 0) {
                     return Fail(diagnostic, "PCG competition distance test budget exceeded; narrow the region or separate competition groups");
+                }
                 if (overlaps) {
                     reject(staged.stats.competitionRejected, "competition", *rule, candidate, position);
                     continue;
                 }
-                if (competitionSites == MAX_PCG_PLACEMENTS)
+                if (competitionSites == MAX_PCG_PLACEMENTS) {
                     return Fail(diagnostic, "PCG competition site reservation budget exceeded");
+                }
                 index.Insert(position, radius);
                 ++competitionSites;
             }
             if (spacing.size > 0.0f) {
-                if (spacingReservations == MAX_PCG_PLACEMENTS)
+                if (spacingReservations == MAX_PCG_PLACEMENTS) {
                     return Fail(diagnostic, "PCG minimum spacing exceeded the site reservation budget: " + rule->key);
+                }
                 spacing.Insert(position);
                 ++spacingReservations;
             }
             const PlacementCandidate placement{rule, {static_cast<int32_t>(ix), static_cast<int32_t>(iz)},
                 candidate, position, normal, sizeMultiplier};
             if (!profile.maxPlacementsPerCell) {
-                if (!emit(placement)) return false;
+                if (!emit(placement)) {
+                    return false;
+                }
                 continue;
             }
             WorldCellId budgetCell;
-            if (!TryLocateWorldCell(budgetGrid, authoredPosition, budgetCell))
+            if (!TryLocateWorldCell(budgetGrid, authoredPosition, budgetCell)) {
                 return Fail(diagnostic, "PCG candidate has no valid placement budget cell");
+            }
             const auto used = usedCellSlots.find(budgetCell);
             const auto remaining = profile.maxPlacementsPerCell - (used == usedCellSlots.end() ? 0 : used->second);
             if (remaining == 0) {
@@ -864,8 +1208,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             auto& ranked = placementCells[budgetCell];
             const RankedPlacement next{Mix(candidate ^ PLACEMENT_BUDGET_STREAM), placement};
             if (ranked.size() < remaining) {
-                if (retainedPlacements >= profile.maxInstances)
+                if (retainedPlacements >= profile.maxInstances) {
                     return Fail(diagnostic, "PCG instance budget exceeded; no partial result was published");
+                }
                 ranked.push_back(next);
                 std::push_heap(ranked.begin(), ranked.end(), PlacementRankLess);
                 ++retainedPlacements;
@@ -876,20 +1221,28 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                     reject(staged.stats.cellBudgetRejected, "cellBudget", *removed.rule, removed.key, removed.groundPosition);
                     ranked.back() = next;
                     std::push_heap(ranked.begin(), ranked.end(), PlacementRankLess);
-                } else reject(staged.stats.cellBudgetRejected, "cellBudget", *rule, candidate, position);
+                } else {
+                    reject(staged.stats.cellBudgetRejected, "cellBudget", *rule, candidate, position);
+                }
             }
         }
         return true;
     };
     for (const auto& stage : stages) {
         for (const auto* rule : stage)
-            if (!generateRule(rule)) return false;
+            if (!generateRule(rule)) {
+                return false;
+            }
         for (auto& [cell, ranked] : placementCells) {
-            if (stages.size() > 1) usedCellSlots[cell] += ranked.size();
-            /// @note 後段で上限適用後に残った元の植生を確認できるように、順位順で出力する。
+            if (stages.size() > 1) {
+                usedCellSlots[cell] += ranked.size();
+            }
+            // 後段で上限適用後に残った元の植生を確認できるように、順位順で出力する。
             std::sort_heap(ranked.begin(), ranked.end(), PlacementRankLess);
             for (const auto& placement : ranked)
-                if (!emit(placement.candidate)) return false;
+                if (!emit(placement.candidate)) {
+                    return false;
+                }
         }
         placementCells.clear();
     }
@@ -906,7 +1259,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
     Hash(fingerprint,staged.stats.candidates);Hash(fingerprint,staged.stats.noSurface);Hash(fingerprint,staged.stats.biomeRejected);
     Hash(fingerprint,staged.stats.densityRejected);Hash(fingerprint,staged.stats.heightRejected);Hash(fingerprint,staged.stats.slopeRejected);
     Hash(fingerprint,staged.stats.waterRejected);Hash(fingerprint,staged.stats.exclusionRejected);Hash(fingerprint,staged.stats.protectedRejected);
-    if (profile.maxPlacementsPerCell) Hash(fingerprint, staged.stats.cellBudgetRejected);
+    if (profile.maxPlacementsPerCell) {
+        Hash(fingerprint, staged.stats.cellBudgetRejected);
+    }
     if (staged.stats.patchRejected) { Hash(fingerprint, "patchRejected"); Hash(fingerprint, staged.stats.patchRejected); }
     if (staged.stats.neighborRejected) { Hash(fingerprint, "neighborRejected"); Hash(fingerprint, staged.stats.neighborRejected); }
     if (staged.stats.spacingRejected) { Hash(fingerprint, "spacingRejected"); Hash(fingerprint, staged.stats.spacingRejected); }
@@ -925,7 +1280,9 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         std::sort_heap(rejected.begin(), rejected.end(), rankLess);
         std::vector<WorldPcgRejectedSample> samples;
         samples.reserve(rejected.size());
-        for (const auto& site : rejected) samples.push_back({site.position, std::string(site.ruleKey), site.reason});
+        for (const auto& site : rejected) {
+            samples.push_back({site.position, std::string(site.ruleKey), site.reason});
+        }
         diagnostics->rejected = std::move(samples);
     }
     std::ostringstream text;text<<std::hex<<fingerprint;staged.fingerprint=text.str();out=std::move(staged);diagnostic.clear();return true;
@@ -934,109 +1291,164 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
 bool SerializeWorldPcgProfile(const WorldPcgProfile& profile,std::string& outText,std::string& diagnostic)
 {
     using namespace world_pcg_detail;
-    if(!ValidateWorldPcgProfile(profile,diagnostic))return false;
+    if(!ValidateWorldPcgProfile(profile,diagnostic)) {
+        return false;
+    }
     toml::table document{{"format","fbzz.pcg"},{"version",1},{"key",profile.key},{"name",profile.name},{"seed",std::to_string(profile.seed)},
         {"maxInstances",profile.maxInstances},{"maxCandidates",static_cast<int64_t>(profile.maxCandidates)},
         {"grid",toml::table{{"origin",VectorData(profile.grid.origin)},{"cellSize",profile.grid.cellSize}}},{"bounds",BoundsData(profile.bounds)}};
-    if (profile.maxPlacementsPerCell) document.insert("maxPlacementsPerCell", profile.maxPlacementsPerCell);
-    if (!profile.pathMaterial.empty()) document.insert("pathMaterial", profile.pathMaterial);
+    if (profile.maxPlacementsPerCell) {
+        document.insert("maxPlacementsPerCell", profile.maxPlacementsPerCell);
+    }
+    if (!profile.pathMaterial.empty()) {
+        document.insert("pathMaterial", profile.pathMaterial);
+    }
     toml::array rules,exclusions;
     for(const auto& rule:profile.rules){
         toml::table row{{"key",rule.key},{"name",rule.name},{"biome",rule.biome},{"prototypeRef",rule.prototypeRef},{"alignToSurface",rule.alignToSurface},{"includeHlod",rule.includeHlod}};
-        for(const auto& [name,member]:RULE_NUMBERS)row.insert(name,rule.*member);
+        for(const auto& [name,member]:RULE_NUMBERS) {
+            row.insert(name,rule.*member);
+        }
         for (const auto& [field, member, initial] : OPTIONAL_RULE_NUMBERS)
-            if (rule.*member != initial) row.insert(field, rule.*member);
+            if (rule.*member != initial) {
+                row.insert(field, rule.*member);
+            }
         for (const auto& [field, member] : OPTIONAL_RULE_STRINGS)
-            if (!(rule.*member).empty()) row.insert(field, rule.*member);
+            if (!(rule.*member).empty()) {
+                row.insert(field, rule.*member);
+            }
         for (const auto& [field, member, initial] : OPTIONAL_RULE_COUNTS)
-            if (rule.*member != initial) row.insert(field, rule.*member);
-        if (rule.scaleCompetitionRadius) row.insert("scaleCompetitionRadius", true);
-        if (rule.useWaterLevel) row.insert("useWaterLevel", true);
-        if (rule.alignDownslope) row.insert("alignDownslope", true);
+            if (rule.*member != initial) {
+                row.insert(field, rule.*member);
+            }
+        if (rule.scaleCompetitionRadius) {
+            row.insert("scaleCompetitionRadius", true);
+        }
+        if (rule.useWaterLevel) {
+            row.insert("useWaterLevel", true);
+        }
+        if (rule.alignDownslope) {
+            row.insert("alignDownslope", true);
+        }
         toml::array parts,lods;
-        for(const auto& part:rule.parts)parts.push_back(toml::table{{"mesh",part.meshPath},{"material",part.materialPath},{"lod",part.lod}});
-        for(float height:rule.lodHeights)lods.push_back(height);
+        for(const auto& part:rule.parts) {
+            parts.push_back(toml::table{{"mesh",part.meshPath},{"material",part.materialPath},{"lod",part.lod}});
+        }
+        for(float height:rule.lodHeights) {
+            lods.push_back(height);
+        }
         row.insert("parts",std::move(parts));row.insert("lodHeights",std::move(lods));rules.push_back(std::move(row));
     }
-    for(const auto& box:profile.exclusions)exclusions.push_back(BoundsData(box));
+    for(const auto& box:profile.exclusions) {
+        exclusions.push_back(BoundsData(box));
+    }
     document.insert("rules",std::move(rules));document.insert("exclusions",std::move(exclusions));
     std::ostringstream text;text<<document;auto encoded=text.str();
-    if(encoded.size()>8*1024*1024)return Fail(diagnostic,"PCG profile exceeds 8 MiB");
+    if(encoded.size()>8*1024*1024) {
+        return Fail(diagnostic,"PCG profile exceeds 8 MiB");
+    }
     outText=std::move(encoded);diagnostic.clear();return true;
 }
 
 bool DeserializeWorldPcgProfile(std::string_view text,WorldPcgProfile& out,std::string& diagnostic)
 {
     using namespace world_pcg_detail;
-    if(text.size()>8*1024*1024)return Fail(diagnostic,"PCG profile exceeds 8 MiB");
+    if(text.size()>8*1024*1024) {
+        return Fail(diagnostic,"PCG profile exceeds 8 MiB");
+    }
     const auto parsed=toml::parse(text,std::string_view{"WorldPcg.pcg"});
-    if(!parsed||parsed["format"].value<std::string>()!="fbzz.pcg"||parsed["version"].value<int64_t>()!=1)
+    if(!parsed||parsed["format"].value<std::string>()!="fbzz.pcg"||parsed["version"].value<int64_t>()!=1) {
         return Fail(diagnostic,"Unsupported or malformed PCG profile");
+    }
     WorldPcgProfile staged;
     const auto key=parsed["key"].value<std::string>(),name=parsed["name"].value<std::string>(),seed=parsed["seed"].value<std::string>();
     const auto maxInstances=parsed["maxInstances"].value<int64_t>(),maxCandidates=parsed["maxCandidates"].value<int64_t>();
     const auto* grid=parsed["grid"].as_table();const auto* bounds=parsed["bounds"].as_table();const auto* rules=parsed["rules"].as_array();
     if(!key||!name||!seed||!maxInstances||!maxCandidates||!grid||!bounds||!rules||rules->empty()||rules->size()>256
-        ||*maxInstances<1||*maxInstances>MAX_PCG_PLACEMENTS||*maxCandidates<1||*maxCandidates>10000000)return Fail(diagnostic,"PCG profile fields are incomplete");
+        ||*maxInstances<1||*maxInstances>MAX_PCG_PLACEMENTS||*maxCandidates<1||*maxCandidates>10000000) {
+        return Fail(diagnostic,"PCG profile fields are incomplete");
+    }
     if (const auto material = parsed["pathMaterial"]; material) {
         const auto value = material.value<std::string>();
-        if (!value) return Fail(diagnostic, "Invalid PCG pathMaterial");
+        if (!value) {
+            return Fail(diagnostic, "Invalid PCG pathMaterial");
+        }
         staged.pathMaterial = *value;
     }
     if (const auto cellLimit = parsed["maxPlacementsPerCell"]; cellLimit) {
         const auto value = cellLimit.value_exact<int64_t>();
-        if (!value || *value < 0 || *value > MAX_PCG_PLACEMENTS)
+        if (!value || *value < 0 || *value > MAX_PCG_PLACEMENTS) {
             return Fail(diagnostic, "PCG maxPlacementsPerCell must be an integer in [0,1048576]");
+        }
         staged.maxPlacementsPerCell = static_cast<uint32_t>(*value);
     }
     const auto conversion=std::from_chars(seed->data(),seed->data()+seed->size(),staged.seed);
-    if(conversion.ec!=std::errc{}||conversion.ptr!=seed->data()+seed->size())return Fail(diagnostic,"PCG seed is not an unsigned 64-bit decimal value");
+    if(conversion.ec!=std::errc{}||conversion.ptr!=seed->data()+seed->size()) {
+        return Fail(diagnostic,"PCG seed is not an unsigned 64-bit decimal value");
+    }
     staged.key=*key;staged.name=*name;staged.maxInstances=static_cast<uint32_t>(*maxInstances);staged.maxCandidates=static_cast<uint64_t>(*maxCandidates);
     const auto cellSize=(*grid)["cellSize"].value<float>();
-    if(!cellSize||!ReadVector((*grid)["origin"],staged.grid.origin)||!ReadBounds(*bounds,staged.bounds))return Fail(diagnostic,"PCG grid or bounds are incomplete");
+    if(!cellSize||!ReadVector((*grid)["origin"],staged.grid.origin)||!ReadBounds(*bounds,staged.bounds)) {
+        return Fail(diagnostic,"PCG grid or bounds are incomplete");
+    }
     staged.grid.cellSize=*cellSize;
     for(const auto& node:*rules){
         const auto* row=node.as_table();if(!row)return Fail(diagnostic,"PCG rule must be a table");WorldPcgRule rule;
         const auto ruleKey=(*row)["key"].value<std::string>(),ruleName=(*row)["name"].value<std::string>(),biome=(*row)["biome"].value<std::string>(),prototype=(*row)["prototypeRef"].value<std::string>();
         const auto align=(*row)["alignToSurface"].value<bool>();const auto* parts=(*row)["parts"].as_array();const auto* lods=(*row)["lodHeights"].as_array();
-        if(!ruleKey||!ruleName||!biome||!prototype||!align||!parts||parts->size()>64||!lods||lods->size()>4)return Fail(diagnostic,"PCG rule fields are incomplete");
+        if(!ruleKey||!ruleName||!biome||!prototype||!align||!parts||parts->size()>64||!lods||lods->size()>4) {
+            return Fail(diagnostic,"PCG rule fields are incomplete");
+        }
         rule.key=*ruleKey;rule.name=*ruleName;rule.biome=*biome;rule.prototypeRef=*prototype;rule.alignToSurface=*align;rule.includeHlod=(*row)["includeHlod"].value_or(true);
         for(const auto& [field,member]:RULE_NUMBERS){const auto value=(*row)[field].value<float>();if(!value)return Fail(diagnostic,"Missing PCG rule number: "+std::string(field));rule.*member=*value;}
         for (const auto& [field, member, initial] : OPTIONAL_RULE_NUMBERS) {
             const auto fieldNode = (*row)[field];
             if (!fieldNode) { rule.*member = initial; continue; }
             const auto value = fieldNode.value<float>();
-            if (!value) return Fail(diagnostic, "Invalid PCG vegetation number: " + std::string(field));
+            if (!value) {
+                return Fail(diagnostic, "Invalid PCG vegetation number: " + std::string(field));
+            }
             rule.*member = *value;
         }
         for (const auto& [field, member] : OPTIONAL_RULE_STRINGS) {
             const auto fieldNode = (*row)[field];
-            if (!fieldNode) continue;
+            if (!fieldNode) {
+                continue;
+            }
             const auto value = fieldNode.value_exact<std::string>();
-            if (!value) return Fail(diagnostic, "Invalid PCG vegetation rule string: " + std::string(field));
+            if (!value) {
+                return Fail(diagnostic, "Invalid PCG vegetation rule string: " + std::string(field));
+            }
             rule.*member = *value;
         }
         for (const auto& [field, member, initial] : OPTIONAL_RULE_COUNTS) {
             const auto fieldNode = (*row)[field];
             if (!fieldNode) { rule.*member = initial; continue; }
             const auto value = fieldNode.value_exact<int64_t>();
-            if (!value || *value < -1 || *value > MAX_CANOPY_COUNT)
+            if (!value || *value < -1 || *value > MAX_CANOPY_COUNT) {
                 return Fail(diagnostic, "Invalid PCG canopy count: " + std::string(field));
+            }
             rule.*member = static_cast<int>(*value);
         }
         if (const auto fieldNode = (*row)["useWaterLevel"]; fieldNode) {
             const auto value = fieldNode.value<bool>();
-            if (!value) return Fail(diagnostic, "Invalid PCG useWaterLevel flag");
+            if (!value) {
+                return Fail(diagnostic, "Invalid PCG useWaterLevel flag");
+            }
             rule.useWaterLevel = *value;
         }
         if (const auto fieldNode = (*row)["alignDownslope"]; fieldNode) {
             const auto value = fieldNode.value_exact<bool>();
-            if (!value) return Fail(diagnostic, "Invalid PCG alignDownslope flag");
+            if (!value) {
+                return Fail(diagnostic, "Invalid PCG alignDownslope flag");
+            }
             rule.alignDownslope = *value;
         }
         if (const auto fieldNode = (*row)["scaleCompetitionRadius"]; fieldNode) {
             const auto value = fieldNode.value_exact<bool>();
-            if (!value) return Fail(diagnostic, "Invalid PCG scaleCompetitionRadius flag");
+            if (!value) {
+                return Fail(diagnostic, "Invalid PCG scaleCompetitionRadius flag");
+            }
             rule.scaleCompetitionRadius = *value;
         }
         for(const auto& partNode:*parts){const auto* part=partNode.as_table();if(!part)return Fail(diagnostic,"PCG mesh part must be a table");
@@ -1046,20 +1458,27 @@ bool DeserializeWorldPcgProfile(std::string_view text,WorldPcgProfile& out,std::
         staged.rules.push_back(std::move(rule));
     }
     if(const auto* exclusions=parsed["exclusions"].as_array()){
-        if(exclusions->size()>4096)return Fail(diagnostic,"PCG exclusion budget exceeded");
+        if(exclusions->size()>4096) {
+            return Fail(diagnostic,"PCG exclusion budget exceeded");
+        }
         for(const auto& node:*exclusions){const auto* row=node.as_table();WorldCellBounds box;if(!row||!ReadBounds(*row,box))return Fail(diagnostic,"Invalid PCG exclusion bounds");staged.exclusions.push_back(box);}
     }else return Fail(diagnostic,"PCG exclusions array is missing");
-    if(!ValidateWorldPcgProfile(staged,diagnostic))return false;
+    if(!ValidateWorldPcgProfile(staged,diagnostic)) {
+        return false;
+    }
     out=std::move(staged);diagnostic.clear();return true;
 }
 
 bool SaveWorldPcgProfile(std::string_view path,const WorldPcgProfile& profile,std::string& diagnostic)
 {
     std::string text;if(!SerializeWorldPcgProfile(profile,text,diagnostic))return false;
-    if(path.empty())return world_pcg_detail::Fail(diagnostic,"PCG profile path is empty");
+    if(path.empty()) {
+        return world_pcg_detail::Fail(diagnostic,"PCG profile path is empty");
+    }
     const std::string filename(path);
-    if(!util::FileSystem::EnsureParentDirectory(util::FileSystem::PathFromUtf8(filename))||!util::FileSystem::WriteTextAtomic(filename,text))
+    if(!util::FileSystem::EnsureParentDirectory(util::FileSystem::PathFromUtf8(filename))||!util::FileSystem::WriteTextAtomic(filename,text)) {
         return world_pcg_detail::Fail(diagnostic,"PCG profile atomic write failed: "+filename);
+    }
     diagnostic.clear();return true;
 }
 
@@ -1067,8 +1486,9 @@ bool LoadWorldPcgProfile(std::string_view path,WorldPcgProfile& out,std::string&
 {
     std::string text;std::error_code error;
     const auto size=std::filesystem::file_size(util::FileSystem::PathFromUtf8(std::string(path)),error);
-    if(error||size>8*1024*1024||!util::FileSystem::ReadText(std::string(path),text))
+    if(error||size>8*1024*1024||!util::FileSystem::ReadText(std::string(path),text)) {
         return world_pcg_detail::Fail(diagnostic,"PCG profile read failed or exceeds 8 MiB");
+    }
     return DeserializeWorldPcgProfile(text,out,diagnostic);
 }
 

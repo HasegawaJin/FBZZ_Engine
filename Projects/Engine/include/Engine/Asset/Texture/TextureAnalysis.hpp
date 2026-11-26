@@ -19,14 +19,14 @@ namespace fbzz::asset {
 struct FlipbookGridCandidate {
     int columns = 1;
     int rows = 1;
-    float seamScore = 0.0f;  ///< @note タイル境界をまたぐ画素差の平均。連続した絵を誤って切ると跳ね上がる。
-    float uniformity = 0.0f; ///< @note 全コマが同程度の内容量を持つか [0,1]。1 に近いほど均質 = アトラスらしい。
+    float seamScore = 0.0f; ///< タイル境界をまたぐ画素差の平均。連続した絵を誤って切ると跳ね上がる。
+    float uniformity = 0.0f; ///< 全コマが同程度の内容量を持つか [0,1]。1 に近いほど均質 = アトラスらしい。
 };
 
 struct TextureAnalysis {
     bool success = false;
-    std::string message;      ///< @note 失敗理由 / 成功時の要約
-    std::string resolvedPath; ///< @note 実際に読んだファイルパス
+    std::string message; ///< 失敗理由 / 成功時の要約
+    std::string resolvedPath; ///< 実際に読んだファイルパス
 
     int width = 0;
     int height = 0;
@@ -41,8 +41,7 @@ struct TextureAnalysis {
     float alphaMin = 0.0f;
     float alphaMax = 0.0f;
     float alphaMean = 0.0f;
-    /// @note アルファがほぼ 0 / ほぼ 1 の画素の割合。二値的なマスクかグラデーションかを見る。
-    float transparentRatio = 0.0f;
+    float transparentRatio = 0.0f; ///< アルファがほぼ 0 / ほぼ 1 の画素の割合。二値的なマスクかグラデーションかを見る。
     float opaqueRatio = 0.0f;
     /// @note 事前乗算済み (RGB <= A が全画素で成り立つ) か。
     /// @note 事前乗算素材を Alpha ブレンドで使うと縁が黒く縁取られ、逆にストレート素材を
@@ -54,27 +53,26 @@ struct TextureAnalysis {
     /// @{
     float luminanceMean = 0.0f;
     float luminanceMax = 0.0f;
-    float averageColor[3] = { 0.0f, 0.0f, 0.0f }; ///< @note アルファで重み付けした平均色 (透明部分の色は無視する)。
-    float coreHotspot = 0.0f;    ///< @note 中心付近の輝度が周辺よりどれだけ高いか。発光する芯を持つ素材で大きくなる。
-    float saturationMean = 0.0f; ///< @note 彩度の平均。0 に近いとグレースケール素材 (色は色ゆらぎ/グラデーション側で作る)。
+    float averageColor[3] = { 0.0f, 0.0f, 0.0f }; ///< アルファで重み付けした平均色 (透明部分の色は無視する)。
+    float coreHotspot = 0.0f; ///< 中心付近の輝度が周辺よりどれだけ高いか。発光する芯を持つ素材で大きくなる。
+    float saturationMean = 0.0f; ///< 彩度の平均。0 に近いとグレースケール素材 (色は色ゆらぎ/グラデーション側で作る)。
     /// @}
 
     /// @name 形状
     /// @{
-    float coverage = 0.0f;       ///< @note 不透明部分が占める割合。overdraw の見積もりに使う。
-    float radialSymmetry = 0.0f; ///< @note 中心対称性 [0,1]。1 に近いと放射状の puff / glow。
-    float edgeHardness = 0.0f;   ///< @note 縁のアルファ勾配の平均。大きいほど硬い縁 (切り抜き素材)。
-    float seamlessScore = 0.0f;  ///< @note 左右端・上下端の一致度 [0,1]。1 に近いとタイリング可能。
+    float coverage = 0.0f; ///< 不透明部分が占める割合。overdraw の見積もりに使う。
+    float radialSymmetry = 0.0f; ///< 中心対称性 [0,1]。1 に近いと放射状の puff / glow。
+    float edgeHardness = 0.0f; ///< 縁のアルファ勾配の平均。大きいほど硬い縁 (切り抜き素材)。
+    float seamlessScore = 0.0f; ///< 左右端・上下端の一致度 [0,1]。1 に近いとタイリング可能。
     /// @}
 
-    /// @note 上位候補 (最大 4 件)。先頭が最有力。1x1 しか返らなければ単一画像。
-    std::vector<FlipbookGridCandidate> flipbookCandidates;
+    std::vector<FlipbookGridCandidate> flipbookCandidates; ///< 上位候補 (最大 4 件)。先頭が最有力。1x1 しか返らなければ単一画像。
 
     /// @note 上の観測から機械的に決まるオーサリング値。AI はそのまま vfx_node_set_field へ流せる (schemaPath と値の組)。
     struct Recommendation {
-        std::string schemaPath; ///< @note 例 "particle.blendMode"
-        std::string value;      ///< @note JSON 表記の値 ("0" / "true" / "\"...\"")
-        std::string reason;     ///< @note なぜそう決まるか (人が読んで検証できる根拠)
+        std::string schemaPath; ///< 例 "particle.blendMode"
+        std::string value; ///< JSON 表記の値 ("0" / "true" / "\"...\"")
+        std::string reason; ///< なぜそう決まるか (人が読んで検証できる根拠)
     };
     std::vector<Recommendation> recommendations;
     /// @note 素材の分類 ("glow" / "smoke" / "spark" / "flipbook" / "mask" / "unknown")。
@@ -83,7 +81,7 @@ struct TextureAnalysis {
 };
 
 /// @brief テクスチャを 1 枚読み、解析結果を返す。
-/// @param maxSampleDimension 解析前に縮小する上限辺長 [px]。4K 素材を原寸で走査すると遅いため、
+/// @param[in] maxSampleDimension 解析前に縮小する上限辺長 [px]。4K 素材を原寸で走査すると遅いため、
 /// @note 統計量が保たれる範囲で縮めてから見る。flipbook 判定だけはコマ境界が潰れるため原寸で行う。
 [[nodiscard]] FBZZ_ENGINE_API TextureAnalysis AnalyzeTexture(const std::string& sourcePath,
                                              int maxSampleDimension = 512);
@@ -110,17 +108,17 @@ struct MaterialAnalysis {
     bool depthWrite = true;
     int renderQueue = 0;
 
-    std::string albedoTexturePath; ///< @note albedo スロットのテクスチャ。空なら .mat が絵を持たない (色だけのマテリアル)。
+    std::string albedoTexturePath; ///< albedo スロットのテクスチャ。空なら .mat が絵を持たない (色だけのマテリアル)。
     bool hasAlbedoTexture = false;
-    TextureAnalysis albedoAnalysis; ///< @note albedo テクスチャの解析。hasAlbedoTexture が false なら success=false のまま。
+    TextureAnalysis albedoAnalysis; ///< albedo テクスチャの解析。hasAlbedoTexture が false なら success=false のまま。
 
-    bool blendModeConflictsWithTexture = false; ///< @note .mat の blendMode とテクスチャの中身から導かれる blendMode が食い違うか。
-    std::vector<std::string> findings; ///< @note 食い違いや設定ミスの説明。空なら健全。
-    std::vector<TextureAnalysis::Recommendation> recommendations; ///< @note ParticleEmitter へ割り当てたときに実際に効く設定。
+    bool blendModeConflictsWithTexture = false; ///< .mat の blendMode とテクスチャの中身から導かれる blendMode が食い違うか。
+    std::vector<std::string> findings; ///< 食い違いや設定ミスの説明。空なら健全。
+    std::vector<TextureAnalysis::Recommendation> recommendations; ///< ParticleEmitter へ割り当てたときに実際に効く設定。
 };
 
 /// @brief .mat を読み、albedo テクスチャがあればそれも解析して突き合わせる。
 [[nodiscard]] FBZZ_ENGINE_API MaterialAnalysis AnalyzeMaterial(const std::string& materialPath);
 /// @}
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

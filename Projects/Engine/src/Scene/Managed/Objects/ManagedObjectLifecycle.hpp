@@ -40,5 +40,5 @@ public:
         float delay, uint32_t& applied, uint32_t& skipped, bool publish = true);
 };
 
-} /// @note namespace managed_detail
-} /// @note namespace fbzz::scene
+} // namespace managed_detail
+} // namespace fbzz::scene

@@ -249,7 +249,7 @@ TEST_F(ShaderCapabilitiesTest, MovingShaderAndMetaKeepsTheGuidCapabilities)
     EXPECT_EQ(asset::AssetDatabase::PathFromGuid(std::string(kStandardGuid)), after);
     ExpectStandardSurface(asset::ResolveShaderCapabilities(reference));
     ExpectStandardSurface(asset::ResolveShaderCapabilities(after));
-    /// @note 改名前のパスは AssetManager が同じ GUID の現ファイルへ正規化する。
+    // 改名前のパスは AssetManager が同じ GUID の現ファイルへ正規化する。
     ExpectStandardSurface(asset::ResolveShaderCapabilities(before));
 }
 
@@ -265,7 +265,7 @@ TEST_F(ShaderCapabilitiesTest, MetaTimestampChangesAndRemovedFilesInvalidateCach
     ExpectStandardSurface(asset::ResolveShaderCapabilities(path));
     ASSERT_TRUE(WriteShader("Changing.hlsl",
         "version=1\nvertex='custom'\nsurface='custom'\nopacity='custom'\nvariants='none'\n"));
-    /// @note sleep や現在時刻に依存せず、監視するファイル時刻の変更を確定させる。
+    // sleep や現在時刻に依存せず、監視するファイル時刻の変更を確定させる。
     std::filesystem::last_write_time(metaPath, originalTime + std::chrono::seconds(2), error);
     ASSERT_FALSE(error);
 
@@ -336,7 +336,7 @@ TEST_F(ShaderCapabilitiesTest, GuidPreparedPathsFollowRemovalRemappingAndDatabas
     const auto firstRevision = asset::AssetDatabase::Revision();
     asset::AssetDatabase::OnAssetRemoved(ShaderPath("First.hlsl"));
     EXPECT_GT(asset::AssetDatabase::Revision(), firstRevision);
-    /// @note The file and hint still exist; only the current GUID index may authorize this reference.
+    // The file and hint still exist; only the current GUID index may authorize this reference.
     ExpectUnknown(asset::ResolveShaderCapabilities(reference));
     asset::AssetDatabase::OnAssetRemoved(ShaderPath("Second.hlsl"));
     ASSERT_TRUE(WriteShader("Second.hlsl", kCustomDeclaration, kStandardGuid));
@@ -419,8 +419,10 @@ TEST_F(ShaderCapabilitiesTest, NonGuidInputEditsDuringLoggingCannotOverwriteAnot
             : m_input(input), m_replacement(replacement) { core::Logger::AddSink(this); }
         ~InputRewritingSink() override { core::Logger::RemoveSink(this); }
         void OnLog(const core::LogEntry& entry) override {
-            if (rewritten || entry.message.find("AssetDatabase: duplicate guid") == std::string::npos) return;
-            /// @note Change bytes in place so the caller's view stays valid; the callback never reenters Logger or AssetDatabase.
+            if (rewritten || entry.message.find("AssetDatabase: duplicate guid") == std::string::npos) {
+                return;
+            }
+            // Change bytes in place so the caller's view stays valid; the callback never reenters Logger or AssetDatabase.
             std::copy(m_replacement.begin(), m_replacement.end(), m_input.begin());
             rewritten = true;
         }

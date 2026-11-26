@@ -64,7 +64,7 @@ TEST_F(InactiveHierarchyTest, WeatherUnderInactiveParentDoesNotAdvance)
     for (int i = 0; i < 30; ++i) system.Update(ctx);
     EXPECT_NEAR(child->GetComponent<scene::WeatherComponent>()->wetness, 0.0f, testkit::kTolerance);
 
-    /// @note 親を戻せば、止まっていた所から進み始める。
+    // 親を戻せば、止まっていた所から進み始める。
     parent->SetActive(true);
     for (int i = 0; i < 30; ++i) system.Update(ctx);
     EXPECT_GT(child->GetComponent<scene::WeatherComponent>()->wetness, 0.4f);

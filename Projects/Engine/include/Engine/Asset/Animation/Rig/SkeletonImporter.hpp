@@ -22,4 +22,4 @@ public:
     FBZZ_ENGINE_API std::span<const std::string_view> SupportedExtensions() const override;
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

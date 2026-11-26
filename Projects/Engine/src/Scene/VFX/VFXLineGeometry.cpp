@@ -68,7 +68,7 @@ std::vector<math::Vector3> Displace(const math::Vector3& from, const math::Vecto
     return points;
 }
 
-} /// @note namespace
+} // namespace
 
 void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, const math::Vector3& to,
                        std::uint32_t strikeSeed, float jitterTime, std::vector<VFXLineStrand>& out)
@@ -76,7 +76,9 @@ void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, 
     out.clear();
     const math::Vector3 delta = to - from;
     const float length = delta.Length();
-    if (length < 1.0e-4f) return;
+    if (length < 1.0e-4f) {
+        return;
+    }
     const math::Vector3 direction = delta * (1.0f / length);
     math::Vector3 right{}, up{};
     Basis(direction, right, up);
@@ -87,7 +89,7 @@ void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, 
     main.points = Displace(from, to, levels, (std::max)(line.chaos, 0.0f) * length, random);
     main.endTaper = std::clamp(line.endTaper, 0.0f, 1.0f);
 
-    /// @note 打ち直しの間の震え。両端は動かさない (端が離れると «繋がっていない» に見える)。
+    // 打ち直しの間の震え。両端は動かさない (端が離れると «繋がっていない» に見える)。
     const float jitter = (std::max)(line.jitter, 0.0f) * length;
     if (jitter > 0.0f) {
         const std::size_t last = main.points.size() - 1;
@@ -98,12 +100,12 @@ void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, 
             main.points[i] += (right * std::sin(phase) + up * std::cos(phase * 1.31f)) * (jitter * taper);
         }
     }
-    /// @note 枝は本流の点を参照しながら out へ積む。途中で out が伸び直すと参照が宙に浮くので、先に枠を取る。
+    // 枝は本流の点を参照しながら out へ積む。途中で out が伸び直すと参照が宙に浮くので、先に枠を取る。
     const int branches = std::clamp(line.branchCount, 0, 16);
     out.reserve(static_cast<std::size_t>(branches) + 1);
     out.push_back(main);
 
-    /// @note 枝。本流の途中から、本流の向きを少し開いた方向へ伸びる短い雷。
+    // 枝。本流の途中から、本流の向きを少し開いた方向へ伸びる短い雷。
     const std::vector<math::Vector3>& trunk = out.front().points;
     for (int b = 0; b < branches && trunk.size() >= 3; ++b) {
         const float along = 0.15f + random.Next() * 0.6f;
@@ -119,7 +121,9 @@ void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, 
         const math::Vector3 branchDirection =
             (localDirection * std::cos(angle) + side * std::sin(angle)).NormalizedOr(localDirection);
         const float branchLength = (std::max)(line.branchLength, 0.0f) * length * (0.5f + 0.5f * random.Next());
-        if (branchLength < 1.0e-4f) continue;
+        if (branchLength < 1.0e-4f) {
+            continue;
+        }
 
         VFXLineStrand branch;
         branch.points = Displace(start, start + branchDirection * branchLength, (std::max)(levels - 2, 1),
@@ -137,7 +141,9 @@ void GenerateBeam(const VFXLineComponent& line, const math::Vector3& from, const
     out.clear();
     const math::Vector3 delta = to - from;
     const float length = delta.Length();
-    if (length < 1.0e-4f) return;
+    if (length < 1.0e-4f) {
+        return;
+    }
     math::Vector3 right{}, up{};
     Basis(delta * (1.0f / length), right, up);
 
@@ -149,7 +155,7 @@ void GenerateBeam(const VFXLineComponent& line, const math::Vector3& from, const
     for (int i = 0; i <= segments; ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(segments);
         math::Vector3 point = from + delta * t;
-        /// @note たるみは放物線 (4t(1-t))。sin では «張った紐» に見えない。横ゆれも両端を固定する。
+        // たるみは放物線 (4t(1-t))。sin では «張った紐» に見えない。横ゆれも両端を固定する。
         const float taper = 4.0f * t * (1.0f - t);
         point.y -= line.sag * taper;
         if (line.wobble != 0.0f) {
@@ -166,9 +172,13 @@ float VFXLineEnvelope(const VFXLineComponent& line, float time)
 {
     const float fadeIn = (std::max)(line.fadeIn, 0.0f);
     const float fadeOut = (std::max)(line.fadeOut, 0.0f);
-    if (line.duration <= 0.0f) return fadeIn > 0.0f ? std::clamp(time / fadeIn, 0.0f, 1.0f) : 1.0f;
+    if (line.duration <= 0.0f) {
+        return fadeIn > 0.0f ? std::clamp(time / fadeIn, 0.0f, 1.0f) : 1.0f;
+    }
     float local = time;
-    if (line.loop) local = std::fmod((std::max)(time, 0.0f), line.duration);
+    if (line.loop) {
+        local = std::fmod((std::max)(time, 0.0f), line.duration);
+    }
     else if (time >= line.duration) return 0.0f;
     const float in = fadeIn > 0.0f ? std::clamp(local / fadeIn, 0.0f, 1.0f) : 1.0f;
     const float outValue = fadeOut > 0.0f ? std::clamp((line.duration - local) / fadeOut, 0.0f, 1.0f) : 1.0f;
@@ -180,7 +190,7 @@ float VFXLineBrightness(const VFXLineComponent& line, float time, std::uint32_t 
     const float flicker = std::clamp(line.flicker, 0.0f, 1.0f);
     float pulse = 1.0f;
     if (line.mode == VFXLineMode::Lightning) {
-        /// @note 打つたびに強さが揺れ、打った瞬間から落ちていく。雷の «バチッ» はこの落ち方で出る。
+        // 打つたびに強さが揺れ、打った瞬間から落ちていく。雷の «バチッ» はこの落ち方で出る。
         const float strength = 1.0f - flicker * (static_cast<float>(math::PcgHash(strikeIndex * 747796405u + 1u) >> 8)
                                                  * (1.0f / 16777216.0f));
         pulse = strength * (1.0f - flicker * 0.5f * (1.0f - std::exp(-(std::max)(strikeClock, 0.0f) * 12.0f)));
@@ -206,7 +216,7 @@ const char* VFXLinePresetName(VFXLinePreset preset)
 void ApplyVFXLinePreset(VFXLineComponent& line, VFXLinePreset preset)
 {
     const VFXLineComponent defaults{};
-    /// @note 端点・マテリアル・seed は «どこに置いたか» なので残し、形と見た目だけを入れ替える。
+    // 端点・マテリアル・seed は «どこに置いたか» なので残し、形と見た目だけを入れ替える。
     const VFXLineComponent keep = line;
     line = defaults;
     line.enabled = keep.enabled;
@@ -285,4 +295,4 @@ void ApplyVFXLinePreset(VFXLineComponent& line, VFXLinePreset preset)
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

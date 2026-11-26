@@ -18,4 +18,4 @@ class IAssetStreamChannel;
 /// @note メインスレッド専用。配置スナップショットと保持中の編集列の容量を見積もる。読み込みやピン留めは行わない。
 /// @return 配置アセットが共有ストアに未公開なら 0。
 [[nodiscard]] FBZZ_ENGINE_API uint64_t MeshInstancesResidentBytes(const std::string& reference);
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

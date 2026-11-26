@@ -30,13 +30,13 @@ struct ScriptInputBinding {
     /// @note input::BindingSource と同じ並び。0:Key 1:MouseButton 2:GamepadButton
     /// @note 3:GamepadAxis 4:MouseAxis。範囲外は「バインドが無い」を表す -1。
     int      source = -1;
-    uint32_t code   = 0;
+    uint32_t code   = 0; ///< 入力入力元の種類と組にして照合するキーまたはボタンのコード。
 
     [[nodiscard]] bool IsValid() const { return source >= 0; }
 };
 
 struct ScriptInputProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 入力操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API bool GetKey(input::KeyCode key) const;
     FBZZ_ENGINE_API bool GetKeyDown(input::KeyCode key) const;
@@ -67,7 +67,7 @@ struct ScriptInputProxy {
     /// @name ゲームパッド直接アクセス
     /// @note ボタンアイコンの UI 表示など「どの物理ボタンが押されたか」を知る必要がある処理は、
     /// @note アクション層の論理名だけでは表現できないため公開している。
-    /// @param pad -1 は「接続中の最初のパッド」を意味する。
+    /// @param[in] pad -1 は「接続中の最初のパッド」を意味する。
     /// @{
     FBZZ_ENGINE_API bool  GetPadButton    (input::GamepadButton button, int pad = -1) const;
     FBZZ_ENGINE_API bool  GetPadButtonDown(input::GamepadButton button, int pad = -1) const;
@@ -105,4 +105,4 @@ struct ScriptInputProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

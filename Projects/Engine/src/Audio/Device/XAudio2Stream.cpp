@@ -12,21 +12,33 @@ namespace fbzz::audio {
 XAudio2Stream::~XAudio2Stream()
 {
     m_stop.store(true);
-    if (m_wake) SetEvent(m_wake);
-    if (m_thread.joinable()) m_thread.join();
-    /// @note DestroyVoice はコールバック完了を待つ。PCM とイベントの解放はその後。
-    if (m_voice) m_voice->DestroyVoice();
-    if (m_wake) CloseHandle(m_wake);
-    if (m_ready) CloseHandle(m_ready);
+    if (m_wake) {
+        SetEvent(m_wake);
+    }
+    if (m_thread.joinable()) {
+        m_thread.join();
+    }
+    // DestroyVoice はコールバック完了を待つ。PCM とイベントの解放はその後。
+    if (m_voice) {
+        m_voice->DestroyVoice();
+    }
+    if (m_wake) {
+        CloseHandle(m_wake);
+    }
+    if (m_ready) {
+        CloseHandle(m_ready);
+    }
 }
 
 bool XAudio2Stream::Start(IXAudio2& device, IXAudio2Voice* destination, const std::string& path, bool loop)
 {
     m_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     m_ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (!m_wake || !m_ready) return false;
+    if (!m_wake || !m_ready) {
+        return false;
+    }
     m_thread = std::thread([this, &device, destination, path, loop] { Run(device, destination, path, loop); });
-    /// @note 開始時は形式と最初のブロックのみ待つ。残りの I/O はゲームフレームから独立する。
+    // 開始時は形式と最初のブロックのみ待つ。残りの I/O はゲームフレームから独立する。
     WaitForSingleObject(m_ready, INFINITE);
     return m_started;
 }
@@ -47,7 +59,9 @@ void XAudio2Stream::Run(IXAudio2& device, IXAudio2Voice* destination, const std:
     {
         AudioStreamReader reader;
         const auto pump = [&]() {
-            if (!reader.Open(path) || !reader.Read(m_buffers[0]) || m_buffers[0].empty()) return;
+            if (!reader.Open(path) || !reader.Read(m_buffers[0]) || m_buffers[0].empty()) {
+                return;
+            }
             m_format = reader.Format();
             WAVEFORMATEX format{};
             format.wFormatTag = WAVE_FORMAT_PCM;
@@ -59,7 +73,9 @@ void XAudio2Stream::Run(IXAudio2& device, IXAudio2Voice* destination, const std:
             XAUDIO2_SEND_DESCRIPTOR descriptor{0, destination};
             XAUDIO2_VOICE_SENDS sends{1, &descriptor};
             if (FAILED(device.CreateSourceVoice(&m_voice, &format, XAUDIO2_VOICE_USEFILTER,
-                       XAUDIO2_MAX_FREQ_RATIO, this, &sends))) return;
+                       XAUDIO2_MAX_FREQ_RATIO, this, &sends))) {
+                return;
+            }
             size_t index = 0;
             while (!m_stop.load()) {
                 XAUDIO2_VOICE_STATE state{};
@@ -72,17 +88,25 @@ void XAudio2Stream::Run(IXAudio2& device, IXAudio2Voice* destination, const std:
                 if (m_started) {
                     if (!reader.Read(pcm)) { FBZZ_LOG_ERROR("Audio stream decode failed: %s", path.c_str()); break; }
                     if (pcm.empty()) {
-                        if (!loop) break;
-                        if (!reader.Rewind() || !reader.Read(pcm) || pcm.empty()) break;
+                        if (!loop) {
+                            break;
+                        }
+                        if (!reader.Rewind() || !reader.Read(pcm) || pcm.empty()) {
+                            break;
+                        }
                     }
                 }
                 XAUDIO2_BUFFER buffer{};
                 buffer.AudioBytes = static_cast<UINT32>(pcm.size());
                 buffer.pAudioData = pcm.data();
                 /// @see https://learn.microsoft.com/en-us/windows/win32/xaudio2/how-to--stream-a-sound-from-disk 消費完了後だけ循環バッファを再利用する。
-                if (FAILED(m_voice->SubmitSourceBuffer(&buffer))) break;
+                if (FAILED(m_voice->SubmitSourceBuffer(&buffer))) {
+                    break;
+                }
                 if (!m_started) {
-                    if (FAILED(m_voice->Start())) break;
+                    if (FAILED(m_voice->Start())) {
+                        break;
+                    }
                     m_started = true;
                     SetEvent(m_ready);
                 }

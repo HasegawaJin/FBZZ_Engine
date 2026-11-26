@@ -27,14 +27,16 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
 {
     if (nodeIndex < 0 ||
         nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
-        nodeIndex >= static_cast<int>(nodeGlobalTransforms.size()))
+        nodeIndex >= static_cast<int>(nodeGlobalTransforms.size())) {
         return;
+    }
 
     const int boneIndex = skeleton.nodes[static_cast<std::size_t>(nodeIndex)].boneIndex;
     if (boneIndex < 0 ||
         boneIndex >= static_cast<int>(boneMatrices.size()) ||
-        boneIndex >= static_cast<int>(skeleton.bones.size()))
+        boneIndex >= static_cast<int>(skeleton.bones.size())) {
         return;
+    }
 
     boneMatrices[static_cast<std::size_t>(boneIndex)] =
         skeleton.rootInverseTransform
@@ -46,10 +48,14 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
 
 SkinnedMeshRenderer* FindSkinnedMeshRenderer(GameObject& owner)
 {
-    if (auto* renderer = owner.GetComponent<SkinnedMeshRenderer>()) return renderer;
+    if (auto* renderer = owner.GetComponent<SkinnedMeshRenderer>()) {
+        return renderer;
+    }
     for (int i = 0, count = owner.GetChildCount(); i < count; ++i) {
         if (auto* child = owner.GetChild(i)) {
-            if (auto* renderer = child->GetComponent<SkinnedMeshRenderer>()) return renderer;
+            if (auto* renderer = child->GetComponent<SkinnedMeshRenderer>()) {
+                return renderer;
+            }
         }
     }
     return nullptr;
@@ -59,17 +65,20 @@ std::string CanonicalBoneName(std::string name)
 {
     std::replace(name.begin(), name.end(), '\\', '/');
     const std::string helper = "_$AssimpFbx$_";
-    if (const std::size_t helperPos = name.find(helper); helperPos != std::string::npos)
+    if (const std::size_t helperPos = name.find(helper); helperPos != std::string::npos) {
         name = name.substr(0, helperPos);
-    if (const std::size_t pathPos = name.find_last_of('/'); pathPos != std::string::npos)
+    }
+    if (const std::size_t pathPos = name.find_last_of('/'); pathPos != std::string::npos) {
         name = name.substr(pathPos + 1);
+    }
     return name;
 }
 
 GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& renderer, int nodeIndex)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(renderer.nodeEntities.size()))
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(renderer.nodeEntities.size())) {
         return nullptr;
+    }
     return scene.GetGameObject(renderer.nodeEntities[static_cast<std::size_t>(nodeIndex)]);
 }
 
@@ -85,8 +94,9 @@ void CommitBoneWorldPose(Scene& scene,
 {
     if (nodeIndex < 0 ||
         nodeIndex >= static_cast<int>(renderer.nodeEntities.size()) ||
-        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size())) {
         return;
+    }
 
     const math::Matrix4 rootTransform =
         math::Matrix4::Inverse(skeleton.rootInverseTransform);
@@ -95,8 +105,9 @@ void CommitBoneWorldPose(Scene& scene,
         math::Matrix4::TRS(worldPosition, worldRotation, worldScale);
     RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, nodeIndex);
 
-    if (GameObject* bone = BoneObject(scene, renderer, nodeIndex))
+    if (GameObject* bone = BoneObject(scene, renderer, nodeIndex)) {
         SetWorldPose(*bone, worldPosition, worldRotation, worldScale);
+    }
 }
 
 }

@@ -69,8 +69,12 @@ struct Easing {
     static inline float EaseInExpo   (float t) { return (t == 0.0f) ? 0.0f : std::pow(2.0f, 10.0f * t - 10.0f); }
     static inline float EaseOutExpo  (float t) { return (t == 1.0f) ? 1.0f : 1.0f - std::pow(2.0f, -10.0f * t); }
     static inline float EaseInOutExpo(float t) {
-        if (t == 0.0f) return 0.0f;
-        if (t == 1.0f) return 1.0f;
+        if (t == 0.0f) {
+            return 0.0f;
+        }
+        if (t == 1.0f) {
+            return 1.0f;
+        }
         return (t < 0.5f) ? std::pow(2.0f, 20.0f * t - 10.0f) * 0.5f
                            : (2.0f - std::pow(2.0f, -20.0f * t + 10.0f)) * 0.5f;
     }
@@ -108,18 +112,30 @@ struct Easing {
     /// @name Elastic (バネ)
     /// @{
     static inline float EaseInElastic(float t) {
-        if (t == 0.0f) return 0.0f;
-        if (t == 1.0f) return 1.0f;
+        if (t == 0.0f) {
+            return 0.0f;
+        }
+        if (t == 1.0f) {
+            return 1.0f;
+        }
         return -std::pow(2.0f, 10.0f * t - 10.0f) * std::sin((t * 10.0f - 10.75f) * TWO_THIRDS_PI);
     }
     static inline float EaseOutElastic(float t) {
-        if (t == 0.0f) return 0.0f;
-        if (t == 1.0f) return 1.0f;
+        if (t == 0.0f) {
+            return 0.0f;
+        }
+        if (t == 1.0f) {
+            return 1.0f;
+        }
         return std::pow(2.0f, -10.0f * t) * std::sin((t * 10.0f - 0.75f) * TWO_THIRDS_PI) + 1.0f;
     }
     static inline float EaseInOutElastic(float t) {
-        if (t == 0.0f) return 0.0f;
-        if (t == 1.0f) return 1.0f;
+        if (t == 0.0f) {
+            return 0.0f;
+        }
+        if (t == 1.0f) {
+            return 1.0f;
+        }
         return (t < 0.5f)
             ? -(std::pow(2.0f, 20.0f * t - 10.0f) * std::sin((20.0f * t - 11.125f) * TWO_FIFTHS_PI)) * 0.5f
             :  (std::pow(2.0f,-20.0f * t + 10.0f) * std::sin((20.0f * t - 11.125f) * TWO_FIFTHS_PI)) * 0.5f + 1.0f;
@@ -130,7 +146,9 @@ struct Easing {
     /// @{
     static inline float EaseOutBounce(float t) {
         constexpr float n = 7.5625f, d = 2.75f;
-        if (t < 1.0f / d)       return n * t * t;
+        if (t < 1.0f / d) {
+            return n * t * t;
+        }
         if (t < 2.0f / d)       { t -= 1.5f   / d; return n * t * t + 0.75f; }
         if (t < 2.5f / d)       { t -= 2.25f  / d; return n * t * t + 0.9375f; }
                                   t -= 2.625f  / d; return n * t * t + 0.984375f;

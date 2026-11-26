@@ -19,7 +19,9 @@ int ClipHalfPlane(const ClipVertex* input, int vertexCount, const math::Vector2&
 {
     int outputCount = 0;
     const auto emit = [&](const ClipVertex& vertex) {
-        if (outputCount < outputCapacity) output[outputCount++] = vertex;
+        if (outputCount < outputCapacity) {
+            output[outputCount++] = vertex;
+        }
     };
     for (int vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
         const ClipVertex& startVertex = input[vertexIndex];
@@ -28,7 +30,9 @@ int ClipHalfPlane(const ClipVertex* input, int vertexCount, const math::Vector2&
             + (startVertex.position.y - point.y) * normal.y;
         const float endDistance = (endVertex.position.x - point.x) * normal.x
             + (endVertex.position.y - point.y) * normal.y;
-        if (startDistance >= 0.0f) emit(startVertex);
+        if (startDistance >= 0.0f) {
+            emit(startVertex);
+        }
         if ((startDistance >= 0.0f) != (endDistance >= 0.0f)) {
             const float intersectionWeight = startDistance / (startDistance - endDistance);
             emit({
@@ -55,24 +59,32 @@ int ClipPolygonToPlanes(const std::vector<UIClipPlane>& planes,
 {
     if (planes.empty()) {
         const int copied = (std::min)(vertexCount, outputCapacity);
-        for (int vertexIndex = 0; vertexIndex < copied; ++vertexIndex) output[vertexIndex] = input[vertexIndex];
+        for (int vertexIndex = 0; vertexIndex < copied; ++vertexIndex) {
+            output[vertexIndex] = input[vertexIndex];
+        }
         return copied;
     }
     ClipVertex bufferA[MAX_CLIP_POLYGON_VERTICES];
     ClipVertex bufferB[MAX_CLIP_POLYGON_VERTICES];
     int remainingCount = (std::min)(vertexCount, MAX_CLIP_POLYGON_VERTICES);
-    for (int vertexIndex = 0; vertexIndex < remainingCount; ++vertexIndex) bufferA[vertexIndex] = input[vertexIndex];
+    for (int vertexIndex = 0; vertexIndex < remainingCount; ++vertexIndex) {
+        bufferA[vertexIndex] = input[vertexIndex];
+    }
 
     ClipVertex* inputBuffer = bufferA;
     ClipVertex* outputBuffer = bufferB;
     for (const UIClipPlane& plane : planes) {
         remainingCount = ClipHalfPlane(inputBuffer, remainingCount, plane.point, plane.normal,
             outputBuffer, MAX_CLIP_POLYGON_VERTICES);
-        if (remainingCount < 3) return 0;
+        if (remainingCount < 3) {
+            return 0;
+        }
         std::swap(inputBuffer, outputBuffer);
     }
     const int copied = (std::min)(remainingCount, outputCapacity);
-    for (int vertexIndex = 0; vertexIndex < copied; ++vertexIndex) output[vertexIndex] = inputBuffer[vertexIndex];
+    for (int vertexIndex = 0; vertexIndex < copied; ++vertexIndex) {
+        output[vertexIndex] = inputBuffer[vertexIndex];
+    }
     return copied;
 }
 
@@ -82,31 +94,31 @@ std::size_t PushClipRect(std::vector<UIClipPlane>& planes, const ui_runtime_deta
 {
     const float cosRotation = std::cosf(rotationZ);
     const float sinRotation = std::sinf(rotationZ);
-    /// @note 回転の中心は要素の中心。描画側 (LocalToCanvas) と同じ規則で揃える。
+    // 回転の中心は要素の中心。描画側 (LocalToCanvas) と同じ規則で揃える。
     const math::Vector2 center = { rect.pos.x + rect.size.x * 0.5f,
                                    rect.pos.y + rect.size.y * 0.5f };
-    /// @note 辺の外向き法線を回した 4 本。内側に残したいので符号を反転して積む。
-    /// @note 要素ローカルの +x が Canvas 上で向く方向
+    // 辺の外向き法線を回した 4 本。内側に残したいので符号を反転して積む。
+    // 要素ローカルの +x が Canvas 上で向く方向
     const math::Vector2 axisX = { cosRotation, sinRotation };
-    /// @note 同 +y
+    // 同 +y
     const math::Vector2 axisY = { -sinRotation, cosRotation };
     const float halfWidth = rect.size.x * 0.5f;
     const float halfHeight = rect.size.y * 0.5f;
 
     const auto push = [&](const math::Vector2& normal, float halfExtent) {
-        /// @note 面上の 1 点 = 中心から法線と逆向きへ halfExtent 進んだところ。
+        // 面上の 1 点 = 中心から法線と逆向きへ halfExtent 進んだところ。
         planes.push_back({ { center.x - normal.x * halfExtent,
                              center.y - normal.y * halfExtent }, normal });
     };
-    /// @note 左辺 (内向き = +x)
+    // 左辺 (内向き = +x)
     push(axisX, halfWidth);
-    /// @note 右辺
+    // 右辺
     push({ -axisX.x, -axisX.y }, halfWidth);
-    /// @note 上辺 (内向き = +y)
+    // 上辺 (内向き = +y)
     push(axisY, halfHeight);
-    /// @note 下辺
+    // 下辺
     push({ -axisY.x, -axisY.y }, halfHeight);
     return 4;
 }
 
-} /// @note namespace fbzz::scene::ui_render_detail
+} // namespace fbzz::scene::ui_render_detail

@@ -54,26 +54,23 @@ private:
 
 struct WaterTerrainSample {
     bool hasBottom = false;
-    float bottomY = 0.0f; ///< @note hasBottom のときだけ有効な最上 Terrain 交点の world Y [m]。
-    double signedDepth = 0.0; ///< @note 基準水位−bottomY [m]。底が水位以上なら 0 以下。noBottom は depthLimit。
-    float depth = 0.0f; ///< @note signedDepth を [0,depthLimit] へ制限した鉛直水深 [m]。
+    float bottomY = 0.0f; ///< hasBottom のときだけ有効な最上 Terrain 交点の world Y [m]。
+    double signedDepth = 0.0; ///< 基準水位−bottomY [m]。底が水位以上なら 0 以下。noBottom は depthLimit。
+    float depth = 0.0f; ///< signedDepth を [0,depthLimit] へ制限した鉛直水深 [m]。
     bool dry = false;
     float shoreFoam = 0.0f;
 };
 struct WaterTerrainBakeSettings {
     uint32_t width = MAX_FINITE_WATER_TERRAIN_RESOLUTION, height = MAX_FINITE_WATER_TERRAIN_RESOLUTION;
     float foamThreshold = 0.3f, foamFade = 0.5f;
-    /// @note 0 なら buoyancyDepth を符号化範囲に使い、正値ならワールド空間のメートルで上書きする。
-    float depthRange = 0.0f;
+    float depthRange = 0.0f; ///< 0 なら buoyancyDepth を符号化範囲に使い、正値ならワールド空間のメートルで上書きする。
 };
 struct WaterTerrainInfoAtlas {
     uint32_t width = 0, height = 0;
     float depthRange = 0.0f;
     uint64_t signature = 0;
-    /// @note RGBA8: R=岸泡、GB=符号付き水深16bit（G上位/B下位）、A bit0=底あり/bit1=dry/bit2=水深範囲外。
-    std::vector<uint8_t> rgba;
-    /// @note xy=中心、zw=寸法。水域原点から符号付き Water 軸に沿った world m。0 寸法は保存済み矩形。
-    math::Vector4 domain{};
+    std::vector<uint8_t> rgba; ///< RGBA8: R=岸泡、GB=符号付き水深16bit（G上位/B下位）、A bit0=底あり/bit1=dry/bit2=水深範囲外。
+    math::Vector4 domain{}; ///< xy=中心、zw=寸法。水域原点から符号付き Water 軸に沿った world m。0 寸法は保存済み矩形。
 };
 
 /// @note 水面インスタンスごとにキャッシュを所有する。地形の更新版を取りこぼした場合やアトラス配置が変わった場合は全体を焼き直す。

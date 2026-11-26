@@ -110,4 +110,4 @@ inline constexpr std::uint16_t kInvalidNode          = 0xFFFF;
 [[nodiscard]] FBZZ_ENGINE_API const char* BlackboardTypeName(BlackboardType type) noexcept;
 [[nodiscard]] FBZZ_ENGINE_API const char* BTCompareOpName(BTCompareOp op) noexcept;
 
-} /// @note namespace fbzz::ai
+} // namespace fbzz::ai

@@ -81,11 +81,9 @@ private:
         IXAudio2SourceVoice* voice    = nullptr;
         bool                 loop     = false;
         uint16_t             channels = 0;
-        /// @note パンの出力行列はこの voice の実際の送り先に対して設定する。バス導入後もマスターへ書くと送り先が違うため何も起きない。
-        IXAudio2Voice*       destination = nullptr;
+        IXAudio2Voice*       destination = nullptr; ///< パンの出力行列はこの voice の実際の送り先に対して設定する。バス導入後もマスターへ書くと送り先が違うため何も起きない。
         uint32_t             destinationChannels = 0;
-        /// @note 鳴り終わったときにどのプールへ返すか。
-        VoiceKey             key{};
+        VoiceKey             key{}; ///< 鳴り終わったときにどのプールへ返すか。
         IXAudio2Voice*       sendDestination = nullptr;
         float sendLevel = 0.0f;
         float pan = 0.0f;
@@ -109,8 +107,7 @@ private:
     IXAudio2MasteringVoice*          m_masterVoice = nullptr;
     uint32_t                         m_masterChannels   = 0;
     uint32_t                         m_masterSampleRate = 0;
-    /// @note CoInitializeEx 成功時だけ CoUninitialize を対にし、初期化途中の失敗でも安全に後始末する。
-    bool                             m_comInitialized = false;
+    bool                             m_comInitialized = false; ///< CoInitializeEx 成功時だけ CoUninitialize を対にし、初期化途中の失敗でも安全に後始末する。
 
     /// @note 1 本のバス。effect スロット 0 が残響で、持たないバスでは hasReverb が false。
     struct BusEntry
@@ -120,14 +117,13 @@ private:
         bool                 reverbEnabled = false;
     };
 
-    std::vector<BusEntry> m_buses;   ///< @note 添字は BusIndex。先頭が Master。
+    std::vector<BusEntry> m_buses; ///< 添字は BusIndex。先頭が Master。
 
     uint32_t                                 m_nextId = 1;
     std::unordered_map<uint32_t, VoiceEntry> m_voices;
 
-    static constexpr std::size_t kMaxPooledPerKey = 16;   ///< @note 1 鍵あたりの上限。«同じ音が同時に何本鳴るか» で足りる。
-    /// @brief 鳴り終わった voice の置き場。形式と送り先が同じものだけを積む。
-    std::unordered_map<VoiceKey, std::vector<IXAudio2SourceVoice*>, VoiceKeyHash> m_voicePool;
+    static constexpr std::size_t kMaxPooledPerKey = 16; ///< 1 鍵あたりの上限。«同じ音が同時に何本鳴るか» で足りる。
+    std::unordered_map<VoiceKey, std::vector<IXAudio2SourceVoice*>, VoiceKeyHash> m_voicePool; ///< 鳴り終わった voice の置き場。形式と送り先が同じものだけを積む。
 };
 
-} /// @note namespace fbzz::audio
+} // namespace fbzz::audio

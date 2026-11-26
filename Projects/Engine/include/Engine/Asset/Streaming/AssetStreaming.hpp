@@ -53,42 +53,35 @@ enum class AssetPriority : std::uint8_t { Required = 0, Visible = 1, Prefetch = 
 using AssetQuality = std::uint8_t;
 
 struct AssetRequestOptions {
-    AssetPriority priority = AssetPriority::Visible;
-    /// @note 希望品質。nullopt は保持・先読みだけ行い、描画などの品質要求と競合しない。
-    std::optional<AssetQuality> quality = AssetQuality{0};
+    AssetPriority priority = AssetPriority::Visible; ///< 非同期ジョブの投入順を決める要求の優先度。
+    std::optional<AssetQuality> quality = AssetQuality{0}; ///< 希望品質。nullopt は保持・先読みだけ行い、描画などの品質要求と競合しない。
 };
 
 struct AssetLoadStatus {
-    AssetLoadState state = AssetLoadState::None;
-    AssetLoadError error = AssetLoadError::None;
-    /// @note 公開中の中身の世代。0 は未公開。ホットリロードと品質変更で進む。
-    std::uint32_t  publishedRevision = 0;
-    /// @note 公開中の実体はそのまま、再読み込みの候補だけが失敗した。
-    bool           updateFailed = false;
-    /// @note 実際に常駐している品質。希望品質とは別 (ヒステリシスと予算で遅れる)。
-    AssetQuality   residentQuality = 0;
-    AssetQuality   desiredQuality = 0;
-    /// @note 公開中の実体が占めるバイト数 (経路の見積もり)。
-    std::uint64_t  residentBytes = 0;
-    std::string    message;
+    AssetLoadState state = AssetLoadState::None; ///< 台帳から見たこの要求の現在段階。
+    AssetLoadError error = AssetLoadError::None; ///< 受付・非同期処理・公開のいずれかで失敗した理由。
+    std::uint32_t  publishedRevision = 0; ///< 公開中の中身の世代。0 は未公開。ホットリロードと品質変更で進む。
+    bool           updateFailed = false; ///< 公開中の実体はそのまま、再読み込みの候補だけが失敗した。
+    AssetQuality   residentQuality = 0; ///< 実際に常駐している品質。希望品質とは別 (ヒステリシスと予算で遅れる)。
+    AssetQuality   desiredQuality = 0; ///< 現在の利用要求から台帳が選んだ目標品質段。
+    std::uint64_t  residentBytes = 0; ///< 公開中の実体が占めるバイト数 (経路の見積もり)。
+    std::string    message; ///< 失敗の診断をログや UI へ渡す文字列。
 };
 
 /// @brief ストアの型に依らないハンドル。AssetHandle<T> と同じ値を持つ。
 struct RawAssetHandle {
-    std::uint32_t id  = 0;
-    std::uint32_t gen = 0;
+    std::uint32_t id  = 0; ///< 対象ストア内のアセット割り当て番号。0 は無効。
+    std::uint32_t gen = 0; ///< 割り当ての世代。番号を再利用したときに以前のハンドルと区別する。
     [[nodiscard]] bool IsValid() const { return id != 0; }
     bool operator==(const RawAssetHandle&) const = default;
 };
 
 /// @brief 親が読み込みの途中で要求する別アセット。
 struct AssetDependency {
-    std::string typeName;   ///< @note AssetStreamTypeName<T>() の値
-    std::string reference;
-    /// @note false の依存は失敗しても親を止めず、完成も待たない (型別の代替表示に任せる)。
-    bool        required = true;
-    /// @note nullopt は依存先を保持するが品質は要求しない。
-    std::optional<AssetQuality> quality = AssetQuality{0};
+    std::string typeName; ///< AssetStreamTypeName<T>() の値
+    std::string reference; ///< 依存先の GUID またはパス。依存先の経路がキーへ解決する。
+    bool        required = true; ///< false の依存は失敗しても親を止めず、完成も待たない (型別の代替表示に任せる)。
+    std::optional<AssetQuality> quality = AssetQuality{0}; ///< nullopt は依存先を保持するが品質は要求しない。
 };
 
 /// @brief ワーカーが作る GPU 非依存の成果物。
@@ -97,7 +90,7 @@ struct IDecodedAsset {
     virtual ~IDecodedAsset() = default;
     /// @note 転送量・台帳の計上に使うバイト数。
     [[nodiscard]] virtual std::size_t CpuBytes() const { return 0; }
-    std::vector<AssetDependency> dependencies;
+    std::vector<AssetDependency> dependencies; ///< この成果物の公開前に台帳へ登録する依存先と優先条件。
 };
 
 /// @brief メインスレッドで確定させ、ワーカーへ読み取り専用で渡す型別の入力 (import 設定など)。
@@ -107,17 +100,16 @@ struct AssetJobContext {
 
 /// @brief ワーカー 1 件分の入力。メインスレッドで作り、以後は書き換えない。
 struct AssetJobInput {
-    std::string                            key;
-    std::string                            resolvedPath;
-    std::shared_ptr<const AssetJobContext> context;
-    /// @note 作る表現の品質段。品質を持たない経路は無視してよい。
-    AssetQuality                           quality = 0;
+    std::string                            key; ///< 同期キャッシュと非同期要求の重複を集約するキー。
+    std::string                            resolvedPath; ///< ワーカーが実際に開くファイルへの解決済みパス。
+    std::shared_ptr<const AssetJobContext> context; ///< ワーカーと受付側が寿命を共有する不変のインポート設定。
+    AssetQuality                           quality = 0; ///< 作る表現の品質段。品質を持たない経路は無視してよい。
 };
 
 struct AssetDecodeResult {
-    std::unique_ptr<IDecodedAsset> decoded;
-    AssetLoadError                 error = AssetLoadError::None;
-    std::string                    message;
+    std::unique_ptr<IDecodedAsset> decoded; ///< デコード成功時にワーカーから受け渡す CPU 側成果物。
+    AssetLoadError                 error = AssetLoadError::None; ///< デコードに失敗した理由。
+    std::string                    message; ///< 型別デコーダーが失敗時に添える診断。
 };
 
 /// @brief GPU 転送中または公開待ちの完成候補。公開 (Publish) されるか捨てられる (Discard)。
@@ -189,7 +181,7 @@ public:
     /// @return スロットが既に無効なら false (候補は Discard される)。
     [[nodiscard]] virtual bool Publish(RawAssetHandle handle, IAssetCandidate& candidate) = 0;
     /// @brief 公開しない候補を捨てる。
-    /// @param deviceStillValid false ならデバイスは作り直された後で、GPU 実体はもう返却済み。
+    /// @param[in] deviceStillValid false ならデバイスは作り直された後で、GPU 実体はもう返却済み。
     virtual void Discard(IAssetCandidate& candidate, bool deviceStillValid) = 0;
     /// @}
 };
@@ -247,10 +239,10 @@ private:
         other.m_handle = AssetHandle<T>::Null();
     }
 
-    AssetStreamer* m_owner = nullptr;
-    std::uint64_t  m_leaseId = 0;
-    AssetHandle<T> m_handle;
-    AssetLoadError m_error = AssetLoadError::None;
+    AssetStreamer* m_owner = nullptr; ///< 利用権を発行した台帳の非所有参照。解放済みなら null。
+    std::uint64_t  m_leaseId = 0; ///< 台帳上でこの要求だけを解除できる利用権 ID。0 は未保持。
+    AssetHandle<T> m_handle; ///< 受付時に予約または再利用したアセット枠の型付きハンドル。
+    AssetLoadError m_error = AssetLoadError::None; ///< 要求受付時のエラー。ロード後の状態は台帳へ照会する。
 };
 
 /// @brief 要求台帳。要求の重複集約・利用権・ワーカー投入・完了の検証と公開を持つ。
@@ -261,42 +253,36 @@ private:
 class AssetStreamer {
 public:
     struct Config {
-        /// @note 同時にワーカーへ出すジョブ数。完了キューの長さもこれで抑える。
-        std::uint32_t maxJobsInFlight = 4;
-        /// @note 1 回の Pump で投入する GPU 転送の件数とバイト数。
-        std::uint32_t maxUploadsPerPump = 8;
-        std::uint64_t maxUploadBytesPerPump = 64ull * 1024ull * 1024ull;
-        /// @note 台帳が同時に持てる要求キーの数。
-        std::uint32_t maxEntries = 16384;
-        /// @note 常駐予算 (公開済みの実体 + 転送待ちの CPU 成果物)。0 は無制限。
-        std::uint64_t residentBudgetBytes = 0;
+        std::uint32_t maxJobsInFlight = 4; ///< 同時にワーカーへ出すジョブ数。完了キューの長さもこれで抑える。
+        std::uint32_t maxUploadsPerPump = 8; ///< 1 回の Pump で投入する GPU 転送の最大件数。
+        std::uint64_t maxUploadBytesPerPump = 64ull * 1024ull * 1024ull; ///< 1 回の Pump で使う GPU 転送予算 [byte]。
+        std::uint32_t maxEntries = 16384; ///< 台帳が同時に持てる要求キーの数。
+        std::uint64_t residentBudgetBytes = 0; ///< 常駐予算 (公開済みの実体 + 転送待ちの CPU 成果物)。0 は無制限。
         /// @note 利用権がゼロになってから解放するまでの猶予 (Pump 回数)。予算超過中は待たずに LRU で解放する。
         /// @note 0 は猶予による解放をしない (予算超過のときだけ解放する)。既定を 0 にしているのは、
         /// @note 解放した物を再び使うと同期ロードの引っかかりになり、既存ゲームの手触りが変わるため。
-        std::uint32_t evictionGracePumps = 0;
-        /// @note 希望品質がこの回数だけ続いてから常駐品質を動かす (ちらつき防止のヒステリシス)。
-        std::uint32_t qualityHoldPumps = 30;
+        std::uint32_t evictionGracePumps = 0; ///< 利用権がなくなったアセットを猶予により退役させるまでの Pump 回数。
+        std::uint32_t qualityHoldPumps = 30; ///< 希望品質がこの回数だけ続いてから常駐品質を動かす (ちらつき防止のヒステリシス)。
     };
 
     struct Stats {
-        std::uint32_t entries = 0;
-        std::uint32_t queued = 0;
-        std::uint32_t jobsInFlight = 0;
-        std::uint32_t waitingDependencies = 0;
-        std::uint32_t uploading = 0;
-        std::uint32_t ready = 0;
-        std::uint32_t failed = 0;
-        std::uint64_t staleCompletionsDropped = 0;
-        std::uint64_t syncMisses = 0;
-        std::uint64_t syncLoads = 0;
-        std::uint64_t uploadedBytesLastPump = 0;
-        std::uint64_t decodedBytesHeld = 0;
-        std::uint64_t residentBytes = 0;
-        std::uint64_t evictions = 0;
-        std::uint32_t deferredPrefetches = 0;
-        /// @note 予算超過で全体に上乗せしている品質の段数。
-        AssetQuality  qualityBias = 0;
-        bool          overBudget = false;
+        std::uint32_t entries = 0; ///< 台帳に現在登録されている要求キー数。
+        std::uint32_t queued = 0; ///< ワーカーへの投入を待つ項目数。
+        std::uint32_t jobsInFlight = 0; ///< ワーカーへ投入し、完了を回収する前のジョブ数。
+        std::uint32_t waitingDependencies = 0; ///< 必須の依存先の公開を待つ項目数。
+        std::uint32_t uploading = 0; ///< GPU 転送待ち、または転送中の項目数。
+        std::uint32_t ready = 0; ///< 利用側が取得できる公開済み項目数。
+        std::uint32_t failed = 0; ///< 公開できる実体がなく、失敗状態にいる項目数。
+        std::uint64_t staleCompletionsDropped = 0; ///< 版・プロジェクトなどの照合に失敗して破棄した完了結果の件数。
+        std::uint64_t syncMisses = 0; ///< 非同期ロード中に同期ロードが独自に実体を用意した件数。
+        std::uint64_t syncLoads = 0; ///< 台帳から即時の同期ロードを行った件数。
+        std::uint64_t uploadedBytesLastPump = 0; ///< 直近の Pump で GPU 転送へ投入したバイト数。
+        std::uint64_t decodedBytesHeld = 0; ///< 現在保持している CPU 側のデコード成果物のバイト数。
+        std::uint64_t residentBytes = 0; ///< 台帳が常駐予算に計上しているバイト数。
+        std::uint64_t evictions = 0; ///< 利用権のないアセットを常駐から外した件数。
+        std::uint32_t deferredPrefetches = 0; ///< 予算を超過したためジョブ投入を見送った先読みの件数。
+        AssetQuality  qualityBias = 0; ///< 予算超過で全体に上乗せしている品質の段数。
+        bool          overBudget = false; ///< 現在の常駐量が設定した予算を上回ったか。
     };
 
     /// @brief ジョブ 1 件を実行させる関数。本番は TaskSystem、テストは手で回すキュー。
@@ -372,9 +358,9 @@ public:
     /// @name 型を消した入口 (テンプレートと AssetLease が使う)
     /// @{
     struct RawRequest {
-        std::uint64_t  leaseId = 0;
-        RawAssetHandle handle;
-        AssetLoadError error = AssetLoadError::None;
+        std::uint64_t  leaseId = 0; ///< 受付済み要求の利用権 ID。0 は受付拒否。
+        RawAssetHandle handle; ///< 型付きハンドルの組み立てに使うストア内の割り当て番号と世代。
+        AssetLoadError error = AssetLoadError::None; ///< 要求を受け付けられなかったときの理由。
     };
     [[nodiscard]] FBZZ_ENGINE_API RawRequest RequestRaw(std::string_view typeName, const std::string& reference,
                                         const AssetRequestOptions& options);
@@ -394,27 +380,33 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    std::unique_ptr<Impl> m_impl; ///< この AssetStreamer が所有する台帳と非同期公開の状態。
 };
 
 template<typename T>
 void AssetLease<T>::SetPriority(AssetPriority priority)
 {
-    if (m_owner) m_owner->SetLeasePriority(m_leaseId, priority);
+    if (m_owner) {
+        m_owner->SetLeasePriority(m_leaseId, priority);
+    }
 }
 
 template<typename T>
 void AssetLease<T>::SetDesiredQuality(AssetQuality quality)
 {
-    if (m_owner) m_owner->SetLeaseQuality(m_leaseId, quality);
+    if (m_owner) {
+        m_owner->SetLeaseQuality(m_leaseId, quality);
+    }
 }
 
 template<typename T>
 void AssetLease<T>::Release()
 {
-    if (m_owner && m_leaseId != 0) m_owner->ReleaseLease(m_leaseId);
+    if (m_owner && m_leaseId != 0) {
+        m_owner->ReleaseLease(m_leaseId);
+    }
     m_owner = nullptr;
     m_leaseId = 0;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

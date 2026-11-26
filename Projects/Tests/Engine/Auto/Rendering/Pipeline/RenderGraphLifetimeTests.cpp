@@ -76,7 +76,7 @@ class RenderGraphLifetimeTest : public testkit::Fixture {};
 /// @brief Reports lifetime bounds as execution order indices.
 TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
 {
-    /// @note firstPass / lastPass はカリング後の実行順の番号。
+    // firstPass / lastPass はカリング後の実行順の番号。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Unused", TransientRT());
@@ -88,7 +88,7 @@ TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
 
     ASSERT_TRUE(graph.Plan());
 
-    /// @note Orphan が刈られるので、Present の実行順番号は登録番号の 2 ではなく 1。
+    // Orphan が刈られるので、Present の実行順番号は登録番号の 2 ではなく 1。
     const RG::ResourceLifetime* hdr = Find(graph, "HDR");
     ASSERT_NE(hdr, nullptr);
     EXPECT_EQ(hdr->firstPass, 0);
@@ -115,7 +115,7 @@ TEST_F(RenderGraphLifetimeTest, OmitsResourcesTouchedOnlyByCulledPasses)
 /// @brief Sorts lifetimes by first use then name.
 TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
 {
-    /// @note 構成が同じときに異なる資源へ alias group が配られないよう順序を固定する。
+    // 構成が同じときに異なる資源へ alias group が配られないよう順序を固定する。
     RG graph;
     graph.DeclareResource("Zebra", TransientRT());
     graph.DeclareResource("Alpha", TransientRT());
@@ -137,7 +137,7 @@ TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
 /// @brief Shares one group between resources whose lifetimes do not overlap.
 TEST_F(RenderGraphLifetimeTest, SharesOneGroupBetweenResourcesWhoseLifetimesDoNotOverlap)
 {
-    /// @note Early は Middle で死に、Late は MakeLate で生まれる。間が 1 段空くので貸し回せる。
+    // Early は Middle で死に、Late は MakeLate で生まれる。間が 1 段空くので貸し回せる。
     RG graph;
     graph.DeclareResource("Early", TransientRT());
     graph.DeclareResource("Mid", TransientRT());
@@ -183,7 +183,7 @@ TEST_F(RenderGraphLifetimeTest, SeparatesGroupsForResourcesAliveAtTheSameTime)
 /// @brief Refuses to share a group when descriptors differ.
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
 {
-    /// @note 寿命が重ならなくても寸法が違う資源は共有できない。
+    // 寿命が重ならなくても寸法が違う資源は共有できない。
     RG graph;
     graph.DeclareResource("Full", TransientRT(1920, 1080));
     graph.DeclareResource("Mid", TransientRT(1920, 1080));
@@ -201,16 +201,16 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
     const RG::ResourceLifetime* half = Find(graph, "Half");
     ASSERT_NE(full, nullptr);
     ASSERT_NE(half, nullptr);
-    /// @note 枠は空いている
+    // 枠は空いている
     EXPECT_LT(full->lastPass, half->firstPass);
-    /// @note それでも共有しない
+    // それでも共有しない
     EXPECT_NE(full->aliasGroup, half->aliasGroup);
 }
 
 /// @brief Refuses to share a group between depth only and colour targets.
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTargets)
 {
-    /// @note 寸法と形式が一致しても colorCount の違う資源は共有できない。
+    // 寸法と形式が一致しても colorCount の違う資源は共有できない。
     RG graph;
     graph.DeclareResource("Colour", TransientRT(1920, 1080));
     graph.DeclareResource("Mid",    TransientRT(1920, 1080));
@@ -228,16 +228,16 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTar
     const RG::ResourceLifetime* depth  = Find(graph, "Depth");
     ASSERT_NE(colour, nullptr);
     ASSERT_NE(depth, nullptr);
-    /// @note 枠は空いている
+    // 枠は空いている
     EXPECT_LT(colour->lastPass, depth->firstPass);
-    /// @note それでも共有しない
+    // それでも共有しない
     EXPECT_NE(colour->aliasGroup, depth->aliasGroup);
 }
 
 /// @brief Refuses to share a group when only the depth flag differs.
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
 {
-    /// @note colorCount も形式も同じで、深度を持つかだけが違う。
+    // colorCount も形式も同じで、深度を持つかだけが違う。
     RG graph;
     graph.DeclareResource("WithDepth", TransientRT(1920, 1080));
     graph.DeclareResource("Mid",       TransientRT(1920, 1080));
@@ -262,7 +262,7 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
 /// @brief Excludes imported and persistent resources from aliasing.
 TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasing)
 {
-    /// @note 外部資源と履歴の aliasGroup は -1。
+    // 外部資源と履歴の aliasGroup は -1。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("History", PersistentRT());
@@ -287,7 +287,7 @@ TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasi
 /// @brief Shares a group between undeclared resources because they get the default desc.
 TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseTheyGetTheDefaultDesc)
 {
-    /// @warning 未宣言資源は既定の Unknown 記述となり、現状では互いに alias できてしまう。
+    // 未宣言資源は既定の Unknown 記述となり、現状では互いに alias できてしまう。
     RG graph;
     graph.DeclareResource("Output", ImportedRT());
     AddPass(graph, "MakeA", {}, { "UndeclaredA" });
@@ -445,7 +445,7 @@ TEST_F(RenderGraphLifetimeTest, PreparationOutputKeepsItsProducersWithoutAViewGr
 /// @brief Assigns identical alias groups across repeated plans.
 TEST_F(RenderGraphLifetimeTest, AssignsIdenticalAliasGroupsAcrossRepeatedPlans)
 {
-    /// @note unordered_map の走査順が alias group の割り当てを変えてはならない。
+    // unordered_map の走査順が alias group の割り当てを変えてはならない。
     RG graph;
     graph.DeclareResource("A", TransientRT());
     graph.DeclareResource("B", TransientRT());

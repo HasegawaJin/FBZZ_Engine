@@ -28,7 +28,9 @@ struct VertexInfluences {
     /// @note weight が既存スロットの最小ウェイトより大きければ差し替えて降順を維持する。
     void Add(uint32_t boneIndex, float weight)
     {
-        if (weight <= 0.0f) return;
+        if (weight <= 0.0f) {
+            return;
+        }
         for (int i = 0; i < 4; ++i) {
             if (weight > weights[static_cast<size_t>(i)]) {
                 for (int j = 3; j > i; --j) {
@@ -46,13 +48,17 @@ struct VertexInfluences {
     void Normalize()
     {
         float sum = 0.0f;
-        for (float w : weights) sum += w;
+        for (float w : weights) {
+            sum += w;
+        }
         if (sum <= 0.0f) {
             weights[0] = 1.0f;
             indices[0] = 0;
             return;
         }
-        for (float& w : weights) w /= sum;
+        for (float& w : weights) {
+            w /= sum;
+        }
     }
 };
 
@@ -80,13 +86,16 @@ void ImportNodesRecursive(const aiNode* node,
 
     skeleton.nodeMap[outNode.name] = nodeIndex;
     skeleton.nodes.push_back(std::move(outNode));
-    if (parentIndex >= 0)
+    if (parentIndex >= 0) {
         skeleton.nodes[static_cast<size_t>(parentIndex)].children.push_back(nodeIndex);
-    else
+    }
+    else {
         skeleton.rootNodeIndex = nodeIndex;
+    }
 
-    for (uint32_t i = 0; i < node->mNumChildren; ++i)
+    for (uint32_t i = 0; i < node->mNumChildren; ++i) {
         ImportNodesRecursive(node->mChildren[i], nodeIndex, unitScale, skeleton);
+    }
 }
 
 /// @note AnimationClip の nodeName を Skeleton の完全パスへ変換する。
@@ -96,13 +105,15 @@ std::string ResolveAnimationTargetPath(const Skeleton& skeleton,
                                        std::string_view nodeName)
 {
     const std::string normalizedName(nodeName);
-    if (const auto it = skeleton.nodeMap.find(normalizedName); it != skeleton.nodeMap.end())
+    if (const auto it = skeleton.nodeMap.find(normalizedName); it != skeleton.nodeMap.end()) {
         return BuildSkeletonNodePath(skeleton, it->second);
+    }
 
     const std::string canonicalName = CanonicalNodeName(nodeName);
     for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (CanonicalNodeName(skeleton.nodes[i].name) == canonicalName)
+        if (CanonicalNodeName(skeleton.nodes[i].name) == canonicalName) {
             return BuildSkeletonNodePath(skeleton, static_cast<int>(i));
+        }
     }
     return {};
 }
@@ -116,7 +127,9 @@ int EnsureBone(const aiBone* aiBonePtr,
 {
     const std::string name = NormalizeName(aiBonePtr->mName);
     auto it = skeleton.boneMap.find(name);
-    if (it != skeleton.boneMap.end()) return it->second;
+    if (it != skeleton.boneMap.end()) {
+        return it->second;
+    }
 
     if (static_cast<int>(skeleton.bones.size()) >= MAX_SKINNING_BONES) {
         FBZZ_LOG_WARN("SkinnedModelImporter: bone limit exceeded; ignoring bone '%s'", name.c_str());
@@ -137,8 +150,9 @@ int EnsureBone(const aiBone* aiBonePtr,
         node.bindScale       = math::Vector3::ONE;
         skeleton.nodes.push_back(node);
         skeleton.nodeMap[name] = nodeIndex;
-        if (skeleton.rootNodeIndex >= 0)
+        if (skeleton.rootNodeIndex >= 0) {
             skeleton.nodes[static_cast<size_t>(skeleton.rootNodeIndex)].children.push_back(nodeIndex);
+        }
     }
 
     Bone bone{};
@@ -160,8 +174,9 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
         const aiAnimation* src = scene->mAnimations[ai];
         AnimationClip clip{};
         clip.name = NormalizeName(src->mName);
-        if (clip.name.empty())
+        if (clip.name.empty()) {
             clip.name = "Clip" + std::to_string(ai);
+        }
         clip.durationTicks  = src->mDuration;
         clip.ticksPerSecond = src->mTicksPerSecond > 0.0 ? src->mTicksPerSecond : 30.0;
         clip.durationSeconds = clip.ticksPerSecond > 0.0
@@ -172,8 +187,9 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
             const aiNodeAnim* channel = src->mChannels[ci];
             NodeAnimationTrack track{};
             track.nodeName = NormalizeName(channel->mNodeName);
-            if (model.skeleton)
+            if (model.skeleton) {
                 track.targetPath = ResolveAnimationTargetPath(*model.skeleton, track.nodeName);
+            }
 
             track.positions.reserve(channel->mNumPositionKeys);
             for (uint32_t i = 0; i < channel->mNumPositionKeys; ++i) {
@@ -208,7 +224,7 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
     }
 }
 
-} /// @note namespace
+} // namespace
 
 std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
                                           float unitScale,
@@ -237,11 +253,14 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         for (uint32_t bi = 0; bi < src->mNumBones; ++bi) {
             const aiBone* srcBone = src->mBones[bi];
             const int boneIndex = EnsureBone(srcBone, unitScale, *model->skeleton);
-            if (boneIndex < 0) continue;
+            if (boneIndex < 0) {
+                continue;
+            }
             for (uint32_t wi = 0; wi < srcBone->mNumWeights; ++wi) {
                 const aiVertexWeight& w = srcBone->mWeights[wi];
-                if (w.mVertexId < src->mNumVertices)
+                if (w.mVertexId < src->mNumVertices) {
                     influences[w.mVertexId].Add(static_cast<uint32_t>(boneIndex), w.mWeight);
+                }
             }
         }
 
@@ -273,16 +292,18 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
-    /// @note どのノードがどの submesh を描くかの対応表。Skeleton::nodes は変形の材料の全ノードで
-    /// @note 目的が異なる。ここは「GameObject をどこに何個作りどの submesh を描かせるか」という
-    /// @note 配置だけを答える (スキンドは PreTransformVertices 未適用のため階層はそのまま残る)。
+    // どのノードがどの submesh を描くかの対応表。Skeleton::nodes は変形の材料の全ノードで
+    // 目的が異なる。ここは「GameObject をどこに何個作りどの submesh を描かせるか」という
+    // 配置だけを答える (スキンドは PreTransformVertices 未適用のため階層はそのまま残る)。
     ImportModelNodes(scene, unitScale, *model);
 
-    /// @note 無アニメ時の既定パレット。単位行列を使わないための前提データ。
-    if (model->skeleton) BuildReferencePose(*model->skeleton);
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    if (model->skeleton) {
+        BuildReferencePose(*model->skeleton);
+    }
 
     ImportAnimations(scene, unitScale, *model);
     return model;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

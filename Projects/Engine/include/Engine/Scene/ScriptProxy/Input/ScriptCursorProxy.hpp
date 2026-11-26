@@ -46,7 +46,9 @@ public:
     /// @note 「まだ生きているが今は要らない」ときだけでよい。
     void Release()
     {
-        if (m_id == core::kInvalidCursorRequest) return;
+        if (m_id == core::kInvalidCursorRequest) {
+            return;
+        }
         core::Cursor::Release(m_id);
         m_id = core::kInvalidCursorRequest;
     }
@@ -61,11 +63,11 @@ public:
     [[nodiscard]] bool IsActive() const { return m_id != core::kInvalidCursorRequest; }
 
 private:
-    core::CursorRequestId m_id = core::kInvalidCursorRequest;
+    core::CursorRequestId m_id = core::kInvalidCursorRequest; ///< 解除時にカーソル要求を特定する登録 ID。無効値なら要求なし。
 };
 
 struct ScriptCursorProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< カーソル操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note この Script が生きている間だけ効くカーソル要求を積む。戻り値をメンバーへ保持すること。
     /// @note 同じ優先度の要求が並んだときは、後から積んだ方が勝つ。
@@ -88,4 +90,4 @@ struct ScriptCursorProxy {
     FBZZ_ENGINE_API void ResetForEditor() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

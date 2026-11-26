@@ -30,13 +30,11 @@ enum class UIRenderTargetView {
 /// @note テキスト 1 行ぶんの分割結果。折り返しを入れると「どこで切れたか」を
 /// @note 測るときと描くときで共有しないと、行数と行幅が食い違う。
 struct UITextLine {
-    std::size_t begin = 0;   ///< @note text.text へのバイトオフセット (この行の先頭)
-    std::size_t end   = 0;   ///< @note 同 (この行の終端。改行文字は含まない)
+    std::size_t begin = 0; ///< text.text へのバイトオフセット (この行の先頭)
+    std::size_t end   = 0; ///< 同 (この行の終端。改行文字は含まない)
     float       width = 0.0f;
-    /// @note この行の送り高さ。リッチテキストで `<size>` を使うと行ごとに変わる。
-    float       height = 0.0f;
-    /// @note この行の末尾を "…" に置き換えて描く (TextOverflow::Ellipsis)。
-    bool        ellipsis = false;
+    float       height = 0.0f; ///< この行の送り高さ。リッチテキストで `<size>` を使うと行ごとに変わる。
+    bool        ellipsis = false; ///< この行の末尾を "…" に置き換えて描く (TextOverflow::Ellipsis)。
 };
 struct UIInputView {
     float width = 0.0f, height = 0.0f;
@@ -71,10 +69,8 @@ struct UIInteractionContext {
         UINavigation* nav = nullptr;
         math::Vector2 rectPosition, rectSize;
     };
-    /// @note フォーカス候補は Context の作業領域を使い回し、Scene 間で大域共有しない。
-    std::vector<NavigationCandidate> navigationScratch;
-    /// @note LoadMetrics 専用。テクスチャのない静的フォントと動的フォントを同じ計測規則で読む。
-    std::unordered_map<std::string, renderer::FontAtlas> fontMetricsCache;
+    std::vector<NavigationCandidate> navigationScratch; ///< フォーカス候補は Context の作業領域を使い回し、Scene 間で大域共有しない。
+    std::unordered_map<std::string, renderer::FontAtlas> fontMetricsCache; ///< LoadMetrics 専用。テクスチャのない静的フォントと動的フォントを同じ計測規則で読む。
     int cachedMetricsGeneration = -1;
     std::uint64_t inputInteractionRevision = ~std::uint64_t{0};
     std::uint64_t sceneGeneration = 0, lastInputFrame = ~std::uint64_t{0};

@@ -27,12 +27,13 @@ public:
         const size_t prefixLen = std::strlen(prefix);
         std::memcpy(line, prefix, prefixLen);
 
-        /// @note UTF-8 の継続バイトの手前まで戻し、文字の途中で切らない。
+        // UTF-8 の継続バイトの手前まで戻し、文字の途中で切らない。
         /// @see https://datatracker.ietf.org/doc/html/rfc3629#section-3 RFC 3629 section 3 UTF-8 definition
         size_t length = std::min(entry.message.size(), LINE_BYTES - 1 - prefixLen);
         while (length > 0 && length < entry.message.size()
-               && (static_cast<unsigned char>(entry.message[length]) & 0xC0u) == 0x80u)
+               && (static_cast<unsigned char>(entry.message[length]) & 0xC0u) == 0x80u) {
             --length;
+        }
         std::memcpy(line + prefixLen, entry.message.data(), length);
         line[prefixLen + length] = '\0';
         m_next.store(index + 1, std::memory_order_release);
@@ -44,8 +45,9 @@ public:
     {
         const uint32_t next = m_next.load(std::memory_order_acquire);
         const uint32_t count = std::min<uint32_t>(next, static_cast<uint32_t>(LINE_COUNT));
-        for (uint32_t i = next - count; i != next; ++i)
+        for (uint32_t i = next - count; i != next; ++i) {
             fn(m_lines[i % LINE_COUNT]);
+        }
     }
 
     void Clear() { m_next.store(0, std::memory_order_release); }

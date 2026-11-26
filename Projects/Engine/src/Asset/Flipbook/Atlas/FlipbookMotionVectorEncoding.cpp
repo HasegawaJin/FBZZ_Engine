@@ -56,8 +56,9 @@ float ComputeRecommendedStrength(std::span<const math::Vector2> displacementsUv,
                                  float minimumStrength)
 {
     float strength = 0.0f;
-    for (const math::Vector2& d : displacementsUv)
+    for (const math::Vector2& d : displacementsUv) {
         strength = (std::max)(strength, (std::max)(std::fabs(d.x), std::fabs(d.y)));
+    }
     return strength > 0.0f ? strength : (std::max)(minimumStrength, 1.0e-6f);
 }
 
@@ -96,11 +97,14 @@ void DilateMotion(std::span<math::Vector2> motion, std::span<const float> covera
 {
     const std::size_t pixelCount = static_cast<std::size_t>(atlasWidth) * atlasHeight;
     if (iterations <= 0 || motion.size() < pixelCount || coverage.size() < pixelCount
-        || tileWidth == 0 || tileHeight == 0)
+        || tileWidth == 0 || tileHeight == 0) {
         return;
+    }
 
     std::vector<std::uint8_t> filled(pixelCount);
-    for (std::size_t i = 0; i < pixelCount; ++i) filled[i] = coverage[i] > threshold ? 1u : 0u;
+    for (std::size_t i = 0; i < pixelCount; ++i) {
+        filled[i] = coverage[i] > threshold ? 1u : 0u;
+    }
 
     std::vector<math::Vector2> nextMotion(motion.begin(), motion.begin() + pixelCount);
     std::vector<std::uint8_t> nextFilled(filled);
@@ -113,7 +117,9 @@ void DilateMotion(std::span<math::Vector2> motion, std::span<const float> covera
             const std::uint32_t tileTop = (y / tileHeight) * tileHeight;
             for (std::uint32_t x = 0; x < usedWidth; ++x) {
                 const std::size_t index = static_cast<std::size_t>(y) * atlasWidth + x;
-                if (filled[index]) continue;
+                if (filled[index]) {
+                    continue;
+                }
                 const std::uint32_t tileLeft = (x / tileWidth) * tileWidth;
 
                 float sumX = 0.0f;
@@ -121,23 +127,37 @@ void DilateMotion(std::span<math::Vector2> motion, std::span<const float> covera
                 int count = 0;
                 const auto accumulate = [&](std::uint32_t nx, std::uint32_t ny) {
                     const std::size_t neighbour = static_cast<std::size_t>(ny) * atlasWidth + nx;
-                    if (!filled[neighbour]) return;
+                    if (!filled[neighbour]) {
+                        return;
+                    }
                     sumX += motion[neighbour].x;
                     sumY += motion[neighbour].y;
                     ++count;
                 };
-                if (x > tileLeft) accumulate(x - 1, y);
-                if (x + 1 < tileLeft + tileWidth) accumulate(x + 1, y);
-                if (y > tileTop) accumulate(x, y - 1);
-                if (y + 1 < tileTop + tileHeight) accumulate(x, y + 1);
-                if (count == 0) continue;
+                if (x > tileLeft) {
+                    accumulate(x - 1, y);
+                }
+                if (x + 1 < tileLeft + tileWidth) {
+                    accumulate(x + 1, y);
+                }
+                if (y > tileTop) {
+                    accumulate(x, y - 1);
+                }
+                if (y + 1 < tileTop + tileHeight) {
+                    accumulate(x, y + 1);
+                }
+                if (count == 0) {
+                    continue;
+                }
 
                 nextMotion[index] = { sumX / static_cast<float>(count), sumY / static_cast<float>(count) };
                 nextFilled[index] = 1u;
                 changed = true;
             }
         }
-        if (!changed) break;
+        if (!changed) {
+            break;
+        }
         std::copy(nextMotion.begin(), nextMotion.end(), motion.begin());
         filled = nextFilled;
     }

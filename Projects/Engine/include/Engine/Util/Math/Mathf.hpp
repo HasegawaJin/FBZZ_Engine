@@ -70,14 +70,18 @@ struct Mathf {
     /// @{
     static inline float MoveTowards(float current, float target, float maxDelta) {
         float diff = target - current;
-        if (std::abs(diff) <= maxDelta) return target;
+        if (std::abs(diff) <= maxDelta) {
+            return target;
+        }
         return current + (diff > 0.0f ? maxDelta : -maxDelta);
     }
 
     /// 角度版 (degree 単位)
     static inline float MoveTowardsAngle(float current, float target, float maxDelta) {
         float delta = DeltaAngle(current, target);
-        if (-maxDelta < delta && delta < maxDelta) return target;
+        if (-maxDelta < delta && delta < maxDelta) {
+            return target;
+        }
         return MoveTowards(current, current + delta, maxDelta);
     }
     /// @}
@@ -98,7 +102,9 @@ struct Mathf {
     /// current → target への最短角度差 (degree, [-180, 180])
     static inline float DeltaAngle(float current, float target) {
         float delta = Repeat(target - current, 360.0f);
-        if (delta > 180.0f) delta -= 360.0f;
+        if (delta > 180.0f) {
+            delta -= 360.0f;
+        }
         return delta;
     }
     /// @}

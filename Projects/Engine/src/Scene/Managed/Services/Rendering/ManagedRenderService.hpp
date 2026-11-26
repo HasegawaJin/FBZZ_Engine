@@ -14,4 +14,4 @@ FBZZ_ENGINE_API ManagedBridgeStatus RunManagedRenderService(Script& proxy, const
     int64_t integer, std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result);
 FBZZ_ENGINE_API ManagedBridgeStatus RunManagedDisplayService(Scene& scene, Script& proxy, const ManagedBridgeRequest& request,
     int64_t integer, std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result);
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

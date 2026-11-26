@@ -22,10 +22,8 @@ struct WorldPartitionCell {
     WorldCellId id;
     WorldCellBounds bounds;
     uint64_t revision = 1;
-    /// @note プロジェクトルートから解決する、正規化済みの Assets/... 相対パス。
-    std::string nearPath;
-    /// @note 空の場合、このセルには遠距離表現がない。
-    std::string hlodPath;
+    std::string nearPath; ///< プロジェクトルートから解決する、正規化済みの Assets/... 相対パス。
+    std::string hlodPath; ///< 空の場合、このセルには遠距離表現がない。
     std::vector<WorldPartitionDependency> dependencies;
 };
 
@@ -33,8 +31,7 @@ struct WorldPartitionManifest {
     WorldCellGrid grid;
     uint64_t revision = 1;
     std::vector<WorldPartitionCell> cells;
-    /// @note 制作時の元階層の ID。常駐セルの公開前に退役するのは Play の複製内だけ。
-    std::vector<std::string> sourceInstanceIds;
+    std::vector<std::string> sourceInstanceIds; ///< 制作時の元階層の ID。常駐セルの公開前に退役するのは Play の複製内だけ。
 };
 
 /// @note 形状の境界は所属セルの外まで広がり得る。XZ の所属は格子と ID で決まる。

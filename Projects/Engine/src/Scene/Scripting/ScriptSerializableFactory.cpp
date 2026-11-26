@@ -20,7 +20,9 @@ std::unordered_map<std::string, ScriptSerializableFactory::Factory>& Registry()
 
 bool ScriptSerializableFactory::Register(std::string_view typeName, Factory factory)
 {
-    if (typeName.empty() || !factory) return false;
+    if (typeName.empty() || !factory) {
+        return false;
+    }
     Registry()[std::string(typeName)] = std::move(factory);
     return true;
 }
@@ -36,7 +38,9 @@ std::vector<std::string> ScriptSerializableFactory::RegisteredTypeNames()
     std::vector<std::string> names;
     names.reserve(Registry().size());
     for (const auto& [name, factory] : Registry())
-        if (!name.empty() && factory) names.push_back(name);
+        if (!name.empty() && factory) {
+            names.push_back(name);
+        }
     std::sort(names.begin(), names.end());
     return names;
 }
@@ -48,10 +52,14 @@ void ScriptSerializableFactory::UnregisterAll()
 
 bool ScriptSerializedReference::SetType(std::string_view typeName)
 {
-    if (type == typeName && value) return true;
+    if (type == typeName && value) {
+        return true;
+    }
     std::unique_ptr<IScriptSerializable> replacement =
         ScriptSerializableFactory::Create(typeName);
-    if (!replacement) return false;
+    if (!replacement) {
+        return false;
+    }
     type = typeName;
     value = std::move(replacement);
     preservedFieldsToml.clear();

@@ -61,25 +61,25 @@ bool StandaloneProjectModule::OnInit()
     m_runtime.ApplySettings(m_settings);
     m_runtime.RegisterScenes(m_projectRoot, m_resources);
     if (m_exactStartScene) {
-        /// @note 同じ拡張子なしファイル名のシーンが複数ある場合も、選択された正確なパスを優先するため最後に登録する。
+        // 同じ拡張子なしファイル名のシーンが複数ある場合も、選択された正確なパスを優先するため最後に登録する。
         const std::string name = util::FileSystem::PathToUtf8(m_startSceneFile.stem());
         m_runtime.GetSceneManager().RegisterFromFile(name, util::FileSystem::PathToUtf8(m_startSceneFile), m_resources);
     }
     m_runtime.LoadScene(m_startSceneFile);
     auto& app = core::Application::Get();
-    /// @note GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
+    // GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
     if (auto* audioManager = app.GetAudioManager()) {
         audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
     }
-    /// @note 起動時だけアセットを展開し、以後の graphics 設定は実行用コピーへ適用する。
+    // 起動時だけアセットを展開し、以後の graphics 設定は実行用コピーへ適用する。
     renderer::RenderSettings resolvedSettings;
     (void)asset::ResolveRenderPipelineSettings(m_settings.render,
         m_settings.renderPipelineAssetPath, resolvedSettings);
     m_settings.render = std::move(resolvedSettings);
     app.SetActiveRenderSettings(&m_settings.render);
-    /// @note カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
+    // カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
     m_settings.cursor.Apply(util::FileSystem::PathToUtf8(m_projectRoot));
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
@@ -93,11 +93,12 @@ bool StandaloneProjectModule::OnInit()
 
 void StandaloneProjectModule::OnUpdate(float dt)
 {
-    /// @note Locked は中央へ戻す処理そのものがここにあり、Confined も他アプリが ClipCursor を
-    /// @note Confined は他アプリの ClipCursor で外れるため毎フレーム張り直す。
-    /// @note Input::Update の直後・スクリプトの前に解くことで Locked の移動量を当該フレームで読める。
-    if (input::Input::PhysicalKeyHeld(input::KeyCode::SHIFT) && input::Input::PhysicalKeyDown(input::KeyCode::F1))
+    // Locked は中央へ戻す処理そのものがここにあり、Confined も他アプリが ClipCursor を
+    // Confined は他アプリの ClipCursor で外れるため毎フレーム張り直す。
+    // Input::Update の直後・スクリプトの前に解くことで Locked の移動量を当該フレームで読める。
+    if (input::Input::PhysicalKeyHeld(input::KeyCode::SHIFT) && input::Input::PhysicalKeyDown(input::KeyCode::F1)) {
         core::Cursor::ReleaseGameInput(core::CursorSuspendReason::RELEASED);
+    }
     else if (!core::Cursor::IsGameInputOwned() && core::Cursor::GetState().windowActive
              && input::Input::PhysicalMouseButtonDown(0))
         (void)core::Cursor::AcquireGameInput();
@@ -166,7 +167,7 @@ void StandaloneProjectModule::OnRender()
 
 void StandaloneProjectModule::OnShutdown()
 {
-    /// @note PhysicsProxy が破棄済み World を参照しないよう、managed runtime を止める前に scene context を解除する。
+    // PhysicsProxy が破棄済み World を参照しないよう、managed runtime を止める前に scene context を解除する。
     m_runtime.Shutdown();
     if (m_managedLoaded) {
         ManagedScriptRuntime::Instance().Unload();

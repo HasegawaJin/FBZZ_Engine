@@ -34,10 +34,10 @@ using renderer::TerrainLayerGpu;
 
 /// @brief テクスチャの無い層へ詰める 1x1 の代替。シェーダーは添字の有効判定をしないので必ず埋める。
 struct TerrainFallbackTextures {
-    renderer::ResourceHandle<renderer::TextureTag> white;      ///< @note 拡散反射色
-    renderer::ResourceHandle<renderer::TextureTag> flatNormal; ///< @note 法線
-    renderer::ResourceHandle<renderer::TextureTag> black;      ///< @note ao_roughness (hasAoRoughness = 0 なので読まれない)
-    renderer::ResourceHandle<renderer::TextureTag> gray;       ///< @note 高さ
+    renderer::ResourceHandle<renderer::TextureTag> white; ///< 拡散反射色
+    renderer::ResourceHandle<renderer::TextureTag> flatNormal; ///< 法線
+    renderer::ResourceHandle<renderer::TextureTag> black; ///< ao_roughness (hasAoRoughness = 0 なので読まれない)
+    renderer::ResourceHandle<renderer::TextureTag> gray; ///< 高さ
     [[nodiscard]] FBZZ_ENGINE_API bool IsValid() const;
 };
 
@@ -46,8 +46,8 @@ FBZZ_ENGINE_API TerrainFallbackTextures CreateTerrainFallbackTextures(renderer::
 FBZZ_ENGINE_API void ReleaseTerrainFallbackTextures(renderer::ResourceManager& resources, TerrainFallbackTextures& textures);
 
 /// @brief 層の .mat からテクスチャ添字以外の GPU パラメーターを読む。
-/// @param material null なら既定値の層。
-/// @param keyPrefix キーの接頭辞 (マテリアルプレビューの "layer0_" 等)。本編は空。
+/// @param[in] material null なら既定値の層。
+/// @param[in] keyPrefix キーの接頭辞 (マテリアルプレビューの "layer0_" 等)。本編は空。
 /// @note 既定値の正本。Inspector の既定値もこれに揃える (Docs/design/terrain-layers.md §3)。
 FBZZ_ENGINE_API TerrainLayerGpu ReadTerrainLayerParams(const asset::MaterialAsset* material, std::string_view keyPrefix = {});
 /// @note 所有済みの設定値から、アセット所有者を介さず同じ規則でパラメーターと既定値を解決する。

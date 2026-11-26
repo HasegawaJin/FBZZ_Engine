@@ -22,14 +22,18 @@ FBZZ_ENGINE_API void UnlinkRuntimeMesh(Scene& scene, EntityID id, const DoubleBu
 template<class T>
 void ReleaseComponentGpuResources(T& component)
 {
-    if constexpr (requires { component.ResetGpuRuntime(); }) component.ResetGpuRuntime();
+    if constexpr (requires { component.ResetGpuRuntime(); }) {
+        component.ResetGpuRuntime();
+    }
     else if constexpr (requires { component.runtime.ResetGpuRuntime(); }) component.runtime.ResetGpuRuntime();
     else if constexpr (requires { component.runtimeMesh.Reset(); }) component.runtimeMesh.Reset();
 }
 template<class T>
 void ReleaseComponentGpuResources(Scene& scene, EntityID id, T& component)
 {
-    if constexpr (requires { component.runtimeMesh; }) UnlinkRuntimeMesh(scene, id, component.runtimeMesh);
+    if constexpr (requires { component.runtimeMesh; }) {
+        UnlinkRuntimeMesh(scene, id, component.runtimeMesh);
+    }
     ReleaseComponentGpuResources(component);
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

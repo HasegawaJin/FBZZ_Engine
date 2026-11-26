@@ -64,7 +64,7 @@ void Color3(IReflector& r, const char* name, float (&color)[3])
     color[2] = value.z;
 }
 
-} /// @note namespace
+} // namespace
 
 /// 露出
 
@@ -87,7 +87,7 @@ void FxaaOverride::Apply(renderer::VolumeSettings& target, float weight) const
 
 void FxaaOverride::Reflect(IReflector&)
 {
-    /// @note パラメーターを持たない。ON/OFF は基底の active とリストへの有無で表す。
+    // パラメーターを持たない。ON/OFF は基底の active とリストへの有無で表す。
 }
 
 void TaaOverride::Apply(renderer::VolumeSettings& target, float weight) const
@@ -362,7 +362,7 @@ void FogOverride::Apply(renderer::VolumeSettings& target, float weight) const
     v.density     = BlendFloat(v.density,     density,     weight);
     v.farDistance = BlendFloat(v.farDistance, farDistance, weight);
     BlendColor3(v.color, color, weight, v.color);
-    /// @note source は列挙値なので閾値で切り替える。
+    // source は列挙値なので閾値で切り替える。
     v.source = BlendInt(v.source, source, weight);
 }
 
@@ -400,7 +400,7 @@ void VolumetricLightOverride::Reflect(IReflector& r)
     Range(r, "intensity", intensity, 0.0f, 8.0f, "Intensity (×)");
     Color3(r, "tint", tint);
     Range(r, "minDistance", minDistance, 0.0f, 500.0f, "Start Distance (m)");
-    /// @note 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
+    // 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
     Range(r, "maxDistance", maxDistance, 1.0f, 4000.0f, "Max Distance (m)");
     Range(r, "edgeFade", edgeFade, 0.0f, 1.0f, "Edge Fade (0–1)");
     Range(r, "density", density, 0.0f, 0.2f, "Extinction (1/m)", 0.0001f);
@@ -424,7 +424,7 @@ void FroxelFogOverride::Apply(renderer::VolumeSettings& target, float weight) co
     f.lightScattering = BlendFloat(f.lightScattering, lightScattering, weight);
     BlendColor3(f.albedo,   albedo,   weight, f.albedo);
     BlendColor3(f.emissive, emissive, weight, f.emissive);
-    /// @note グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
+    // グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
 }
 
 void FroxelFogOverride::Reflect(IReflector& r)
@@ -565,10 +565,12 @@ void PixelateOverride::Reflect(IReflector& r)
 
 void CustomEffectOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
-    /// @note 配列要素の「半分だけ存在する」状態を定義できないため、補間せず閾値で足す。
-    ///       重みが半分を超えたときにパスとして追加し、パラメーターはオーバーライドの
-    ///       値をそのまま使う。
-    if (weight < 0.5f) return;
+    // 配列要素の「半分だけ存在する」状態を定義できないため、補間せず閾値で足す。
+    //       重みが半分を超えたときにパスとして追加し、パラメーターはオーバーライドの
+    //       値をそのまま使う。
+    if (weight < 0.5f) {
+        return;
+    }
 
     renderer::CustomPostProcessSettings applied = effect;
     applied.enabled = true;
@@ -581,16 +583,16 @@ void CustomEffectOverride::Reflect(IReflector& r)
     r.BeginField("shaderPath", "shaderPath");
     r.SetFileExtensions(".hlsl");
     r.Field("shaderPath", effect.shaderPath);
-    /// @note .mat を指すと、シェーダー・テクスチャ・名前付きパラメーターがそちらから来る。
+    // .mat を指すと、シェーダー・テクスチャ・名前付きパラメーターがそちらから来る。
     r.BeginField("materialPath", "materialPath");
     r.SetFileExtensions(".mat");
     r.Field("materialPath", effect.materialPath);
     Range(r, "intensity", effect.intensity, 0.0f, 4.0f);
     Range(r, "blend",     effect.blend,     0.0f, 1.0f);
 
-    /// @note 列挙は int で出す (FogOverride::source と同じ扱い)。
-    ///       stage     0 = SceneHDR (Composite 前) / 1 = PostProcess (後) / 2 = AfterOpaque (半透明の前)
-    ///       blendMode 0 = 置き換え / 1 = アルファ / 2 = 加算 / 3 = 事前乗算 (HDR の段のみ有効)
+    // 列挙は int で出す (FogOverride::source と同じ扱い)。
+    //       stage     0 = SceneHDR (Composite 前) / 1 = PostProcess (後) / 2 = AfterOpaque (半透明の前)
+    //       blendMode 0 = 置き換え / 1 = アルファ / 2 = 加算 / 3 = 事前乗算 (HDR の段のみ有効)
     int stage = static_cast<int>(effect.stage);
     Integer(r, "stage", stage, 0, 2);
     effect.stage = static_cast<renderer::CustomPassStage>(stage);
@@ -599,8 +601,8 @@ void CustomEffectOverride::Reflect(IReflector& r)
     Integer(r, "blendMode", blendMode, 0, 3);
     effect.blendMode = static_cast<renderer::BlendMode>(blendMode);
 
-    /// @note 追加入力のビット (CustomPassInput)。
-    ///       1 深度 / 2 オブジェクトマスク / 4 速度 / 8 法線 / 16 ブルーム / 32 AO
+    // 追加入力のビット (CustomPassInput)。
+    //       1 深度 / 2 オブジェクトマスク / 4 速度 / 8 法線 / 16 ブルーム / 32 AO
     int inputs = static_cast<int>(effect.inputs);
     Integer(r, "inputs", inputs, 0, 63);
     effect.inputs = static_cast<uint32_t>(inputs);
@@ -615,7 +617,7 @@ void CustomEffectOverride::Reflect(IReflector& r)
     }
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset
 
 /// @name レジストリ登録
 /// @note 登録漏れを 1 か所で目視確認できるようにするため、ファイル末尾にまとめる。

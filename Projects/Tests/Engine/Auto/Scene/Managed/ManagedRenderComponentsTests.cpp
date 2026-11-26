@@ -410,7 +410,9 @@ protected:
     }
     bool Call(int operation)
     {
-        if (!m_adapter->ApplySettingsJson("{\"operation\":" + std::to_string(operation) + "}")) return false;
+        if (!m_adapter->ApplySettingsJson("{\"operation\":" + std::to_string(operation) + "}")) {
+            return false;
+        }
         return m_adapter->ExecuteProfiledCallback(&scene::Script::OnUpdate, scene::ScriptCallbackKind::UPDATE, "OnUpdate");
     }
     scene::ManagedBridgeReply Field(std::string_view name)

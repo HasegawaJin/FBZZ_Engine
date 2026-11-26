@@ -16,7 +16,7 @@ class Script;
 /// @note Terrain が無いときは何もせず、照会は既定値 (高さ 0 / 法線 UP / 重み 0) を返す。
 /// @see Docs/design/terrain-layers.md
 struct ScriptTerrainProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 地形操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @return ローカル XZ [m] の地形高さ (ローカル Y [m])。
     FBZZ_ENGINE_API float GetHeightLocal(float localX, float localZ) const;

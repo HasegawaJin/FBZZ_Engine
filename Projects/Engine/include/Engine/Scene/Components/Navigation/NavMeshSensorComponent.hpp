@@ -13,36 +13,31 @@
 namespace fbzz::scene {
 
 struct NavMeshSensorComponent {
-    float viewDistance = 10.0f;  ///< @note この距離を超えると検知しない [m]
-    float viewAngleDeg = 90.0f;  ///< @note 視野角 (左右合計) [deg]。360 で全方位
-    /// @note scene.FindWithTag() で検索する対象のタグ。空文字なら検知しない。
-    std::string targetTag = "Player";
+    float viewDistance = 10.0f; ///< この距離を超えると検知しない [m]
+    float viewAngleDeg = 90.0f; ///< 視野角 (左右合計) [deg]。360 で全方位
+    std::string targetTag = "Player"; ///< scene.FindWithTag() で検索する対象のタグ。空文字なら検知しない。
     /// @note true のとき Physics::World::Raycast で遮蔽物の有無を確認する。
     /// @note false の場合は距離・角度のみで判定する (壁越しでも検知する簡易モード)。
-    bool useLineOfSight = true;
-    /// @note true のとき検知した瞬間に同 GO の NavMeshAgentComponent::SetTarget() を呼ぶ。
-    bool autoChase = true;
-    float chaseRepathInterval = 0.4f; ///< @note autoChase 時に NavMeshAgentComponent::SetTarget へ渡す再パス間隔
+    bool useLineOfSight = true; ///< 対象の検出に遮蔽物の有無も確認するかどうか。
+    bool autoChase = true; ///< true のとき検知した瞬間に同 GO の NavMeshAgentComponent::SetTarget() を呼ぶ。
+    float chaseRepathInterval = 0.4f; ///< autoChase 時に NavMeshAgentComponent::SetTarget へ渡す再パス間隔
 
-    /// @note 見失った後もこの秒数だけ targetVisible=true を維持する（0 = 即座にクリア）。
-    float memoryTime = 0.0f;
-    /// @note 検知チェックの頻度 [s]。0 = 毎フレーム。パフォーマンス調整に使う。
-    float scanInterval = 0.0f;
-    /// @note 検知対象との Y 座標差がこの値を超えると検知しない [m]。0 = 無制限。
-    float heightThreshold = 0.0f;
+    float memoryTime = 0.0f; ///< 見失った後もこの秒数だけ targetVisible=true を維持する（0 = 即座にクリア）。
+    float scanInterval = 0.0f; ///< 検知チェックの頻度 [s]。0 = 毎フレーム。パフォーマンス調整に使う。
+    float heightThreshold = 0.0f; ///< 検知対象との Y 座標差がこの値を超えると検知しない [m]。0 = 無制限。
 
-    bool enabled = true;
+    bool enabled = true; ///< 対象検出のためのセンサー更新を行うかどうか。
 
     /// @name ランタイム状態 (NavMeshSensorSystem が管理。非永続化)
     /// @{
-    bool targetVisible = false;
-    EntityID detectedTarget = EntityID::INVALID;
-    math::Vector3 lastKnownTargetPos = math::Vector3::ZERO;
+    bool targetVisible = false; ///< 直近のセンサー更新で対象を視認できたかどうか。
+    EntityID detectedTarget = EntityID::INVALID; ///< 直近の検出で選んだ対象のシーン内 ID。未検出なら INVALID。
+    math::Vector3 lastKnownTargetPos = math::Vector3::ZERO; ///< 最後に検出できた対象のワールド位置 [m]。
     /// @}
     /// @name ランタイム (NavMeshSensorSystem が管理)
     /// @{
-    float memoryTimer = 0.0f; ///< @note 見失い後の残り記憶時間 [s]
-    float scanTimer   = 0.0f; ///< @note 次のスキャンまでの残り時間 [s]
+    float memoryTimer = 0.0f; ///< 見失い後の残り記憶時間 [s]
+    float scanTimer   = 0.0f; ///< 次のスキャンまでの残り時間 [s]
 
     const char* GetTypeName() const { return "NavMesh Sensor"; }
     void Reflect(IReflector& r)

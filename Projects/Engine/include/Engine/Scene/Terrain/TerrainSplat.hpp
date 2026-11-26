@@ -23,9 +23,9 @@ inline constexpr int TERRAIN_MAX_LAYERS = 255;
 namespace terrain_splat {
 
 /// @brief 任意の (番号, 重み) 列を上位 4 層の正準形へ畳む。
-/// @param layers 層番号。重複してよい (重みを合算する)。
-/// @param weights 非負の重み。合計が 0 なら層 0 = 255 にする。
-/// @param keepLayer 0 以上なら、重みが 5 番目以下でもこの層を 4 枠に残す (塗りが進まなくなるのを防ぐ)。
+/// @param[in] layers 層番号。重複してよい (重みを合算する)。
+/// @param[in] weights 非負の重み。合計が 0 なら層 0 = 255 にする。
+/// @param[in] keepLayer 0 以上なら、重みが 5 番目以下でもこの層を 4 枠に残す (塗りが進まなくなるのを防ぐ)。
 FBZZ_ENGINE_API void Canonicalize(const int* layers, const float* weights, int count,
                   std::uint8_t* outIndices, std::uint8_t* outWeights, int keepLayer = -1);
 
@@ -49,5 +49,5 @@ FBZZ_ENGINE_API void Remap(std::uint8_t* indices, std::uint8_t* weights, const s
 /// @brief 旧形式の RGBA 4 層 (R=層 0 … A=層 3) を正準形へ変換する。見た目は変わらない。
 FBZZ_ENGINE_API void FromLegacyRgba(const std::uint8_t* rgba, std::uint8_t* outIndices, std::uint8_t* outWeights);
 
-} /// @note namespace terrain_splat
-} /// @note namespace fbzz::scene
+} // namespace terrain_splat
+} // namespace fbzz::scene

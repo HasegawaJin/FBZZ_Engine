@@ -42,11 +42,11 @@ TEST_F(Utf8Test, DecodesAsciiAsItself)
 /// @brief Decodes two three and four byte sequences.
 TEST_F(Utf8Test, DecodesTwoThreeAndFourByteSequences)
 {
-    /// @note é
+    // é
     EXPECT_EQ(DecodeFirst("\xC3\xA9"), 0x00E9u);
-    /// @note あ
+    // あ
     EXPECT_EQ(DecodeFirst("\xE3\x81\x82"), 0x3042u);
-    /// @note 🎮
+    // 🎮
     EXPECT_EQ(DecodeFirst("\xF0\x9F\x8E\xAE"), 0x1F3AEu);
 }
 
@@ -78,7 +78,7 @@ TEST_F(Utf8Test, DecodesZeroPastTheEnd)
 /// @brief Replaces a continuation byte that starts a sequence.
 TEST_F(Utf8Test, ReplacesAContinuationByteThatStartsASequence)
 {
-    /// @note 文字の途中から読み始めた場合。ここで戻らずに «読めなかった» と伝える。
+    // 文字の途中から読み始めた場合。ここで戻らずに «読めなかった» と伝える。
     EXPECT_EQ(DecodeFirst("\xA0"), util::UTF8_REPLACEMENT_CHAR);
 }
 
@@ -91,7 +91,7 @@ TEST_F(Utf8Test, ReplacesATruncatedSequence)
 /// @brief Replaces an overlong encoding.
 TEST_F(Utf8Test, ReplacesAnOverlongEncoding)
 {
-    /// @note "/" を 2 バイトで書いたもの。通すとパス比較をすり抜ける古典的な穴になる。
+    // "/" を 2 バイトで書いたもの。通すとパス比較をすり抜ける古典的な穴になる。
     EXPECT_EQ(DecodeFirst("\xC0\xAF"), util::UTF8_REPLACEMENT_CHAR);
 }
 
@@ -110,7 +110,7 @@ TEST_F(Utf8Test, ReplacesACodePointBeyondUnicode)
 /// @brief Always advances at least one byte on broken input.
 TEST_F(Utf8Test, AlwaysAdvancesAtLeastOneByteOnBrokenInput)
 {
-    /// @note これが最も大事な契約。1 バイトも進めない経路があると、その文字列の描画で固まる。
+    // これが最も大事な契約。1 バイトも進めない経路があると、その文字列の描画で固まる。
     const std::string broken = "\xA0\xC0\xAF\xE3\x81\xED\xA0\x80\xF5\x80";
 
     std::size_t offset = 0;
@@ -129,7 +129,7 @@ TEST_F(Utf8Test, AlwaysAdvancesAtLeastOneByteOnBrokenInput)
 /// @brief Counts code points not bytes.
 TEST_F(Utf8Test, CountsCodePointsNotBytes)
 {
-    /// @note "あA🎮" は 3 文字 8 バイト。バイト数で折り返すとカーソルが文字の途中へ入る。
+    // "あA🎮" は 3 文字 8 バイト。バイト数で折り返すとカーソルが文字の途中へ入る。
     EXPECT_EQ(Utf8::Length("\xE3\x81\x82" "A" "\xF0\x9F\x8E\xAE"), 3u);
     EXPECT_EQ(Utf8::Length(""), 0u);
     EXPECT_EQ(Utf8::Length("abc"), 3u);

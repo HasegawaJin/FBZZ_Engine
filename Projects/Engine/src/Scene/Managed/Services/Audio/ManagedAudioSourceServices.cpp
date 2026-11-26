@@ -17,28 +17,49 @@ ManagedBridgeStatus RunAudioSourceSettings(GameObject& target, const ManagedBrid
     int64_t integer, std::span<const float> p, std::span<const std::string> text,
     uint64_t relatedId, ManagedServiceResult& result)
 {
-    if (request.op != ManagedBridgeOp::SERVICE_AUDIO || request.index < 46 || request.index > 56
-        || request.flags > 1 || relatedId != 0 || !text.empty()
-        || !std::all_of(p.begin(), p.end(), [](float value) { return std::isfinite(value); }))
+    // この入口が扱うオーディオ操作と、数値だけを受け付ける転送形式を確認する。
+    if (request.op != ManagedBridgeOp::SERVICE_AUDIO || request.index < 46 || request.index > 56) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (request.flags > 1 || relatedId != 0 || !text.empty()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (!std::all_of(p.begin(), p.end(), [](float value) { return std::isfinite(value); })) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+
     const bool read = request.index == 46 || request.index == 48 || request.index == 50
         || request.index == 52 || request.index == 54;
-    if (read != (request.flags == 1)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (!read && !Script::IsInPlayMode()) return ManagedBridgeStatus::INVALID_SCOPE;
+    if (read != (request.flags == 1)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (!read && !Script::IsInPlayMode()) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
     const size_t count = read || request.index == 47 || request.index == 49 ? 0
         : request.index == 56 ? 2 : 1;
-    if (p.size() != count) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (request.index == 47) {
-        if (integer < (std::numeric_limits<int>::min)() || integer > (std::numeric_limits<int>::max)())
-            return ManagedBridgeStatus::INVALID_ARGUMENT;
-    } else if (request.index == 49) {
-        if (integer != 0 && integer != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    } else if (integer != 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (count != 0 && (p[0] < 0.0f || p[0] > 1.0f || (count == 2 && p[1] < 0.0f)))
+    if (p.size() != count) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (ManagedObjectControls::IsPendingComponentRemoval(target, 6)) return ManagedBridgeStatus::NOT_FOUND;
+    }
+    if (request.index == 47) {
+        if (integer < (std::numeric_limits<int>::min)() || integer > (std::numeric_limits<int>::max)()) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+    } else if (request.index == 49) {
+        if (integer != 0 && integer != 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+    } else if (integer != 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (count != 0 && (p[0] < 0.0f || p[0] > 1.0f || (count == 2 && p[1] < 0.0f))) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (ManagedObjectControls::IsPendingComponentRemoval(target, 6)) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     auto* source = target.GetComponent<AudioSourceComponent>();
-    if (!source) return ManagedBridgeStatus::NOT_FOUND;
+    if (!source) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     ManagedServiceResult output;
     switch (request.index) {
     case 46: output.integer = source->priority; break;
@@ -56,4 +77,4 @@ ManagedBridgeStatus RunAudioSourceSettings(GameObject& target, const ManagedBrid
     result = std::move(output);
     return ManagedBridgeStatus::OK;
 }
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

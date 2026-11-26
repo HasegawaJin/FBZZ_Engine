@@ -46,8 +46,12 @@ struct TrailMaterialCache {
     ~TrailMaterialCache()
     {
         auto* resources = renderer::ResourceManager::FindOwner(m_resourceOwner);
-        if (!resources || resources->GetResetVersion() != m_resetVersion) return;
-        for (auto& [path, binding] : m_materials) resources->Release(binding.paramsCB);
+        if (!resources || resources->GetResetVersion() != m_resetVersion) {
+            return;
+        }
+        for (auto& [path, binding] : m_materials) {
+            resources->Release(binding.paramsCB);
+        }
     }
 };
 
@@ -80,7 +84,9 @@ TrailMaterialCache& AcquireTrailCache(Scene& scene, renderer::ResourceManager& r
         return !owner || owner->GetResetVersion() != cache->m_resetVersion;
     });
     for (auto& cache : caches)
-        if (cache->m_resourceOwner == resources.GetInstanceId()) return *cache;
+        if (cache->m_resourceOwner == resources.GetInstanceId()) {
+            return *cache;
+        }
     auto cache = std::make_unique<TrailMaterialCache>();
     cache->m_resourceOwner = resources.GetInstanceId();
     cache->m_resetVersion = resources.GetResetVersion();
@@ -101,28 +107,35 @@ bool WarnTrailMaterialOnce(TrailMaterialCache& cache, const std::string& path)
 
 bool TrailShaderMatchesMesh(const TrailMaterialBinding* binding, bool skinned)
 {
-    if (!binding || !binding->shader.IsValid()) return false;
+    if (!binding || !binding->shader.IsValid()) {
+        return false;
+    }
     return skinned ? (binding->meshType != asset::MeshType::Surface)
                    : (binding->meshType != asset::MeshType::Skinned);
 }
 
-} /// @note namespace
+} // namespace
 
 const TrailMaterialBinding* ResolveTrailMaterialBinding(
     TrailMaterialCache& cache, renderer::ResourceManager& resources, const std::string& materialPath)
 {
-    if (materialPath.empty()) return nullptr;
+    if (materialPath.empty()) {
+        return nullptr;
+    }
 
     TrailMaterialBinding& binding = cache.m_materials[materialPath];
-    if (binding.resolvedPass == cache.m_passSerial)
+    if (binding.resolvedPass == cache.m_passSerial) {
         return resources.Get(binding.shader) ? &binding : nullptr;
+    }
     binding.resolvedPass = cache.m_passSerial;
 
     const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
     const auto materialSnapshot = asset::ReadMaterialAuthoring(materialHandle);
 
     const auto* authoring = materialSnapshot ? &materialSnapshot->Data() : nullptr;
-    if (!authoring) return nullptr;
+    if (!authoring) {
+        return nullptr;
+    }
 
     const bool declaredForTrails = (authoring->renderPath == asset::RenderPath::Trail);
     if (!declaredForTrails && !authoring->shaderPath.empty()
@@ -140,8 +153,8 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
         binding.shader = shaderPath.empty()
             ? renderer::ResourceHandle<renderer::ShaderTag>{}
             : resources.LoadShader(shaderPath);
-        /// @note 黙って組み込みへ落ちると «前と同じ絵» が出るだけで、材質を書いた側からは
-        /// @note 「効いていない」としか見えない。コンパイル漏れが一番起きやすい。
+        // 黙って組み込みへ落ちると «前と同じ絵» が出るだけで、材質を書いた側からは
+        // 「効いていない」としか見えない。コンパイル漏れが一番起きやすい。
         if (!shaderPath.empty() && !binding.shader.IsValid()
             && WarnTrailMaterialOnce(cache, materialPath + "|load")) {
             FBZZ_LOG_WARN("Mesh trail material '%s' references shader '%s' but it failed to load "
@@ -155,11 +168,12 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
         return nullptr;
     }
 
-    /// @note MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
-    /// @note その場合 b2 へは何も束縛しない。束縛規則そのものは asset::MaterialParamBinding が持つ。
+    // MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
+    // その場合 b2 へは何も束縛しない。束縛規則そのものは asset::MaterialParamBinding が持つ。
     binding.descriptor = {};
-    if (auto* compiled = resources.Get(binding.shader))
+    if (auto* compiled = resources.Get(binding.shader)) {
         binding.descriptor = compiled->GetDescriptor();
+    }
     if (!binding.descriptor.IsValid()) {
         ReleaseOwnedBuffer(binding.paramsCB);
         binding.paramsCBSize = 0;
@@ -170,8 +184,8 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
     asset::InitDefaultMaterialParams(binding.descriptor, binding.paramData);
     asset::ApplyMaterialAssetParams(*authoring, binding.descriptor, binding.paramData);
 
-    /// @note IsValid() だけでは判定できない: このキャッシュはシーンの寿命もデバイスリセットも跨ぎ、
-    /// @note ハンドルの体裁は残るため、実体が居るかどうかで作り直しを判断する。
+    // IsValid() だけでは判定できない: このキャッシュはシーンの寿命もデバイスリセットも跨ぎ、
+    // ハンドルの体裁は残るため、実体が居るかどうかで作り直しを判断する。
     const bool cbLive = resources.Get(binding.paramsCB) != nullptr;
     if (!cbLive) {
         binding.paramsCB = {};
@@ -207,7 +221,7 @@ void PrepareMeshTrailAppearance(MeshTrailComponent& trail, renderer::ResourceMan
         trail.meshTrailCB = resources.CreateConstantBuffer(sizeof(MeshTrailCB));
     }
 
-    /// @note materialPath が設定されている場合: .mat の albedo テクスチャと doubleSided を優先する。
+    // materialPath が設定されている場合: .mat の albedo テクスチャと doubleSided を優先する。
     trail.texture = resources.GetWhiteTexture();
     if (!trail.materialPath.empty()) {
         const bool materialChanged = (trail.loadedMaterialPath != trail.materialPath);
@@ -231,7 +245,7 @@ void PrepareMeshTrailAppearance(MeshTrailComponent& trail, renderer::ResourceMan
             trail.doubleSided = authoring->doubleSided;
         }
     } else {
-        /// @note 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
+        // 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
         trail.texture = resources.GetWhiteTexture();
         trail.loadedTexturePath.clear();
     }
@@ -239,7 +253,9 @@ void PrepareMeshTrailAppearance(MeshTrailComponent& trail, renderer::ResourceMan
 
 void ApplyMeshTrailMaterial(const TrailMaterialBinding* material, bool skinned, renderer::RenderMeshTrailInput& input)
 {
-    if (!TrailShaderMatchesMesh(material, skinned)) return;
+    if (!TrailShaderMatchesMesh(material, skinned)) {
+        return;
+    }
     input.shader = material->shader;
     input.material = material->paramsCB;
 }
@@ -249,7 +265,7 @@ void ClearMeshTrailMaterialCaches(Scene& scene)
     s_meshTrailCaches.erase(scene.GetRenderSceneGeneration());
 }
 
-} /// @note namespace fbzz::scene::mesh_trail_extraction_detail
+} // namespace fbzz::scene::mesh_trail_extraction_detail
 
 namespace fbzz::scene {
 
@@ -258,4 +274,4 @@ void ReleaseMeshTrailRenderResources(Scene& scene)
     mesh_trail_extraction_detail::ClearMeshTrailMaterialCaches(scene);
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

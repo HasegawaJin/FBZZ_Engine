@@ -25,7 +25,7 @@ namespace fbzz::scene {
 FBZZ_ENGINE_API void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings);
 
 /// @brief ProjectSettings の UI 設定を UI システムへ反映する。
-/// @param ctx 渡すと defaultFontPath をそのコンテキストへ設定する。省略時 (nullptr) は設定しない。
+/// @param[out] ctx 渡すと defaultFontPath をそのコンテキストへ設定する。省略時 (nullptr) は設定しない。
 FBZZ_ENGINE_API void ApplyUISettings(const ProjectSettings& settings, UIInteractionContext* ctx = nullptr);
 
 /// @brief ProjectSettings.window から Window::Config を生成する。
@@ -43,7 +43,7 @@ FBZZ_ENGINE_API void ApplyUISettings(const ProjectSettings& settings, UIInteract
                                                        const renderer::Camera& editorFallback,
                                                        float aspectRatio);
 
-/// @param cameraId 描画に選んだノードの GUID。Editor カメラへフォールバックした場合は空。
+/// @param[out] cameraId 描画に選んだノードの GUID。Editor カメラへフォールバックした場合は空。
 [[nodiscard]] FBZZ_ENGINE_API renderer::Camera ResolveEditorGameCamera(Scene& scene,
                                                        const renderer::Camera& editorFallback,
                                                        float aspectRatio, std::string* cameraId);
@@ -59,4 +59,4 @@ FBZZ_ENGINE_API void ApplyUISettings(const ProjectSettings& settings, UIInteract
 /// @note 実体は CameraCullingSettings.hpp で定義される POD。RenderSystem 側と共有する。
 [[nodiscard]] FBZZ_ENGINE_API CameraCullingSettings ResolveGameCullingSettings(Scene& scene);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -24,13 +24,17 @@ float OriginalHeight(const scene::WaterComponent& water, float x, float z, float
         math::Vector3 result{};
         for (size_t i = 0; i < activeCount; ++i) {
             const auto& wave = water.waves[static_cast<size_t>(i)];
-            if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
+            if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) {
+                continue;
+            }
             const int waveIndex = static_cast<int>(i);
             const float k = math::TWO_PI / wave.wavelength;
             const float omega = std::sqrt(9.8f * k);
             for (int component = 0; component < 2; ++component) {
                 const auto part = Water::WaveSpreadComponent(waveIndex, component, wave.direction.Normalized(), water.waveSpread);
-                if (part.amplitudeScale <= 0.001f) continue;
+                if (part.amplitudeScale <= 0.001f) {
+                    continue;
+                }
                 const auto dir = part.direction;
                 const float envelope = Water::WaveGroupEnvelope(waveIndex, dir, k, omega, point.x, point.y, time, water.waveGrouping);
                 const float phase = k * (dir.x * point.x + dir.y * point.y) - omega * time;
@@ -54,7 +58,9 @@ float OriginalHeight(const scene::WaterComponent& water, float x, float z, float
     float contraction = 0.0f;
     for (size_t i = 0; i < activeCount; ++i) {
         const auto& wave = water.waves[i];
-        if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
+        if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) {
+            continue;
+        }
         contraction += math::Clamp01(wave.steepness) * wave.amplitude
             * peak * (math::TWO_PI / wave.wavelength);
     }
@@ -118,7 +124,9 @@ TEST_F(WaterOptimizationTest, ActiveWaveCountLimitsEvaluationAndIgnoresInactiveE
         water.waveCount = activeCount;
         const float before = water.GetSurfaceHeightAt(7.25f, -3.5f, 1.75f);
         EXPECT_NEAR(before, OriginalHeight(water, 7.25f, -3.5f, 1.75f), 1.0e-5f);
-        if (activeCount >= water.waves.size()) continue;
+        if (activeCount >= water.waves.size()) {
+            continue;
+        }
 
         const size_t inactiveIndex = static_cast<size_t>(activeCount);
         const scene::GerstnerWave savedWave = water.waves[inactiveIndex];

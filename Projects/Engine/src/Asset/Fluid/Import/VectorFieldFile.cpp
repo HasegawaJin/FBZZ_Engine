@@ -49,9 +49,13 @@ bool HasPngExtension(const std::string& path)
 bool ReadFieldMeta(const std::string& path, toml::table& root)
 {
     std::string text;
-    if (!util::FileSystem::ReadText(path + ".meta", text)) return false;
+    if (!util::FileSystem::ReadText(path + ".meta", text)) {
+        return false;
+    }
     const auto parsed = toml::parse(text);
-    if (!parsed) return false;
+    if (!parsed) {
+        return false;
+    }
     root = parsed.table();
     return true;
 }
@@ -60,16 +64,19 @@ bool SaveVectorFieldPng(const std::string& path, const fluid::VectorFieldAsset& 
 {
     if (source.Empty() || source.sizeX > kMaxResolution || source.sizeY > kMaxResolution
         || source.sizeZ > kMaxResolution
-        || source.data.size() != static_cast<size_t>(source.sizeX) * source.sizeY * source.sizeZ)
+        || source.data.size() != static_cast<size_t>(source.sizeX) * source.sizeY * source.sizeZ) {
         return false;
+    }
     const auto finite = [](const math::Vector3& v) {
         return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
     };
     if (!finite(source.boundsMin) || !finite(source.boundsMax)
         || source.boundsMin.x >= source.boundsMax.x || source.boundsMin.y >= source.boundsMax.y
-        || source.boundsMin.z >= source.boundsMax.z) return false;
+        || source.boundsMin.z >= source.boundsMax.z) {
+        return false;
+    }
     for (const auto& value : source.data) if (!finite(value)) return false;
-    /// @note 32³へリサンプルしてから量子化する。CPU と GPU の格子を揃える。
+    // 32³へリサンプルしてから量子化する。CPU と GPU の格子を揃える。
     auto field = source;
     fluid::NormalizeVectorField(field);
     std::vector<uint8_t> pixels(field.data.size() * 4, 255);
@@ -79,7 +86,9 @@ bool SaveVectorFieldPng(const std::string& path, const fluid::VectorFieldAsset& 
         pixels[i * 4 + 2] = fluid::EncodeVectorFieldByte(field.data[i].z, field.maxMagnitude);
     }
     toml::table root;
-    if (util::FileSystem::Exists(path + ".meta") && !ReadFieldMeta(path, root)) return false;
+    if (util::FileSystem::Exists(path + ".meta") && !ReadFieldMeta(path, root)) {
+        return false;
+    }
     toml::table descriptor;
     descriptor.insert("version", 1);
     descriptor.insert("size", toml::array{ field.sizeX, field.sizeY, field.sizeZ });
@@ -87,11 +96,13 @@ bool SaveVectorFieldPng(const std::string& path, const fluid::VectorFieldAsset& 
     descriptor.insert("bounds_max", toml::array{ field.boundsMax.x, field.boundsMax.y, field.boundsMax.z });
     descriptor.insert("max_magnitude", field.maxMagnitude);
     root.insert_or_assign("vector_field", std::move(descriptor));
-    /// @note 通常の画像として開いても速度値を色変換・圧縮・縮小しない。
+    // 通常の画像として開いても速度値を色変換・圧縮・縮小しない。
     root.insert_or_assign("texture", toml::table{
         { "type", "data" }, { "srgb", false }, { "compression", "None" },
         { "mipmaps", false }, { "max_size", 16384 } });
-    if (!EnsureCom()) return false;
+    if (!EnsureCom()) {
+        return false;
+    }
     std::string error;
     if (!detail::SavePngRgba8(util::FileSystem::PathFromUtf8(path), field.sizeX,
                              field.sizeY * field.sizeZ, pixels, error)) {
@@ -106,43 +117,60 @@ bool SaveVectorFieldPng(const std::string& path, const fluid::VectorFieldAsset& 
 bool LoadVectorFieldPng(const std::string& path, fluid::VectorFieldAsset& outField)
 {
     toml::table root;
-    if (!ReadFieldMeta(path, root) || root["vector_field"]["version"].value_or(0) != 1) return false;
+    if (!ReadFieldMeta(path, root) || root["vector_field"]["version"].value_or(0) != 1) {
+        return false;
+    }
     const auto descriptor = root["vector_field"];
     const auto* sizes = descriptor["size"].as_array();
     const auto* minBounds = descriptor["bounds_min"].as_array();
     const auto* maxBounds = descriptor["bounds_max"].as_array();
     if (!sizes || sizes->size() != 3 || !minBounds || minBounds->size() != 3
-        || !maxBounds || maxBounds->size() != 3) return false;
+        || !maxBounds || maxBounds->size() != 3) {
+        return false;
+    }
     fluid::VectorFieldAsset field;
     field.sizeX = (*sizes)[0].value_or(0u);
     field.sizeY = (*sizes)[1].value_or(0u);
     field.sizeZ = (*sizes)[2].value_or(0u);
     if (field.sizeX == 0 || field.sizeY == 0 || field.sizeZ == 0
-        || field.sizeX > kMaxResolution || field.sizeY > kMaxResolution || field.sizeZ > kMaxResolution)
+        || field.sizeX > kMaxResolution || field.sizeY > kMaxResolution || field.sizeZ > kMaxResolution) {
         return false;
+    }
     field.maxMagnitude = descriptor["max_magnitude"].value_or(0.0f);
-    if (!std::isfinite(field.maxMagnitude) || field.maxMagnitude <= 0.0f) return false;
+    if (!std::isfinite(field.maxMagnitude) || field.maxMagnitude <= 0.0f) {
+        return false;
+    }
     float lower[3], upper[3];
     for (size_t i = 0; i < 3; ++i) {
         const auto a = (*minBounds)[i].value<float>();
         const auto b = (*maxBounds)[i].value<float>();
-        if (!a || !b || !std::isfinite(*a) || !std::isfinite(*b) || *a >= *b) return false;
+        if (!a || !b || !std::isfinite(*a) || !std::isfinite(*b) || *a >= *b) {
+            return false;
+        }
         lower[i] = *a;
         upper[i] = *b;
     }
     field.boundsMin = { lower[0], lower[1], lower[2] };
     field.boundsMax = { upper[0], upper[1], upper[2] };
-    if (!EnsureCom()) return false;
+    if (!EnsureCom()) {
+        return false;
+    }
     DirectX::ScratchImage image;
     const auto imagePath = util::FileSystem::PathFromUtf8(path);
     if (FAILED(DirectX::LoadFromWICFile(imagePath.c_str(),
-        DirectX::WIC_FLAGS_FORCE_RGB | DirectX::WIC_FLAGS_IGNORE_SRGB, nullptr, image))) return false;
+        DirectX::WIC_FLAGS_FORCE_RGB | DirectX::WIC_FLAGS_IGNORE_SRGB, nullptr, image))) {
+        return false;
+    }
     const DirectX::Image* source = image.GetImage(0, 0, 0);
-    if (!source || source->width != field.sizeX || source->height != field.sizeY * field.sizeZ) return false;
+    if (!source || source->width != field.sizeX || source->height != field.sizeY * field.sizeZ) {
+        return false;
+    }
     DirectX::ScratchImage converted;
     if (source->format != DXGI_FORMAT_R8G8B8A8_UNORM) {
         if (FAILED(DirectX::Convert(*source, DXGI_FORMAT_R8G8B8A8_UNORM,
-            DirectX::TEX_FILTER_DEFAULT, 0.0f, converted))) return false;
+            DirectX::TEX_FILTER_DEFAULT, 0.0f, converted))) {
+            return false;
+        }
         source = converted.GetImage(0, 0, 0);
     }
     field.data.resize(static_cast<size_t>(field.sizeX) * field.sizeY * field.sizeZ);
@@ -151,14 +179,15 @@ bool LoadVectorFieldPng(const std::string& path, fluid::VectorFieldAsset& outFie
     };
     for (size_t y = 0; y < source->height; ++y) {
         const auto* row = source->pixels + y * source->rowPitch;
-        for (size_t x = 0; x < source->width; ++x)
+        for (size_t x = 0; x < source->width; ++x) {
             field.data[y * field.sizeX + x] = { decode(row[x * 4]), decode(row[x * 4 + 1]), decode(row[x * 4 + 2]) };
+        }
     }
     outField = std::move(field);
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool SaveVectorField(const std::string& absPath, const fluid::VectorFieldAsset& field)
 {
@@ -182,15 +211,19 @@ bool IsVectorFieldPng(const std::string& absPath)
 bool ImportFgaFile(const std::string& absPath, fluid::VectorFieldAsset& outField)
 {
     std::ifstream in(absPath);
-    if (!in) return false;
+    if (!in) {
+        return false;
+    }
 
     std::vector<float> values;
     std::string token;
     while (std::getline(in, token, ',')) {
-        /// @note 行末の改行が混ざるので、数値として読めた分だけを拾う。
+        // 行末の改行が混ざるので、数値として読めた分だけを拾う。
         std::istringstream parse(token);
         float value = 0.0f;
-        if (parse >> value) values.push_back(value);
+        if (parse >> value) {
+            values.push_back(value);
+        }
     }
     if (values.size() < 9) {
         FBZZ_LOG_ERROR("VectorField: .fga のヘッダーが読めません: %s", absPath.c_str());
@@ -208,7 +241,7 @@ bool ImportFgaFile(const std::string& absPath, fluid::VectorFieldAsset& outField
                        field.sizeX, field.sizeY, field.sizeZ, absPath.c_str());
         return false;
     }
-    /// @note .fga は cm 基準で書かれる。エンジンは m なので 1/100 する。
+    // .fga は cm 基準で書かれる。エンジンは m なので 1/100 する。
     constexpr float kCmToM = 0.01f;
     field.boundsMin = { values[3] * kCmToM, values[4] * kCmToM, values[5] * kCmToM };
     field.boundsMax = { values[6] * kCmToM, values[7] * kCmToM, values[8] * kCmToM };

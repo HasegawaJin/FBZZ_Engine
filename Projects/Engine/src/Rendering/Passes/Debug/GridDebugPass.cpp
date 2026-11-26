@@ -12,7 +12,7 @@ std::string_view GridDebugPass::Name() const { return "GridDebug"; }
 
 void GridDebugPass::Setup(renderer::PassBuilder& builder, const RenderPassContext&) const
 {
-    /// @note 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
     builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
@@ -29,14 +29,14 @@ void GridDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kAxisColorX = { 0.60f, 0.18f, 0.18f, 1.0f };
     constexpr math::Vector4 kAxisColorZ = { 0.18f, 0.18f, 0.60f, 1.0f };
 
-    /// @note TAA 前の HDR 深度と同じ射影で比較し、モデルとの重なりを位相ごとにずらさない。
+    // TAA 前の HDR 深度と同じ射影で比較し、モデルとの重なりを位相ごとにずらさない。
     /// @see Graphics/Pipeline/Resources/RenderConstants.hpp の MakeJitteredViewProjection。
     const auto viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, viewProjection);
     const float extent = static_cast<float>(kHalfCount) * kCellSize;
     for (int i = -kHalfCount; i <= kHalfCount; ++i) {
         const float offset = static_cast<float>(i) * kCellSize;
-        /// @note グリッドは世界の床に置かれた線のため、深度テストなしで描くとメッシュの手前へ浮いて見え前後関係が壊れる。LineDepthTested でシーンジオメトリに遮蔽させる (ギズモ類は深度なしの Line のまま)。
+        // グリッドは世界の床に置かれた線のため、深度テストなしで描くとメッシュの手前へ浮いて見え前後関係が壊れる。LineDepthTested でシーンジオメトリに遮蔽させる (ギズモ類は深度なしの Line のまま)。
         renderer::DebugDraw::LineDepthTested(ctx.renderer,
             { offset, 0.0f, -extent }, { offset, 0.0f, extent },
             (i == 0) ? kAxisColorX : kGridColor);
@@ -47,4 +47,4 @@ void GridDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
     renderer::DebugDraw::Flush();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

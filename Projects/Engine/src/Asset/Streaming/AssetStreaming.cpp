@@ -77,10 +77,8 @@ struct AssetStreamer::Impl {
         AssetPriority  priority = AssetPriority::Background;
         std::uint64_t  enqueuedPump = 0;
 
-        /// @note キャンセル後の再要求で旧ジョブの結果を拾わない。
-        std::uint64_t  attempt = 1;
-        /// @note これより古い読み直しの結果は公開しない。
-        std::uint32_t  requestedRevision = 1;
+        std::uint64_t  attempt = 1; ///< キャンセル後の再要求で旧ジョブの結果を拾わない。
+        std::uint32_t  requestedRevision = 1; ///< これより古い読み直しの結果は公開しない。
         std::uint32_t  publishedRevision = 0;
 
         std::unique_ptr<IDecodedAsset> decoded;
@@ -99,14 +97,11 @@ struct AssetStreamer::Impl {
         /// @note 次のジョブで作る品質。公開時に residentQuality へ反映する。
         AssetQuality   requestedQuality = 0;
         AssetQuality   residentQuality = 0;
-        /// @note 利用権から集約した希望品質と、その値になった Pump。ヒステリシスの起点。
-        AssetQuality   desiredQuality = 0;
+        AssetQuality   desiredQuality = 0; ///< 利用権から集約した希望品質と、その値になった Pump。ヒステリシスの起点。
         std::uint64_t  desiredSincePump = 0;
         std::uint64_t  residentBytes = 0;
-        /// @note 利用権がゼロになった Pump。LRU の順序と猶予の起点。
-        std::uint64_t  releasedAtPump = 0;
-        /// @note 解放を断られた Pump。猶予の間は試し直さない。
-        std::uint64_t  evictionRefusedAtPump = 0;
+        std::uint64_t  releasedAtPump = 0; ///< 利用権がゼロになった Pump。LRU の順序と猶予の起点。
+        std::uint64_t  evictionRefusedAtPump = 0; ///< 解放を断られた Pump。猶予の間は試し直さない。
         bool           evictionRefused = false;
         /// @}
     };
@@ -115,8 +110,7 @@ struct AssetStreamer::Impl {
         std::uint64_t entryId = 0;
         AssetPriority priority = AssetPriority::Visible;
         std::optional<AssetQuality> quality;
-        /// @note 他のアセットの依存として台帳自身が持つ利用権。
-        std::uint64_t ownerEntryId = 0;
+        std::uint64_t ownerEntryId = 0; ///< 他のアセットの依存として台帳自身が持つ利用権。
     };
 
     JobExecutor executor;
@@ -141,12 +135,10 @@ struct AssetStreamer::Impl {
     std::uint64_t syncLoads = 0;
     std::uint64_t evictions = 0;
     std::uint32_t deferredPrefetches = 0;
-    /// @note 公開済み実体 + 保持中の CPU 成果物。Pump のたびに数え直す。
-    std::uint64_t residentBytes = 0;
+    std::uint64_t residentBytes = 0; ///< 公開済み実体 + 保持中の CPU 成果物。Pump のたびに数え直す。
     bool          overBudget = false;
     bool          overBudgetReported = false;
-    /// @note 予算超過が続く間、全アセットの希望品質へ上乗せする段数。
-    AssetQuality  qualityBias = 0;
+    AssetQuality  qualityBias = 0; ///< 予算超過が続く間、全アセットの希望品質へ上乗せする段数。
     std::uint64_t qualityBiasChangedPump = 0;
     std::unordered_set<std::string> reportedSyncMisses;
 
@@ -180,9 +172,15 @@ struct AssetStreamer::Impl {
 
     [[nodiscard]] static AssetLoadState StateOf(const Entry& entry)
     {
-        if (IsPublished(entry)) return AssetLoadState::Ready;
-        if (entry.failed)       return AssetLoadState::Failed;
-        if (entry.canceled)     return AssetLoadState::Canceled;
+        if (IsPublished(entry)) {
+            return AssetLoadState::Ready;
+        }
+        if (entry.failed) {
+            return AssetLoadState::Failed;
+        }
+        if (entry.canceled) {
+            return AssetLoadState::Canceled;
+        }
         switch (entry.phase) {
         case Phase::Queued:              return AssetLoadState::Queued;
         case Phase::Decoding:            return AssetLoadState::Decoding;
@@ -201,13 +199,19 @@ struct AssetStreamer::Impl {
         std::optional<AssetQuality> quality;
         for (const std::uint64_t leaseId : entry.leaseIds) {
             const auto it = leases.find(leaseId);
-            if (it == leases.end()) continue;
-            if (it->second.priority < best) best = it->second.priority;
+            if (it == leases.end()) {
+                continue;
+            }
+            if (it->second.priority < best) {
+                best = it->second.priority;
+            }
             const auto requested = it->second.quality;
-            if (requested && (!quality || *requested < *quality)) quality = requested;
+            if (requested && (!quality || *requested < *quality)) {
+                quality = requested;
+            }
         }
         entry.priority = best;
-        /// @note 保持だけの利用権しかなければ、直前の希望品質 (初回は 0) を使う。
+        // 保持だけの利用権しかなければ、直前の希望品質 (初回は 0) を使う。
         if (quality && *quality != entry.desiredQuality) {
             entry.desiredQuality = *quality;
             entry.desiredSincePump = pumpIndex;
@@ -217,7 +221,9 @@ struct AssetStreamer::Impl {
     /// @brief 予算による上乗せを足し、経路の最低品質で止めた実効の希望品質。
     [[nodiscard]] AssetQuality EffectiveQuality(const Entry& entry) const
     {
-        if (!entry.channel->SupportsQuality()) return 0;
+        if (!entry.channel->SupportsQuality()) {
+            return 0;
+        }
         const unsigned biased = static_cast<unsigned>(entry.desiredQuality) + qualityBias;
         return static_cast<AssetQuality>((std::min)(biased, static_cast<unsigned>(entry.channel->LowestQuality())));
     }
@@ -225,14 +231,18 @@ struct AssetStreamer::Impl {
     /// @brief 公開済み実体の常駐バイト数。非同期で作ったものは台帳が数え、同期で入ったものは経路に見積もらせる。
     [[nodiscard]] std::uint64_t MeasureResident(const Entry& entry) const
     {
-        if (entry.residentBytes != 0) return entry.residentBytes;
+        if (entry.residentBytes != 0) {
+            return entry.residentBytes;
+        }
         return entry.channel->EstimateResidentBytes(entry.handle);
     }
 
     [[nodiscard]] AssetLoadStatus MakeStatus(const Entry* entry) const
     {
         AssetLoadStatus status;
-        if (!entry) return status;
+        if (!entry) {
+            return status;
+        }
         status.state = StateOf(*entry);
         status.error = entry->error;
         status.publishedRevision = entry->publishedRevision;
@@ -252,7 +262,9 @@ struct AssetStreamer::Impl {
 
     void DiscardCandidate(Entry& entry)
     {
-        if (!entry.candidate) return;
+        if (!entry.candidate) {
+            return;
+        }
         const bool deviceValid = entry.channel->DeviceEpoch() == entry.candidateDeviceEpoch;
         entry.channel->Discard(*entry.candidate, deviceValid);
         entry.candidate.reset();
@@ -261,11 +273,13 @@ struct AssetStreamer::Impl {
 
     void ReleaseLeaseList(std::vector<std::uint64_t>& list)
     {
-        /// @note 依存の解放が連鎖してこの Entry 自身を消すことは無い (親が依存を持つ向きしか無い) が、
-        ///       Release 中に list が書き換わらないよう先に取り出す。
+        // 依存の解放が連鎖してこの Entry 自身を消すことは無い (親が依存を持つ向きしか無い) が、
+        //       Release 中に list が書き換わらないよう先に取り出す。
         std::vector<std::uint64_t> taken;
         taken.swap(list);
-        for (const std::uint64_t leaseId : taken) ReleaseLease(leaseId);
+        for (const std::uint64_t leaseId : taken) {
+            ReleaseLease(leaseId);
+        }
     }
 
     /// @brief 公開前の作業をすべて捨てる。実行中ジョブの結果は attempt の不一致で棄却される。
@@ -282,7 +296,7 @@ struct AssetStreamer::Impl {
     void Fail(Entry& entry, AssetLoadError error, std::string message)
     {
         if (IsPublished(entry)) {
-            /// @note 公開中の実体は残す。更新失敗だけを記録する。
+            // 公開中の実体は残す。更新失敗だけを記録する。
             entry.updateFailed = true;
             entry.message = std::move(message);
             entry.phase = Phase::Idle;
@@ -300,33 +314,43 @@ struct AssetStreamer::Impl {
     void ReleaseLease(std::uint64_t leaseId)
     {
         const auto leaseIt = leases.find(leaseId);
-        if (leaseIt == leases.end()) return;
+        if (leaseIt == leases.end()) {
+            return;
+        }
         const std::uint64_t entryId = leaseIt->second.entryId;
         leases.erase(leaseIt);
 
         Entry* entry = FindEntry(entryId);
-        if (!entry) return;
+        if (!entry) {
+            return;
+        }
         entry->leaseIds.erase(std::remove(entry->leaseIds.begin(), entry->leaseIds.end(), leaseId),
                               entry->leaseIds.end());
         RecomputePriority(*entry);
-        if (!entry->leaseIds.empty()) return;
-        /// @note 公開済みは猶予の後に LRU で解放する (EvictUnused)。ここでは起点だけ記録する。
+        if (!entry->leaseIds.empty()) {
+            return;
+        }
+        // 公開済みは猶予の後に LRU で解放する (EvictUnused)。ここでは起点だけ記録する。
         if (IsPublished(*entry)) {
             entry->releasedAtPump = pumpIndex;
             entry->evictionRefused = false;
             return;
         }
-        /// @note 失敗した要求はスロットごと残す。返すと解放→再要求のたびに投入し直す失敗ループになる。
-        ///       再試行は Retry だけが行う。
-        if (entry->failed) return;
+        // 失敗した要求はスロットごと残す。返すと解放→再要求のたびに投入し直す失敗ループになる。
+        //       再試行は Retry だけが行う。
+        if (entry->failed) {
+            return;
+        }
 
-        /// @note 利用者が居なくなった未公開の要求は取り下げる。予約したスロットも返し、
-        ///       世代を進めて古いハンドルを無効にする。
+        // 利用者が居なくなった未公開の要求は取り下げる。予約したスロットも返し、
+        //       世代を進めて古いハンドルを無効にする。
         AbandonWork(*entry);
         entry->canceled = true;
         if (entry->handle.IsValid()) {
             entryByHandle.erase(HandleKey(entry->typeName, entry->handle));
-            if (entry->channel->IsLive(entry->handle)) entry->channel->Free(entry->handle, entry->key);
+            if (entry->channel->IsLive(entry->handle)) {
+                entry->channel->Free(entry->handle, entry->key);
+            }
             entry->handle = {};
         }
     }
@@ -345,13 +369,15 @@ struct AssetStreamer::Impl {
                        AssetPriority priority, std::optional<AssetQuality> quality, std::uint64_t ownerEntryId)
     {
         const auto channelIt = channels.find(std::string(typeName));
-        if (channelIt == channels.end()) return { 0, {}, AssetLoadError::NoChannel };
+        if (channelIt == channels.end()) {
+            return { 0, {}, AssetLoadError::NoChannel };
+        }
         const std::shared_ptr<IAssetStreamChannel>& channel = channelIt->second;
         const std::string key = channel->MakeKey(reference);
 
         if (Entry* existing = FindByKey(typeName, key)) {
             if (!existing->handle.IsValid() || !existing->channel->IsLive(existing->handle)) {
-                /// @note 取り下げでスロットを返した後の再要求。新しいスロットと新しい attempt で始め直す。
+                // 取り下げでスロットを返した後の再要求。新しいスロットと新しい attempt で始め直す。
                 existing->handle = existing->channel->Reserve(key);
                 entryByHandle[HandleKey(typeName, existing->handle)] = existing->id;
                 existing->canceled = false;
@@ -366,7 +392,9 @@ struct AssetStreamer::Impl {
                 Enqueue(*existing);
             }
             const std::uint64_t leaseId = AddLease(*existing, priority, quality, ownerEntryId);
-            if (existing->phase == Phase::Queued) existing->requestedQuality = EffectiveQuality(*existing);
+            if (existing->phase == Phase::Queued) {
+                existing->requestedQuality = EffectiveQuality(*existing);
+            }
             return { leaseId, existing->handle, AssetLoadError::None };
         }
 
@@ -375,9 +403,11 @@ struct AssetStreamer::Impl {
                           config.maxEntries, reference.c_str());
             return { 0, {}, AssetLoadError::BudgetExceeded };
         }
-        /// @note 解放できるものを解放しても予算を超えている = 固定物だけで溢れている。無制限に確保して
-        ///       解決せず、新しいキーを断って呼び出し側に知らせる。
-        if (overBudget) return { 0, {}, AssetLoadError::BudgetExceeded };
+        // 解放できるものを解放しても予算を超えている = 固定物だけで溢れている。無制限に確保して
+        //       解決せず、新しいキーを断って呼び出し側に知らせる。
+        if (overBudget) {
+            return { 0, {}, AssetLoadError::BudgetExceeded };
+        }
 
         auto entry = std::make_unique<Entry>();
         entry->id = nextEntryId++;
@@ -387,7 +417,7 @@ struct AssetStreamer::Impl {
 
         const RawAssetHandle cached = channel->Lookup(key);
         if (cached.IsValid() && channel->IsFilled(cached)) {
-            /// @note 同期 Load<T> で既に読まれている。ジョブを出さずそのまま READY にする。
+            // 同期 Load<T> で既に読まれている。ジョブを出さずそのまま READY にする。
             entry->handle = cached;
             entry->publishedRevision = entry->requestedRevision;
         } else {
@@ -400,10 +430,14 @@ struct AssetStreamer::Impl {
         entryByHandle[HandleKey(typeName, stored.handle)] = stored.id;
         entries.emplace(stored.id, std::move(entry));
         const std::uint64_t leaseId = AddLease(stored, priority, quality, ownerEntryId);
-        /// @note 初回のロードは最初から希望品質で作る。同期で入っていた実体は最高品質として扱う。
+        // 初回のロードは最初から希望品質で作る。同期で入っていた実体は最高品質として扱う。
         stored.desiredSincePump = pumpIndex;
-        if (IsPublished(stored)) stored.residentQuality = 0;
-        else stored.requestedQuality = EffectiveQuality(stored);
+        if (IsPublished(stored)) {
+            stored.residentQuality = 0;
+        }
+        else {
+            stored.requestedQuality = EffectiveQuality(stored);
+        }
         return { leaseId, stored.handle, AssetLoadError::None };
     }
 
@@ -412,16 +446,28 @@ struct AssetStreamer::Impl {
                                             std::unordered_set<std::uint64_t>& visited,
                                             std::vector<std::string>& path) const
     {
-        if (fromId == targetId) return true;
-        if (!visited.insert(fromId).second) return false;
+        if (fromId == targetId) {
+            return true;
+        }
+        if (!visited.insert(fromId).second) {
+            return false;
+        }
         const Entry* from = FindEntry(fromId);
-        if (!from || !from->decoded) return false;
+        if (!from || !from->decoded) {
+            return false;
+        }
         for (const std::uint64_t leaseId : from->pendingDependencyLeases) {
             const auto it = leases.find(leaseId);
-            if (it == leases.end()) continue;
-            if (!IsRequiredDependency(*from, it->second.entryId)) continue;
+            if (it == leases.end()) {
+                continue;
+            }
+            if (!IsRequiredDependency(*from, it->second.entryId)) {
+                continue;
+            }
             path.push_back(from->key);
-            if (ReachesThroughRequiredDependencies(it->second.entryId, targetId, visited, path)) return true;
+            if (ReachesThroughRequiredDependencies(it->second.entryId, targetId, visited, path)) {
+                return true;
+            }
             path.pop_back();
         }
         return false;
@@ -430,10 +476,16 @@ struct AssetStreamer::Impl {
     [[nodiscard]] bool IsRequiredDependency(const Entry& parent, std::uint64_t dependencyEntryId) const
     {
         const Entry* dependency = FindEntry(dependencyEntryId);
-        if (!dependency || !parent.decoded) return false;
+        if (!dependency || !parent.decoded) {
+            return false;
+        }
         for (const AssetDependency& declared : parent.decoded->dependencies) {
-            if (!declared.required || declared.typeName != dependency->typeName) continue;
-            if (dependency->channel->MakeKey(declared.reference) == dependency->key) return true;
+            if (!declared.required || declared.typeName != dependency->typeName) {
+                continue;
+            }
+            if (dependency->channel->MakeKey(declared.reference) == dependency->key) {
+                return true;
+            }
         }
         return false;
     }
@@ -450,7 +502,9 @@ struct AssetStreamer::Impl {
             const RawRequest request = Request(dependency.typeName, dependency.reference, entry.priority,
                                                dependency.quality, entry.id);
             if (request.leaseId == 0) {
-                if (!dependency.required) continue;
+                if (!dependency.required) {
+                    continue;
+                }
                 Fail(entry, AssetLoadError::DependencyFailed,
                      "必須依存を要求できません: " + dependency.reference);
                 return;
@@ -458,15 +512,19 @@ struct AssetStreamer::Impl {
             entry.pendingDependencyLeases.push_back(request.leaseId);
         }
 
-        /// @note 循環はワーカー同士の待ち合わせにせず、ここで経路付きの失敗にする。
+        // 循環はワーカー同士の待ち合わせにせず、ここで経路付きの失敗にする。
         for (const std::uint64_t leaseId : entry.pendingDependencyLeases) {
             const auto it = leases.find(leaseId);
-            if (it == leases.end() || !IsRequiredDependency(entry, it->second.entryId)) continue;
+            if (it == leases.end() || !IsRequiredDependency(entry, it->second.entryId)) {
+                continue;
+            }
             std::unordered_set<std::uint64_t> visited;
             std::vector<std::string> path;
             if (ReachesThroughRequiredDependencies(it->second.entryId, entry.id, visited, path)) {
                 std::string message = "必須依存が循環しています: " + entry.key;
-                for (const std::string& step : path) message += " -> " + step;
+                for (const std::string& step : path) {
+                    message += " -> " + step;
+                }
                 message += " -> " + entry.key;
                 Fail(entry, AssetLoadError::DependencyCycle, std::move(message));
                 return;
@@ -478,18 +536,30 @@ struct AssetStreamer::Impl {
     /// @return 状態が変わったら true。
     bool ResolveDependencies(Entry& entry)
     {
-        if (entry.phase != Phase::WaitingDependencies) return false;
+        if (entry.phase != Phase::WaitingDependencies) {
+            return false;
+        }
         for (const std::uint64_t leaseId : entry.pendingDependencyLeases) {
             const auto it = leases.find(leaseId);
-            if (it == leases.end()) continue;
-            if (!IsRequiredDependency(entry, it->second.entryId)) continue;
+            if (it == leases.end()) {
+                continue;
+            }
+            if (!IsRequiredDependency(entry, it->second.entryId)) {
+                continue;
+            }
             const Entry* dependency = FindEntry(it->second.entryId);
-            if (!dependency) continue;
+            if (!dependency) {
+                continue;
+            }
             const AssetLoadState state = StateOf(*dependency);
-            if (state == AssetLoadState::Ready) continue;
+            if (state == AssetLoadState::Ready) {
+                continue;
+            }
             if (state == AssetLoadState::Failed || state == AssetLoadState::Canceled) {
                 std::string message = "必須依存の読み込みに失敗しました: " + dependency->key;
-                if (!dependency->message.empty()) message += " (" + dependency->message + ")";
+                if (!dependency->message.empty()) {
+                    message += " (" + dependency->message + ")";
+                }
                 Fail(entry, AssetLoadError::DependencyFailed, std::move(message));
                 return true;
             }
@@ -508,9 +578,11 @@ struct AssetStreamer::Impl {
             drained.swap(completions->items);
         }
         for (Completion& completion : drained) {
-            if (jobsInFlight > 0) --jobsInFlight;
+            if (jobsInFlight > 0) {
+                --jobsInFlight;
+            }
             Entry* entry = FindEntry(completion.entryId);
-            /// @note 受け取った時点で照合する。公開直前にも revision / deviceEpoch をもう一度見る。
+            // 受け取った時点で照合する。公開直前にも revision / deviceEpoch をもう一度見る。
             if (!entry || completion.epoch != epoch || completion.attempt != entry->attempt
                 || completion.revision != entry->requestedRevision) {
                 ++staleCompletionsDropped;
@@ -530,12 +602,13 @@ struct AssetStreamer::Impl {
 
     void AdvanceDependencies()
     {
-        /// @note 依存の失敗は親へ、親の失敗はさらにその親へ伝わる。変化が止まるまで回す。
+        // 依存の失敗は親へ、親の失敗はさらにその親へ伝わる。変化が止まるまで回す。
         bool changed = true;
         for (std::size_t guard = 0; changed && guard <= entries.size(); ++guard) {
             changed = false;
-            for (auto& [id, entry] : entries)
+            for (auto& [id, entry] : entries) {
                 changed |= ResolveDependencies(*entry);
+            }
         }
     }
 
@@ -543,10 +616,16 @@ struct AssetStreamer::Impl {
     {
         std::vector<Entry*> result;
         for (auto& [id, entry] : entries)
-            if (entry->phase == phase) result.push_back(entry.get());
+            if (entry->phase == phase) {
+                result.push_back(entry.get());
+            }
         std::sort(result.begin(), result.end(), [](const Entry* a, const Entry* b) {
-            if (a->priority != b->priority) return a->priority < b->priority;
-            if (a->enqueuedPump != b->enqueuedPump) return a->enqueuedPump < b->enqueuedPump;
+            if (a->priority != b->priority) {
+                return a->priority < b->priority;
+            }
+            if (a->enqueuedPump != b->enqueuedPump) {
+                return a->enqueuedPump < b->enqueuedPump;
+            }
             return a->id < b->id;
         });
         return result;
@@ -555,11 +634,15 @@ struct AssetStreamer::Impl {
     void SubmitUploads()
     {
         for (Entry* entry : Collect(Phase::UploadQueued)) {
-            if (uploadsThisPump >= config.maxUploadsPerPump) break;
+            if (uploadsThisPump >= config.maxUploadsPerPump) {
+                break;
+            }
             const std::uint64_t bytes = entry->decoded ? entry->decoded->CpuBytes() : 0;
-            /// @note 1 件だけで上限を超える転送も、その Pump の最初の 1 件なら通す。
-            ///       通さないと永遠に投入されない。
-            if (uploadsThisPump > 0 && uploadedBytesLastPump + bytes > config.maxUploadBytesPerPump) break;
+            // 1 件だけで上限を超える転送も、その Pump の最初の 1 件なら通す。
+            //       通さないと永遠に投入されない。
+            if (uploadsThisPump > 0 && uploadedBytesLastPump + bytes > config.maxUploadBytesPerPump) {
+                break;
+            }
 
             std::uint64_t token = 0;
             std::string error;
@@ -583,12 +666,14 @@ struct AssetStreamer::Impl {
     {
         for (Entry* entry : Collect(Phase::Uploading)) {
             if (entry->channel->DeviceEpoch() != entry->candidateDeviceEpoch) {
-                /// @note デバイスが作り直された。GPU 候補は捨て、残してある CPU 成果物から転送し直す。
+                // デバイスが作り直された。GPU 候補は捨て、残してある CPU 成果物から転送し直す。
                 DiscardCandidate(*entry);
                 entry->phase = Phase::UploadQueued;
                 continue;
             }
-            if (!entry->channel->IsUploadComplete(entry->uploadToken)) continue;
+            if (!entry->channel->IsUploadComplete(entry->uploadToken)) {
+                continue;
+            }
 
             if (!entry->channel->IsLive(entry->handle)) {
                 ++staleCompletionsDropped;
@@ -617,7 +702,7 @@ struct AssetStreamer::Impl {
             entry->error = AssetLoadError::None;
             entry->message.clear();
             entry->phase = Phase::Idle;
-            /// @note CPU 成果物は公開後に手放す。依存の利用権は公開中の中身に付け替える。
+            // CPU 成果物は公開後に手放す。依存の利用権は公開中の中身に付け替える。
             entry->decoded.reset();
             ReleaseLeaseList(entry->dependencyLeases);
             entry->dependencyLeases.swap(entry->pendingDependencyLeases);
@@ -628,14 +713,16 @@ struct AssetStreamer::Impl {
     {
         deferredPrefetches = 0;
         for (Entry* entry : Collect(Phase::Queued)) {
-            if (jobsInFlight >= config.maxJobsInFlight) break;
-            /// @note 予算不足の間は先読み・背景の読み込みを延期する。必須と可視は止めない。
+            if (jobsInFlight >= config.maxJobsInFlight) {
+                break;
+            }
+            // 予算不足の間は先読み・背景の読み込みを延期する。必須と可視は止めない。
             if (overBudget && entry->priority >= AssetPriority::Prefetch) {
                 ++deferredPrefetches;
                 continue;
             }
             AssetJobInput input;
-            /// @note 品質段は Snapshot の前に入れる。経路は «その品質で GPU 実体が既にあるか» の判定に使う。
+            // 品質段は Snapshot の前に入れる。経路は «その品質で GPU 実体が既にあるか» の判定に使う。
             input.key = entry->key;
             input.quality = entry->requestedQuality;
             std::string error;
@@ -671,16 +758,25 @@ struct AssetStreamer::Impl {
         std::uint64_t total = 0;
         std::vector<Entry*> candidates;
         for (auto& [id, entry] : entries) {
-            if (IsPublished(*entry)) total += MeasureResident(*entry);
-            if (entry->decoded) total += entry->decoded->CpuBytes();
-            if (!IsPublished(*entry) || !entry->leaseIds.empty() || entry->phase != Phase::Idle) continue;
-            /// @note 断られたものは一定の間を空けて試し直す (同期 Load の固定が外れていることがある)。
-            if (entry->evictionRefused && pumpIndex - entry->evictionRefusedAtPump < kEvictionRetryPumps)
+            if (IsPublished(*entry)) {
+                total += MeasureResident(*entry);
+            }
+            if (entry->decoded) {
+                total += entry->decoded->CpuBytes();
+            }
+            if (!IsPublished(*entry) || !entry->leaseIds.empty() || entry->phase != Phase::Idle) {
                 continue;
+            }
+            // 断られたものは一定の間を空けて試し直す (同期 Load の固定が外れていることがある)。
+            if (entry->evictionRefused && pumpIndex - entry->evictionRefusedAtPump < kEvictionRetryPumps) {
+                continue;
+            }
             candidates.push_back(entry.get());
         }
         std::sort(candidates.begin(), candidates.end(), [](const Entry* a, const Entry* b) {
-            if (a->releasedAtPump != b->releasedAtPump) return a->releasedAtPump < b->releasedAtPump;
+            if (a->releasedAtPump != b->releasedAtPump) {
+                return a->releasedAtPump < b->releasedAtPump;
+            }
             return a->id < b->id;
         });
 
@@ -689,7 +785,9 @@ struct AssetStreamer::Impl {
             const bool graceExpired = config.evictionGracePumps != 0
                 && pumpIndex - entry->releasedAtPump >= config.evictionGracePumps;
             const bool needRoom = budget != 0 && total > budget;
-            if (!graceExpired && !needRoom) break;
+            if (!graceExpired && !needRoom) {
+                break;
+            }
             const std::uint64_t bytes = MeasureResident(*entry);
             if (!entry->channel->Evict(entry->handle, entry->key)) {
                 entry->evictionRefused = true;
@@ -698,7 +796,7 @@ struct AssetStreamer::Impl {
             }
             total -= (std::min)(total, bytes);
             ++evictions;
-            /// @note スロットは経路が返し済み。DropEntry に二重に Free させない。
+            // スロットは経路が返し済み。DropEntry に二重に Free させない。
             entryByHandle.erase(HandleKey(entry->typeName, entry->handle));
             entry->handle = {};
             DropEntry(*entry);
@@ -713,14 +811,17 @@ struct AssetStreamer::Impl {
                           static_cast<unsigned long long>(total), static_cast<unsigned long long>(budget));
             overBudgetReported = true;
         }
-        if (!overBudget) overBudgetReported = false;
+        if (!overBudget) {
+            overBudgetReported = false;
+        }
 
-        /// @note 任意の高品質表現を落として空きを作る。前の段の作り直しが着地してから次を積む
-        ///       (着地前に積むと一気に最低品質まで落ちる)。戻すのは予算の 1/4 を下回ってから:
-        ///       テクスチャは 1 段戻すと面積が 4 倍になり、それ未満で戻すと超過と回復を往復する。
+        // 任意の高品質表現を落として空きを作る。前の段の作り直しが着地してから次を積む
+        //       (着地前に積むと一気に最低品質まで落ちる)。戻すのは予算の 1/4 を下回ってから:
+        //       テクスチャは 1 段戻すと面積が 4 倍になり、それ未満で戻すと超過と回復を往復する。
         bool qualityWorkInFlight = false;
-        for (const auto& [id, entry] : entries)
+        for (const auto& [id, entry] : entries) {
             qualityWorkInFlight |= IsPublished(*entry) && entry->phase != Phase::Idle;
+        }
         const bool held = pumpIndex - qualityBiasChangedPump >= config.qualityHoldPumps;
         if (overBudget && wasOverBudget && held && !qualityWorkInFlight && qualityBias < 8) {
             ++qualityBias;
@@ -735,14 +836,24 @@ struct AssetStreamer::Impl {
     void UpdateQuality()
     {
         for (auto& [id, entry] : entries) {
-            if (!IsPublished(*entry) || entry->phase != Phase::Idle || entry->leaseIds.empty()) continue;
-            if (!entry->channel->SupportsQuality()) continue;
+            if (!IsPublished(*entry) || entry->phase != Phase::Idle || entry->leaseIds.empty()) {
+                continue;
+            }
+            if (!entry->channel->SupportsQuality()) {
+                continue;
+            }
             const AssetQuality target = EffectiveQuality(*entry);
-            if (target == entry->residentQuality) continue;
-            /// @note 同じ品質で失敗したら、希望が変わるまで試し直さない。
-            if (entry->updateFailed && entry->requestedQuality == target) continue;
-            /// @note 予算による上乗せはそれ自体が間隔を空けて動くので、ここでは利用者の希望だけを待つ。
-            if (pumpIndex - entry->desiredSincePump < config.qualityHoldPumps) continue;
+            if (target == entry->residentQuality) {
+                continue;
+            }
+            // 同じ品質で失敗したら、希望が変わるまで試し直さない。
+            if (entry->updateFailed && entry->requestedQuality == target) {
+                continue;
+            }
+            // 予算による上乗せはそれ自体が間隔を空けて動くので、ここでは利用者の希望だけを待つ。
+            if (pumpIndex - entry->desiredSincePump < config.qualityHoldPumps) {
+                continue;
+            }
             entry->requestedQuality = target;
             ++entry->requestedRevision;
             Enqueue(*entry);
@@ -753,9 +864,13 @@ struct AssetStreamer::Impl {
     {
         AbandonWork(entry);
         ReleaseLeaseList(entry.dependencyLeases);
-        for (const std::uint64_t leaseId : entry.leaseIds) leases.erase(leaseId);
+        for (const std::uint64_t leaseId : entry.leaseIds) {
+            leases.erase(leaseId);
+        }
         entryByKey.erase(JoinKey(entry.typeName, entry.key));
-        if (entry.handle.IsValid()) entryByHandle.erase(HandleKey(entry.typeName, entry.handle));
+        if (entry.handle.IsValid()) {
+            entryByHandle.erase(HandleKey(entry.typeName, entry.handle));
+        }
         entries.erase(entry.id);
     }
 };
@@ -763,9 +878,13 @@ struct AssetStreamer::Impl {
 AssetStreamer& AssetStreamer::Engine()
 {
     static AssetStreamer streamer([](std::function<void()> job) {
-        /// @note TaskSystem が止まった後 (終了処理中) はその場で実行する。結果は epoch で棄却される。
-        if (TaskSystem::WorkerCount() > 0) (void)TaskSystem::Submit(std::move(job));
-        else job();
+        // TaskSystem が止まった後 (終了処理中) はその場で実行する。結果は epoch で棄却される。
+        if (TaskSystem::WorkerCount() > 0) {
+            (void)TaskSystem::Submit(std::move(job));
+        }
+        else {
+            job();
+        }
     });
     return streamer;
 }
@@ -780,8 +899,12 @@ AssetStreamer::AssetStreamer(JobExecutor executor, Config config)
 {
     m_impl->executor = std::move(executor);
     m_impl->config = config;
-    if (m_impl->config.maxJobsInFlight == 0) m_impl->config.maxJobsInFlight = 1;
-    if (m_impl->config.maxUploadsPerPump == 0) m_impl->config.maxUploadsPerPump = 1;
+    if (m_impl->config.maxJobsInFlight == 0) {
+        m_impl->config.maxJobsInFlight = 1;
+    }
+    if (m_impl->config.maxUploadsPerPump == 0) {
+        m_impl->config.maxUploadsPerPump = 1;
+    }
 }
 
 /// @note 候補の Discard は呼ばない。静的破棄の時点で ResourceManager は既に無い。
@@ -790,7 +913,9 @@ AssetStreamer::~AssetStreamer() = default;
 
 void AssetStreamer::RegisterChannel(std::shared_ptr<IAssetStreamChannel> channel)
 {
-    if (!channel) return;
+    if (!channel) {
+        return;
+    }
     m_impl->channels[std::string(channel->TypeName())] = std::move(channel);
 }
 
@@ -814,24 +939,35 @@ AssetLoadStatus AssetStreamer::GetLeaseStatus(std::uint64_t leaseId) const
 void AssetStreamer::SetLeaseQuality(std::uint64_t leaseId, AssetQuality quality)
 {
     const auto it = m_impl->leases.find(leaseId);
-    if (it == m_impl->leases.end()) return;
+    if (it == m_impl->leases.end()) {
+        return;
+    }
     it->second.quality = quality;
     Impl::Entry* entry = m_impl->FindEntry(it->second.entryId);
-    if (!entry) return;
+    if (!entry) {
+        return;
+    }
     m_impl->RecomputePriority(*entry);
-    /// @note まだ投入していない初回ロードは、待たずにその品質で作る。
-    if (!Impl::IsPublished(*entry) && entry->phase == Phase::Queued)
+    // まだ投入していない初回ロードは、待たずにその品質で作る。
+    if (!Impl::IsPublished(*entry) && entry->phase == Phase::Queued) {
         entry->requestedQuality = m_impl->EffectiveQuality(*entry);
+    }
 }
 
 bool AssetStreamer::CompleteNowRaw(std::string_view typeName, RawAssetHandle handle)
 {
     Impl::Entry* entry = m_impl->FindByHandle(typeName, handle);
-    if (!entry) return false;
-    if (Impl::IsPublished(*entry)) return true;
-    if (!entry->channel->LoadImmediately(entry->handle, entry->key)) return false;
+    if (!entry) {
+        return false;
+    }
+    if (Impl::IsPublished(*entry)) {
+        return true;
+    }
+    if (!entry->channel->LoadImmediately(entry->handle, entry->key)) {
+        return false;
+    }
     ++m_impl->syncLoads;
-    /// @note 実行中の非同期結果は attempt の不一致で棄却される。同期ロードは最高品質で作る。
+    // 実行中の非同期結果は attempt の不一致で棄却される。同期ロードは最高品質で作る。
     m_impl->AbandonWork(*entry);
     entry->failed = false;
     entry->canceled = false;
@@ -846,16 +982,24 @@ bool AssetStreamer::CompleteNowRaw(std::string_view typeName, RawAssetHandle han
 void* AssetStreamer::TryGetRaw(std::string_view typeName, RawAssetHandle handle) const
 {
     const Impl::Entry* entry = m_impl->FindByHandle(typeName, handle);
-    if (!entry || !Impl::IsPublished(*entry)) return nullptr;
+    if (!entry || !Impl::IsPublished(*entry)) {
+        return nullptr;
+    }
     return entry->channel->Get(handle);
 }
 
 bool AssetStreamer::RetryRaw(std::string_view typeName, RawAssetHandle handle)
 {
     Impl::Entry* entry = m_impl->FindByHandle(typeName, handle);
-    if (!entry) return false;
-    if (Impl::IsPublished(*entry)) return entry->updateFailed ? ReloadRaw(typeName, handle) : false;
-    if (!entry->failed) return false;
+    if (!entry) {
+        return false;
+    }
+    if (Impl::IsPublished(*entry)) {
+        return entry->updateFailed ? ReloadRaw(typeName, handle) : false;
+    }
+    if (!entry->failed) {
+        return false;
+    }
     m_impl->AbandonWork(*entry);
     entry->failed = false;
     entry->error = AssetLoadError::None;
@@ -867,8 +1011,10 @@ bool AssetStreamer::RetryRaw(std::string_view typeName, RawAssetHandle handle)
 bool AssetStreamer::ReloadRaw(std::string_view typeName, RawAssetHandle handle)
 {
     Impl::Entry* entry = m_impl->FindByHandle(typeName, handle);
-    if (!entry || entry->failed || entry->canceled) return false;
-    /// @note 実行中の古い候補は revision の不一致で捨てられる。完了順が逆転しても新しい方だけが残る。
+    if (!entry || entry->failed || entry->canceled) {
+        return false;
+    }
+    // 実行中の古い候補は revision の不一致で捨てられる。完了順が逆転しても新しい方だけが残る。
     ++entry->requestedRevision;
     entry->decoded.reset();
     m_impl->DiscardCandidate(*entry);
@@ -885,19 +1031,27 @@ void AssetStreamer::ReleaseLease(std::uint64_t leaseId)
 bool AssetStreamer::EvictUnusedRaw(std::string_view typeName, const std::string& reference)
 {
     const auto channel = m_impl->channels.find(std::string(typeName));
-    if (channel == m_impl->channels.end()) return false;
+    if (channel == m_impl->channels.end()) {
+        return false;
+    }
     Impl::Entry* entry = m_impl->FindByKey(typeName, channel->second->MakeKey(reference));
-    if (!entry || !entry->leaseIds.empty() || entry->phase != Phase::Idle) return false;
+    if (!entry || !entry->leaseIds.empty() || entry->phase != Phase::Idle) {
+        return false;
+    }
     const uint64_t bytes = Impl::IsPublished(*entry) ? m_impl->MeasureResident(*entry) : 0;
     if (entry->handle.IsValid() && entry->channel->IsLive(entry->handle)
-        && !entry->channel->Evict(entry->handle, entry->key)) return false;
+        && !entry->channel->Evict(entry->handle, entry->key)) {
+        return false;
+    }
     m_impl->entryByHandle.erase(HandleKey(entry->typeName, entry->handle));
     entry->handle = {};
     m_impl->DropEntry(*entry);
     m_impl->residentBytes -= (std::min)(m_impl->residentBytes, bytes);
     m_impl->overBudget = m_impl->config.residentBudgetBytes != 0
         && m_impl->residentBytes > m_impl->config.residentBudgetBytes;
-    if (!m_impl->overBudget) m_impl->overBudgetReported = false;
+    if (!m_impl->overBudget) {
+        m_impl->overBudgetReported = false;
+    }
     ++m_impl->evictions;
     return true;
 }
@@ -905,25 +1059,33 @@ bool AssetStreamer::EvictUnusedRaw(std::string_view typeName, const std::string&
 void AssetStreamer::SetLeasePriority(std::uint64_t leaseId, AssetPriority priority)
 {
     const auto it = m_impl->leases.find(leaseId);
-    if (it == m_impl->leases.end()) return;
+    if (it == m_impl->leases.end()) {
+        return;
+    }
     it->second.priority = priority;
-    if (Impl::Entry* entry = m_impl->FindEntry(it->second.entryId)) m_impl->RecomputePriority(*entry);
+    if (Impl::Entry* entry = m_impl->FindEntry(it->second.entryId)) {
+        m_impl->RecomputePriority(*entry);
+    }
 }
 
 void AssetStreamer::Pump()
 {
     Impl& impl = *m_impl;
+
+    // 前回までのジョブ結果を回収し、依存の揃ったアセットを今回の転送枠に載せる。
     impl.uploadedBytesLastPump = 0;
     impl.uploadsThisPump = 0;
     impl.DrainCompletions();
     impl.AdvanceDependencies();
     impl.SubmitUploads();
     impl.PublishCompletedUploads();
-    /// @note 公開で依存が揃った親を同じ Pump のうちに進める。転送の件数・バイト予算は 1 回目と共有する。
+
+    // 公開で依存が揃った親を同じ Pump のうちに進める。転送の件数・バイト予算は 1 回目と共有する。
     impl.AdvanceDependencies();
     impl.SubmitUploads();
     impl.PublishCompletedUploads();
-    /// @note 公開を終えてから数える。数えた結果で先読みの延期と品質の上乗せが決まる。
+
+    // 公開を終えてから数える。数えた結果で先読みの延期と品質の上乗せが決まる。
     impl.MeasureAndEvict();
     impl.UpdateQuality();
     impl.SubmitJobs();
@@ -933,8 +1095,12 @@ void AssetStreamer::Pump()
 void AssetStreamer::Configure(const Config& config)
 {
     m_impl->config = config;
-    if (m_impl->config.maxJobsInFlight == 0) m_impl->config.maxJobsInFlight = 1;
-    if (m_impl->config.maxUploadsPerPump == 0) m_impl->config.maxUploadsPerPump = 1;
+    if (m_impl->config.maxJobsInFlight == 0) {
+        m_impl->config.maxJobsInFlight = 1;
+    }
+    if (m_impl->config.maxUploadsPerPump == 0) {
+        m_impl->config.maxUploadsPerPump = 1;
+    }
 }
 
 const AssetStreamer::Config& AssetStreamer::GetConfig() const
@@ -945,10 +1111,12 @@ const AssetStreamer::Config& AssetStreamer::GetConfig() const
 void AssetStreamer::ResetForProjectSwitch()
 {
     Impl& impl = *m_impl;
-    /// @note 受付を止めてから epoch を進める。実行中ジョブは走りきって完了キューへ積むが、epoch が
-    ///       一致しないので次の Pump で捨てられる (jobsInFlight はそこで戻る)。
+    // 受付を止めてから epoch を進める。実行中ジョブは走りきって完了キューへ積むが、epoch が
+    //       一致しないので次の Pump で捨てられる (jobsInFlight はそこで戻る)。
     ++impl.epoch;
-    for (auto& [id, entry] : impl.entries) impl.DiscardCandidate(*entry);
+    for (auto& [id, entry] : impl.entries) {
+        impl.DiscardCandidate(*entry);
+    }
     impl.entries.clear();
     impl.entryByKey.clear();
     impl.entryByHandle.clear();
@@ -960,11 +1128,20 @@ void AssetStreamer::ResetForProjectSwitch()
 void AssetStreamer::NotifySyncFilled(std::string_view typeName, const std::string& key)
 {
     Impl::Entry* entry = m_impl->FindByKey(typeName, key);
-    if (!entry || Impl::IsPublished(*entry)) return;
+    if (!entry) {
+        return;
+    }
+    if (Impl::IsPublished(*entry)) {
+        return;
+    }
+
     ++m_impl->syncMisses;
-    if (m_impl->reportedSyncMisses.insert(JoinKey(typeName, key)).second)
+    if (m_impl->reportedSyncMisses.insert(JoinKey(typeName, key)).second) {
         FBZZ_LOG_WARN("AssetStreamer: 非同期ロード中のアセットを同期 Load で待たずに読み直しました [%s]",
                       key.c_str());
+    }
+
+    // 同期ロードが用意した実体を公開版とし、競合する非同期投入を無効化する。
     m_impl->AbandonWork(*entry);
     entry->failed = false;
     entry->canceled = false;
@@ -976,7 +1153,7 @@ void AssetStreamer::NotifySyncFilled(std::string_view typeName, const std::strin
 void AssetStreamer::NotifyUnloaded(std::string_view typeName, const std::string& key)
 {
     if (Impl::Entry* entry = m_impl->FindByKey(typeName, key)) {
-        /// @note スロットは同期 Unload 側が返し済み。二重に Free しないよう先に外す。
+        // スロットは同期 Unload 側が返し済み。二重に Free しないよう先に外す。
         m_impl->entryByHandle.erase(HandleKey(entry->typeName, entry->handle));
         entry->handle = {};
         m_impl->DropEntry(*entry);
@@ -1008,7 +1185,9 @@ AssetStreamer::Stats AssetStreamer::GetStats() const
         case AssetLoadState::Failed:              ++stats.failed; break;
         default: break;
         }
-        if (entry->decoded) stats.decodedBytesHeld += entry->decoded->CpuBytes();
+        if (entry->decoded) {
+            stats.decodedBytesHeld += entry->decoded->CpuBytes();
+        }
     }
     return stats;
 }

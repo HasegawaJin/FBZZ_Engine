@@ -33,20 +33,26 @@ public:
     template<class Update> void Propagate(Update&& update)
     {
         for (std::size_t index = 0; index < m_entries.size(); ++index) {
-            if (m_entries[index].worldUpdated) continue;
+            if (m_entries[index].worldUpdated) {
+                continue;
+            }
             m_pendingAncestors.clear();
 
-            /// @note Scene の格納順に関わらず、親が確定する地点までさかのぼる。
+            // Scene の格納順に関わらず、親が確定する地点までさかのぼる。
             std::size_t ancestor = index;
             for (;;) {
                 const auto& entry = m_entries[ancestor];
-                if (entry.worldUpdated) break;
+                if (entry.worldUpdated) {
+                    break;
+                }
                 m_pendingAncestors.push_back(ancestor);
-                if (!entry.parent) break;
+                if (!entry.parent) {
+                    break;
+                }
                 ancestor = m_entryIndexBySlot[entry.parent->GetID().index];
             }
 
-            /// @note 逆順に適用すると子は更新済みの親を読み、共有する祖先は一度だけ計算する。
+            // 逆順に適用すると子は更新済みの親を読み、共有する祖先は一度だけ計算する。
             for (auto it = m_pendingAncestors.rbegin(); it != m_pendingAncestors.rend(); ++it) {
                 auto& entry = m_entries[*it];
                 update(*entry.object, entry.parent ? &entry.parent->transform : nullptr);

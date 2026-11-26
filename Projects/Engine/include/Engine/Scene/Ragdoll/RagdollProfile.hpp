@@ -27,8 +27,7 @@ struct RagdollServo {
     /// @note トルク上限を出し切るところまで «たわむ» 角 [rad]。compliance をここから逆算する
     /// @note (α = 上限トルク / この角度 の逆数)。小さいほど硬い。
     float holdSag = 0.06f;
-    /// @note 相対角速度を削る割合 [1/s]。ここだけは骨格に依らないのでそのまま持つ。
-    float damping = 20.0f;
+    float damping = 20.0f; ///< 相対角速度を削る割合 [1/s]。ここだけは骨格に依らないのでそのまま持つ。
 };
 
 /// @note 骨 1 本ぶんの物理設定。
@@ -36,8 +35,7 @@ struct RagdollBoneSettings {
     /// @note カプセルの半径を «骨の長さに対する比» で持つ。
     /// @note 絶対値 [m] にしないのは密度と同じ理由。節の長さは骨格ごとに数倍違うため、絶対値だと «長い骨が針金のように細い» が起きる (Boss_01 の脛は 2.7m あり、人型想定の 0.14m は当たり判定 0.38m の 1/3 だった)。
     float radiusRatio = 0.16f;
-    /// @note 半径の下限 [m]。極端に短い節がほぼ点になるのを防ぐ。
-    float radiusMin = 0.03f;
+    float radiusMin = 0.03f; ///< 半径の下限 [m]。極端に短い節がほぼ点になるのを防ぐ。
     /// @note 密度 [kg/m^3]。質量はカプセルの体積から出す。
     /// @note 質量を直接持たないのは骨の長さが骨格ごとに違うため。質量を直に書くと骨格差し替えで «短い骨が重すぎる» が起きる。密度なら長さに追従する。
     float density = 900.0f;
@@ -89,8 +87,7 @@ struct RagdollBodyDefinition {
     float radius = 0.05f;
     float halfHeight = 0.10f;
     math::Vector3 halfExtents = { 0.05f, 0.10f, 0.05f };
-    /// @note mass=0 は密度から算出。inertia が全軸 0 なら形状から算出し、それ以外は kg·m² の正の対角成分。
-    float mass = 0.0f;
+    float mass = 0.0f; ///< mass=0 は密度から算出。inertia が全軸 0 なら形状から算出し、それ以外は kg·m² の正の対角成分。
     math::Vector3 inertia = math::Vector3::ZERO;
     math::Vector3 jointAnchor = math::Vector3::ZERO;
     math::Quaternion jointRotation = math::Quaternion::Identity();
@@ -106,13 +103,11 @@ struct RagdollCollisionExclusion {
 /// @note 明示定義を優先し、未指定の骨だけ名前の規則を使う。definitionsOnly では明示定義の骨だけを剛体にする。
 struct RagdollProfile {
     struct Rule {
-        /// @note 骨名に含まれていれば一致 (大文字小文字を無視)。
-        std::string         pattern;
+        std::string         pattern; ///< 骨名に含まれていれば一致 (大文字小文字を無視)。
         RagdollBoneSettings settings;
     };
 
-    /// @note どの規則にも当たらなかった骨に使う。
-    RagdollBoneSettings fallback;
+    RagdollBoneSettings fallback; ///< どの規則にも当たらなかった骨に使う。
     std::vector<Rule>   rules;
     bool definitionsOnly = false;
     std::vector<RagdollBodyDefinition> bodies;
@@ -122,8 +117,7 @@ struct RagdollProfile {
     /// @note この名前を含む骨から先は、ラグドールに含めない (枝ごと落とす)。
     /// @note Boss_01 は足指 3 本と踵が骨として生えており、そのまま拾うと脚 1 本につき剛体が 8 個増える。足指が動いても絵には出ないので、解く数だけが増える。
     std::vector<std::string> excludePatterns;
-    /// @note 完全一致で枝ごと除外する骨名 (大文字小文字を無視)。短い略称を部分一致させないために使う。
-    std::vector<std::string> excludeNames;
+    std::vector<std::string> excludeNames; ///< 完全一致で枝ごと除外する骨名 (大文字小文字を無視)。短い略称を部分一致させないために使う。
     [[nodiscard]] FBZZ_ENGINE_API bool IsExcluded(std::string_view boneName) const;
 
     /// @note この名前を含む骨には剛体を作らない (**枝は辿る**)。
@@ -131,7 +125,7 @@ struct RagdollProfile {
     std::vector<std::string> noBodyPatterns;
     [[nodiscard]] FBZZ_ENGINE_API bool IsBodyless(std::string_view boneName) const;
 
-    /// @param outMatched null でなければ «規則に当たったか» を返す。false は fallback。
+    /// @param[out] outMatched null でなければ «規則に当たったか» を返す。false は fallback。
     /// @note 当たらなくても settings は返るので、骨名が合っていないことは «なんとなく動くが可動域が全部球関節» としてしか現れない (Boss_01 で `Body`/`Hock` を実際に取りこぼしていた)。当たったかを別に返すのはこの取りこぼしを検出するため。
     [[nodiscard]] FBZZ_ENGINE_API const RagdollBoneSettings& Resolve(std::string_view boneName,
                                                      bool* outMatched = nullptr) const;

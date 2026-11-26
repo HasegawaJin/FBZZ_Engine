@@ -71,8 +71,10 @@ EntityID SelectBakeLight(Scene& scene)
         const auto* object = scene.GetGameObject(id);
         const auto* light = scene.GetComponent<LightComponent>(id);
         if (!object || !light || !object->activeInHierarchy() || !light->enabled
-            || light->type != LightComponent::Type::Directional) continue;
-        /// @note ExtractRenderLights と同じ最後の有効な方向ライトを使う。
+            || light->type != LightComponent::Type::Directional) {
+            continue;
+        }
+        // ExtractRenderLights と同じ最後の有効な方向ライトを使う。
         selected = light->castShadows && light->shadowStrength > 0.0f
             && light->shadowMode == LightComponent::ShadowMode::AUTO_BAKE ? id : EntityID::INVALID;
     }
@@ -92,32 +94,47 @@ RotationTrack FindSunRotationTrack(Scene& scene, GameObject& sun)
     for (EntityID id : scene.GetEntities<SequencePlayerComponent>()) {
         const auto* owner = scene.GetGameObject(id);
         const auto* player = scene.GetComponent<SequencePlayerComponent>(id);
-        if (!owner || !owner->activeInHierarchy() || !player || !player->enabled) continue;
+        if (!owner || !owner->activeInHierarchy() || !player || !player->enabled) {
+            continue;
+        }
         const asset::SequenceAsset* sequence = player->authoringSequence.get();
         if (!sequence && !player->sequencePath.empty()) {
             const auto handle = asset::AssetManager::Load<asset::SequenceAsset>(player->sequencePath);
             sequence = asset::AssetManager::Get<asset::SequenceAsset>(handle);
         }
-        if (!sequence) continue;
+        if (!sequence) {
+            continue;
+        }
         for (size_t index = 0; index < sequence->tracks.size(); ++index) {
             const auto& track = sequence->tracks[index];
             if (track.muted || track.type != asset::SequenceTrackType::Transform
-                || track.rotations.empty() || track.binding.empty()) continue;
+                || track.rotations.empty() || track.binding.empty()) {
+                continue;
+            }
             const GameObject* target = track.binding == "$self" ? owner : nullptr;
             if (track.binding != "$self") {
                 const auto binding = std::find_if(player->bindings.begin(), player->bindings.end(),
                     [&](const SequenceBinding& value) { return value.key == track.binding; });
-                if (binding != player->bindings.end()) target = binding->target.Resolve(scene);
+                if (binding != player->bindings.end()) {
+                    target = binding->target.Resolve(scene);
+                }
             }
-            if (target != &sun) continue;
-            if (result.track) return {};
+            if (target != &sun) {
+                continue;
+            }
+            if (result.track) {
+                return {};
+            }
             result.track = &track;
             result.duration = sequence->GetDurationSeconds();
-            if (const auto* parent = sun.GetParent()) result.parent = parent->transform.worldRotation;
+            if (const auto* parent = sun.GetParent()) {
+                result.parent = parent->transform.worldRotation;
+            }
             result.base = sun.transform.rotation;
             if (player->appliedSequence == sequence && index < player->trackRuntime.size()
-                && player->trackRuntime[index].hasSnapshot)
+                && player->trackRuntime[index].hasSnapshot) {
                 result.base = player->trackRuntime[index].baseRotation;
+            }
         }
     }
     return result;
@@ -127,14 +144,20 @@ math::Vector3 SampleSunDirection(const RotationTrack& input, double time)
 {
     const auto& track = *input.track;
     auto rotation = asset::SampleQuaternionKeys(track.rotations, time, math::Quaternion::Identity(), track.interp);
-    if (track.space == asset::SequenceTransformSpace::RelativeToStart) rotation = input.base * rotation;
-    if (track.space != asset::SequenceTransformSpace::World) rotation = input.parent * rotation;
+    if (track.space == asset::SequenceTransformSpace::RelativeToStart) {
+        rotation = input.base * rotation;
+    }
+    if (track.space != asset::SequenceTransformSpace::World) {
+        rotation = input.parent * rotation;
+    }
     return BakeDirection(rotation * math::Vector3::FORWARD);
 }
 
 math::Vector3 SampleEvening(const RotationTrack& track)
 {
-    if (!track.track || !std::isfinite(track.duration) || track.duration <= 0.0) return {};
+    if (!track.track || !std::isfinite(track.duration) || track.duration <= 0.0) {
+        return {};
+    }
     constexpr int STEPS = 96;
     double previousTime = 0.0;
     auto previous = SampleSunDirection(track, 0.0);
@@ -146,8 +169,12 @@ math::Vector3 SampleEvening(const RotationTrack& track)
             double high = time;
             for (int iteration = 0; iteration < 16; ++iteration) {
                 const double middle = (low + high) * 0.5;
-                if (SampleSunDirection(track, middle).y < EVENING_RAY_Y) low = middle;
-                else high = middle;
+                if (SampleSunDirection(track, middle).y < EVENING_RAY_Y) {
+                    low = middle;
+                }
+                else {
+                    high = middle;
+                }
             }
             return SampleSunDirection(track, (low + high) * 0.5);
         }
@@ -161,11 +188,19 @@ std::array<math::Vector3, 2> ResolvePresets(Scene& scene, GameObject& object, co
 {
     auto day = BakeDirection(light.shadowBakeDayDirection);
     auto evening = BakeDirection(light.shadowBakeEveningDirection);
-    if (day.LengthSq() > 0.0f && evening.LengthSq() > 0.0f) return {day, evening};
+    if (day.LengthSq() > 0.0f && evening.LengthSq() > 0.0f) {
+        return {day, evening};
+    }
     const auto track = FindSunRotationTrack(scene, object);
-    if (day.LengthSq() == 0.0f && track.track) day = SampleSunDirection(track, 0.0);
-    if (day.LengthSq() == 0.0f) day = BakeDirection(object.transform.Forward());
-    if (evening.LengthSq() == 0.0f) evening = SampleEvening(track);
+    if (day.LengthSq() == 0.0f && track.track) {
+        day = SampleSunDirection(track, 0.0);
+    }
+    if (day.LengthSq() == 0.0f) {
+        day = BakeDirection(object.transform.Forward());
+    }
+    if (evening.LengthSq() == 0.0f) {
+        evening = SampleEvening(track);
+    }
     if (evening.LengthSq() == 0.0f) {
         const auto horizontal = math::Vector3{day.x, 0.0f, day.z}.NormalizedOr(math::Vector3::FORWARD);
         evening = BakeDirection(horizontal * std::sqrt(1.0f - EVENING_RAY_Y * EVENING_RAY_Y)
@@ -228,7 +263,9 @@ bool SunStationary(uint64_t sceneGeneration, EntityID light, const math::Vector3
         *motion = {sceneGeneration, light, frame, direction, false};
         return false;
     }
-    if (!SameDirection(motion->direction, direction)) motion->stationary = false;
+    if (!SameDirection(motion->direction, direction)) {
+        motion->stationary = false;
+    }
     else if (frame != motion->frame) motion->stationary = frame > 0 && motion->frame == frame - 1;
     motion->frame = frame;
     motion->direction = direction;
@@ -248,25 +285,44 @@ std::string BufferContent(renderer::ResourceManager& resources, renderer::Resour
     bool allowRead)
 {
     renderer::BufferResourceMetadata metadata;
-    if (!resources.GetBufferMetadata(handle, metadata) || !metadata.live || !metadata.cpuReadable
-        || metadata.gpuWritable || metadata.contentVersion == 0 || metadata.sizeBytes == 0
-        || metadata.sizeBytes > MAX_CASTER_BUFFER_BYTES) return {};
+    if (!resources.GetBufferMetadata(handle, metadata) || !metadata.live) {
+        return {};
+    }
+
+    // CPU から読み取れる安定した版だけを、影の入力を識別する署名に使う。
+    if (!metadata.cpuReadable || metadata.gpuWritable || metadata.contentVersion == 0) {
+        return {};
+    }
+    if (metadata.sizeBytes == 0 || metadata.sizeBytes > MAX_CASTER_BUFFER_BYTES) {
+        return {};
+    }
+
     if (s_bufferOwner != resources.GetInstanceId()) {
         s_bufferFingerprints.clear();
         s_bufferOwner = resources.GetInstanceId();
     }
     const auto found = s_bufferFingerprints.find(handle.id);
     if (found != s_bufferFingerprints.end() && found->second.handle == handle
-        && found->second.version == metadata.contentVersion) return found->second.content;
+        && found->second.version == metadata.contentVersion) {
+        return found->second.content;
+    }
     if (!allowRead || (found == s_bufferFingerprints.end()
-        && s_bufferFingerprints.size() >= MAX_TRACKED_CASTER_BUFFERS)) return {};
+        && s_bufferFingerprints.size() >= MAX_TRACKED_CASTER_BUFFERS)) {
+        return {};
+    }
     const auto* buffer = resources.Get(handle);
-    if (!buffer) return {};
+    if (!buffer) {
+        return {};
+    }
     std::vector<uint8_t> bytes(metadata.sizeBytes);
-    if (!buffer->CopyData(0, bytes.size(), bytes.data())) return {};
+    if (!buffer->CopyData(0, bytes.size(), bytes.data())) {
+        return {};
+    }
     renderer::BufferResourceMetadata verified;
     if (!resources.GetBufferMetadata(handle, verified) || !verified.live
-        || verified.contentVersion != metadata.contentVersion) return {};
+        || verified.contentVersion != metadata.contentVersion) {
+        return {};
+    }
     auto fingerprint = asset::BakeFingerprintOf(bytes);
     s_bufferFingerprints[handle.id] = {handle, metadata.contentVersion, fingerprint};
     return fingerprint;
@@ -285,30 +341,48 @@ std::string StaticContent(const renderer::RenderScene& scene, renderer::Resource
         : std::span<const uint32_t>{};
     parts.reserve(scene.terrains.size() + meshObjects.size());
     for (const auto& terrain : scene.terrains) {
-        if (!LayerVisible(terrain.layer, mask) || !renderer::IsDirectionalShadowBakeTerrain(terrain)) continue;
-        if (terrain.shadowBakeGeometryHash == 0) return {};
+        if (!LayerVisible(terrain.layer, mask) || !renderer::IsDirectionalShadowBakeTerrain(terrain)) {
+            continue;
+        }
+        if (terrain.shadowBakeGeometryHash == 0) {
+            return {};
+        }
         asset::BakeFingerprint hash;
         hash.Add("terrain");
         hash.Add(static_cast<uint64_t>(terrain.layer));
         hash.Add(terrain.shadowBakeGeometryHash);
-        if (!AddFiniteMatrix(hash, terrain.constants.worldMatrix)) return {};
+        if (!AddFiniteMatrix(hash, terrain.constants.worldMatrix)) {
+            return {};
+        }
         parts.push_back(hash.Finish());
     }
     const auto objects = scene.Objects();
     for (uint32_t ordinal : meshObjects) {
-        if (ordinal >= objects.size()) return {};
+        if (ordinal >= objects.size()) {
+            return {};
+        }
         const auto& object = objects[ordinal];
-        if (!LayerVisible(object.layer, mask)) continue;
-        if (object.firstItem > scene.items.size() || object.itemCount > scene.items.size() - object.firstItem) return {};
+        if (!LayerVisible(object.layer, mask)) {
+            continue;
+        }
+        if (object.firstItem > scene.items.size() || object.itemCount > scene.items.size() - object.firstItem) {
+            return {};
+        }
         for (const auto& item : std::span<const renderer::RenderMeshItem>(scene.items).subspan(object.firstItem, object.itemCount)) {
-            if (!renderer::IsDirectionalShadowBakeMesh(object, item)) continue;
+            if (!renderer::IsDirectionalShadowBakeMesh(object, item)) {
+                continue;
+            }
             const std::string vertices = BufferContent(resources, item.vertexBuffer, allowRead);
             const std::string indices = BufferContent(resources, item.indexBuffer, allowRead);
-            if (vertices.empty() || indices.empty() || !std::isfinite(item.material.depthBiasSlope)) return {};
+            if (vertices.empty() || indices.empty() || !std::isfinite(item.material.depthBiasSlope)) {
+                return {};
+            }
             asset::BakeFingerprint hash;
             hash.Add("mesh");
             hash.Add(static_cast<uint64_t>(object.layer));
-            if (!AddFiniteMatrix(hash, object.world)) return {};
+            if (!AddFiniteMatrix(hash, object.world)) {
+                return {};
+            }
             hash.Add(vertices);
             hash.Add(indices);
             hash.Add(static_cast<uint64_t>(item.vertexStride));
@@ -319,10 +393,14 @@ std::string StaticContent(const renderer::RenderScene& scene, renderer::Resource
             parts.push_back(hash.Finish());
         }
     }
-    if (parts.empty()) return {};
+    if (parts.empty()) {
+        return {};
+    }
     std::sort(parts.begin(), parts.end());
     asset::BakeFingerprint content;
-    for (const auto& part : parts) content.Add(part);
+    for (const auto& part : parts) {
+        content.Add(part);
+    }
     return content.Finish();
 }
 
@@ -331,7 +409,9 @@ std::string MakeDiskKey(const std::string& content, const DirectionalBakeData& e
     asset::BakeFingerprint key;
     key.Add(static_cast<uint64_t>(SHADOW_CACHE_KIND));
     key.Add(content);
-    if (backend) key.Add(backend);
+    if (backend) {
+        key.Add(backend);
+    }
     key.Add(static_cast<uint64_t>(expected.resolution));
     key.Add(static_cast<uint64_t>(expected.cullingMask));
     const std::array values{expected.lightDirection.x, expected.lightDirection.y, expected.lightDirection.z,
@@ -352,21 +432,29 @@ bool ReadBake(const std::string& path, const std::string& key, const Directional
 {
     asset::ChunkFileReader file;
     if (!file.Open(path) || file.Header().contentKind != SHADOW_CACHE_KIND
-        || file.Header().sourceStamp != SourceStamp(key)) return false;
+        || file.Header().sourceStamp != SourceStamp(key)) {
+        return false;
+    }
     const auto* metadata = file.Find(METADATA_CHUNK);
     const auto* depth = file.Find(DEPTH_CHUNK);
     std::array<float, 7> values{};
     const auto depthSize = static_cast<uint64_t>(expected.resolution) * expected.resolution * 4;
-    if (!metadata || metadata->rawSize != sizeof(values) || !depth || depth->rawSize != depthSize) return false;
+    if (!metadata || metadata->rawSize != sizeof(values) || !depth || depth->rawSize != depthSize) {
+        return false;
+    }
     std::vector<uint8_t> bytes;
     DirectionalBakeData result = expected;
-    if (!file.ReadChunk(METADATA_CHUNK, bytes) || !file.ReadChunk(DEPTH_CHUNK, result.depthRgba)) return false;
+    if (!file.ReadChunk(METADATA_CHUNK, bytes) || !file.ReadChunk(DEPTH_CHUNK, result.depthRgba)) {
+        return false;
+    }
     std::memcpy(values.data(), bytes.data(), sizeof(values));
     result.lightDirection = {values[0], values[1], values[2]};
     result.coverage = {{values[3], values[4], values[5]}, values[6], true};
     if (!IsFinite(result.lightDirection) || !SameDirection(result.lightDirection, expected.lightDirection)
         || (result.coverage.center - expected.coverage.center).LengthSq() != 0.0f
-        || result.coverage.radius != expected.coverage.radius) return false;
+        || result.coverage.radius != expected.coverage.radius) {
+        return false;
+    }
     out = std::move(result);
     return true;
 }
@@ -387,7 +475,7 @@ void WriteBake(const std::string& path, const std::string& key, DirectionalBakeD
 bool BakeOutsideFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     const renderer::RenderScene& snapshot, const DirectionalBakeData& expected, DirectionalBakeData& data)
 {
-    /// @note ThreadedRenderer::EndFrame が CPU 記録枠を閉じる。失敗経路も通常フレームへ戻す。
+    // ThreadedRenderer::EndFrame が CPU 記録枠を閉じる。失敗経路も通常フレームへ戻す。
     renderer.WaitForCpuFrame();
     renderer.CancelCpuFrame();
     renderer.BeginCpuFrame(Time::frameCount);
@@ -408,8 +496,9 @@ bool PreparePreset(renderer::IRenderer& renderer, renderer::ResourceManager& res
         return entry.diskKey == key && resources.Get(entry.texture.Get());
     });
     if (found != s_resident.end()) {
-        if (found != s_resident.begin() + static_cast<std::ptrdiff_t>(preset))
+        if (found != s_resident.begin() + static_cast<std::ptrdiff_t>(preset)) {
             std::swap(*found, s_resident[preset]);
+        }
         return true;
     }
     DirectionalBakeData data;
@@ -417,16 +506,26 @@ bool PreparePreset(renderer::IRenderer& renderer, renderer::ResourceManager& res
     const auto path = util::FileSystem::PathToUtf8(s_pending.directory / (s_pending.diskOwner + "-" + label + ".fzshadow"));
     bool fromDisk = ReadBake(path, key, expected, data);
     renderer::OwnedResource<renderer::TextureTag> texture;
-    if (fromDisk) texture.Reset(renderer::UploadDirectionalShadowBake(resources, data));
-    if (!texture.IsValid()) {
-        fromDisk = false;
-        if (!BakeOutsideFrame(renderer, resources, *s_pending.snapshot, expected, data)) return false;
-        const bool includeMeshes = renderer::DirectionalShadowBakeIncludesMeshes(expected.coverage, resolution);
-        if (StaticContent(*s_pending.snapshot, resources, expected.cullingMask, includeMeshes, false) != content) return false;
+    if (fromDisk) {
         texture.Reset(renderer::UploadDirectionalShadowBake(resources, data));
     }
-    if (!texture.IsValid()) return false;
-    if (!fromDisk) WriteBake(path, key, data);
+    if (!texture.IsValid()) {
+        fromDisk = false;
+        if (!BakeOutsideFrame(renderer, resources, *s_pending.snapshot, expected, data)) {
+            return false;
+        }
+        const bool includeMeshes = renderer::DirectionalShadowBakeIncludesMeshes(expected.coverage, resolution);
+        if (StaticContent(*s_pending.snapshot, resources, expected.cullingMask, includeMeshes, false) != content) {
+            return false;
+        }
+        texture.Reset(renderer::UploadDirectionalShadowBake(resources, data));
+    }
+    if (!texture.IsValid()) {
+        return false;
+    }
+    if (!fromDisk) {
+        WriteBake(path, key, data);
+    }
     std::vector<uint8_t>().swap(data.depthRgba);
     s_resident[preset] = {content, key, std::move(data), std::move(texture)};
     FBZZ_LOG_INFO("DirectionalShadowBake: %s %s", label, fromDisk ? "loaded" : "generated");
@@ -440,9 +539,13 @@ DirectionalShadowBakeStatus RequestDirectionalShadowBake(Scene& scene, const std
     const auto lightId = SelectBakeLight(scene);
     auto* object = scene.GetGameObject(lightId);
     const auto* light = scene.GetComponent<LightComponent>(lightId);
-    if (!object || !light) return Status::NOT_REQUIRED;
+    if (!object || !light) {
+        return Status::NOT_REQUIRED;
+    }
     if (s_pending.sceneGeneration == scene.GetRenderSceneGeneration() && s_pending.light == lightId
-        && s_pending.status == Status::PENDING) return Status::PENDING;
+        && s_pending.status == Status::PENDING) {
+        return Status::PENDING;
+    }
     s_pending = {};
     s_pending.sceneGeneration = scene.GetRenderSceneGeneration();
     s_pending.requestedFrame = Time::frameCount;
@@ -464,23 +567,27 @@ DirectionalShadowBakeStatus GetDirectionalShadowBakeStatus(const Scene& scene)
 
 void CancelDirectionalShadowBake(const Scene& scene)
 {
-    if (s_pending.sceneGeneration == scene.GetRenderSceneGeneration() && s_pending.status == Status::PENDING)
+    if (s_pending.sceneGeneration == scene.GetRenderSceneGeneration() && s_pending.status == Status::PENDING) {
         s_pending = {};
+    }
 }
 
 void ProcessDirectionalShadowBake(Scene& scene, renderer::IRenderer& renderer,
     renderer::ResourceManager& resources, const renderer::RenderSettings& settings)
 {
-    if (GetDirectionalShadowBakeStatus(scene) != Status::PENDING) return;
+    if (GetDirectionalShadowBakeStatus(scene) != Status::PENDING) {
+        return;
+    }
     if (!settings.shadowEnabled || settings.shadow.cascadeCount < 2 || SelectBakeLight(scene) != s_pending.light) {
         s_pending.status = Status::UNAVAILABLE;
         s_pending.snapshot.reset();
         return;
     }
     if (!s_pending.snapshot) {
-        /// @note ゲームビューから描画スナップショットを取得できない場合も Play を開始できるようにする。
-        if (Time::frameCount - s_pending.requestedFrame >= SNAPSHOT_WAIT_FRAMES)
+        // ゲームビューから描画スナップショットを取得できない場合も Play を開始できるようにする。
+        if (Time::frameCount - s_pending.requestedFrame >= SNAPSHOT_WAIT_FRAMES) {
             s_pending.status = Status::UNAVAILABLE;
+        }
         return;
     }
     if (s_pending.resourceOwner != resources.GetInstanceId() || s_pending.resourceEpoch != resources.GetResetVersion()) {
@@ -518,7 +625,9 @@ void PrepareDirectionalShadowBakeForRender(RenderPassContext& context, EntityID 
     const renderer::ShadowBounds& sceneBounds, const math::Vector3& lightDirection,
     float shadowBias, const renderer::PreparedShadows& shadows)
 {
-    if (!context.renderScene) return;
+    if (!context.renderScene) {
+        return;
+    }
     const uint64_t sceneGeneration = context.scene.GetRenderSceneGeneration();
     const auto direction = BakeDirection(lightDirection);
     const bool stationary = SunStationary(sceneGeneration, light, direction);
@@ -527,22 +636,29 @@ void PrepareDirectionalShadowBakeForRender(RenderPassContext& context, EntityID 
         && s_pending.light == light && gameView && !s_pending.snapshot) {
         s_pending.snapshot = context.renderScene;
         s_pending.coverage = sceneBounds;
-        /// @note 固定した投影範囲には、リアルタイムの受影物が動ける余白を含める。
+        // 固定した投影範囲には、リアルタイムの受影物が動ける余白を含める。
         s_pending.coverage.radius = sceneBounds.radius * 1.125f + 1.0f;
         s_pending.resourceOwner = context.resources.GetInstanceId();
         s_pending.resourceEpoch = context.resources.GetResetVersion();
         s_pending.mask = context.cullingMask;
     }
-    if (!stationary || direction.LengthSq() == 0.0f) return;
+    if (!stationary || direction.LengthSq() == 0.0f) {
+        return;
+    }
     for (const auto& entry : s_resident) {
         if (!entry.texture.IsValid() || entry.data.cullingMask != context.cullingMask
             || !SameDirection(direction, entry.data.lightDirection)
-            || !context.resources.Get(entry.texture.Get())) continue;
-        const bool includeMeshes = renderer::DirectionalShadowBakeIncludesMeshes(entry.data.coverage, entry.data.resolution);
-        if (StaticContent(*context.renderScene, context.resources, context.cullingMask, includeMeshes, false) != entry.content)
+            || !context.resources.Get(entry.texture.Get())) {
             continue;
+        }
+        const bool includeMeshes = renderer::DirectionalShadowBakeIncludesMeshes(entry.data.coverage, entry.data.resolution);
+        if (StaticContent(*context.renderScene, context.resources, context.cullingMask, includeMeshes, false) != entry.content) {
+            continue;
+        }
         if (renderer::PrepareDirectionalShadowBakeView(context.resources, entry.data, entry.texture.Get(),
-            sceneBounds, direction, context.cullingMask, shadowBias, shadows, context.directionalShadowBake)) return;
+            sceneBounds, direction, context.cullingMask, shadowBias, shadows, context.directionalShadowBake)) {
+            return;
+        }
     }
 }
 

@@ -36,32 +36,29 @@ using renderer::Particle;
 /// @note burstPending は «何個出すか» しか運べず、サブエミッターは自分の emitPosition からしか
 /// @note 湧けなかった。«斬った位置で火花» のような発火位置依存の演出はこれが無いと作れない。
 struct ParticleInjectedSpawn {
-    /// @brief 発火元のワールド位置。発生原点として据える (Shape のばらつきはこの点を中心に乗る)。
-    math::Vector3 position;
-    /// @brief 発火元のワールド速度 [m/s]。継ぐ割合は受け側の subEmitterInheritVelocity が決める。
-    math::Vector3 velocity;
-    int           count = 1;
-    /// @note CPU で生成する際の実行時専用の寿命上書き。0 では設定済みの寿命分布を使う。
-    float         lifetime = 0.0f;
+    math::Vector3 position; ///< 発火元のワールド位置。発生原点として据える (Shape のばらつきはこの点を中心に乗る)。
+    math::Vector3 velocity; ///< 発火元のワールド速度 [m/s]。継ぐ割合は受け側の subEmitterInheritVelocity が決める。
+    int           count = 1; ///< この発火元の位置から生成する粒子数。
+    float         lifetime = 0.0f; ///< CPU で生成する際の実行時専用の寿命上書き。0 では設定済みの寿命分布を使う。
 };
 
 /// @brief ParticleBurst — 再生時間上の繰り返しBurst設定。
 struct ParticleBurst {
-    float time = 0.0f;
-    int count = 10;
-    int cycles = 1;
-    float interval = 0.1f;
-    float probability = 1.0f;
+    float time = 0.0f; ///< 再生開始から最初のバーストまでの時間（秒）。
+    int count = 10; ///< バースト 1 回で放出する粒子の数。
+    int cycles = 1; ///< time から開始するバーストの発火回数。
+    float interval = 0.1f; ///< 繰り返すバーストの間隔（秒）。
+    float probability = 1.0f; ///< 各バーストの発火を許可する抽選確率（0〜1）。
 };
 
 /// @brief MeshShapeVertex — MeshSurface が静的頂点とスキンウェイトを共通形式で保持する。
 /// @note AssetManager 所有の Model を参照し続けず、スポーン時は必要な頂点情報だけを高速に抽選する。
 struct MeshShapeVertex {
-    math::Vector3 position;
-    math::Vector3 normal;
-    uint32_t boneIndices[4] = {};
-    float boneWeights[4] = {};
-    bool skinned = false;
+    math::Vector3 position; ///< 発生位置として標本化するモデルローカルの頂点座標。
+    math::Vector3 normal; ///< 表面方向の初速を求めるためのモデルローカルの頂点法線。
+    uint32_t boneIndices[4] = {}; ///< スキニング時に参照する Animator のボーン行列の添字。
+    float boneWeights[4] = {}; ///< boneIndices と同じ順に格納する各ボーンの変形ウェイト。
+    bool skinned = false; ///< この発生頂点をボーン行列で変形する場合に true。
 };
 
 /// @brief MeshShapeTriangle — MeshSurface の面積重み抽選 1 枚ぶん。頂点は meshShapeVertices への添字。
@@ -69,9 +66,8 @@ struct MeshShapeVertex {
 /// @brief 面積に比例させ、三角形内部を重心座標で取れば低ポリでも表面が埋まる。
 /// @brief 重みはバインドポーズ面積で足りる (スキニングで伸縮しても抽選の比率はほぼ変わらない)。
 struct MeshShapeTriangle {
-    uint32_t indices[3] = {};
-    /// @brief 先頭からこの三角形までの面積の総和。1 回の乱数を二分探索で引くための累積分布。
-    float    cumulativeArea = 0.0f;
+    uint32_t indices[3] = {}; ///< この三角形の頂点を参照する meshShapeVertices の添字。
+    float    cumulativeArea = 0.0f; ///< 先頭からこの三角形までの面積の総和。1 回の乱数を二分探索で引くための累積分布。
 };
 
 /// @brief 新しいエミッターの既定の重力加速度 [m/s^2]。
@@ -88,7 +84,7 @@ inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bur
 {
     r.BeginField("bursts", "Bursts");
     const std::size_t count = r.BeginObjectList("Bursts", bursts.size());
-    /// @note 要素の中の Field は自分のキーで通す (ReflectFlowFieldList と同じ理由)。
+    // 要素の中の Field は自分のキーで通す (ReflectFlowFieldList と同じ理由)。
     r.EndField();
     bursts.resize(count);
     for (std::size_t index = 0; index < bursts.size(); ++index) {
@@ -101,8 +97,9 @@ inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bur
         r.EndObjectElement();
     }
     const std::size_t removeIndex = r.EndObjectList();
-    if (removeIndex < bursts.size())
+    if (removeIndex < bursts.size()) {
         bursts.erase(bursts.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+    }
     r.EndField();
 }
 
@@ -127,149 +124,141 @@ inline constexpr const char* PARTICLE_FALLBACK_MATERIAL =
 /// @note コピー代入は常に初期状態を作る (複製のたびにリセットを書かなくて済む規則)。
 /// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
 struct ParticleRuntimeGpuState {
-    renderer::ResourceHandle<renderer::TextureTag> texture;
-    std::string           loadedTexturePath;
-    renderer::ResourceHandle<renderer::TextureTag> motionVectorTexture;
-    std::string           loadedMotionVectorTexturePath;
-    renderer::ResourceHandle<renderer::TextureTag> distortionTexture;
-    std::string           loadedDistortionTexturePath;
-    /// @brief 6 方向ライトマップの Negative 側 (.mat の emissive スロット)。Positive は albedo。
-    renderer::ResourceHandle<renderer::TextureTag> sixWayNegativeTexture;
-    std::string           loadedSixWayNegativeTexturePath;
-    renderer::ResourceHandle<renderer::TextureTag> sixWayAlbedoColorTexture;
-    std::string           loadedSixWayAlbedoColorTexturePath;
-    renderer::ResourceHandle<renderer::TextureTag> sixWayEmissionColorTexture;
-    std::string           loadedSixWayEmissionColorTexturePath;
-    std::string           loadedMaterialPath; ///< @brief materialPath の変更検出用。シーン保存対象外。
+    renderer::ResourceHandle<renderer::TextureTag> texture; ///< 解決した粒子のアルベドテクスチャのハンドル。
+    std::string           loadedTexturePath; ///< 現在のアルベドテクスチャと照合する読み込み元のパス。
+    renderer::ResourceHandle<renderer::TextureTag> motionVectorTexture; ///< フリップブックのフレーム補間で使うモーションベクトルテクスチャ。
+    std::string           loadedMotionVectorTexturePath; ///< 現在のモーションベクトルテクスチャに対応する参照パス。
+    renderer::ResourceHandle<renderer::TextureTag> distortionTexture; ///< 粒子による画面歪みに使うテクスチャのハンドル。
+    std::string           loadedDistortionTexturePath; ///< 現在の歪みテクスチャに対応する参照パス。
+    renderer::ResourceHandle<renderer::TextureTag> sixWayNegativeTexture; ///< 6 方向ライトマップの Negative 側 (.mat の emissive スロット)。Positive は albedo。
+    std::string           loadedSixWayNegativeTexturePath; ///< 6 方向ライトマップの負軸面を読み込んだ参照パス。
+    renderer::ResourceHandle<renderer::TextureTag> sixWayAlbedoColorTexture; ///< 6 方向ライティングで色を与えるアルベドカラーテクスチャ。
+    std::string           loadedSixWayAlbedoColorTexturePath; ///< 現在の 6 方向用アルベドカラーテクスチャに対応する参照パス。
+    renderer::ResourceHandle<renderer::TextureTag> sixWayEmissionColorTexture; ///< 6 方向ライティングで発光色を与えるテクスチャ。
+    std::string           loadedSixWayEmissionColorTexturePath; ///< 現在の 6 方向用発光色テクスチャに対応する参照パス。
+    std::string           loadedMaterialPath; ///< materialPath の変更検出用。シーン保存対象外。
 
     /// @brief .mat が shader を指定していたときの描画シェーダー。無効なら組み込み Particle.hlsl。
     /// @brief 組み込みは「テクスチャを貼ったビルボード」しか出せないので、放電のように手続きで
     /// @brief 形を作る素材は差し替える。
     /// @brief 差し替えたシェーダーは Material/Effects/ParticleMaterial.hlsli を include し、
     /// @brief .mat には render_path = "particle" を書くこと。フリップブック・歪み・煙は自前で書く。
-    renderer::ResourceHandle<renderer::ShaderTag> customShader;
-    std::string           loadedShaderPath;   ///< @brief customShader の変更検出用。シーン保存対象外。
+    renderer::ResourceHandle<renderer::ShaderTag> customShader; ///< 材質が指定した粒子シェーダーのハンドル。無効なら組み込みシェーダーを使う。
+    std::string           loadedShaderPath; ///< customShader の変更検出用。シーン保存対象外。
     /// @brief カスタムシェーダーが宣言した MaterialConstants (b2) へ流す .mat の [params]。
     /// @brief 組み込みシェーダーは MaterialConstants を宣言しないので無効ハンドルのまま。
     /// @note 所有しない: 実体は ParticlePass が .mat 単位で 1 本だけ持ち、エミッターは借りて回す。
     /// @note ここで返すと他のエミッターの b2 まで道連れに落ちる。
-    renderer::ResourceHandle<renderer::ConstantBufferTag> materialParamsCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> materialParamsCB; ///< 材質ごとに共有される、シェーダーの b2 へ渡す非所有の定数バッファ。
 
     /// @brief GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
-    renderer::OwnedResource<renderer::StructuredBufferTag> gpuParticleBuffer; ///< @brief RWStructuredBuffer: CS が更新
+    renderer::OwnedResource<renderer::StructuredBufferTag> gpuParticleBuffer; ///< RWStructuredBuffer: CS が更新
     /// @brief 今フレームのスポーンデータ。ParticlePass のプールから借りているだけで、持ち主はプール
     /// @brief (シミュレーションのたびに借り直す。Release しないこと)。
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer; ///< そのフレームの生成データを格納する、プールから借用した GPU バッファ。
     /// @brief このエミッターに効く力場一式 (内蔵 + シーン)。定数バッファではなく SRV なので
     /// @brief 本数に上限が無い。gpuSpawnBuffer と同じくプールから借りたもの。
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuForceBuffer;
-    renderer::OwnedResource<renderer::ConstantBufferTag>   gpuEmitterCB;      ///< @brief CS 用エミッター定数バッファ
-    renderer::OwnedResource<renderer::ConstantBufferTag>   renderCB;          ///< @brief VS/PS 描画モード・Soft Particle
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuForceBuffer; ///< 内蔵とシーン内の力場を列挙する、プールから借用した GPU バッファ。
+    renderer::OwnedResource<renderer::ConstantBufferTag>   gpuEmitterCB; ///< CS 用エミッター定数バッファ
+    renderer::OwnedResource<renderer::ConstantBufferTag>   renderCB; ///< VS/PS 描画モード・Soft Particle
     /// @brief GPU ソート。sortMode != None のときだけ確保する。並べ替えるのは (キー, 粒子 index)
     /// @brief の対だけ (プール自体を動かすとリングバッファ位置が変わってスポーンが壊れる)。
     /// @brief 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す (GPU では履歴を持てない)。
     /// @brief 頂点バッファは描画側の DynamicVertexBufferPool から借りる。帯はビューごとに形が
     /// @brief 変わるので、エミッターに 1 本持たせると後のビューが先のビューの Draw を書き替える。
-    renderer::OwnedResource<renderer::ConstantBufferTag>   trailRibbonCB;
+    renderer::OwnedResource<renderer::ConstantBufferTag>   trailRibbonCB; ///< このエミッターの連続リボンを描く際に使用する定数バッファ。
     renderer::OwnedResource<renderer::StructuredBufferTag> gpuSortBuffer;     ///< @brief `RWStructuredBuffer<uint2>`
-    renderer::OwnedResource<renderer::ConstantBufferTag>   gpuSortCB;         ///< @brief bitonic の (k, j) を段ごとに更新
-    uint32_t gpuSortCapacity = 0;   ///< @brief gpuSortBuffer の要素数 (2 のべき乗、maxParticles 以上)
-    uint32_t gpuWriteHead    = 0;   ///< @brief gpuSpawnBuffer の次書き込み位置 (リングバッファインデックス)
-    uint32_t gpuSpawnCount   = 0;   ///< @brief 今フレームのスポーン数
-    bool     gpuInitialized  = false;
-    uint32_t gpuCapacity = 0;
-    bool     gpuClearPending = false;
-    uint64_t gpuResetVersion = 0;   ///< @brief 最後に確認した ResourceManager::GetResetVersion()
-    uint64_t lastGpuSimulationFrame = UINT64_MAX;
+    renderer::OwnedResource<renderer::ConstantBufferTag>   gpuSortCB; ///< bitonic の (k, j) を段ごとに更新
+    uint32_t gpuSortCapacity = 0; ///< gpuSortBuffer の要素数 (2 のべき乗、maxParticles 以上)
+    uint32_t gpuWriteHead    = 0; ///< gpuSpawnBuffer の次書き込み位置 (リングバッファインデックス)
+    uint32_t gpuSpawnCount   = 0; ///< 今フレームのスポーン数
+    bool     gpuInitialized  = false; ///< GPU シミュレーション用バッファの初期化が済んでいる。
+    uint32_t gpuCapacity = 0; ///< gpuParticleBuffer に確保した粒子スロットの数。
+    bool     gpuClearPending = false; ///< 次の GPU シミュレーションで既存粒子を消去する必要がある。
+    uint64_t gpuResetVersion = 0; ///< 最後に確認した ResourceManager::GetResetVersion()
+    uint64_t lastGpuSimulationFrame = UINT64_MAX; ///< GPU シミュレーションを最後に登録したリソースフレームの番号。未処理は UINT64_MAX。
 };
 
 struct ParticleRuntime : TransientGpuState<ParticleRuntimeGpuState> {
-    std::vector<Particle> particles;
+    std::vector<Particle> particles; ///< CPU シミュレーションで生存している粒子の状態。
     /// @brief emitRate * dt の累積値。1.0 を超えるたびに 1 粒子を発生させる。
     /// @brief こうすることで低フレームレートでも発生数が dt に比例して安定する。
-    float                 emitAccum = 0.0f;
-    /// @brief randomSeed から初期化されるランタイム状態。シーン保存対象ではない。
-    uint32_t              randomState = 1;
-    float                 playTime = 0.0f;
-    float                 delayTime = 0.0f;
-    int                   burstPending = 0;
+    float                 emitAccum = 0.0f; ///< 前回までに積み残した時間あたりの発生量。1.0 につき 1 粒子を生成する。
+    uint32_t              randomState = 1; ///< randomSeed から初期化されるランタイム状態。シーン保存対象ではない。
+    float                 playTime = 0.0f; ///< 開始遅延の後に進めるエミッターの再生時刻（秒）。
+    float                 delayTime = 0.0f; ///< 再生開始から startDelay を満たすまでに積んだ待機時間（秒）。
+    int                   burstPending = 0; ///< バーストとして次の生成処理に渡す粒子数。
     /// @brief SubEmitter が積んだ «発火元つき» のスポーン。CPU スポーンがレート/バーストより先に
     /// @brief 消費し、消費したら空にする。積み手 (QueueSubEmitter) が maxParticles 相当で打ち切るので、
     /// @brief 受け側が一度も回らなくても (GPU / 非アクティブ) 無限には伸びない。
-    std::vector<ParticleInjectedSpawn> injectedSpawns;
+    std::vector<ParticleInjectedSpawn> injectedSpawns; ///< サブエミッターへの発火元位置・速度を伴う未消費の生成要求。
     /// @brief .mat から解決した «見た目» 一式。シミュレーションも描画もこちらだけを見る。
     /// @brief settings はシーン保存対象なので書き戻さない («触っていないのに保存内容が変わる» /
     /// @brief «Inspector で変えても次のフレームで戻る» が起きる)。
-    asset::ParticleMaterialSettings material;
-    /// @brief .mat の blend_mode から解決した実効ブレンド。PSO 選択はこれを見る。
-    ParticleBlendMode resolvedBlend = ParticleBlendMode::Additive;
+    asset::ParticleMaterialSettings material; ///< 材質アセットから解決した、シミュレーションと描画で参照する見た目設定。
+    ParticleBlendMode resolvedBlend = ParticleBlendMode::Additive; ///< .mat の blend_mode から解決した実効ブレンド。PSO 選択はこれを見る。
     /// @brief albedo テクスチャが sRGB でエンコードされているか (.meta の srgb)。
     /// @note 手描き素材は sRGB、ProceduralVFXTextures が焼くものはリニア。一律にリニア化すると
     /// @note 後者が暗く沈むため、素材ごとの実際の値に従う。
-    bool                  textureIsSrgb = true;
-    /// @brief .mat の [params] albedo。リニアへ変換済み。
-    math::Vector4         materialTint = { 1.0f, 1.0f, 1.0f, 1.0f };
+    bool                  textureIsSrgb = true; ///< 読み込んだアルベドが sRGB で符号化されている場合に true。
+    math::Vector4         materialTint = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< .mat の [params] albedo。リニアへ変換済み。
     /// @brief 黒体放射を焼き込んだ後の実効グラデーション。blackbodyEnabled が false なら
     /// @brief colorGradient のコピー。シミュレーションと GPU 定数バッファはこちらだけを見る。
-    ParticleGradient      runtimeGradient;
-    /// @brief RefreshRuntimeGradient の再計算判定に使う入力の写し。シーン保存対象外。
-    bool                                                       runtimeGradientValid = false;
-    bool                                                       runtimeGradientBlackbody = false;
-    float                                                      runtimeGradientReference = 0.0f;
-    float                                                      runtimeGradientIntensity = 0.0f;
-    std::array<ParticleGradientKey, kMaxParticleCurveKeys>     runtimeGradientSourceKeys{};
-    uint32_t                                                   runtimeGradientSourceCount = 0;
-    std::array<ParticleCurveKey, kMaxParticleCurveKeys>        runtimeGradientTemperatureKeys{};
-    uint32_t                                                   runtimeGradientTemperatureCount = 0;
-    ParticleCurveInterpolation runtimeGradientSourceInterpolation = ParticleCurveInterpolation::Linear;
-    ParticleCurveInterpolation runtimeGradientTemperatureInterpolation = ParticleCurveInterpolation::Linear;
-    ParticleColorSpace runtimeGradientSourceColorSpace = ParticleColorSpace::Gamma;
+    ParticleGradient      runtimeGradient; ///< 黒体放射も反映してからシミュレーションと描画に渡す色のグラデーション。
+    bool                                                       runtimeGradientValid = false; ///< RefreshRuntimeGradient の再計算判定に使う入力の写し。シーン保存対象外。
+    bool                                                       runtimeGradientBlackbody = false; ///< グラデーション計算時に参照した黒体放射の有効状態。
+    float                                                      runtimeGradientReference = 0.0f; ///< グラデーション計算時の基準色温度（K）。
+    float                                                      runtimeGradientIntensity = 0.0f; ///< グラデーション計算時の黒体放射の明るさ倍率。
+    std::array<ParticleGradientKey, kMaxParticleCurveKeys>     runtimeGradientSourceKeys{}; ///< 実効色の再計算を判定するために保存した元グラデーションのキー。
+    uint32_t                                                   runtimeGradientSourceCount = 0; ///< runtimeGradientSourceKeys に格納された有効キーの数。
+    std::array<ParticleCurveKey, kMaxParticleCurveKeys>        runtimeGradientTemperatureKeys{}; ///< 実効色の再計算を判定するために保存した色温度カーブのキー。
+    uint32_t                                                   runtimeGradientTemperatureCount = 0; ///< runtimeGradientTemperatureKeys に格納された有効キーの数。
+    ParticleCurveInterpolation runtimeGradientSourceInterpolation = ParticleCurveInterpolation::Linear; ///< キャッシュ作成時の元グラデーションの補間方式。
+    ParticleCurveInterpolation runtimeGradientTemperatureInterpolation = ParticleCurveInterpolation::Linear; ///< キャッシュ作成時の色温度カーブの補間方式。
+    ParticleColorSpace runtimeGradientSourceColorSpace = ParticleColorSpace::Gamma; ///< キャッシュ作成時の元グラデーションの色空間。
 
-    uint64_t lastCpuSimulationFrame = UINT64_MAX;
-    uint64_t lastPlaybackFrame = UINT64_MAX;
-    bool emitThisFrame = false;
-    bool prewarmed = false;
-    math::Vector3 boundsCenter = {};
-    float boundsRadius = 0.0f;
-    /// @note GPU 粒子の位置を包含する球と速さの上限。描画用の推定 Bounds では力場を落とさない。
-    math::Vector3 flowBoundsCenter = {};
-    float flowBoundsRadius = 0.0f;
-    float flowSpeedBound = 0.0f;
-    float flowMinimumAge = 0.0f;
-    float flowMaxLifetime = 0.0f;
-    float lodRateScale = 1.0f;
-    int visibleParticleCount = 0;
-    bool isCulledThisFrame = false;
-    int prewarmSpawnPending = 0;
-    bool hasLastEmitterPosition = false;
-    math::Vector3 lastEmitterPosition = {};
+    uint64_t lastCpuSimulationFrame = UINT64_MAX; ///< CPU 粒子の更新を最後に行ったフレームの番号。未処理は UINT64_MAX。
+    uint64_t lastPlaybackFrame = UINT64_MAX; ///< 再生時刻や発生量を最後に進めたフレームの番号。重複更新を避ける。
+    bool emitThisFrame = false; ///< 現在のフレームで時間ベースの粒子発生を行う。
+    bool prewarmed = false; ///< 現在の再生で開始時の粒子を先に生成する処理が済んでいる。
+    math::Vector3 boundsCenter = {}; ///< 描画カリングに用いる包含球の中心（ワールド座標）。
+    float boundsRadius = 0.0f; ///< 描画カリングに用いる包含球の半径（ワールド m）。
+    math::Vector3 flowBoundsCenter = {}; ///< GPU 粒子の位置を包含する球と速さの上限。描画用の推定 Bounds では力場を落とさない。
+    float flowBoundsRadius = 0.0f; ///< 力場の候補抽出に用いる GPU 粒子の保守的な包含半径（ワールド m）。
+    float flowSpeedBound = 0.0f; ///< 力場抽出用の包含球を拡張するための GPU 粒子の速度上限（m/s）。
+    float flowMinimumAge = 0.0f; ///< 最後に GPU 粒子が発生して以降の経過秒数。包含球の消滅判定に使う。
+    float flowMaxLifetime = 0.0f; ///< 力場抽出用の包含球に加えた GPU 粒子の寿命の最大値（秒）。
+    float lodRateScale = 1.0f; ///< 前回のビュー抽出で決めた、距離 LOD による発生レート・描画数の倍率。
+    int visibleParticleCount = 0; ///< 直近の描画抽出で提出する粒子数。カリング時は 0。
+    bool isCulledThisFrame = false; ///< 直近のビューで範囲または画面占有率のカリング対象になった。
+    int prewarmSpawnPending = 0; ///< 通常生成とは異なる初期年齢を与えるウォームアップ粒子の残り数。
+    bool hasLastEmitterPosition = false; ///< 速度と移動距離を求めるための前回位置を取得済み。
+    math::Vector3 lastEmitterPosition = {}; ///< 速度と移動距離の算出に使う前回のエミッター発生中心（ワールド座標）。
     /// @brief エミッター自身のワールド速度 [m/s]。inheritVelocity がスポーン時に参照する。
     /// @brief ParticleSimulationSystem が lastEmitterPosition を更新するのと同じ場所で毎フレーム求める。
-    math::Vector3 emitterVelocity = {};
-    float distanceEmitAccum = 0.0f;
-    std::vector<int> burstCyclesFired;
+    math::Vector3 emitterVelocity = {}; ///< 前回の位置から求め、初速の継承に用いるエミッターのワールド速度（m/s）。
+    float distanceEmitAccum = 0.0f; ///< 距離ベースの発生量の積み残し。1.0 につき 1 粒子を生成する。
+    std::vector<int> burstCyclesFired; ///< settings.bursts の添字ごとに保持する、処理済みバーストの繰り返し回数。
 
-    /// @brief MeshSurface Shapeのランタイムキャッシュ。位置・法線と4ボーンウェイトだけを複製する。
-    std::vector<MeshShapeVertex>   meshShapeVertices;
+    std::vector<MeshShapeVertex>   meshShapeVertices; ///< MeshSurface Shapeのランタイムキャッシュ。位置・法線と4ボーンウェイトだけを複製する。
     /// @brief 面積の累積分布付き三角形列。インデックスを持たないメッシュでは空のままで、
     /// @brief その場合は頂点の一様抽選へ縮退する。
-    std::vector<MeshShapeTriangle> meshShapeTriangles;
-    std::string loadedMeshShapePath;
-    int         loadedMeshShapeIndex = -2;
+    std::vector<MeshShapeTriangle> meshShapeTriangles; ///< MeshSurface 発生で面積比例の抽選に使う三角形の累積分布。
+    std::string loadedMeshShapePath; ///< 現在キャッシュしている MeshSurface のモデル参照。
+    int         loadedMeshShapeIndex = -2; ///< キャッシュしたサブメッシュ選択の添字。-1 は全体、-2 はキャッシュなし。
 
     /// @name エディタープレビュー制御 (VFX Editor 用ランタイム状態。シーン保存対象外)
     /// @{
     /// @note VFX Editor の再生速度・一時停止をシミュレーション dt へ注入する口。パネルが毎フレーム
     /// @note 書き込み、途絶えたら自動で通常速度へ戻る (パネルを閉じても凍結が残らないフェイルセーフ)。
-    float    editorTimeScale      = 1.0f;
-    uint64_t editorTimeScaleFrame = 0;     ///< @brief editorTimeScale を最後に書き込んだ Time::frameCount
+    float    editorTimeScale      = 1.0f; ///< エディタープレビューの粒子更新時間に掛ける倍率。0 で一時停止。
+    uint64_t editorTimeScaleFrame = 0; ///< editorTimeScale を最後に書き込んだ Time::frameCount
     /// @brief タイムラインスクラブ要求 [秒]。>=0 のとき ParticleSimulationSystem が消費し、
     /// @brief randomSeed から決定論的にその時刻まで再シミュレートする。負値 = 要求なし。
-    float    editorScrubTime      = -1.0f;
+    float    editorScrubTime      = -1.0f; ///< 決定論的に再シミュレーションするエディターの指定時刻（秒）。負値は要求なし。
 
-    /// @brief 当たり・死亡の「今フレームぶん」の計数。VFX Graph の OnCollision / OnDeath が消費する。
-    int collisionCountThisFrame = 0;
-    int deathCountThisFrame = 0; ///< @brief VFX GraphのOnDeath eventがフレーム単位で消費する。
+    int collisionCountThisFrame = 0; ///< 当たり・死亡の「今フレームぶん」の計数。VFX Graph の OnCollision / OnDeath が消費する。
+    int deathCountThisFrame = 0; ///< VFX GraphのOnDeath eventがフレーム単位で消費する。
     ParticleRuntime() = default;
     ParticleRuntime(ParticleRuntime&&) noexcept = default;
     ParticleRuntime& operator=(ParticleRuntime&&) noexcept = default;
@@ -278,7 +267,7 @@ struct ParticleRuntime : TransientGpuState<ParticleRuntimeGpuState> {
     ParticleRuntime(const ParticleRuntime&) {}
     ParticleRuntime& operator=(const ParticleRuntime&)
     {
-        /// @note 一時からの move 代入。常に初期状態へ戻す
+        // 一時からの move 代入。常に初期状態へ戻す
         *this = ParticleRuntime{};
         return *this;
     }
@@ -292,15 +281,15 @@ struct ParticleRuntime : TransientGpuState<ParticleRuntimeGpuState> {
 /// @brief 距離と画面占有によるカリングと、発生量の LOD。
 /// @brief 粒子の現在 Bounds を使い、遠距離では発生数と描画数を段階的に削減する。
 struct ParticleCullingSettings {
-    bool  cullingEnabled          = true;
-    float cullingBoundsPadding    = 0.25f;
-    bool  lodEnabled              = true;
-    float lodNearDistance         = 12.0f;
-    float lodFarDistance          = 40.0f;
-    float lodNearRateScale        = 1.0f;
-    float lodFarRateScale         = 0.25f;
-    float screenCoverageThreshold = 0.0f;
-    bool  pauseWhenCulled         = false;
+    bool  cullingEnabled          = true; ///< ビューの範囲外や画面占有率が足りないエミッターを描画しない。
+    float cullingBoundsPadding    = 0.25f; ///< 粒子の描画用包含球の半径に加える余裕（ワールド m）。
+    bool  lodEnabled              = true; ///< カメラからの距離に応じて粒子生成数と描画数を調整する。
+    float lodNearDistance         = 12.0f; ///< lodNearRateScale をそのまま使う上限距離（カメラからの m）。
+    float lodFarDistance          = 40.0f; ///< lodFarRateScale に達する距離（カメラからの m）。
+    float lodNearRateScale        = 1.0f; ///< lodNearDistance 以内で使う発生・描画数の倍率。
+    float lodFarRateScale         = 0.25f; ///< lodFarDistance 以遠で使う発生・描画数の倍率。
+    float screenCoverageThreshold = 0.0f; ///< 描画に必要な包含球半径とカメラ距離の比。0 以下ならこの判定を行わない。
+    bool  pauseWhenCulled         = false; ///< カリングされた場合に粒子のシミュレーションを一時停止する。
 };
 
 /// @brief 粒子 1 つ 1 つに付ける尾 (per-particle Trail)。火の粉・魔法の軌跡のように «粒が線を引く» 表現用。
@@ -314,20 +303,15 @@ using renderer::ParticleTrailSettings;
 /// @note 光は RenderSystem のライト配列 (kMaxPunctualLights) を LightComponent と共有し、
 /// @note LightComponent を先に積んだ残りの枠だけを使う。
 struct ParticleLightSettings {
-    bool  lightEnabled          = false;
-    /// @brief 光らせる粒子の割合 [0,1]。粒子ごとの固定乱数で決まるので寿命の間は変わらない。
-    float lightRatio            = 1.0f;
-    /// @brief 1 エミッターから出す本数の上限。明るい順に選ぶ。
-    int   lightMaxCount         = 8;
-    float lightRange            = 2.0f;
-    /// @brief true なら lightRange × 粒子サイズを届く距離にする (大きな火の玉ほど遠くまで照らす)。
-    bool  lightRangeFromSize    = false;
-    float lightIntensity        = 1.0f;
-    /// @brief true なら lightColor × 粒子の色 (色のグラデーションに光の色も追従する)。
-    bool  lightUseParticleColor = true;
-    math::Vector4 lightColor    = { 1.0f, 1.0f, 1.0f, 1.0f };
-    /// @brief true なら粒子のアルファで強さを落とす (消えかけの粒子が光り続けない)。
-    bool  lightFadeWithAlpha    = true;
+    bool  lightEnabled          = false; ///< 選択した CPU 粒子を点光源として抽出する。
+    float lightRatio            = 1.0f; ///< 光らせる粒子の割合 [0,1]。粒子ごとの固定乱数で決まるので寿命の間は変わらない。
+    int   lightMaxCount         = 8; ///< 1 エミッターから出す本数の上限。明るい順に選ぶ。
+    float lightRange            = 2.0f; ///< 粒子に付ける点光源の影響半径（m）。
+    bool  lightRangeFromSize    = false; ///< true なら lightRange × 粒子サイズを届く距離にする (大きな火の玉ほど遠くまで照らす)。
+    float lightIntensity        = 1.0f; ///< 粒子から抽出する点光源の基本強度。
+    bool  lightUseParticleColor = true; ///< true なら lightColor × 粒子の色 (色のグラデーションに光の色も追従する)。
+    math::Vector4 lightColor    = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< 粒子色の適用前に設定する点光源の基本 RGBA 色。
+    bool  lightFadeWithAlpha    = true; ///< true なら粒子のアルファで強さを落とす (消えかけの粒子が光り続けない)。
 };
 
 /// @brief エミッターのオーサリング設定。GameObject に依存しない値の塊。
@@ -335,77 +319,74 @@ struct ParticleLightSettings {
 /// @note (`emitter.settings = node.particle;` で写せる)。直列化の正本もこの構造体 1 つに揃える。
 struct ParticleEmitterSettings {
 
-    math::Vector3 emitPosition   = {};
-    math::Vector3 emitVelocity   = { 0.0f, 4.0f, 0.0f };
+    math::Vector3 emitPosition   = {}; ///< 形状のオフセットを加えるエミッターのローカル発生中心。
+    math::Vector3 emitVelocity   = { 0.0f, 4.0f, 0.0f }; ///< 形状とばらつきを加える前のエミッターローカル初速（m/s）。
     /// @brief 初速のばらつき [m/s]。emitVelocity の 3 軸へ等方に ±velocitySpread を加える。
     /// @brief Sphere / Cone 形状が持つ方向成分 (shapeVelocity) とは別枠で、こちらは純粋な揺らぎ。
-    float         velocitySpread = 1.5f;
-    math::Vector4 colorStart     = { 1.0f, 0.7f, 0.2f, 1.0f };
-    math::Vector4 colorEnd       = { 1.0f, 0.1f, 0.0f, 0.0f };
-    float         sizeStart      = 0.4f;
-    float         sizeEnd        = 0.05f;
+    float         velocitySpread = 1.5f; ///< 発生時に各軸の初速へ加えるばらつきの最大絶対値（m/s）。
+    math::Vector4 colorStart     = { 1.0f, 0.7f, 0.2f, 1.0f }; ///< 寿命ベースの既定の色補間における生成直後の RGBA 色。
+    math::Vector4 colorEnd       = { 1.0f, 0.1f, 0.0f, 0.0f }; ///< 寿命ベースの既定の色補間における消滅直前の RGBA 色。
+    float         sizeStart      = 0.4f; ///< 寿命ベースの既定の大きさ補間における生成直後の値（m）。
+    float         sizeEnd        = 0.05f; ///< 寿命ベースの既定の大きさ補間における消滅直前の値（m）。
     /// @brief ビルボードの縦横比。size に対する軸ごとの倍率で、xy のみ使う (z は Mesh Particle 用)。
     /// @brief エミッター単位の値なので per-particle ではなく定数バッファへ載せる。
-    math::Vector3 sizeAxisScale  = { 1.0f, 1.0f, 1.0f };
-    float         lifetime       = 2.0f;
-    float         lifetimeRandom = 0.0f;
-    float         emitRate       = 30.0f;
-    int           maxParticles   = 300;
+    math::Vector3 sizeAxisScale  = { 1.0f, 1.0f, 1.0f }; ///< 粒子の基本サイズに掛ける軸別倍率。ビルボードで使うのは X と Y。
+    float         lifetime       = 2.0f; ///< 新規粒子に与える寿命の基準値（秒）。
+    float         lifetimeRandom = 0.0f; ///< 基準寿命に対する個体差の最大割合。符号は粒子ごとの乱数で決まる。
+    float         emitRate       = 30.0f; ///< 発生条件が有効なときの時間ベースの放出量（個/秒）。
+    int           maxParticles   = 300; ///< このエミッターで同時に保持する粒子数の上限。
 
     /// @brief エミッターが内蔵する流れ。乱流・周回・放射・焼いた場がここに入る。
     /// @note FlowField と同じ式を持つため個別フィールドをやめて統合した。エミッターに追従する
     /// @note 固有の流れとして効き、channels は無関係 (相手は既に 1 体に決まっている)。重力・
     /// @note 空気抵抗は媒質の運動ではないため gravity / flowCoupling が別に持つ。
-    std::vector<FlowFieldSettings> localForces;
+    std::vector<FlowFieldSettings> localForces; ///< このエミッターの粒子だけに作用する内蔵の流れの設定。
 
     /// @brief 粒子だけに掛かる加速度 [m/s^2]。重力・浮力の «上昇» をここで表す。
     /// @note 正本は物理の ProjectSettings ではない。粒子は «絵» なので落ち方を個別に決める。
-    math::Vector3 gravity = kDefaultParticleGravity;
+    math::Vector3 gravity = kDefaultParticleGravity; ///< 粒子だけに作用する加速度（m/s²）。
 
     /// @brief 流れへの結合係数 [1/s]。v += (v_flow − v) · flowCoupling · dt。
     /// @note 旧 «内蔵 Drag の strength» と同じ枠・同じ単位。空気抵抗は流れの種類ではなく
     /// @note «この粒子がどれだけ流れに乗るか» なので、型ではなくエミッターの設定にした。
     /// @note Drag over Lifetime カーブはこの値に掛かる。
-    float flowCoupling = kDefaultFlowCoupling;
+    float flowCoupling = kDefaultFlowCoupling; ///< 粒子の速度を周囲の流れへ近づける速さ（1/s）。
 
-    /// @note std::rand() のグローバル状態を避け、エミッター単位で再現可能な分布にする。
-    uint32_t      randomSeed     = 1;
-    bool          enabled        = true;
+    uint32_t      randomSeed     = 1; ///< std::rand() のグローバル状態を避け、エミッター単位で再現可能な分布にする。
+    bool          enabled        = true; ///< エミッターをシーンの更新および描画対象にする。
 
-    /// @brief 再生状態。enabled は Component の有効/無効、playing はエフェクト再生を表す。
-    bool  playing     = true;
-    bool  loop        = true;
-    float duration    = 5.0f;
-    float startDelay  = 0.0f;
-    bool  clearOnStop = false;
+    bool  playing     = true; ///< 再生状態。enabled は Component の有効/無効、playing はエフェクト再生を表す。
+    bool  loop        = true; ///< duration ごとに発生時刻やバーストの判定を繰り返す。
+    float duration    = 5.0f; ///< エミッターの 1 回の発生区間（秒）。個々の寿命とは独立する。
+    float startDelay  = 0.0f; ///< 再生してから最初に粒子を発生させるまでの待機時間（秒）。
+    bool  clearOnStop = false; ///< 再生停止時に生存している粒子も消去する。
 
-    ParticleEmitterShape shape = ParticleEmitterShape::Point;
-    float         sphereRadius = 1.0f;
-    float         coneAngleDegrees = 25.0f;
-    float         coneRadius = 1.0f;
-    math::Vector3 boxExtents = { 1.0f, 1.0f, 1.0f };
+    ParticleEmitterShape shape = ParticleEmitterShape::Point; ///< 粒子の初期位置と形状由来の速度をサンプルする発生形状。
+    float         sphereRadius = 1.0f; ///< 球形で発生位置の分布に使うローカル半径（m）。
+    float         coneAngleDegrees = 25.0f; ///< 円錐形で初速を中心方向から傾ける最大角（度）。
+    float         coneRadius = 1.0f; ///< 円錐形で粒子の発生位置を広げるローカル半径（m）。
+    math::Vector3 boxExtents = { 1.0f, 1.0f, 1.0f }; ///< 直方体内の発生位置に使う各軸のローカル半辺長（m）。
     /// @brief FBX / Model の頂点群を発生位置として使う。meshIndex < 0 なら全サブメッシュを結合する。
     /// @note CPU/GPU の両モードで同じスポーンバッファを使い、モデル形状 Particle を同じ見た目にする。
-    std::string meshShapePath;
-    int         meshShapeIndex = -1;
-    float       meshShapeScale = 1.0f;
-    /// @brief 同じ GameObject の AnimatorComponent が持つ現在のボーン行列で発生点を変形する。
-    bool        meshShapeFollowSkinnedAnimation = false;
+    std::string meshShapePath; ///< 表面を発生位置として標本化するモデルアセットの参照。
+    int         meshShapeIndex = -1; ///< 発生に使うモデルのサブメッシュ添字。負値は全サブメッシュ。
+    float       meshShapeScale = 1.0f; ///< モデルから得た発生頂点座標に掛ける倍率。
+    bool        meshShapeFollowSkinnedAnimation = false; ///< 同じ GameObject の AnimatorComponent が持つ現在のボーン行列で発生点を変形する。
     /// @brief 表面法線方向へ与える初速 [m/s]。0 なら emitVelocity だけで飛ぶ。
     /// @brief 表面から «にじみ出る» 崩壊は、法線が初速に入って初めて成立する。
     /// @brief 負値は «表面へ吸い込む» 収束エフェクトになる。
-    float       meshShapeNormalVelocity = 0.0f;
+    float       meshShapeNormalVelocity = 0.0f; ///< 表面発生時に法線方向へ足す初速（m/s）。負値は面の内向き。
 
-    ParticleSortMode  sortMode  = ParticleSortMode::None;
+    ParticleSortMode  sortMode  = ParticleSortMode::None; ///< 単一エミッター内の粒子の描画ソート方式。
     /// @brief エミッター間の描画順。小さいほど先に描かれる (＝奥に見える)。
     /// @brief sortMode は 1 エミッター内しか並べ替えないので、別エミッターが重なる構成では
     /// @brief GameObject の並び順で前後が決まってしまう。同値ならカメラから遠い順。
-    int renderPriority = 0;
-    ParticleSimulationMode simulationMode = ParticleSimulationMode::Cpu;
-    ParticleSimulationSpace simulationSpace = ParticleSimulationSpace::World;
-    ParticleRenderMode renderMode = ParticleRenderMode::Billboard;
-    float stretchedVelocityScale = 0.1f;
-    float stretchedLengthScale = 1.0f;
+    int renderPriority = 0; ///< エミッター間の描画順。小さい値から描き、同値は遠い方が先。
+    ParticleSimulationMode simulationMode = ParticleSimulationMode::Cpu; ///< 粒子を更新する CPU または GPU の希望経路。
+    ParticleSimulationSpace simulationSpace = ParticleSimulationSpace::World; ///< 発生後の粒子の位置と速度を保持する座標空間。
+    ParticleRenderMode renderMode = ParticleRenderMode::Billboard; ///< ビルボード等の粒子の表示形状。
+    float stretchedVelocityScale = 0.1f; ///< 速度方向へ伸ばす粒子の追加長さに適用する速度係数。
+    float stretchedLengthScale = 1.0f; ///< 速度方向へ伸ばす粒子の基本長さ倍率。
 
     /// @brief CollisionはCPUで自作Physics WorldをQueryする。GPU指定時は正確性優先でCPUへ縮退する。
 
@@ -413,45 +394,44 @@ struct ParticleEmitterSettings {
     /// @brief 歪み・煙・自己影・明るさはすべてここから来る (解決結果は runtime.material)。
     /// @brief 同じ素材を複数のエミッターで共有するため .mat 側に持つ。
     /// @brief 空のときは PARTICLE_FALLBACK_MATERIAL が使われる (白い矩形にはならない)。
-    std::string materialPath;
+    std::string materialPath; ///< 粒子の実効描画設定を読み込む .mat の参照。空なら既定の粒子材質を使う。
     /// @brief 空でなければビルボードの代わりに «メッシュ粒子» として描く (粒子 1 個 = 1 TRS)。
     /// @warning このパスは読み込まれない。実体は同じ GameObject の MeshRenderer::mesh (bool が
     /// @note 正しい型だが .scene 等で文字列保存済みのため互換で型を変えない)。意味を持つのは空か否かだけ。
     /// @note CPU 経路はさらに同じ GameObject の MeshTrailComponent を要求する。
-    std::string meshParticlePath;
+    std::string meshParticlePath; ///< 空でなければ同じオブジェクトの MeshRenderer を粒子の形状として使う。
     /// @brief 粒子ごとの色ゆらぎ [0,1]。発生時に RGB を各チャンネル独立で ±colorVariation 倍する。
     /// @brief 完全に同色だと群れが一枚のベタ塗りに見える。チャンネル独立にすると明度差と
     /// @brief 軽い色相差が同時に出て厚みが出る。
-    float colorVariation = 0.0f;
-    float sizeCurvePower = 1.0f;
-    float colorCurvePower = 1.0f;
-    float angularVelocityMin = 0.0f;
-    float angularVelocityMax = 0.0f;
-    /// @brief false なら生成時の板の向きを 0 rad に固定する。角速度には影響しない。
-    bool randomStartRotation = true;
-    bool useSizeCurve = false;
-    ParticleCurve sizeCurve;
-    bool useVelocityCurve = false;
-    ParticleCurve velocityCurve;
-    bool useColorGradient = false;
-    ParticleGradient colorGradient;
+    float colorVariation = 0.0f; ///< 生成時に RGB の各成分へ独立に適用する色ばらつきの最大割合。
+    float sizeCurvePower = 1.0f; ///< 生成時から消滅時までの既定サイズ補間の指数。
+    float colorCurvePower = 1.0f; ///< 生成時から消滅時までの既定色補間の指数。
+    float angularVelocityMin = 0.0f; ///< 生成時に抽選する回転角速度の下限（rad/s）。
+    float angularVelocityMax = 0.0f; ///< 生成時に抽選する回転角速度の上限（rad/s）。
+    bool randomStartRotation = true; ///< false なら生成時の板の向きを 0 rad に固定する。角速度には影響しない。
+    bool useSizeCurve = false; ///< 開始・終了サイズの既定補間に代えて寿命カーブを適用する。
+    ParticleCurve sizeCurve; ///< 正規化寿命から粒子の大きさを決めるカーブ。
+    bool useVelocityCurve = false; ///< 正規化寿命に応じて速度カーブを適用する。
+    ParticleCurve velocityCurve; ///< 正規化寿命から粒子の速度倍率を決めるカーブ。
+    bool useColorGradient = false; ///< 開始・終了色の既定補間に代えて寿命グラデーションを適用する。
+    ParticleGradient colorGradient; ///< 正規化寿命から粒子の RGBA 色を決めるグラデーション。
 
     /// @brief 角速度に掛ける時間倍率。定数の angularVelocity だけでは
     /// @brief 「勢いよく回り始めて減速する」火の粉・破片の動きが作れない。
-    bool useRotationCurve = false;
-    ParticleCurve rotationCurve;
+    bool useRotationCurve = false; ///< 正規化寿命に応じて回転角速度のカーブを適用する。
+    ParticleCurve rotationCurve; ///< 正規化寿命から回転角速度に掛ける倍率を求めるカーブ。
     /// @brief flowCoupling に掛ける時間倍率。噴き出し直後は素直に飛び、
     /// @brief 後半で急に流れへ乗る、といった作り分けに使う。
-    bool useDragCurve = false;
-    ParticleCurve dragCurve;
+    bool useDragCurve = false; ///< 正規化寿命に応じて flowCoupling のカーブを適用する。
+    ParticleCurve dragCurve; ///< 正規化寿命から流れへの結合係数に掛ける倍率を求めるカーブ。
 
     /// @name 発生量の時間変化
     /// @{
     /// @brief emitRate に掛ける倍率。エミッターの再生時刻を duration で正規化した 0..1 で引く。
     /// @brief burst を刻んで近似すると粒の湧き方が段になって «脈打つ» ように見える。
     /// @brief loop するエミッターでは playTime を duration で割った余りで引く。
-    bool useEmitRateCurve = false;
-    ParticleCurve emitRateCurve;
+    bool useEmitRateCurve = false; ///< 発生レートにエミッター再生時刻ベースのカーブを適用する。
+    ParticleCurve emitRateCurve; ///< エミッターの正規化再生時刻から発生レートの倍率を求めるカーブ。
     /// @}
 
     /// @name 速度による見た目
@@ -460,21 +440,20 @@ struct ParticleEmitterSettings {
     /// @brief 火花は «速いものほど明るく長い» のであって «出てすぐが明るい» のではないので、
     /// @brief 寿命だけを見ると跳ね返って減速した粒が «まだ若いから明るい» まま残る。
     /// @brief 正規化: speed / speedRange を 0..1 にクランプしてカーブを引く。
-    float speedRange = 10.0f;
-    bool useSpeedSizeCurve = false;
-    ParticleCurve speedSizeCurve;         ///< @brief size への倍率
-    bool useSpeedColorGradient = false;
-    ParticleGradient speedColorGradient;  ///< @brief 寿命の色へ乗算する
+    float speedRange = 10.0f; ///< 速度依存のカーブを最大入力にする粒子速度（m/s）。
+    bool useSpeedSizeCurve = false; ///< 粒子の速度に応じた大きさの補正を適用する。
+    ParticleCurve speedSizeCurve; ///< size への倍率
+    bool useSpeedColorGradient = false; ///< 粒子の速度に応じた色の補正を適用する。
+    ParticleGradient speedColorGradient; ///< 寿命の色へ乗算する
 
     /// @brief 周回 (Vortex) と放射 (Source) は localForces に space = Emitter で入る。
     /// @brief 発生時にエミッター自身の移動速度を初速へ加算する割合 [0,1]。
     /// @brief 移動する剣・ロケットから出る火花が置き去りにならず、引きずられて見えるようになる。
-    float inheritVelocity = 0.0f;
+    float inheritVelocity = 0.0f; ///< 新しい粒子の初速へ加えるエミッター自身の移動速度の割合（0〜1）。
 
-    /// @brief Emission拡張: 移動距離、Prewarm、時刻指定Burst。
-    float rateOverDistance = 0.0f;
-    bool prewarm = false;
-    std::vector<ParticleBurst> bursts;
+    float rateOverDistance = 0.0f; ///< Emission拡張: 移動距離、Prewarm、時刻指定Burst。
+    bool prewarm = false; ///< 再生開始時に既に経過時間を持つ粒子を用意する。
+    std::vector<ParticleBurst> bursts; ///< 再生時刻ごとの一括発生と、その繰り返しの設定列。
 
     /// @brief 履歴点へビルボードを並べるのではなく、連続した 1 枚の帯として描く。
     /// @brief ビルボード方式は太くすると粒の連なりが露見するので、幅のある帯が主役の表現
@@ -483,34 +462,34 @@ struct ParticleEmitterSettings {
     /// @brief (粒子ごとの色ゆらぎを尾へ乗せたいならビルボード方式のまま)。
     /// @brief SubEmitterはGameObject名で参照し、各イベントで対象EmitterへBurstを積む。
 
-    ParticleCullingSettings culling;
+    ParticleCullingSettings culling; ///< 描画抽出の可視判定と距離 LOD を制御する設定。
 
     /// @brief 乱流 (Curl) と焼いた場 (Baked) も localForces に入る。
     /// @brief シーン内の FlowField から流れを受けるか。
     /// @note UI 演出用パーティクルなど、環境の流れに反応させたくないエミッターを除外できるようにする。
-    bool receiveFlowFields = true;
+    bool receiveFlowFields = true; ///< エミッター内蔵の流れに加えてシーン内の流れも適用する。
 
     /// @brief 受け取る場を選ぶビットマスク。FlowField::channels と 1 ビットでも
     /// @brief 重なった場だけがこのエミッターに作用する。receiveFlowFields が false なら無関係。
     /// @brief 既定は全ビット ON で、従来どおり全部の場を受け取る。
-    uint32_t flowFieldChannels = 0xFFFFFFFFu;
+    uint32_t flowFieldChannels = 0xFFFFFFFFu; ///< シーン内の流れを受け取るチャンネルのビット集合。1 ビット以上一致する場を使う。
     /// @}
 
 
 
     /// @name 任意機能 (既定のまま使わないことが多い)
     /// @{
-    ParticleCollisionMode collisionMode = ParticleCollisionMode::None;
-    ParticleCollisionResponse collisionResponse = ParticleCollisionResponse::Bounce;
-    float collisionRadius = 0.05f;
-    float collisionBounciness = 0.5f;
-    float collisionDamping = 0.0f;
-    float collisionPlaneY = 0.0f;
+    ParticleCollisionMode collisionMode = ParticleCollisionMode::None; ///< 粒子の衝突を無効、平面、または物理ワールド照会から選ぶ。
+    ParticleCollisionResponse collisionResponse = ParticleCollisionResponse::Bounce; ///< 衝突時に粒子を跳ね返す・停止する等の応答の種類。
+    float collisionRadius = 0.05f; ///< 粒子の中心に対する当たり判定の半径（m）。
+    float collisionBounciness = 0.5f; ///< 反射後の法線方向速度に掛ける反発係数。
+    float collisionDamping = 0.0f; ///< 衝突時に粒子の速度を減衰させる割合。
+    float collisionPlaneY = 0.0f; ///< 平面衝突モードで判定する水平面のワールド Y 座標。
     /// @brief Physics 衝突で «当たってよい» コライダーのレイヤー集合 (ビット n = レイヤー n)。
     /// @brief 既定は全ビット ON で従来どおり全レイヤーに当たる。
     /// @note トリガーはマスクに関わらず常に素通しする。トリガーは «通過を検知する体積» で
     /// @note あって面ではないので、そこで跳ねると «見えない壁で火花が止まる» になる。
-    uint32_t collisionLayerMask = 0xFFFFFFFFu;
+    uint32_t collisionLayerMask = 0xFFFFFFFFu; ///< 物理ワールド照会で衝突候補とするレイヤーのビット集合。
     /// @}
     /// @name 黒体放射 (色温度オーサリング)
     /// @{
@@ -518,7 +497,7 @@ struct ParticleEmitterSettings {
     /// @brief (アルファはグラデーション側の値をそのまま使う)。
     /// @brief 炎・爆発の色はすす粒子の温度による黒体放射で決まるので、任意の RGB を並べても
     /// @brief 炎に見えない。輻射輝度は T^4 に比例し、根元と先端の差は色差ではなく輝度差として出る。
-    bool  blackbodyEnabled = false;
+    bool  blackbodyEnabled = false; ///< 寿命グラデーションの RGB を色温度カーブから作る。
     /// @brief 寿命 [0,1] → 色温度 [K]。既定は焚き火の実測域 (根元 1900K → 先端 1100K)。
     /// @note ParticleCurve の既定キーは 0→1 なので、そのまま温度に使うと 1K = 真っ黒になる。
     /// @note 有効化した瞬間に炎らしい値が出ないと機能に気付けない。
@@ -526,26 +505,26 @@ struct ParticleEmitterSettings {
         {{ {0.0f, 1900.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f},
            {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f} }},
         2, ParticleCurveInterpolation::Linear };
-    float blackbodyReferenceTemperature = 1800.0f; ///< @brief ここで intensity 倍の明るさになる
-    float blackbodyIntensity = 1.0f;
-    ParticleTrailSettings trail;
-    ParticleLightSettings light;
-    int subEmitterBurstCount = 1;
+    float blackbodyReferenceTemperature = 1800.0f; ///< ここで intensity 倍の明るさになる
+    float blackbodyIntensity = 1.0f; ///< 基準色温度における黒体放射の明るさ倍率。
+    ParticleTrailSettings trail; ///< 粒子の履歴を使って軌跡や連続リボンを描く設定。
+    ParticleLightSettings light; ///< 粒子から点光源を抽出するための選択と見た目の設定。
+    int subEmitterBurstCount = 1; ///< 1 件のサブエミッターイベントが要求する生成粒子数。
     /// @brief 発火元の粒子の速度をこのエミッターの初速へ継ぐ割合 [0,1]。既定 0 = 継がない。
     /// @note 既定 0 は、全部継ぐと火花が発火元と同じ向きに流れる «二番煎じ» になるため。
     /// @note 当たりの火花は 0.1〜0.3 程度、煙のように流れを見せたいときだけ大きくする。
     /// @note 効くのは注入されたスポーン (birth/death/collision) だけ。エミッター自身の移動を
     /// @note 継ぐのは inheritVelocity で別の値。
-    float subEmitterInheritVelocity = 0.0f;
+    float subEmitterInheritVelocity = 0.0f; ///< サブエミッターへ生成要求を送る際に引き継ぐ発火元速度の割合（0〜1）。
     /// @brief 名前引きの探索範囲を限定するルート GameObject。INVALID でシーン全体。
     /// @brief 同じ .vfx を複数配置すると同名の GO が並ぶので、シーン全体で引くと隣のインスタンスを
     /// @brief 吹かせてしまう。VFXSystem が頭出し (ResetSubtree) のたびに配下へ VFX ルートを配る。
     /// @brief シーンへ手で置いた Emitter は INVALID のままで、従来どおりシーン全体から引く。
     /// @brief ランタイム専用。シーン保存対象ではない。
-    EntityID subEmitterScopeRoot = EntityID::INVALID;
-    std::string birthSubEmitter;
-    std::string deathSubEmitter;
-    std::string collisionSubEmitter;
+    EntityID subEmitterScopeRoot = EntityID::INVALID; ///< サブエミッター名を探索するルート。INVALID の場合はシーン全体。
+    std::string birthSubEmitter; ///< 粒子の発生イベントで一括生成を要求するエミッターのオブジェクト名。
+    std::string deathSubEmitter; ///< 粒子の消滅イベントで一括生成を要求するエミッターのオブジェクト名。
+    std::string collisionSubEmitter; ///< 粒子の衝突イベントで一括生成を要求するエミッターのオブジェクト名。
     /// @}
 
     /// @name 内蔵の流れを «役割» で引く
@@ -556,33 +535,39 @@ struct ParticleEmitterSettings {
     [[nodiscard]] const FlowFieldSettings* FindLocalForce(FlowFieldType type) const
     {
         for (const auto& force : localForces)
-            if (force.fieldType == type) return &force;
+            if (force.fieldType == type) {
+                return &force;
+            }
         return nullptr;
     }
 
     [[nodiscard]] FlowFieldSettings* FindLocalForce(FlowFieldType type)
     {
         for (auto& force : localForces)
-            if (force.fieldType == type) return &force;
+            if (force.fieldType == type) {
+                return &force;
+            }
         return nullptr;
     }
 
     /// @brief 無ければ既定値で 1 本足して返す。space は型ごとに «その流れが意味を持つ座標系» へ倒す。
     FlowFieldSettings& EnsureLocalForce(FlowFieldType type)
     {
-        if (FlowFieldSettings* existing = FindLocalForce(type)) return *existing;
+        if (FlowFieldSettings* existing = FindLocalForce(type)) {
+            return *existing;
+        }
         FlowFieldSettings force;
         force.fieldType = type;
-        /// @note 内蔵の流れは既定で «エミッター全体に効く»
+        // 内蔵の流れは既定で «エミッター全体に効く»
         force.radius    = 0.0f;
-        /// @note 周回と湧き出し・吸い込みはエミッター原点が要る。それ以外は世界の性質なので World。
+        // 周回と湧き出し・吸い込みはエミッター原点が要る。それ以外は世界の性質なので World。
         force.space = (type == FlowFieldType::Vortex
                     || type == FlowFieldType::Source
                     || type == FlowFieldType::Sink)
                         ? FlowFieldSpace::Emitter
                         : FlowFieldSpace::World;
         if (type == FlowFieldType::Curl)
-            /// @note 足しただけで挙動が変わらないように
+            // 足しただけで挙動が変わらないように
             force.strength = 0.0f;
         localForces.push_back(force);
         return localForces.back();
@@ -620,7 +605,7 @@ struct ParticleEmitterSettings {
         r.Field("duration", duration);
         r.Field("startDelay", startDelay);
         r.Field("clearOnStop", clearOnStop);
-        /// @note IReflector は uint32_t 非対応のため int 経由で編集・保存する。
+        // IReflector は uint32_t 非対応のため int 経由で編集・保存する。
         int seed = static_cast<int>(randomSeed);
         r.Field("randomSeed", seed);
         randomSeed = static_cast<uint32_t>(seed < 1 ? 1 : seed);
@@ -686,19 +671,19 @@ struct ParticleEmitterSettings {
         r.Field("screenCoverageThreshold", culling.screenCoverageThreshold);
         r.Field("pauseWhenCulled", culling.pauseWhenCulled);
         r.Field("receiveFlowFields", receiveFlowFields);
-        /// @note IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
+        // IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
         int channelsValue = static_cast<int>(flowFieldChannels);
         r.Field("flowFieldChannels", channelsValue);
         flowFieldChannels = static_cast<uint32_t>(channelsValue);
-        /// @note 粒子だけの加速度と、流れへの結合。どちらも «場» から出した値。
+        // 粒子だけの加速度と、流れへの結合。どちらも «場» から出した値。
         r.Field("gravity", gravity);
         r.Field("flowCoupling", flowCoupling);
 
-        /// @name ここから下は以前 Reflect に無く、コーデックにしか居なかった 44 項目
-        /// @note シーン保存はコーデック経由だが、AI バス (EditorBusDispatcher) と汎用 Inspector は
-        /// @note Reflect() を使う。片方にしかないと「保存されるが外から読めない」まま気付けない。
+        // ここから下は以前 Reflect に無く、コーデックにしか居なかった 44 項目
+        // シーン保存はコーデック経由だが、AI バス (EditorBusDispatcher) と汎用 Inspector は
+        // Reflect() を使う。片方にしかないと「保存されるが外から読めない」まま気付けない。
 
-        /// @note 速度による見た目
+        // 速度による見た目
         r.Field("speedRange", speedRange);
         r.Field("useSpeedSizeCurve", useSpeedSizeCurve);
         r.Field("useSpeedColorGradient", useSpeedColorGradient);
@@ -706,7 +691,7 @@ struct ParticleEmitterSettings {
         r.Field("useDragCurve", useDragCurve);
         r.Field("useEmitRateCurve", useEmitRateCurve);
 
-        /// @note 衝突
+        // 衝突
         int collisionModeValue = static_cast<int>(collisionMode);
         r.Field("collisionMode", collisionModeValue);
         collisionMode = static_cast<ParticleCollisionMode>(std::clamp(collisionModeValue, 0, 3));
@@ -717,17 +702,17 @@ struct ParticleEmitterSettings {
         r.Field("collisionBounciness", collisionBounciness);
         r.Field("collisionDamping", collisionDamping);
         r.Field("collisionPlaneY", collisionPlaneY);
-        /// @note flowFieldChannels と同じ理由で int 経由 (IReflector は符号なし整数を扱わない)。
+        // flowFieldChannels と同じ理由で int 経由 (IReflector は符号なし整数を扱わない)。
         int collisionLayersValue = static_cast<int>(collisionLayerMask);
         r.Field("collisionLayerMask", collisionLayersValue);
         collisionLayerMask = static_cast<uint32_t>(collisionLayersValue);
 
-        /// @note 黒体放射
+        // 黒体放射
         r.Field("blackbodyEnabled", blackbodyEnabled);
         r.Field("blackbodyReferenceTemperature", blackbodyReferenceTemperature);
         r.Field("blackbodyIntensity", blackbodyIntensity);
 
-        /// @note per-particle トレイル
+        // per-particle トレイル
         r.Field("trailEnabled", trail.trailEnabled);
         r.Field("trailPointCount", trail.trailPointCount);
         r.Field("trailSampleInterval", trail.trailSampleInterval);
@@ -737,7 +722,7 @@ struct ParticleEmitterSettings {
         r.Field("trailRibbon", trail.trailRibbon);
         r.Field("trailRibbonWidth", trail.trailRibbonWidth);
 
-        /// @note 粒子を点光源にする
+        // 粒子を点光源にする
         r.Field("lightEnabled", light.lightEnabled);
         r.Field("lightRatio", light.lightRatio);
         r.Field("lightMaxCount", light.lightMaxCount);
@@ -748,15 +733,15 @@ struct ParticleEmitterSettings {
         r.ColorField("lightColor", light.lightColor);
         r.Field("lightFadeWithAlpha", light.lightFadeWithAlpha);
 
-        /// @note サブエミッター (scopeRoot はランタイム専用なので出さない)
+        // サブエミッター (scopeRoot はランタイム専用なので出さない)
         r.Field("birthSubEmitter", birthSubEmitter);
         r.Field("deathSubEmitter", deathSubEmitter);
         r.Field("collisionSubEmitter", collisionSubEmitter);
         r.Field("subEmitterBurstCount", subEmitterBurstCount);
         r.Field("subEmitterInheritVelocity", subEmitterInheritVelocity);
 
-        /// @note カーブとグラデーション。IReflector は専用の仮想関数を持っているので、
-        /// @note コーデックの手書きと同じ形をそのまま表現できる。
+        // カーブとグラデーション。IReflector は専用の仮想関数を持っているので、
+        // コーデックの手書きと同じ形をそのまま表現できる。
         r.BeginField("sizeCurve", "Size over Lifetime");
         r.Field("sizeCurve", sizeCurve);
         r.EndField();
@@ -786,8 +771,8 @@ struct ParticleEmitterSettings {
 /// @note VFX グラフのノードでも、Inspector が焼き込み後の色を出せる。
 inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settings, ParticleRuntime& runtime)
 {
-    /// @note 黒体の焼き込みはキー 1 点あたり可視域 81 サンプルの積分になる。粒子ごとの
-    /// @note 更新から間接的に呼ばれても潰れないよう、入力が変わったときだけ作り直す。
+    // 黒体の焼き込みはキー 1 点あたり可視域 81 サンプルの積分になる。粒子ごとの
+    // 更新から間接的に呼ばれても潰れないよう、入力が変わったときだけ作り直す。
     if (runtime.runtimeGradientValid
         && !settings.blackbodyEnabled == !runtime.runtimeGradientBlackbody
         && runtime.runtimeGradientReference == settings.blackbodyReferenceTemperature
@@ -814,7 +799,9 @@ inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settin
     runtime.runtimeGradientTemperatureCount = settings.temperatureCurve.keyCount;
 
     runtime.runtimeGradient = settings.colorGradient;
-    if (!settings.blackbodyEnabled) return;
+    if (!settings.blackbodyEnabled) {
+        return;
+    }
     const uint32_t count = (std::min)(runtime.runtimeGradient.keyCount,
                                       static_cast<uint32_t>(runtime.runtimeGradient.keys.size()));
     for (uint32_t index = 0; index < count; ++index) {
@@ -827,10 +814,8 @@ inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settin
 }
 
 struct ParticleEmitter {
-    /// @brief オーサリング設定。VFXGraphNode などが持つ塊と同じ型。
-    ParticleEmitterSettings settings;
-    /// @brief 実行中にしか意味を持たない状態。シーンにも .particle にも保存しない。
-    ParticleRuntime runtime;
+    ParticleEmitterSettings settings; ///< オーサリング設定。VFXGraphNode などが持つ塊と同じ型。
+    ParticleRuntime runtime; ///< 実行中にしか意味を持たない状態。シーンにも .particle にも保存しない。
 
     void RefreshRuntimeGradient() { RefreshParticleRuntimeGradient(settings, runtime); }
 
@@ -859,8 +844,8 @@ struct ParticleEmitter {
         runtime.distanceEmitAccum      = 0.0f;
         runtime.randomState            = settings.randomSeed != 0 ? settings.randomSeed : 1;
         ClearParticles();
-        /// @note ロード直後やスクラブ開始時に、再生が 1 フレームも進まないまま粒子色を
-        /// @note 引かれることがある。実効グラデーションを先に用意しておく。
+        // ロード直後やスクラブ開始時に、再生が 1 フレームも進まないまま粒子色を
+        // 引かれることがある。実効グラデーションを先に用意しておく。
         RefreshRuntimeGradient();
     }
 
@@ -869,8 +854,12 @@ struct ParticleEmitter {
     /// @note 対象漏れが経路ごとに発生する。エミッター自身に責務を集め、AI も同じ挙動を使う。
     void Play(bool restart = false)
     {
-        if (restart) ResetPlayback();
-        else         settings.playing = true;
+        if (restart) {
+            ResetPlayback();
+        }
+        else {
+            settings.playing = true;
+        }
     }
 
     void Pause() { settings.playing = false; }
@@ -881,7 +870,9 @@ struct ParticleEmitter {
         runtime.emitAccum     = 0.0f;
         runtime.burstPending  = 0;
         runtime.injectedSpawns.clear();
-        if (clear) ClearParticles();
+        if (clear) {
+            ClearParticles();
+        }
     }
 
     /// @note 生成要求は設定済みプール容量まで受け付ける。超過分はそのフレームで破棄する。
@@ -889,7 +880,9 @@ struct ParticleEmitter {
     {
         const int capacity = (std::max)(settings.maxParticles, 0);
         const int pending = std::clamp(runtime.burstPending, 0, capacity);
-        if (count > 0) runtime.burstPending = pending + (std::min)(count, capacity - pending);
+        if (count > 0) {
+            runtime.burstPending = pending + (std::min)(count, capacity - pending);
+        }
     }
 
     void ClearParticles()
@@ -918,9 +911,11 @@ struct ParticleEmitter {
     {
         const uint32_t seedBefore = settings.randomSeed;
         settings.Reflect(r);
-        /// @note 種を編集したら乱数列も追従させる。Reflect は Inspector / AI バスの入口なので、
-        /// @note ここで揃えないと「種を変えたのに絵が変わらない」になる。
-        if (settings.randomSeed != seedBefore) runtime.randomState = settings.randomSeed;
+        // 種を編集したら乱数列も追従させる。Reflect は Inspector / AI バスの入口なので、
+        // ここで揃えないと「種を変えたのに絵が変わらない」になる。
+        if (settings.randomSeed != seedBefore) {
+            runtime.randomState = settings.randomSeed;
+        }
     }
 };
 

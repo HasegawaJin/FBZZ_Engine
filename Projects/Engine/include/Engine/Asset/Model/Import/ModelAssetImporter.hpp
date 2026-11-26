@@ -18,8 +18,8 @@ public:
         renderer::ResourceManager* resources) override;
 
     /// @brief firstResidentLod より高品質な LOD のメッシュ本体を読まずに取り込む (部分 I/O)。
-    /// @param firstResidentLod 最低品質の LOD で頭打ちにする。読まなかった LOD は submesh の枠と名前だけ持つ。
-    /// @param outBytesRead 実際にディスクから読んだバイト数 (null 可)。
+    /// @param[in] firstResidentLod 最低品質の LOD で頭打ちにする。読まなかった LOD は submesh の枠と名前だけ持つ。
+    /// @param[out] outBytesRead 実際にディスクから読んだバイト数 (null 可)。
     /// @note .fzasset は submesh ヘッダーが頂点数・インデックス数・モーフ数を持つので、索引が無くても
     /// @note 本体の大きさが決まり、読まない LOD はシークで飛ばせる。
     [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<ModelAsset> ImportPartial(
@@ -39,4 +39,4 @@ private:
         renderer::ResourceManager* resources, uint32_t firstResidentLod);
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

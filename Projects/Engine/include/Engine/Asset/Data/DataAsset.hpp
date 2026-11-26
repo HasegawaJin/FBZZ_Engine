@@ -36,7 +36,9 @@ template<typename T>
 [[nodiscard]] T* TryAsExactDataAsset(DataAsset* source)
 {
     if constexpr (requires { static_cast<T*>(source); }) {
-        if (source && typeid(*source) == typeid(T)) return static_cast<T*>(source);
+        if (source && typeid(*source) == typeid(T)) {
+            return static_cast<T*>(source);
+        }
     }
     return nullptr;
 }
@@ -46,17 +48,20 @@ template<typename T>
 /// @note ネイティブ派生型を基底型で参照する場合は DataAssetFactory へ基底型も登録する。
 template<typename T>
 struct Asset {
-    scene::DataAssetRef ref;
+    scene::DataAssetRef ref; ///< 型付き参照が保持する DataAsset のパスまたは GUID。
 
     /// @brief 期待型名を埋めておくことで、Inspector のピッカー絞り込み・ドロップ型チェックが効く。
     Asset() { ref.type = T::TYPE_NAME; }
 
     [[nodiscard]] T* Get() const
     {
-        if (ref.path.empty()) return nullptr;
+        if (ref.path.empty()) {
+            return nullptr;
+        }
         DataAsset* legacy = nullptr;
-        if (void* typed = DataAssetRegistry::ResolveNative(ref.path, typeid(T), legacy))
+        if (void* typed = DataAssetRegistry::ResolveNative(ref.path, typeid(T), legacy)) {
             return static_cast<T*>(typed);
+        }
         return TryAsExactDataAsset<T>(legacy);
     }
 

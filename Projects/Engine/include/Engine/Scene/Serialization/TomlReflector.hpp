@@ -39,7 +39,7 @@ namespace fbzz::util {
 /// @note 書き込み先はスタックで持つ。BeginObject/BeginObjectElement が「現在の書き込み先」を子テーブルへ差し替えるため、任意の深さの復帰先を LIFO で覚える必要がある。
 class TomlWriteReflector : public scene::IReflector {
 public:
-    /// @param overwriteDuplicates 同じキーへ 2 度書いたときに後勝ちで上書きするか (false は先勝ちで toml++ の insert 既定、後から来た値は黙って捨てられる)。
+    /// @param[in] overwriteDuplicates 同じキーへ 2 度書いたときに後勝ちで上書きするか (false は先勝ちで toml++ の insert 既定、後から来た値は黙って捨てられる)。
     /// @note Scene の直列化は先勝ちを前提に組まれているため選べるようにした。新規の書き出し先は後勝ちでよい。
     explicit TomlWriteReflector(toml::table& table, bool overwriteDuplicates = true)
         : m_overwrite(overwriteDuplicates)
@@ -85,10 +85,12 @@ protected:
     template<typename T>
     void Put(const char* name, T&& value)
     {
-        if (m_overwrite)
+        if (m_overwrite) {
             Current().insert_or_assign(PersistentKey(name), std::forward<T>(value));
-        else
+        }
+        else {
             Current().insert(PersistentKey(name), std::forward<T>(value));
+        }
     }
 
 private:
@@ -144,4 +146,4 @@ private:
     std::vector<const toml::array*> m_listStack;
 };
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

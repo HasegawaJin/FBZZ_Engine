@@ -12,7 +12,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptLifetimeProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 生存期間操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief 残り寿命 [秒] を設定する。正値で指定時間後に GO が破棄される。
     FBZZ_ENGINE_API void  SetRemaining(float seconds) const;
@@ -28,4 +28,4 @@ struct ScriptLifetimeProxy {
     FBZZ_ENGINE_API void Kill() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

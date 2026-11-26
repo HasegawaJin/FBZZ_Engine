@@ -26,17 +26,17 @@ namespace fbzz::asset {
 
 /// @note Atlas の列・行。配置は左上から行優先 (ParticlePass の SpriteRectForFrame と同じ)。
 struct FlipbookGrid {
-    int columns = 1;
-    int rows = 1;
-    int frameCount = 1;
+    int columns = 1; ///< アトラスの横方向に並ぶコマ数。
+    int rows = 1; ///< アトラスの縦方向に並ぶコマ数。
+    int frameCount = 1; ///< グリッド内の有効なコマの総数。
 };
 
 /// @note requestedColumns <= 0 で ceil(sqrt(frameCount)) 列に自動配置する。
 [[nodiscard]] FBZZ_ENGINE_API FlipbookGrid ComputeFlipbookGrid(int frameCount, int requestedColumns);
 
 struct FlipbookTileOrigin {
-    std::uint32_t x = 0;
-    std::uint32_t y = 0;
+    std::uint32_t x = 0; ///< アトラス左端からタイル左端までの位置 [px]。
+    std::uint32_t y = 0; ///< アトラス上端からタイル上端までの位置 [px]。
 };
 
 [[nodiscard]] FBZZ_ENGINE_API FlipbookTileOrigin TileOriginPx(int frame, const FlipbookGrid& grid,
@@ -53,8 +53,8 @@ struct FlipbookTileOrigin {
                                                float minimumStrength);
 
 struct EncodedMotionVector {
-    std::uint8_t r = 128;
-    std::uint8_t g = 128;
+    std::uint8_t r = 128; ///< 符号付き X 方向変位を量子化した R 成分。128 は変位ゼロ。
+    std::uint8_t g = 128; ///< 符号付き Y 方向変位を量子化した G 成分。128 は変位ゼロ。
 };
 
 /// @note 8bit ではゼロが 127.5 を表せず、デコード後に最大 S/255 の偏りが残る。
@@ -79,11 +79,11 @@ FBZZ_ENGINE_API void DilateMotion(std::span<math::Vector2> motion, std::span<con
                   int iterations, float threshold = 1.0e-4f);
 
 struct EncodedColorTexel {
-    std::uint8_t r = 0;
-    std::uint8_t g = 0;
-    std::uint8_t b = 0;
-    std::uint8_t a = 0;
-    bool clipped = false;   ///< @note exposure 後の RGB が 1 を超えて切り詰められた
+    std::uint8_t r = 0; ///< 色テクセルの 8 ビット R 成分。
+    std::uint8_t g = 0; ///< 色テクセルの 8 ビット G 成分。
+    std::uint8_t b = 0; ///< 色テクセルの 8 ビット B 成分。
+    std::uint8_t a = 0; ///< 色テクセルの 8 ビット不透明度。
+    bool clipped = false; ///< exposure 後の RGB が 1 を超えて切り詰められた
 };
 
 /// @note 事前乗算・リニア HDR の画素を、sRGB の 8bit へ落とす。α はリニアのまま。
@@ -91,4 +91,4 @@ struct EncodedColorTexel {
 [[nodiscard]] FBZZ_ENGINE_API EncodedColorTexel EncodeColorTexel(const math::Vector4& linearPremultiplied,
                                                  float exposure);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -17,4 +17,4 @@ namespace fbzz::core {
 /// @return true なら予約済み。呼び出し側は DLL を解放するため速やかに正常終了すること。false なら起動を続行してよい (最新 / 拒否 / SDK・配布ビルド)。
 [[nodiscard]] FBZZ_ENGINE_API bool CheckEngineFreshnessAndRelaunch();
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

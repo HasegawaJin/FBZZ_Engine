@@ -15,7 +15,7 @@ namespace fbzz::scene {
 struct TerrainComponent;
 
 /// @brief 画像の R チャンネルを heightData へ読み込む。
-/// @param unipolar true なら画素値 [0,1] を heightData [0,1] へ (黒=基準面)。false なら [-1,1] へ (灰=基準面)。
+/// @param[in] unipolar true なら画素値 [0,1] を heightData [0,1] へ (黒=基準面)。false なら [-1,1] へ (灰=基準面)。
 /// @return 読み込み失敗、2〜4097外の地形寸法、非有限画素なら false、地形は未変更。
 FBZZ_ENGINE_API bool LoadHeightMapFromFile(
     const std::string&  path,
@@ -23,11 +23,11 @@ FBZZ_ENGINE_API bool LoadHeightMapFromFile(
     bool                unipolar = true);
 
 /// @brief heightData を columns × rows の 16 bit グレースケール PNG へ書き出す。
-/// @param unipolar LoadHeightMapFromFile と対称。true なら [0,1] をそのまま (負の高さは 0 に切り詰める)、false なら [-1,1] を [0,1] へ写す。
+/// @param[in] unipolar LoadHeightMapFromFile と対称。true なら [0,1] をそのまま (負の高さは 0 に切り詰める)、false なら [-1,1] を [0,1] へ写す。
 /// @return 書き込みに失敗したら false。
 FBZZ_ENGINE_API bool SaveHeightMapToFile(
     const std::string&       path,
     const TerrainComponent&  terrain,
     bool                     unipolar = true);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

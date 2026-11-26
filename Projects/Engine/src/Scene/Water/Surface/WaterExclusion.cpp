@@ -105,17 +105,24 @@ void ResolveSourceWaterOwners(Scene& scene, WaterExclusionComponent& component,
 {
     std::unordered_set<std::uint64_t> seen;
     for (const EntityRef& reference : component.waters) {
-        if (!reference.IsAssigned()) continue;
+        if (!reference.IsAssigned()) {
+            continue;
+        }
         HashU64(source.signature, reference.guid.size());
         GameObject* target = reference.Resolve(scene);
-        if (!target) continue;
+        if (!target) {
+            continue;
+        }
         const EntityID targetID = target->GetID();
         WaterComponent* targetWater = scene.GetComponent<WaterComponent>(targetID);
-        if (!targetWater) continue;
+        if (!targetWater) {
+            continue;
+        }
         const EntityID ownerID = targetWater->zoneOwner.IsValid()
             ? targetWater->zoneOwner : targetID;
-        if (seen.insert((static_cast<std::uint64_t>(ownerID.generation) << 32) | ownerID.index).second)
+        if (seen.insert((static_cast<std::uint64_t>(ownerID.generation) << 32) | ownerID.index).second) {
             source.waterOwners.push_back(ownerID);
+        }
         for (const unsigned char character : reference.guid) {
             source.signature ^= character;
             source.signature *= kFnvPrime;
@@ -128,8 +135,9 @@ std::uint64_t SnapshotSignature(const std::vector<const ExclusionSource*>& sourc
 {
     std::uint64_t signature = kFnvOffset;
     HashU64(signature, sources.size());
-    for (const ExclusionSource* source : sources)
+    for (const ExclusionSource* source : sources) {
         HashU64(signature, source->signature);
+    }
     return signature == 0 ? 1 : signature;
 }
 
@@ -137,7 +145,9 @@ std::uint64_t SnapshotSignature(const std::vector<const ExclusionSource*>& sourc
 
 bool WaterExclusionBox::Contains(const math::Vector3& worldPoint) const
 {
-    if (!Finite(worldPoint)) return false;
+    if (!Finite(worldPoint)) {
+        return false;
+    }
     const math::Vector3 rotated = inverseWorldRotation * (worldPoint - worldPosition);
     const math::Vector3 local{
         rotated.x * inverseWorldScale.x,
@@ -152,18 +162,25 @@ const WaterExclusionSnapshot* WaterSurfaceExclusions(
     const WaterComponent& water, WaterSurfaceReadView view)
 {
     if (view == WaterSurfaceReadView::SIMULATION && water.simulationReadEnabled
-        && water.simulationSurfacePublished)
+        && water.simulationSurfacePublished) {
         return water.simulationExclusionSnapshot.get();
+    }
     return water.exclusionSnapshot.get();
 }
 
 bool IsWaterPointExcluded(
     const WaterExclusionSnapshot* snapshot, const math::Vector3& worldPoint)
 {
-    if (!snapshot) return false;
-    if (!snapshot->valid) return true;
+    if (!snapshot) {
+        return false;
+    }
+    if (!snapshot->valid) {
+        return true;
+    }
     for (const WaterExclusionBox& box : snapshot->boxes)
-        if (box.Contains(worldPoint)) return true;
+        if (box.Contains(worldPoint)) {
+            return true;
+        }
     return false;
 }
 
@@ -174,7 +191,9 @@ void PrepareWaterExclusionSnapshots(Scene& scene)
     for (const EntityID sourceID : scene.GetEntities<WaterExclusionComponent>()) {
         WaterExclusionComponent* component = scene.GetComponent<WaterExclusionComponent>(sourceID);
         GameObject* go = scene.GetGameObject(sourceID);
-        if (!component || !go) continue;
+        if (!component || !go) {
+            continue;
+        }
         if (!component->enabled || !go->activeInHierarchy()) {
             component->diagnostic = component->enabled ? "Inactive GameObject" : "Disabled";
             continue;
@@ -203,7 +222,9 @@ void PrepareWaterExclusionSnapshots(Scene& scene)
                 && Finite(source.box.inverseWorldRotation)
                 && Finite(source.box.halfExtent);
         }
-        if (!component->excludeAll) ResolveSourceWaterOwners(scene, *component, source);
+        if (!component->excludeAll) {
+            ResolveSourceWaterOwners(scene, *component, source);
+        }
         component->diagnostic = !source.valid
             ? "Invalid box transform or size; matching Water surfaces are masked."
             : (component->excludeAll || !source.waterOwners.empty()
@@ -216,27 +237,35 @@ void PrepareWaterExclusionSnapshots(Scene& scene)
     std::unordered_set<std::uint64_t> seenOwners;
     for (const EntityID waterID : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(waterID);
-        if (!water) continue;
+        if (!water) {
+            continue;
+        }
         const EntityID ownerID = water->zoneOwner.IsValid() ? water->zoneOwner : waterID;
-        if (seenOwners.insert((static_cast<std::uint64_t>(ownerID.generation) << 32) | ownerID.index).second)
+        if (seenOwners.insert((static_cast<std::uint64_t>(ownerID.generation) << 32) | ownerID.index).second) {
             ownerIDs.push_back(ownerID);
+        }
     }
 
     std::unordered_map<std::uint64_t, std::shared_ptr<const WaterExclusionSnapshot>> snapshotsBySignature;
     snapshotsBySignature.reserve(ownerIDs.size());
     for (const EntityID ownerID : ownerIDs) {
         WaterComponent* owner = scene.GetComponent<WaterComponent>(ownerID);
-        if (!owner) continue;
+        if (!owner) {
+            continue;
+        }
         std::vector<const ExclusionSource*> selected;
         selected.reserve(sources.size());
         for (const ExclusionSource& source : sources) {
             if (source.excludeAll || std::find(source.waterOwners.begin(), source.waterOwners.end(), ownerID)
-                != source.waterOwners.end())
+                != source.waterOwners.end()) {
                 selected.push_back(&source);
+            }
         }
         const std::uint64_t signature = SnapshotSignature(selected);
         if (owner->exclusionSnapshotAttempted
-            && owner->exclusionSnapshotAttemptSignature == signature) continue;
+            && owner->exclusionSnapshotAttemptSignature == signature) {
+            continue;
+        }
         if (selected.empty()) {
             owner->exclusionSnapshot.reset();
             owner->exclusionSnapshotAttemptSignature = signature;
@@ -264,15 +293,18 @@ void PrepareWaterExclusionSnapshots(Scene& scene)
         owner->exclusionSnapshot = snapshot->boxes.empty() && snapshot->valid
             ? std::shared_ptr<const WaterExclusionSnapshot>{}
             : std::shared_ptr<const WaterExclusionSnapshot>{std::move(snapshot)};
-        if (owner->exclusionSnapshot)
+        if (owner->exclusionSnapshot) {
             snapshotsBySignature.emplace(signature, owner->exclusionSnapshot);
+        }
         owner->exclusionSnapshotAttemptSignature = signature;
         owner->exclusionSnapshotAttempted = true;
     }
 
     for (const EntityID waterID : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(waterID);
-        if (!water || !water->zoneOwner.IsValid()) continue;
+        if (!water || !water->zoneOwner.IsValid()) {
+            continue;
+        }
         WaterComponent* owner = scene.GetComponent<WaterComponent>(water->zoneOwner);
         if (owner) {
             water->exclusionSnapshot = owner->exclusionSnapshot;

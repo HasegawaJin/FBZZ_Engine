@@ -44,7 +44,9 @@ protected:
         auto& component = owner.AddComponent<scene::ScriptComponent>();
         auto& entry = component.scripts.emplace_back();
     entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.RequiredReferenceComponent", entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&m_scene, &owner);
         return scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
     }

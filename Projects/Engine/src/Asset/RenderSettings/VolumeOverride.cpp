@@ -44,14 +44,18 @@ RegistryData& Registry()
 
 bool VolumeOverrideFactory::Register(const std::string& typeName, Factory factory)
 {
-    if (typeName.empty() || !factory) return false;
+    if (typeName.empty() || !factory) {
+        return false;
+    }
 
     auto& registry = Registry();
-    /// @note メタ情報 (表示名・カテゴリ) は仮実体を 1 つ作って引く。Register<T>() のテンプレート側で
-    ///       T::DISPLAY_NAME のような静的定数を要求すると、派生ごとに定数と仮想関数の二重定義に
-    ///       なり食い違いうるため、仮想関数を唯一の情報源にしておけばそのずれが起きない。
+    // メタ情報 (表示名・カテゴリ) は仮実体を 1 つ作って引く。Register<T>() のテンプレート側で
+    //       T::DISPLAY_NAME のような静的定数を要求すると、派生ごとに定数と仮想関数の二重定義に
+    //       なり食い違いうるため、仮想関数を唯一の情報源にしておけばそのずれが起きない。
     const std::unique_ptr<VolumeOverride> probe = factory();
-    if (!probe) return false;
+    if (!probe) {
+        return false;
+    }
 
     registry.factories[typeName] = std::move(factory);
     registry.entries.push_back(Entry{
@@ -64,7 +68,9 @@ std::unique_ptr<VolumeOverride> VolumeOverrideFactory::Create(const std::string&
 {
     auto& registry = Registry();
     auto it = registry.factories.find(typeName);
-    if (it == registry.factories.end()) return nullptr;
+    if (it == registry.factories.end()) {
+        return nullptr;
+    }
     return it->second();
 }
 
@@ -72,12 +78,13 @@ const std::vector<VolumeOverrideFactory::Entry>& VolumeOverrideFactory::Register
 {
     auto& registry = Registry();
     if (!registry.sorted) {
-        /// @note カテゴリ順 → 表示名順。静的初期化の順序は不定なので、
-        ///       登録順のままだとビルドのたびにメニューの並びが変わってしまう。
+        // カテゴリ順 → 表示名順。静的初期化の順序は不定なので、
+        //       登録順のままだとビルドのたびにメニューの並びが変わってしまう。
         std::sort(registry.entries.begin(), registry.entries.end(),
             [](const Entry& lhs, const Entry& rhs) {
-                if (lhs.category != rhs.category)
+                if (lhs.category != rhs.category) {
                     return static_cast<int>(lhs.category) < static_cast<int>(rhs.category);
+                }
                 return lhs.displayName < rhs.displayName;
             });
         registry.sorted = true;

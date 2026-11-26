@@ -35,8 +35,7 @@ struct WaterZoneMaterialSample {
 struct WaterZoneSnapshot {
     WaterSplineSnapshot geometry;
     std::vector<std::array<std::uint32_t, 2>> boundaryEdges;
-    /// @note 形状の頂点順。水面と同じ発生元・受け側補間を用いる。
-    std::vector<WaterZoneMaterialSample> materials;
+    std::vector<WaterZoneMaterialSample> materials; ///< 形状の頂点順。水面と同じ発生元・受け側補間を用いる。
     std::uint32_t sourceCount = 0;
     std::uint32_t mouthCount = 0;
 };

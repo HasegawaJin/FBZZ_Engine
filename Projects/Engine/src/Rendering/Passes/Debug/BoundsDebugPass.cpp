@@ -23,7 +23,9 @@ math::Vector4 LodColor(int level)
         { 0.30f, 1.00f, 0.40f, 1.0f }, { 0.85f, 1.00f, 0.30f, 1.0f },
         { 1.00f, 0.75f, 0.25f, 1.0f }, { 1.00f, 0.40f, 0.25f, 1.0f },
     };
-    if (level < 0) return { 0.5f, 0.5f, 0.55f, 1.0f };
+    if (level < 0) {
+        return { 0.5f, 0.5f, 0.55f, 1.0f };
+    }
     return kLevels[(std::min)(level, 3)];
 }
 
@@ -33,8 +35,10 @@ void DrawTerrainBounds(RenderPassContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<TerrainComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* terrain = ctx.scene.GetComponent<TerrainComponent>(id);
-        if (!go || !terrain || !terrain->enabled || !go->activeInHierarchy()) continue;
-        /// @note 原点は角 (worldPosition) で +X / +Z へ広がる。高さは heightData × maxHeight で [-max, +max]。
+        if (!go || !terrain || !terrain->enabled || !go->activeInHierarchy()) {
+            continue;
+        }
+        // 原点は角 (worldPosition) で +X / +Z へ広がる。高さは heightData × maxHeight で [-max, +max]。
         const float halfWidth = static_cast<float>((std::max)(terrain->columns - 1, 0)) * terrain->cellSize * 0.5f;
         const float halfDepth = static_cast<float>((std::max)(terrain->rows - 1, 0)) * terrain->cellSize * 0.5f;
         const math::Vector3 center = go->transform.worldPosition + math::Vector3{ halfWidth, 0.0f, halfDepth };
@@ -48,8 +52,10 @@ void DrawLodBounds(RenderPassContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<LODGroupComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* lod = ctx.scene.GetComponent<LODGroupComponent>(id);
-        if (!go || !lod || !lod->enabled || !go->activeInHierarchy()) continue;
-        /// @note LODSystem と同じ判定球 (中心 = worldPosition、直径 = size × 最大スケール)。
+        if (!go || !lod || !lod->enabled || !go->activeInHierarchy()) {
+            continue;
+        }
+        // LODSystem と同じ判定球 (中心 = worldPosition、直径 = size × 最大スケール)。
         const math::Vector3& scale = go->transform.worldScale;
         const float maxScale = (std::max)({ std::abs(scale.x), std::abs(scale.y), std::abs(scale.z) });
         const float radius = lod->size * maxScale * 0.5f;
@@ -69,8 +75,12 @@ bool BoundsDebugPass::IsEnabled(const RenderPassContext& ctx) const
 void BoundsDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 {
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
-    if (ctx.settings.showTerrainBounds) DrawTerrainBounds(ctx);
-    if (ctx.settings.showLODBounds) DrawLodBounds(ctx);
+    if (ctx.settings.showTerrainBounds) {
+        DrawTerrainBounds(ctx);
+    }
+    if (ctx.settings.showLODBounds) {
+        DrawLodBounds(ctx);
+    }
     renderer::DebugDraw::Flush();
 }
 

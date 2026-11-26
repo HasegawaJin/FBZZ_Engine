@@ -59,7 +59,9 @@ enum class UIImageFillMethod {
     using Origin = UIImageFillOrigin;
     const bool isCorner = origin >= Origin::BottomLeft;
     if (method == UIImageFillMethod::Radial90) {
-        if (isCorner) return origin;
+        if (isCorner) {
+            return origin;
+        }
         switch (origin) {
         case Origin::Left:   return Origin::TopLeft;
         case Origin::Right:  return Origin::TopRight;
@@ -68,7 +70,9 @@ enum class UIImageFillMethod {
         default:             return Origin::BottomLeft;
         }
     }
-    if (!isCorner) return origin;
+    if (!isCorner) {
+        return origin;
+    }
     switch (origin) {
     case Origin::BottomLeft:  return Origin::Bottom;
     case Origin::BottomRight: return Origin::Bottom;
@@ -89,63 +93,60 @@ enum class UIImageType {
 struct UIImage {
     /// @note 親のどこを基準に、自分のどこを合わせるか。既定は左上/左上で、
     /// @note アンカー導入前の挙動と同じ (UIRect.hpp 参照)。
-    UIAnchor      anchoring{};
+    UIAnchor      anchoring{}; ///< 親の矩形を基準としてこの画像の矩形を配置するアンカー設定。
     /// @note .mat への参照。空なら組み込みの UISprite で描く。
     /// @note texturePath だけで済む用途が大半なので、素材を増やさずに済む既定。マテリアルは
     /// @note メッシュ材質と共有し、render_path = "ui" で UI 用途を区別する。
-    std::string   materialPath = "";
-    std::string   texturePath = "";
-    renderer::ResourceHandle<renderer::TextureTag> texture = {};
-    math::Vector4 color  = { 1.0f, 1.0f, 1.0f, 1.0f };
-    math::Vector2 uvMin  = { 0.0f, 0.0f };
-    math::Vector2 uvMax  = { 1.0f, 1.0f };
-    /// @note 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
-    int           sortOrder = 0;
-    bool          enabled = true;
+    std::string   materialPath = ""; ///< 描画に使う UI マテリアルの参照パス。空なら組み込みの材質。
+    std::string   texturePath = ""; ///< 描画するテクスチャまたはスプライトを読み込むための参照パス。
+    renderer::ResourceHandle<renderer::TextureTag> texture = {}; ///< 描画に使う解決済みテクスチャの非所有ハンドル。
+    math::Vector4 color  = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< 画像の各画素に乗算する RGBA 色。
+    math::Vector2 uvMin  = { 0.0f, 0.0f }; ///< 通常描画で使うテクスチャ UV 矩形の最小端。
+    math::Vector2 uvMax  = { 1.0f, 1.0f }; ///< 通常描画で使うテクスチャ UV 矩形の最大端。
+    int           sortOrder = 0; ///< 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    bool          enabled = true; ///< この画像を描画対象にするかどうか。
     /// @note 塗り潰し量 [0,1]。1 で矩形全体、0 で非表示。体力・スタミナゲージ等の進捗表現に使う。
     /// @note UISystem が描画時に矩形と UV を fillOrigin 方向へクリップする (transform.scale は変えない)。
-    float             fillAmount = 1.0f;
-    UIImageFillOrigin fillOrigin = UIImageFillOrigin::Left;
-    UIImageFillMethod fillMethod = UIImageFillMethod::Edge;
+    float             fillAmount = 1.0f; ///< 塗り潰しで残す画像の割合。0 は空、1 は全体。
+    UIImageFillOrigin fillOrigin = UIImageFillOrigin::Left; ///< ゲージ画像をどの辺または点から塗り始めるか。
+    UIImageFillMethod fillMethod = UIImageFillMethod::Edge; ///< ゲージ画像を直線または放射方向に塗る方式。
     /// @note Radial のときの回転方向。Edge では使わない。
     /// @note 90 / 180 では「軸から見てどちらの端から満ちるか」を決める (覆う範囲は同じ)。
-    bool              fillClockwise = true;
-    UIImageType       imageType = UIImageType::Simple;
+    bool              fillClockwise = true; ///< 放射状の塗り潰しを時計回りへ進めるかどうか。
+    UIImageType       imageType = UIImageType::Simple; ///< テクスチャを描画矩形へ配置する画像の描画方式。
     /// @note 9-slice の余白 (L,T,R,B ピクセル)。Sliced のときだけ効く。
     /// @note Sprite の Border は Sprite 型の .meta 専用のため、素の .png でも使えるようここに持つ。
     /// @note 全成分 0 (既定) なら Sprite Editor の Border へ譲る (EffectiveBorder 参照)。
-    math::Vector4     border = { 0.0f, 0.0f, 0.0f, 0.0f };
+    math::Vector4     border = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< スライス描画で固定する四辺の幅。スプライトのピクセル単位。
     /// @note Border とタイルの描画寸法をこの値で割る。1 なら元画像のピクセル寸法どおり。
     /// @note 低解像度の素材を大きな画面で使うとき、素材を作り直さずに角とタイルだけ拡大できる。
-    float             pixelsPerUnitMultiplier = 1.0f;
+    float             pixelsPerUnitMultiplier = 1.0f; ///< スプライトから描画サイズを換算するときの pixelsPerUnit の倍率。
     /// @name マテリアルのこの要素だけの上書き (ランタイム専用)
     /// @{
     /// @note .mat は参照する全要素の共有実体のため、要素ごとの差分はここに持つ。値は毎フレーム
     /// @note 動く量 (HP・充填率等) なのでシーンへは保存せず、ui.SetMaterialFloat() 等で書く。
-    std::unordered_map<std::string, std::vector<float>> materialParamOverrides;
-    std::unordered_map<std::string, std::string>        materialTextureOverrides;
+    std::unordered_map<std::string, std::vector<float>> materialParamOverrides; ///< マテリアルの数値パラメーター名から要素固有の上書き値を引く表。
+    std::unordered_map<std::string, std::string>        materialTextureOverrides; ///< マテリアルのテクスチャパラメーター名から要素固有の参照パスを引く上書き表。
 
     /// @note ランタイム専用: この要素だけ一時的に別の絵で描く (UIButton の状態別スプライト)。
     /// @note texturePath は人が指定しシーンに保存される値なので直接書き換えない。差し替えは
     /// @note 描画側の一時的な上書きとして別フィールドに持つ。
-    std::string   overrideTexturePath = {};
-    bool          hasTextureOverride = false;
+    std::string   overrideTexturePath = {}; ///< 状態や実行時入力によって使用する、テクスチャ参照の上書きパス。
+    bool          hasTextureOverride = false; ///< 割り当て済みテクスチャに対して実行時の上書きがあるかどうか。
 
-    /// @note ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
-    std::string   loadedTexturePath = {};
-    /// @note Spriteサブアセット参照時に.metaから解決したUV。通常TextureではuvMin/uvMaxを使う。
-    math::Vector2 resolvedSpriteUvMin = { 0.0f, 0.0f };
-    math::Vector2 resolvedSpriteUvMax = { 1.0f, 1.0f };
-    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note 左・上・右・下の順 [px]。
-    math::Vector2 resolvedTextureSize = { 0.0f, 0.0f };
+    std::string   loadedTexturePath = {}; ///< ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
+    math::Vector2 resolvedSpriteUvMin = { 0.0f, 0.0f }; ///< Spriteサブアセット参照時に.metaから解決したUV。通常TextureではuvMin/uvMaxを使う。
+    math::Vector2 resolvedSpriteUvMax = { 1.0f, 1.0f }; ///< 解決済みスプライトのアトラス上の UV 矩形の最大端。
+    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< 左・上・右・下の順 [px]。
+    math::Vector2 resolvedTextureSize = { 0.0f, 0.0f }; ///< 解決済みテクスチャを配置する際に参照する画像サイズ [ピクセル]。
     /// @note 切り抜き (Sprite なら矩形、通常テクスチャなら画像全体) のピクセル寸法。
     /// @note Tiled の 1 タイル分の大きさと、Inspector の Set Native Size がこれを読む。
-    math::Vector2 resolvedSizePixels = { 0.0f, 0.0f };
-    bool          hasResolvedSprite = false;
+    math::Vector2 resolvedSizePixels = { 0.0f, 0.0f }; ///< 描画サイズ換算に使う解決済みスプライト矩形の幅と高さ [ピクセル]。
+    bool          hasResolvedSprite = false; ///< 描画時に使えるスプライトの情報を解決済みかどうか。
 
     /// @note ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
     /// @note スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
-    bool overrideThemeColor = false;
+    bool overrideThemeColor = false; ///< テーマ色よりもこの画像の色を優先するかどうか。
 
     static std::pair<math::Vector2, math::Vector2> PixelRectToUV(
         float x, float y, float w, float h, float texW, float texH)
@@ -203,7 +204,9 @@ struct UIImage {
                   imageType != UIImageType::Simple,
                   "Border とタイルの描画寸法をこの値で割ります。"
                   "1 で元画像のピクセル寸法どおり、2 で半分の大きさ");
-        if (pixelsPerUnitMultiplier <= 0.0f) pixelsPerUnitMultiplier = 1.0f;
+        if (pixelsPerUnitMultiplier <= 0.0f) {
+            pixelsPerUnitMultiplier = 1.0f;
+        }
 
         r.FloatRange("fillAmount", fillAmount, 0.0f, 1.0f);
         static constexpr const char* kFillMethodLabels[] = {
@@ -212,7 +215,7 @@ struct UIImage {
         r.Enum("fillMethod", method, kFillMethodLabels);
         method = (method < 0 || method > 3) ? 0 : method;
         fillMethod = static_cast<UIImageFillMethod>(method);
-        /// @note 角は Radial 90 専用。他の方式で選ばれたら下の Normalize が辺へ戻す。
+        // 角は Radial 90 専用。他の方式で選ばれたら下の Normalize が辺へ戻す。
         static constexpr const char* kFillOriginLabels[] = {
             "Left", "Right", "Bottom", "Top",
             "Bottom Left", "Top Left", "Top Right", "Bottom Right" };

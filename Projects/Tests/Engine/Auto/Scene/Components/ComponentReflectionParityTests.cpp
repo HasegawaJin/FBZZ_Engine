@@ -89,21 +89,27 @@ protected:
         scene::GameObject& go = scene.CreateGameObject("Probe");
         go.AddComponent<T>(value);
 
-        /// @note scenePath を空にすると副作用 (.terrain / .mat の書き出し) が起きない。
+        // scenePath を空にすると副作用 (.terrain / .mat の書き出し) が起きない。
         const std::string text = scene::SceneSerializer::SaveToText(scene);
         EXPECT_FALSE(text.empty());
 
         toml::parse_result parsed = toml::parse(text);
         EXPECT_TRUE(parsed) << "シーン TOML が壊れています";
-        if (!parsed) return {};
+        if (!parsed) {
+            return {};
+        }
 
         const auto* objects = parsed.table()["gameobjects"].as_array();
         EXPECT_NE(objects, nullptr);
-        if (objects == nullptr || objects->empty()) return {};
+        if (objects == nullptr || objects->empty()) {
+            return {};
+        }
 
         const auto* first = (*objects)[0].as_table();
         EXPECT_NE(first, nullptr);
-        if (first == nullptr) return {};
+        if (first == nullptr) {
+            return {};
+        }
 
         const auto* componentTable = (*first)[componentKey].as_table();
         EXPECT_NE(componentTable, nullptr)
@@ -171,8 +177,8 @@ TEST_F(ComponentReflectionParityTest, NavMeshSensorKeepsItsSceneKeys)
 /// @brief Flow field writes its flow list.
 TEST_F(ComponentReflectionParityTest, FlowFieldWritesItsFlowList)
 {
-    /// @note 場は 2026-09-11 に «1 本» から «リスト» になり、2026-09-16 に FlowField へ改名した。
-    /// @note 保存の外枠は forces 1 キーで、中身は ParticleEmitter::localForces と同じ形。
+    // 場は 2026-09-11 に «1 本» から «リスト» になり、2026-09-16 に FlowField へ改名した。
+    // 保存の外枠は forces 1 キーで、中身は ParticleEmitter::localForces と同じ形。
     scene::FlowField field{};
     scene::FlowFieldSettings uniform;
     uniform.fieldType = scene::FlowFieldType::Uniform;
@@ -222,10 +228,10 @@ TEST_F(ComponentReflectionParityTest, TrailKeepsItsSceneKeys)
 /// @brief Volume keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, VolumeKeepsItsSceneKeys)
 {
-    /// @note buoyancy / drag は «意図して消した» キー。前者は VolumeType::Buoyancy ごと
-    /// @note WaterComponent へ移り (buoyancy.md)、後者はどの VolumeType も読んでいない
-    /// @note 死んだノブだった (flow-field.md)。消したキーはここからも外す ── 残すと
-    /// @note «改名を捕まえる網» が «廃止を禁じる鎖» になる。
+    // buoyancy / drag は «意図して消した» キー。前者は VolumeType::Buoyancy ごと
+    // WaterComponent へ移り (buoyancy.md)、後者はどの VolumeType も読んでいない
+    // 死んだノブだった (flow-field.md)。消したキーはここからも外す ── 残すと
+    // «改名を捕まえる網» が «廃止を禁じる鎖» になる。
     ExpectKeysStillWritten<scene::VolumeComponent>("VolumeComponent",
         { "duration", "elapsed", "enabled", "explosionImpulse", "gravity",
           "inwardStrength", "liftStrength", "magneticField", "swirlStrength", "timeScale",
@@ -276,8 +282,8 @@ TEST_F(ComponentReflectionParityTest, RagdollKeepsItsSceneKeys)
 /// @brief NavMesh off-mesh link keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, NavMeshOffMeshLinkKeepsItsSceneKeys)
 {
-    /// @note enabled は保存されていたのに Reflect に無く、AI バスから見えなかった。
-    /// @note 畳むにあたって Reflect へ足したので、ここで «消えていない» ことを押さえる。
+    // enabled は保存されていたのに Reflect に無く、AI バスから見えなかった。
+    // 畳むにあたって Reflect へ足したので、ここで «消えていない» ことを押さえる。
     ExpectKeysStillWritten<scene::NavMeshOffMeshLinkComponent>("NavMeshOffMeshLinkComponent",
         { "activated", "agentTypeMask", "bidirectional", "enabled", "endPoint", "startPoint",
           "traversalTime" });
@@ -286,7 +292,7 @@ TEST_F(ComponentReflectionParityTest, NavMeshOffMeshLinkKeepsItsSceneKeys)
 /// @brief Mesh trail keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, MeshTrailKeepsItsSceneKeys)
 {
-    /// @note excludedMeshIndices も同じ («保存はされるが Reflect に無い» 側)。
+    // excludedMeshIndices も同じ («保存はされるが Reflect に無い» 側)。
     ExpectKeysStillWritten<scene::MeshTrailComponent>("MeshTrailComponent",
         { "clearOnDisable", "colorEnd", "colorStart", "doubleSided", "duration", "enabled",
           "excludedMeshIndices", "materialPath", "maxSamples", "minVertexDist",
@@ -390,8 +396,8 @@ TEST_F(ComponentReflectionParityTest, LightProbeVolumeClampsItsGrid)
 /// @brief Legacy wind zone becomes ambient wind forces.
 TEST_F(ComponentReflectionParityTest, LegacyWindZoneBecomesAmbientWindForces)
 {
-    /// @note 旧 WindZoneComponent を持つシーンを «手で組んだ TOML» として読ませる。
-    /// @note 捨てると既存シーンの風が黙って止まる (しかも «風が弱い» と区別が付かない)。
+    // 旧 WindZoneComponent を持つシーンを «手で組んだ TOML» として読ませる。
+    // 捨てると既存シーンの風が黙って止まる (しかも «風が弱い» と区別が付かない)。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Wind Zone"
@@ -412,27 +418,27 @@ pulseFrequency = 3.0
         if (candidate.name == "Wind Zone") object = &candidate;
     ASSERT_NE(object, nullptr);
 
-    /// @note 環境風は GameObject ではなくシーン設定へ移る。«どれが環境風か» が並び順で
-    /// @note 決まる状態をやめるのがこの移行の目的なので、場としては残さない。
+    // 環境風は GameObject ではなくシーン設定へ移る。«どれが環境風か» が並び順で
+    // 決まる状態をやめるのがこの移行の目的なので、場としては残さない。
     EXPECT_EQ(object->GetComponent<scene::FlowField>(), nullptr);
 
     const scene::SceneEnvironment& environment = loaded->Environment();
     EXPECT_TRUE(environment.enabled);
     EXPECT_VEC3_NEAR(environment.direction, math::Vector3(0.0f, 0.0f, 1.0f), testkit::kTolerance);
-    /// @note 旧 strength は加速度 [m/s^2]。静止粒子で dv を等置して流速 [m/s] へ写す。
+    // 旧 strength は加速度 [m/s^2]。静止粒子で dv を等置して流速 [m/s] へ写す。
     EXPECT_NEAR(environment.speed, 4.0f * scene::kLegacyAccelerationToFlowSpeed,
                 testkit::kTolerance);
     EXPECT_NEAR(environment.turbulence, 2.5f * scene::kLegacyAccelerationToFlowSpeed,
                 testkit::kTolerance);
-    /// @note 旧 pulseFrequency は «脈動の速さ» で、乱流の時間スクロール速度と同じ意味。
+    // 旧 pulseFrequency は «脈動の速さ» で、乱流の時間スクロール速度と同じ意味。
     EXPECT_NEAR(environment.pulseFrequency, 3.0f, testkit::kTolerance);
 }
 
 /// @brief The legacy force field key is still read.
 TEST_F(ComponentReflectionParityTest, TheLegacyForceFieldKeyIsStillRead)
 {
-    /// @note 型は ParticleForceField → ForceField → FlowField と変わり、そのたび保存キーも変わった。
-    /// @note 出荷済みシーンは旧キーで書かれている。読めなくなると場が丸ごと消える。
+    // 型は ParticleForceField → ForceField → FlowField と変わり、そのたび保存キーも変わった。
+    // 出荷済みシーンは旧キーで書かれている。読めなくなると場が丸ごと消える。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Old Field"
@@ -452,7 +458,7 @@ forces = [ { fieldType = 1, strength = 9.0, radius = 3.0 } ]
     const auto* field = object->GetComponent<scene::FlowField>();
     ASSERT_NE(field, nullptr);
     ASSERT_EQ(field->forces.size(), 1u);
-    /// @note fieldType の整数値は旧 enum と揃えて固定してある (1 = Attract → Sink)。
+    // fieldType の整数値は旧 enum と揃えて固定してある (1 = Attract → Sink)。
     EXPECT_EQ(field->forces[0].fieldType, scene::FlowFieldType::Sink);
     EXPECT_NEAR(field->forces[0].strength, 9.0f * scene::kLegacyAccelerationToFlowSpeed,
                 testkit::kTolerance);
@@ -461,7 +467,7 @@ forces = [ { fieldType = 1, strength = 9.0, radius = 3.0 } ]
 /// @brief Legacy flat force field becomes a single flow.
 TEST_F(ComponentReflectionParityTest, LegacyFlatForceFieldBecomesASingleFlow)
 {
-    /// @note 場が «1 本» だった頃 (〜2026-09-11) の形。キーが直下にフラットに並ぶ。
+    // 場が «1 本» だった頃 (〜2026-09-11) の形。キーが直下にフラットに並ぶ。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Vortex"
@@ -494,8 +500,8 @@ direction = [0.0, 1.0, 0.0]
 /// @brief Legacy global wind becomes the scene environment.
 TEST_F(ComponentReflectionParityTest, LegacyGlobalWindBecomesTheSceneEnvironment)
 {
-    /// @note [environment] を持たないシーンでは «半径 0 の Uniform (+ Curl)» が環境風だった。
-    /// @note 残したままにすると環境流と局所の場で二重に掛かる。
+    // [environment] を持たないシーンでは «半径 0 の Uniform (+ Curl)» が環境風だった。
+    // 残したままにすると環境流と局所の場で二重に掛かる。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Air"

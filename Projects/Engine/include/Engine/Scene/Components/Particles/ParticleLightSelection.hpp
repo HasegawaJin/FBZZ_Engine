@@ -15,10 +15,10 @@ namespace fbzz::scene {
 
 /// @note 粒子 1 つが出す点光源。位置はシミュレーション空間 (Local ならエミッター基準)。
 struct ParticleLightEmission {
-    math::Vector3 position;
-    math::Vector3 color;
-    float range = 0.0f;
-    float intensity = 0.0f;
+    math::Vector3 position; ///< 粒子と同じシミュレーション空間における点光源の中心。
+    math::Vector3 color; ///< 描画へ渡す、粒子色の設定を反映した点光源の RGB 色。
+    float range = 0.0f; ///< 点光源が照らす距離（m）。
+    float intensity = 0.0f; ///< 粒子のアルファによる減衰を反映した点光源の強度。
 };
 
 /// @note 粒子が lightRatio の判定を通るか。粒子ごとの固定乱数 (spriteSeed) で決めるので、
@@ -30,7 +30,7 @@ struct ParticleLightEmission {
 /// @note 明るさが同じなら配列の前にある粒子を先にする (決定論的)。
 /// @note ライト配列の枠 (kMaxPunctualLights) は LightComponent と共有で、溢れた分は捨てる
 /// @note しかない。捨てるなら画面への寄与が小さいものから。
-/// @param budget ライト配列の残り枠
+/// @param[in] budget ライト配列の残り枠
 FBZZ_ENGINE_API void SelectParticleLights(const ParticleLightSettings& light, const std::vector<Particle>& particles,
                           std::size_t budget, std::vector<ParticleLightEmission>& out);
 

@@ -46,7 +46,9 @@ std::shared_ptr<const scene::WaterSplineSnapshot> MakeRectangle(
     }
     snapshot->triangles = {{{0, 1, 2}, {}}, {{0, 2, 3}, {}}};
     snapshot->footprintTriangles = snapshot->triangles;
-    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) return {};
+    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) {
+        return {};
+    }
     return snapshot;
 }
 
@@ -72,7 +74,9 @@ std::shared_ptr<const scene::WaterSplineSnapshot> MakeTransformedRectangle(
     }
     snapshot->triangles = {{{0, 1, 2}, {}}, {{0, 2, 3}, {}}};
     snapshot->footprintTriangles = snapshot->triangles;
-    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) return {};
+    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) {
+        return {};
+    }
     return snapshot;
 }
 
@@ -90,7 +94,9 @@ std::shared_ptr<const scene::WaterSplineSnapshot> MakeQuad(
     }
     snapshot->triangles = {{{0, 1, 2}, {}}, {{0, 2, 3}, {}}};
     snapshot->footprintTriangles = snapshot->triangles;
-    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) return {};
+    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) {
+        return {};
+    }
     return snapshot;
 }
 
@@ -108,7 +114,9 @@ std::shared_ptr<const scene::WaterSplineSnapshot> MakeTriangle(
     }
     snapshot->triangles = {{{0, 1, 2}, {}}};
     snapshot->footprintTriangles = snapshot->triangles;
-    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) return {};
+    if (!scene::FinalizeWaterSplineSnapshot(*snapshot, 1000.0f)) {
+        return {};
+    }
     return snapshot;
 }
 
@@ -149,7 +157,9 @@ bool ContainsPoint(const scene::WaterSplineSnapshot& geometry, float x, float z)
 bool UnionContains(std::span<const scene::WaterZoneSource> sources, float x, float z)
 {
     for (const auto& source : sources)
-        if (source.geometry && ContainsPoint(*source.geometry, x, z)) return true;
+        if (source.geometry && ContainsPoint(*source.geometry, x, z)) {
+            return true;
+        }
     return false;
 }
 
@@ -276,7 +286,9 @@ TEST_F(WaterZoneTest, RiverMouthBlendsAtItsEndpointAndBlendLengthAtDefaultPriori
     double closestDistance = std::numeric_limits<double>::infinity();
     for (const scene::WaterSplineVertex& vertex : zone.geometry.vertices) {
         const double distance = static_cast<double>(vertex.worldPosition.x) - 5.0;
-        if (distance <= 0.01 || distance >= 3.99) continue;
+        if (distance <= 0.01 || distance >= 3.99) {
+            continue;
+        }
         const double difference = std::abs(distance - 2.0);
         if (difference < closestDistance) {
             closestDistance = difference;
@@ -417,7 +429,9 @@ TEST_F(WaterZoneTest, SupportsSeparateRiverMouthsAtBothEndpoints)
         10.0f, 1000.0f, zone, diagnostic);
     std::string failureDetails = diagnostic;
     for (const core::LogEntry& entry : logSink.entries) {
-        if (entry.message.find("WaterZone topology:") == std::string::npos) continue;
+        if (entry.message.find("WaterZone topology:") == std::string::npos) {
+            continue;
+        }
         failureDetails += "\n";
         failureDetails += entry.message;
     }

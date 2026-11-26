@@ -40,29 +40,21 @@ struct SkinnedMeshRendererGpuState {
     /// @note Scene View と Game View は同じ Time::frameCount 内で別々に RenderSystem を実行するため、
     /// @note bool だけでは 2 回目のビューでも同じポーズを Dispatch してしまう。
     uint64_t gpuSkinningFrame = (std::numeric_limits<uint64_t>::max)();
-    /// @brief 同フレームの別ビューでも同じパス統計を表示できるよう、実際に処理した仕事量を保持する。
-    uint64_t gpuSkinningVertexCount = 0;
+    uint64_t gpuSkinningVertexCount = 0; ///< 同フレームの別ビューでも同じパス統計を表示できるよう、実際に処理した仕事量を保持する。
     uint32_t gpuSkinningDispatchCount = 0;
-    /// @note 入力の完全比較で同じポーズの再 Dispatch を省く。保存せず、model / resource 世代が変われば棄却する。
-    std::vector<uint32_t> gpuSkinningContent;
-    /// @note 未使用の元姿勢は GPU 未投入のまま所有する。mutable 出力とは別世代で古い snapshot も保持できる。
-    std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
-    /// @note model->meshes 添字から ticket の行への対応。未担当 submesh は UINT32_MAX。
-    std::vector<uint32_t> preparedSkinningRows;
-    /// @note 元入力の一致を確認したエンジンフレーム。ticket の RHI frame や成功投入 frame とは別である。
-    uint64_t preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)();
+    std::vector<uint32_t> gpuSkinningContent; ///< 入力の完全比較で同じポーズの再 Dispatch を省く。保存せず、model / resource 世代が変われば棄却する。
+    std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning; ///< 未使用の元姿勢は GPU 未投入のまま所有する。mutable 出力とは別世代で古い snapshot も保持できる。
+    std::vector<uint32_t> preparedSkinningRows; ///< model->meshes 添字から ticket の行への対応。未担当 submesh は UINT32_MAX。
+    uint64_t preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)(); ///< 元入力の一致を確認したエンジンフレーム。ticket の RHI frame や成功投入 frame とは別である。
     /// @}
 
 };
 
 struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     bool enabled = true;
-    /// @note LODSystem 専用のランタイム可視性。Scene には保存しない。
-    bool lodVisible = true;
-    /// @note LOD クロスフェード中のディザしきい値。MeshRenderer::lodDither と同じ意味。
-    float lodDither = 0.0f;
-    /// @note シャドウマップへ影を落とすか。MeshRenderer::castShadows と同じ意味。
-    bool castShadows = true;
+    bool lodVisible = true; ///< LODSystem 専用のランタイム可視性。Scene には保存しない。
+    float lodDither = 0.0f; ///< LOD クロスフェード中のディザしきい値。MeshRenderer::lodDither と同じ意味。
+    bool castShadows = true; ///< シャドウマップへ影を落とすか。MeshRenderer::castShadows と同じ意味。
     std::string modelPath;
 
     asset::Model* model = nullptr;
@@ -77,7 +69,9 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     /// @brief 描画対象の submesh 数。submeshIndices が空ならモデル全体の submesh 数。
     [[nodiscard]] size_t SubmeshCount() const
     {
-        if (!submeshIndices.empty()) return submeshIndices.size();
+        if (!submeshIndices.empty()) {
+            return submeshIndices.size();
+        }
         return model ? model->meshes.size() : 0u;
     }
 
@@ -87,9 +81,10 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     /// @note 片方だけ直したときに部位ごとに食い違う壊れ方をする。
     [[nodiscard]] uint32_t SubmeshAt(size_t localIndex) const
     {
-        if (!submeshIndices.empty())
+        if (!submeshIndices.empty()) {
             return localIndex < submeshIndices.size()
                 ? submeshIndices[localIndex] : UINT32_MAX;
+        }
         const size_t count = model ? model->meshes.size() : 0u;
         return localIndex < count ? static_cast<uint32_t>(localIndex) : UINT32_MAX;
     }
@@ -98,9 +93,13 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     /// @return 未割当 / 範囲外は nullptr。
     [[nodiscard]] renderer::Mesh* SubmeshMesh(size_t localIndex) const
     {
-        if (!model) return nullptr;
+        if (!model) {
+            return nullptr;
+        }
         const uint32_t meshIndex = SubmeshAt(localIndex);
-        if (meshIndex == UINT32_MAX || meshIndex >= model->meshes.size()) return nullptr;
+        if (meshIndex == UINT32_MAX || meshIndex >= model->meshes.size()) {
+            return nullptr;
+        }
         return model->meshes[meshIndex].get();
     }
 
@@ -108,8 +107,7 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     /// @note 再構築され、実体である Bone GameObject を指す (Transform を編集・アニメ・リグの共通基盤にするため)。
     EntityID skeletonRootEntity = EntityID::INVALID;
     std::vector<EntityID> nodeEntities;
-    /// @note Morph は共有 Mesh を変更せず、この Renderer インスタンス専用の頂点バッファへ反映する。
-    std::unordered_map<std::string, float> morphWeights;
+    std::unordered_map<std::string, float> morphWeights; ///< Morph は共有 Mesh を変更せず、この Renderer インスタンス専用の頂点バッファへ反映する。
     /// @note VelocityPass だけが読み書きする。シーンへは保存しない。ボーンの動きは
     /// @note AnimatorComponent::prevBoneMatrices が持つので、ここはキャラクター自身の
     /// @note 移動・回転ぶんだけ。2 枚持つのは MeshRenderer と同じ理由 (Scene View と Game View が
@@ -126,10 +124,14 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
         if (gpuSkinnedThisFrame && preparedSkinning && index < preparedSkinningRows.size()) {
             const uint32_t row = preparedSkinningRows[index];
             const auto writes = preparedSkinning->Writes();
-            if (row < writes.size() && writes[row].recorded && preparedSkinning->IsWriteCurrent(row)) return writes[row].output;
+            if (row < writes.size() && writes[row].recorded && preparedSkinning->IsWriteCurrent(row)) {
+                return writes[row].output;
+            }
             return {};
         }
-        if (!gpuSkinnedThisFrame || index >= skinnedVertexBuffers.size()) return {};
+        if (!gpuSkinnedThisFrame || index >= skinnedVertexBuffers.size()) {
+            return {};
+        }
         return skinnedVertexBuffers[index];
     }
 
@@ -152,7 +154,9 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
         renderer::ResourceHandle<renderer::BufferTag> fallback) const
     {
         const uint32_t meshIndex = SubmeshAt(localIndex);
-        if (meshIndex == UINT32_MAX) return fallback;
+        if (meshIndex == UINT32_MAX) {
+            return fallback;
+        }
         return ResolveVertexBuffer(static_cast<size_t>(meshIndex), fallback);
     }
 
@@ -160,7 +164,9 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
         size_t localIndex) const
     {
         const uint32_t meshIndex = SubmeshAt(localIndex);
-        if (meshIndex == UINT32_MAX) return {};
+        if (meshIndex == UINT32_MAX) {
+            return {};
+        }
         return ResolveSkinnedVertexBuffer(static_cast<size_t>(meshIndex));
     }
     /// @}

@@ -30,11 +30,15 @@ constexpr AssetQuality kLowestModelQuality = 3;
 
 bool EndsWithCI(const std::string& text, std::string_view suffix)
 {
-    if (text.size() < suffix.size()) return false;
+    if (text.size() < suffix.size()) {
+        return false;
+    }
     for (std::size_t i = 0; i < suffix.size(); ++i) {
         const auto a = std::tolower(static_cast<unsigned char>(text[text.size() - suffix.size() + i]));
         const auto b = std::tolower(static_cast<unsigned char>(suffix[i]));
-        if (a != b) return false;
+        if (a != b) {
+            return false;
+        }
     }
     return true;
 }
@@ -46,8 +50,9 @@ std::uint64_t MeshBytes(const renderer::Mesh& mesh)
     if (clusters) {
         clusterBytes = clusters->bytes.capacity() + clusters->streamMetadata.capacity()
             + clusters->streamTable.capacity() * sizeof(uint32_t);
-        for (const auto& page : clusters->streamPages)
+        for (const auto& page : clusters->streamPages) {
             clusterBytes += page.words.capacity() * sizeof(uint32_t);
+        }
     }
     return mesh.cpuVertices.size() * sizeof(renderer::Vertex)
          + mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex)
@@ -70,9 +75,10 @@ void CreateMeshBuffers(renderer::ResourceManager& resources, renderer::Mesh& mes
             mesh.cpuVertices.size() * sizeof(renderer::Vertex),
             sizeof(renderer::Vertex));
     }
-    if (!mesh.cpuIndices.empty())
+    if (!mesh.cpuIndices.empty()) {
         mesh.indexBuffer = resources.CreateIndexBuffer(mesh.cpuIndices.data(),
                                                        static_cast<uint32_t>(mesh.cpuIndices.size()));
+    }
 }
 
 /// @brief 同期でしか読めない形式 (.mesh / DCC 直読み) かどうかを、メインスレッドで決めて渡す。
@@ -98,7 +104,7 @@ public:
 
     [[nodiscard]] bool Snapshot(const std::string& key, AssetJobInput& out, std::string& outError) override
     {
-        /// @note .fbx は Library/Baked の .fzasset へ寄せる (同期 Load と同じ規則)。
+        // .fbx は Library/Baked の .fzasset へ寄せる (同期 Load と同じ規則)。
         std::string resolved = AssetManager::ResolveImportPath(key, true);
         if (resolved.empty()) {
             outError = "モデルを解決できません: " + key;
@@ -118,7 +124,7 @@ public:
         decoded->resolvedPath = input.resolvedPath;
         decoded->syncOnly = static_cast<const ModelJobContext&>(*input.context).syncOnly;
         if (!decoded->syncOnly) {
-            /// @note resources を渡さない = CPU の解析だけ。GPU バッファは BeginUpload がメインスレッドで作る。
+            // resources を渡さない = CPU の解析だけ。GPU バッファは BeginUpload がメインスレッドで作る。
             std::unique_ptr<ModelAsset> parsed = Parse(input.resolvedPath, input.quality);
             if (!parsed) {
                 result.error = AssetLoadError::DecodeFailed;
@@ -146,11 +152,11 @@ public:
         outToken = 0;
         auto candidate = std::make_unique<AssetCandidate<T>>();
         if (model.syncOnly) {
-            /// @note 索引の無い形式は同期 importer に任せる (設計の «索引のない旧形式は全体ロード»)。
+            // 索引の無い形式は同期 importer に任せる (設計の «索引のない旧形式は全体ロード»)。
             auto& importer = AssetStore<T>::Get().importer;
             candidate->asset = importer ? importer->Import(model.resolvedPath, &m_resources) : nullptr;
         } else if (model.asset) {
-            /// @note デバイスが作り直されたら同じ CPU 成果物からもう一度呼ばれる。古いハンドルは捨てて作り直す。
+            // デバイスが作り直されたら同じ CPU 成果物からもう一度呼ばれる。古いハンドルは捨てて作り直す。
             ForEachMesh(*model.asset, [&](renderer::Mesh& mesh) {
                 mesh.vertexBuffer = {};
                 mesh.indexBuffer = {};
@@ -168,7 +174,9 @@ public:
     [[nodiscard]] std::uint64_t EstimateResidentBytes(RawAssetHandle handle) const override
     {
         std::uint64_t bytes = 0;
-        if (T* asset = this->TypedGet(handle)) ForEachMesh(*asset, [&](renderer::Mesh& mesh) { bytes += MeshBytes(mesh); });
+        if (T* asset = this->TypedGet(handle)) {
+            ForEachMesh(*asset, [&](renderer::Mesh& mesh) { bytes += MeshBytes(mesh); });
+        }
         return bytes;
     }
 
@@ -189,7 +197,9 @@ protected:
         } else {
             for (LodLevel& lod : asset.lods)
                 for (SubmeshEntry& submesh : lod.submeshes)
-                    if (submesh.mesh) fn(*submesh.mesh);
+                    if (submesh.mesh) {
+                        fn(*submesh.mesh);
+                    }
         }
     }
 
@@ -203,7 +213,9 @@ public:
     /// @note 公開中の Model は差し替えない (MeshRenderer が Mesh* を持っている)。更新失敗として記録させる。
     [[nodiscard]] bool Publish(RawAssetHandle handle, IAssetCandidate& candidate) override
     {
-        if (TypedGet(handle) != nullptr) return false;
+        if (TypedGet(handle) != nullptr) {
+            return false;
+        }
         return ModelChannelBase::Publish(handle, candidate);
     }
 
@@ -232,11 +244,14 @@ protected:
     /// @note 品質段より高品質な LOD のメッシュを捨てる (submesh の枠と名前は残す)。最低品質の LOD は必ず残す。
     [[nodiscard]] std::unique_ptr<ModelAsset> Build(std::unique_ptr<ModelAsset> parsed, AssetQuality quality) const override
     {
-        if (parsed->lods.empty()) return nullptr;
+        if (parsed->lods.empty()) {
+            return nullptr;
+        }
         const std::size_t firstResident = (std::min)(static_cast<std::size_t>(quality), parsed->lods.size() - 1);
         for (std::size_t lod = 0; lod < firstResident; ++lod)
-            for (SubmeshEntry& submesh : parsed->lods[lod].submeshes)
+            for (SubmeshEntry& submesh : parsed->lods[lod].submeshes) {
                 submesh.mesh.reset();
+            }
         return parsed;
     }
 };
@@ -272,8 +287,10 @@ public:
         const std::string textureType(AssetStreamTypeName<TextureAsset>());
         const auto materialSnapshot = decoded->asset->ReadAuthoring();
         for (const auto& [slot, reference] : materialSnapshot->Data().textures) {
-            if (reference.empty()) continue;
-            /// @note Sprite 参照は親テクスチャを要求する。接尾辞込みだと Sprite の数だけ同じ画像を読む。
+            if (reference.empty()) {
+                continue;
+            }
+            // Sprite 参照は親テクスチャを要求する。接尾辞込みだと Sprite の数だけ同じ画像を読む。
             std::string texturePath;
             std::string spriteToken;
             decoded->dependencies.push_back({ textureType,
@@ -293,7 +310,7 @@ public:
     }
 };
 
-} /// @note namespace
+} // namespace
 
 std::shared_ptr<IAssetStreamChannel> CreateMaterialStreamChannel()
 {

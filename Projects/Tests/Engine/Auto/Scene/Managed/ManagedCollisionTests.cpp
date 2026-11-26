@@ -96,7 +96,9 @@ protected:
         if (!component) component = &object.AddComponent<scene::ScriptComponent>();
         auto& entry = component->scripts.emplace_back();
     entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.CollisionComponent", entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&m_scene, &object);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;
@@ -209,11 +211,11 @@ TEST_F(ManagedCollisionTest, ActualTriggerDeliversEnterStayExitToBothObjects)
     ASSERT_NE(otherAdapter, nullptr);
     m_owner->AddComponent<scene::AabbColliderComponent>().isTrigger = true;
     m_other->AddComponent<scene::AabbColliderComponent>();
-    /// @note 静的な領域へ出入りする動的対象を固定 step で同期し、native と managed の同じイベント分類を検証する。
+    // 静的な領域へ出入りする動的対象を固定 step で同期し、native と managed の同じイベント分類を検証する。
     auto& body = m_other->AddComponent<scene::RigidBodyComponent>();
     body.rigidBody = std::make_unique<physics::RigidBody>();
     body.rigidBody->SetMass(1);
-    /// @note SetPosition と Teleport は固定軸も維持するため、出入りに使う X 軸だけは固定しない。
+    // SetPosition と Teleport は固定軸も維持するため、出入りに使う X 軸だけは固定しない。
     body.rigidBody->SetFreezePosition({false, true, true});
     body.rigidBody->SetFreezeRotation({true, true, true});
     m_other->transform.position = {0.5f, 0, 0};
@@ -289,7 +291,7 @@ TEST_F(ManagedCollisionTest, StaticOnlyTriggerMovementUpdatesNativeAndManagedCon
     for (auto* adapter : {m_adapter, otherAdapter})
         EXPECT_EQ(Count(*adapter, "triggerStayCount"), 1);
 
-    /// @note 既存 collider の姿勢変更でも接触を再検出し、静止シーンの早期 return が古い Stay を再送しないこと。
+    // 既存 collider の姿勢変更でも接触を再検出し、静止シーンの早期 return が古い Stay を再送しないこと。
     m_other->transform.position = {3, 0, 0};
     scene::FlushWorldTransforms(m_scene);
     Tick(true);

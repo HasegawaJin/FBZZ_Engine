@@ -17,4 +17,4 @@ struct InputBindingsDocument {
     [[nodiscard]] FBZZ_ENGINE_API bool LoadFromToml(std::string_view text);
     [[nodiscard]] FBZZ_ENGINE_API std::string ToToml(bool explicitDefaults = false) const;
 };
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

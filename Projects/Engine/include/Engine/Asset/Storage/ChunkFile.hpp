@@ -28,10 +28,10 @@ public:
 
 private:
     struct Pending {
-        uint32_t             id = 0;
-        std::vector<uint8_t> bytes;
+        uint32_t             id = 0; ///< チャンクの内容型を読み取り側と照合する識別子。
+        std::vector<uint8_t> bytes; ///< ファイルへ書き込むこのチャンクの内容を所有するバイト列。
     };
-    std::vector<Pending> m_chunks;
+    std::vector<Pending> m_chunks; ///< 書き込む順序で保持するチャンクの一覧。
 };
 
 /// @brief 索引だけを読んで開き、チャンクは頼まれたものだけを読む。
@@ -51,9 +51,9 @@ public:
     [[nodiscard]] uint64_t BytesRead() const { return m_reader.bytesRead; }
 
 private:
-    BinaryReader              m_reader;
-    FzChunkFileHeader         m_header{};
-    std::vector<FzChunkEntry> m_entries;
+    BinaryReader              m_reader; ///< ヘッダーや各チャンクを読み出す元ファイルの読み取り状態。
+    FzChunkFileHeader         m_header{}; ///< 読み取ったチャンクファイルの共通ヘッダー。
+    std::vector<FzChunkEntry> m_entries; ///< ID とファイル位置からチャンクを検索するための索引。
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -47,8 +47,7 @@ namespace fbzz::scene {
 struct UIVertex2D {
     math::Vector2 pos;
     math::Vector2 uv;
-    /// @note 頂点ごとの色。g_Color に掛かる。色を使わない描画では白を積む。
-    math::Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f }; ///< 頂点ごとの色。g_Color に掛かる。色を使わない描画では白を積む。
 };
 
 /// @note UI パスの b0。UI は b0 を CameraConstants ではなく UIConstants として使う。
@@ -56,7 +55,7 @@ struct UIVertex2D {
 /// @note レイアウトは Assets/Shaders/UI/UICommon.hlsli の cbuffer UIConstants と一致させること。
 /// @note エディターの UI マテリアルプレビューもこの定数バッファのレイアウトを使う。
 struct UIConstantsCB {
-    math::Matrix4 ortho;  ///< @note Canvas 空間 → clip 空間
+    math::Matrix4 ortho; ///< Canvas 空間 → clip 空間
     math::Vector4 color;  ///< @note UIImage.color / UIText.color
     math::Vector4 uvRect; ///< @note xy = uvMin, zw = uvMax
     /// @note xy = この矩形の Canvas ピクセル寸法, zw = 予約。
@@ -87,8 +86,7 @@ struct UIClipPlane {
 struct UIMaterialBinding {
     std::vector<std::string> texturePaths;
     renderer::Material                                   material;
-    /// @note 上書きを名前でバイトオフセットへ写像するのに要る。
-    renderer::ShaderDescriptor                           descriptor;
+    renderer::ShaderDescriptor                           descriptor; ///< 上書きを名前でバイトオフセットへ写像するのに要る。
     renderer::ResourceHandle<renderer::PipelineStateTag> screenPso;
     renderer::ResourceHandle<renderer::PipelineStateTag> worldPso;
     /// @note 上書きを持つ要素だけが通す一時 cbuffer。
@@ -149,8 +147,7 @@ struct UISystemContext : UIInteractionContext {
     std::uint64_t cachedShaderVersion   = 0;
     int           cachedAssetGeneration = -1;
 
-    /// @note グリフ頂点をアトラスのページごとに溜める領域。ページ数はフォント依存。
-    std::vector<std::vector<UIVertex2D>>                  textPageScratch;
+    std::vector<std::vector<UIVertex2D>>                  textPageScratch; ///< グリフ頂点をアトラスのページごとに溜める領域。ページ数はフォント依存。
 
     /// @note いま有効なクリップ半平面。Mask / Scroll View に入るたび 4 枚積み、抜けると外す。
     /// @note 深さごとに分けない理由: 積んだ面は子孫すべてに効き続けるため、1 本のスタックが
@@ -189,7 +186,7 @@ FBZZ_ENGINE_API bool UICopySceneDepth(renderer::IRenderer& renderer, renderer::R
 /// @note 通常は UISystem が入口で版数を見て自分で呼ぶ (UISystemContext の版数フィールドを参照)。
 /// @note 明示的に呼ぶのは «版数では表せない» 捨て方をしたいときだけ。
 
-/// @param resources 抱えている GPU リソースの返却先。デバイスリセット後は nullptr を渡すこと
+/// @param[in] resources 呼び出し互換用。GPU 資源はキャッシュに記録した作成元へ返す。
 /// @note (実体はもう無く、ハンドルだけが残っている)。
 FBZZ_ENGINE_API void UISystemFlushCache(UISystemContext& ctx, renderer::ResourceManager* resources);
 
@@ -228,4 +225,4 @@ FBZZ_ENGINE_API void UISelectionMaskSystem(Scene& scene,
                            const math::Matrix4& viewProjection = math::Matrix4::Identity(),
                            UIRenderTargetView targetView = UIRenderTargetView::GameViewport);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

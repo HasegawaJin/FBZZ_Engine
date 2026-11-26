@@ -158,7 +158,7 @@ TEST_F(StaticMeshRenderReuseTest, MixedComponentsRefreshLiveShadowBoundsInSceneO
     const auto first = verify();
     EXPECT_NE(first.terrainRevision, 0u);
     verify();
-    /// @note スキン付きメッシュと地形を同一 Entity に保ち、通知なしの動的入力を連続ビューで更新する。
+    // スキン付きメッシュと地形を同一 Entity に保ち、通知なしの動的入力を連続ビューで更新する。
     animator.skinnedBoundsCenter.z = 24;
     const auto movedPose = verify();
     EXPECT_GT(movedPose.radius, first.radius);

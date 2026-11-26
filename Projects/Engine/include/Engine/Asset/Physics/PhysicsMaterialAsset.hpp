@@ -19,11 +19,11 @@ namespace fbzz::asset {
 
 /// @note .physmat の内容を保持する共有物理マテリアル。
 struct PhysicsMaterialAsset {
-    physics::PhysicsMaterial material = physics::PhysicsMaterial::Default;
+    physics::PhysicsMaterial material = physics::PhysicsMaterial::Default; ///< 接触の摩擦・反発や質量算出の密度に使う物理材質値。
 
     /// @note 由来プリセット名 (空 = 手動編集)。Inspector の「どこから作ったか」表示だけに使い、
     /// @note 挙動には影響しない。
-    std::string presetName;
+    std::string presetName; ///< 物理材質値の初期化に使ったプリセットの名前。
 
     const char* GetTypeName() const { return "Physics Material"; }
 
@@ -62,4 +62,4 @@ struct PhysicsMaterialAsset {
 [[nodiscard]] FBZZ_ENGINE_API bool SavePhysicsMaterialAssetToFile(std::string_view path,
                                                    const PhysicsMaterialAsset& asset);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

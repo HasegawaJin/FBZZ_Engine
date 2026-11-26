@@ -16,22 +16,31 @@ namespace fbzz::scene {
 /// @note Curve/Gradient/Array は旧 IReflector に型口がないため、スキーマ消費側が PropertyDesc を直接扱う。
 inline void ReflectTypeSchema(IReflector& reflector, const reflection::ITypeSchema& schema, void* owner)
 {
-    if (owner == nullptr) return;
+    if (owner == nullptr) {
+        return;
+    }
     for (const reflection::PropertyDesc& property : schema.Properties()) {
         if (property.type == reflection::PropertyType::Struct) {
-            if (property.childSchema != nullptr && property.getChild != nullptr)
+            if (property.childSchema != nullptr && property.getChild != nullptr) {
                 ReflectTypeSchema(reflector, *property.childSchema, property.getChild(owner));
+            }
             continue;
         }
-        if (property.get == nullptr || property.set == nullptr) continue;
+        if (property.get == nullptr || property.set == nullptr) {
+            continue;
+        }
         const std::any current = property.get(owner);
         const std::string name(property.key);
         switch (property.type) {
         case reflection::PropertyType::Float:
             if (auto value = std::any_cast<float>(&current)) {
                 float edited = *value;
-                if (property.range.enabled) reflector.FloatRange(name.c_str(), edited, property.range.minimum, property.range.maximum);
-                else reflector.Field(name.c_str(), edited);
+                if (property.range.enabled) {
+                    reflector.FloatRange(name.c_str(), edited, property.range.minimum, property.range.maximum);
+                }
+                else {
+                    reflector.Field(name.c_str(), edited);
+                }
                 property.set(owner, edited);
             }
             break;
@@ -67,4 +76,4 @@ inline void ReflectTypeSchema(IReflector& reflector, const reflection::ITypeSche
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

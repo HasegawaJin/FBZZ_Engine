@@ -78,11 +78,14 @@ double Cross(const Point2& a, const Point2& b, const Point2& c)
 
 double SignedArea(const std::vector<Point2>& points)
 {
-    if (points.size() < 3) return 0.0;
+    if (points.size() < 3) {
+        return 0.0;
+    }
     const Point2& origin = points.front();
     double area = 0.0;
-    for (std::size_t i = 1; i + 1 < points.size(); ++i)
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
         area += Cross(origin, points[i], points[i + 1]);
+    }
     return area * 0.5;
 }
 
@@ -105,7 +108,9 @@ double FloatRoundingRadius(const Point2& point)
 bool FloatRoundoffEquivalent(const Point2& a, const Point2& b)
 {
     if (static_cast<float>(a.x) != static_cast<float>(b.x)
-        || static_cast<float>(a.z) != static_cast<float>(b.z)) return false;
+        || static_cast<float>(a.z) != static_cast<float>(b.z)) {
+        return false;
+    }
     return std::hypot(a.x - b.x, a.z - b.z)
         <= FloatRoundingRadius(a) + FloatRoundingRadius(b);
 }
@@ -143,8 +148,12 @@ bool Intersects(const Bounds2& a, const Bounds2& b, double epsilon)
 bool NormalizeTriangle(Triangle2& triangle, double areaEpsilon)
 {
     const double area = Cross(triangle.points[0], triangle.points[1], triangle.points[2]);
-    if (!std::isfinite(area) || std::abs(area) <= areaEpsilon) return false;
-    if (area < 0.0) std::swap(triangle.points[1], triangle.points[2]);
+    if (!std::isfinite(area) || std::abs(area) <= areaEpsilon) {
+        return false;
+    }
+    if (area < 0.0) {
+        std::swap(triangle.points[1], triangle.points[2]);
+    }
     return true;
 }
 
@@ -156,9 +165,13 @@ bool PointWithinSegmentRoundoff(const Point2& a, const Point2& b, const Point2& 
     const double dx = b.x - a.x;
     const double dz = b.z - a.z;
     const double lengthSquared = dx * dx + dz * dz;
-    if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0) return false;
+    if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0) {
+        return false;
+    }
     const double projection = ((point.x - a.x) * dx + (point.z - a.z) * dz) / lengthSquared;
-    if (!std::isfinite(projection) || projection <= 0.0 || projection >= 1.0) return false;
+    if (!std::isfinite(projection) || projection <= 0.0 || projection >= 1.0) {
+        return false;
+    }
     const double left = dx * (point.z - a.z);
     const double right = dz * (point.x - a.x);
     const double cross = left - right;
@@ -171,7 +184,9 @@ bool PointWithinSegmentRoundoff(const Point2& a, const Point2& b, const Point2& 
 /// @note 形状を併合する許容値は重複にだけ適用する。共線の除去には、端点間に厳密に入り、行列式が丸め誤差内に収まることが必要。
 void CleanPolygon(Polygon2& polygon, double epsilon)
 {
-    if (polygon.points.size() < 2) return;
+    if (polygon.points.size() < 2) {
+        return;
+    }
     std::vector<Point2> clean;
     clean.reserve(polygon.points.size());
     for (const Point2& point : polygon.points) {
@@ -180,13 +195,16 @@ void CleanPolygon(Polygon2& polygon, double epsilon)
             continue;
         }
         const Point2& previous = clean.back();
-        if (std::hypot(point.x - previous.x, point.z - previous.z) > epsilon)
+        if (std::hypot(point.x - previous.x, point.z - previous.z) > epsilon) {
             clean.push_back(point);
+        }
     }
     if (clean.size() > 1) {
         const Point2& first = clean.front();
         const Point2& last = clean.back();
-        if (std::hypot(first.x - last.x, first.z - last.z) <= epsilon) clean.pop_back();
+        if (std::hypot(first.x - last.x, first.z - last.z) <= epsilon) {
+            clean.pop_back();
+        }
     }
     bool removedCollinear = true;
     while (removedCollinear && clean.size() >= 3) {
@@ -195,7 +213,9 @@ void CleanPolygon(Polygon2& polygon, double epsilon)
             const Point2& previous = clean[(i + clean.size() - 1) % clean.size()];
             const Point2& current = clean[i];
             const Point2& next = clean[(i + 1) % clean.size()];
-            if (!PointWithinSegmentRoundoff(previous, next, current)) continue;
+            if (!PointWithinSegmentRoundoff(previous, next, current)) {
+                continue;
+            }
             clean.erase(clean.begin() + static_cast<std::ptrdiff_t>(i));
             removedCollinear = true;
             break;
@@ -209,11 +229,15 @@ bool ClipHalfPlane(const Polygon2& input, const Point2& a, const Point2& b,
     Polygon2& output)
 {
     output.points.clear();
-    if (input.points.empty()) return true;
+    if (input.points.empty()) {
+        return true;
+    }
     output.points.reserve(input.points.size() + 1);
     const auto signedDistance = [&](const Point2& point) { return orientation * Cross(a, b, point); };
     for (std::size_t i = 0; i < input.points.size(); ++i) {
-        if (++work > MAX_ZONE_WORK) return false;
+        if (++work > MAX_ZONE_WORK) {
+            return false;
+        }
         const Point2& current = input.points[i];
         const Point2& next = input.points[(i + 1) % input.points.size()];
         const double currentDistance = signedDistance(current);
@@ -222,7 +246,9 @@ bool ClipHalfPlane(const Polygon2& input, const Point2& a, const Point2& b,
         const bool nextInside = nextDistance >= 0.0;
         const bool currentKept = currentInside == keepInside;
         const bool nextKept = nextInside == keepInside;
-        if (currentKept) output.points.push_back(current);
+        if (currentKept) {
+            output.points.push_back(current);
+        }
         if (currentInside != nextInside) {
             const double denominator = currentDistance - nextDistance;
             if (std::isfinite(denominator) && std::abs(denominator) > 1.0e-20) {
@@ -231,7 +257,9 @@ bool ClipHalfPlane(const Polygon2& input, const Point2& a, const Point2& b,
                     current.z + (next.z - current.z) * t, true});
             }
         }
-        if (!currentKept && nextKept && nextInside == currentInside) output.points.push_back(next);
+        if (!currentKept && nextKept && nextInside == currentInside) {
+            output.points.push_back(next);
+        }
     }
     CleanPolygon(output, epsilon);
     return true;
@@ -240,7 +268,9 @@ bool ClipHalfPlane(const Polygon2& input, const Point2& a, const Point2& b,
 bool SubtractTriangle(const Polygon2& subject, const Triangle2& clip, double epsilon,
     std::size_t& work, std::vector<Polygon2>& remainder, Polygon2* intersection = nullptr)
 {
-    if (intersection) intersection->points.clear();
+    if (intersection) {
+        intersection->points.clear();
+    }
     Polygon2 inside = subject;
     Polygon2 outside;
     std::vector<Polygon2> pieces;
@@ -250,23 +280,35 @@ bool SubtractTriangle(const Polygon2& subject, const Triangle2& clip, double eps
         if (!ClipHalfPlane(inside, clip.points[edge], clip.points[(edge + 1) % 3],
                 1.0, false, epsilon, work, outside)
             || !ClipHalfPlane(inside, clip.points[edge], clip.points[(edge + 1) % 3],
-                1.0, true, epsilon, work, nextInside)) return false;
+                1.0, true, epsilon, work, nextInside)) {
+            return false;
+        }
         if (outside.points.size() >= 3) {
             const double area = SignedArea(outside.points);
-            if (!std::isfinite(area)) return false;
-            if (area != 0.0) pieces.push_back(std::move(outside));
+            if (!std::isfinite(area)) {
+                return false;
+            }
+            if (area != 0.0) {
+                pieces.push_back(std::move(outside));
+            }
         }
         outside = {};
         inside = std::move(nextInside);
     }
     if (intersection && inside.points.size() >= 3) {
         const double area = SignedArea(inside.points);
-        if (!std::isfinite(area)) return false;
-        if (area != 0.0) *intersection = std::move(inside);
+        if (!std::isfinite(area)) {
+            return false;
+        }
+        if (area != 0.0) {
+            *intersection = std::move(inside);
+        }
     }
     remainder.insert(remainder.end(), std::make_move_iterator(pieces.begin()),
         std::make_move_iterator(pieces.end()));
-    if (remainder.size() > MAX_ZONE_TRIANGLES) return false;
+    if (remainder.size() > MAX_ZONE_TRIANGLES) {
+        return false;
+    }
     return true;
 }
 
@@ -284,33 +326,47 @@ public:
         std::iota(m_order.begin(), m_order.end(), 0u);
         m_nodes.clear();
         m_nodes.reserve(m_triangles.size() * 2);
-        if (!m_order.empty()) BuildNode(0, static_cast<std::uint32_t>(m_order.size()));
+        if (!m_order.empty()) {
+            BuildNode(0, static_cast<std::uint32_t>(m_order.size()));
+        }
         return m_nodes.size() <= MAX_ZONE_TRIANGLES * 2;
     }
 
     template<typename F>
     bool Query(const Bounds2& bounds, double epsilon, F&& callback, std::size_t& work) const
     {
-        if (m_nodes.empty()) return true;
+        if (m_nodes.empty()) {
+            return true;
+        }
         std::array<std::uint32_t, 64> stack{};
         std::size_t stackSize = 1;
         stack[0] = 0;
         while (stackSize > 0) {
             const std::uint32_t nodeIndex = stack[--stackSize];
-            if (nodeIndex >= m_nodes.size()) return false;
+            if (nodeIndex >= m_nodes.size()) {
+                return false;
+            }
             const TriangleNode& node = m_nodes[nodeIndex];
-            if (!Intersects(bounds, node.bounds, epsilon)) continue;
+            if (!Intersects(bounds, node.bounds, epsilon)) {
+                continue;
+            }
             if (node.count == 0) {
-                if (stackSize + 2 > stack.size()) return false;
+                if (stackSize + 2 > stack.size()) {
+                    return false;
+                }
                 stack[stackSize++] = node.left;
                 stack[stackSize++] = node.right;
                 continue;
             }
             for (std::uint32_t i = node.first; i < node.first + node.count; ++i) {
-                if (++work > MAX_ZONE_WORK) return false;
+                if (++work > MAX_ZONE_WORK) {
+                    return false;
+                }
                 const std::uint32_t triangleIndex = m_order[i];
                 if (Intersects(bounds, Bounds(m_triangles[triangleIndex]), epsilon)
-                    && !callback(triangleIndex)) return false;
+                    && !callback(triangleIndex)) {
+                    return false;
+                }
             }
         }
         return true;
@@ -370,7 +426,9 @@ double PointSegmentDistance(const Point2& point, const Point2& a, const Point2& 
     const double dx = b.x - a.x;
     const double dz = b.z - a.z;
     const double lengthSq = dx * dx + dz * dz;
-    if (lengthSq <= 0.0) return std::hypot(point.x - a.x, point.z - a.z);
+    if (lengthSq <= 0.0) {
+        return std::hypot(point.x - a.x, point.z - a.z);
+    }
     const double t = (std::clamp)(((point.x - a.x) * dx + (point.z - a.z) * dz) / lengthSq,
         0.0, 1.0);
     return std::hypot(point.x - (a.x + dx * t), point.z - (a.z + dz * t));
@@ -383,7 +441,9 @@ bool TriangleCoversWithinRounding(const Point2& point, const Triangle2& triangle
     for (std::size_t edge = 0; edge < 3; ++edge) {
         const Point2& a = triangle.points[edge];
         const Point2& b = triangle.points[(edge + 1) % 3];
-        if (Cross(a, b, point) < 0.0) inside = false;
+        if (Cross(a, b, point) < 0.0) {
+            inside = false;
+        }
         nearest = (std::min)(nearest, PointSegmentDistance(point, a, b));
     }
     return inside || nearest <= tolerance;
@@ -397,25 +457,37 @@ bool SubtractByIndex(std::vector<Polygon2>& fragments, const std::vector<Triangl
     for (const Polygon2& polygon : current) {
         std::vector<std::uint32_t> candidates;
         if (!index.Query(Bounds(polygon), epsilon,
-                [&](std::uint32_t i) { candidates.push_back(i); return true; }, work)) return false;
+                [&](std::uint32_t i) { candidates.push_back(i); return true; }, work)) {
+            return false;
+        }
         std::sort(candidates.begin(), candidates.end());
         std::vector<Polygon2> local{polygon};
         for (const std::uint32_t clipIndex : candidates) {
-            if (clipIndex >= clips.size()) return false;
+            if (clipIndex >= clips.size()) {
+                return false;
+            }
             std::vector<Polygon2> next;
             for (const Polygon2& fragment : local) {
                 std::vector<Polygon2> difference;
-                if (!SubtractTriangle(fragment, clips[clipIndex], epsilon, work, difference)) return false;
+                if (!SubtractTriangle(fragment, clips[clipIndex], epsilon, work, difference)) {
+                    return false;
+                }
                 next.insert(next.end(), std::make_move_iterator(difference.begin()),
                     std::make_move_iterator(difference.end()));
-                if (next.size() + fragments.size() > MAX_ZONE_TRIANGLES) return false;
+                if (next.size() + fragments.size() > MAX_ZONE_TRIANGLES) {
+                    return false;
+                }
             }
             local = std::move(next);
-            if (local.empty()) break;
+            if (local.empty()) {
+                break;
+            }
         }
         fragments.insert(fragments.end(), std::make_move_iterator(local.begin()),
             std::make_move_iterator(local.end()));
-        if (fragments.size() > MAX_ZONE_TRIANGLES) return false;
+        if (fragments.size() > MAX_ZONE_TRIANGLES) {
+            return false;
+        }
     }
     return true;
 }
@@ -428,28 +500,39 @@ bool SplitByIndex(std::vector<Polygon2>& fragments, const std::vector<Triangle2>
     for (const Polygon2& polygon : current) {
         std::vector<std::uint32_t> candidates;
         if (!index.Query(Bounds(polygon), epsilon,
-                [&](std::uint32_t i) { candidates.push_back(i); return true; }, work)) return false;
+                [&](std::uint32_t i) { candidates.push_back(i); return true; }, work)) {
+            return false;
+        }
         std::sort(candidates.begin(), candidates.end());
         std::vector<Polygon2> local{polygon};
         for (const std::uint32_t clipIndex : candidates) {
-            if (clipIndex >= clips.size()) return false;
+            if (clipIndex >= clips.size()) {
+                return false;
+            }
             std::vector<Polygon2> next;
             for (const Polygon2& fragment : local) {
                 std::vector<Polygon2> difference;
                 Polygon2 intersection;
                 if (!SubtractTriangle(fragment, clips[clipIndex], epsilon, work,
-                        difference, &intersection)) return false;
+                        difference, &intersection)) {
+                    return false;
+                }
                 next.insert(next.end(), std::make_move_iterator(difference.begin()),
                     std::make_move_iterator(difference.end()));
-                if (intersection.points.size() >= 3)
+                if (intersection.points.size() >= 3) {
                     next.push_back(std::move(intersection));
-                if (next.size() + fragments.size() > MAX_ZONE_TRIANGLES) return false;
+                }
+                if (next.size() + fragments.size() > MAX_ZONE_TRIANGLES) {
+                    return false;
+                }
             }
             local = std::move(next);
         }
         fragments.insert(fragments.end(), std::make_move_iterator(local.begin()),
             std::make_move_iterator(local.end()));
-        if (fragments.size() > MAX_ZONE_TRIANGLES) return false;
+        if (fragments.size() > MAX_ZONE_TRIANGLES) {
+            return false;
+        }
     }
     return true;
 }
@@ -460,21 +543,27 @@ bool ClipMouthCorridor(const Triangle2& triangle, const WaterZoneMouthInput& mou
     const auto clipDistance = [&](const Polygon2& input, double threshold, bool above,
         Polygon2& result) {
         result.points.clear();
-        if (input.points.empty()) return true;
+        if (input.points.empty()) {
+            return true;
+        }
         result.points.reserve(input.points.size() + 1);
         const auto distance = [&](const Point2& point) {
             return (point.x - mouth.endpoint.x) * mouth.inwardDirection.x
                 + (point.z - mouth.endpoint.z) * mouth.inwardDirection.y - threshold;
         };
         for (std::size_t i = 0; i < input.points.size(); ++i) {
-            if (++work > MAX_ZONE_WORK) return false;
+            if (++work > MAX_ZONE_WORK) {
+                return false;
+            }
             const Point2& current = input.points[i];
             const Point2& next = input.points[(i + 1) % input.points.size()];
             const double a = distance(current);
             const double b = distance(next);
             const bool currentInside = above ? a >= 0.0 : a <= 0.0;
             const bool nextInside = above ? b >= 0.0 : b <= 0.0;
-            if (currentInside) result.points.push_back(current);
+            if (currentInside) {
+                result.points.push_back(current);
+            }
             if (currentInside != nextInside) {
                 const double denominator = a - b;
                 if (std::isfinite(denominator) && std::abs(denominator) > 1.0e-20) {
@@ -489,13 +578,21 @@ bool ClipMouthCorridor(const Triangle2& triangle, const WaterZoneMouthInput& mou
     };
     Polygon2 polygon{{triangle.points[0], triangle.points[1], triangle.points[2]}};
     Polygon2 clipped;
-    if (!clipDistance(polygon, 0.0, true, clipped)) return false;
+    if (!clipDistance(polygon, 0.0, true, clipped)) {
+        return false;
+    }
     Polygon2 bounded;
-    if (!clipDistance(clipped, mouth.blendLength, false, bounded)) return false;
+    if (!clipDistance(clipped, mouth.blendLength, false, bounded)) {
+        return false;
+    }
     if (bounded.points.size() >= 3) {
         const double area = SignedArea(bounded.points);
-        if (!std::isfinite(area)) return false;
-        if (area != 0.0) output.push_back(std::move(bounded));
+        if (!std::isfinite(area)) {
+            return false;
+        }
+        if (area != 0.0) {
+            output.push_back(std::move(bounded));
+        }
     }
     return true;
 }
@@ -504,9 +601,13 @@ bool MakeFootprintTriangle(const WaterSplineSnapshot& geometry, const WaterSplin
     Triangle2& out, double areaEpsilon)
 {
     for (std::size_t i = 0; i < 3; ++i) {
-        if (triangle.indices[i] >= geometry.vertices.size()) return false;
+        if (triangle.indices[i] >= geometry.vertices.size()) {
+            return false;
+        }
         const auto& position = geometry.vertices[triangle.indices[i]].worldPosition;
-        if (!Finite(position)) return false;
+        if (!Finite(position)) {
+            return false;
+        }
         out.points[i] = {position.x, position.z};
     }
     return NormalizeTriangle(out, areaEpsilon);
@@ -532,12 +633,20 @@ public:
     /// @note 異なる設定頂点が同じ位置に丸められた場合は失敗とする。出力で識別できない同一点への統合はクリッピングで生成した交点に限る。
     bool Insert(const Point2& point, double mergeTolerance, std::uint32_t& out)
     {
-        if (!std::isfinite(point.x) || !std::isfinite(point.z)) return false;
+        if (!std::isfinite(point.x) || !std::isfinite(point.z)) {
+            return false;
+        }
         float x = static_cast<float>(point.x);
         float z = static_cast<float>(point.z);
-        if (!std::isfinite(x) || !std::isfinite(z)) return false;
-        if (x == 0.0f) x = 0.0f;
-        if (z == 0.0f) z = 0.0f;
+        if (!std::isfinite(x) || !std::isfinite(z)) {
+            return false;
+        }
+        if (x == 0.0f) {
+            x = 0.0f;
+        }
+        if (z == 0.0f) {
+            z = 0.0f;
+        }
         const PointKey key{std::bit_cast<std::uint32_t>(x), std::bit_cast<std::uint32_t>(z)};
         if (const auto it = m_lookup.find(key); it != m_lookup.end()) {
             const std::uint32_t index = it->second;
@@ -561,7 +670,9 @@ public:
             out = index;
             return true;
         }
-        if (m_points.size() >= MAX_ZONE_VERTICES) return false;
+        if (m_points.size() >= MAX_ZONE_VERTICES) {
+            return false;
+        }
         out = static_cast<std::uint32_t>(m_points.size());
         m_points.push_back({x, z});
         m_exactPoints.push_back(point);
@@ -594,14 +705,22 @@ private:
 bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilon,
     std::vector<std::array<std::uint32_t, 3>>& output, bool mergeGeneratedSlivers = false)
 {
-    if (polygon.points.size() < 3) return true;
+    if (polygon.points.size() < 3) {
+        return true;
+    }
     const double area = SignedArea(polygon.points);
-    if (!std::isfinite(area)) return false;
-    if (area == 0.0) return true;
+    if (!std::isfinite(area)) {
+        return false;
+    }
+    if (area == 0.0) {
+        return true;
+    }
     const bool generated = std::any_of(polygon.points.begin(), polygon.points.end(),
         [](const Point2& p) { return p.generatedIntersection; });
     if (std::abs(area) <= epsilon * epsilon) {
-        if (mergeGeneratedSlivers && generated) return true;
+        if (mergeGeneratedSlivers && generated) {
+            return true;
+        }
         pool.MarkPrecisionCollision();
         return false;
     }
@@ -610,7 +729,9 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
     indices.reserve(polygon.points.size());
     for (const Point2& point : polygon.points) {
         std::uint32_t index = 0;
-        if (!pool.Insert(point, epsilon, index)) return false;
+        if (!pool.Insert(point, epsilon, index)) {
+            return false;
+        }
         indices.push_back(index);
     }
     if (area < 0.0) {
@@ -625,12 +746,16 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
         const double inputArea = Cross(inputPoints[0], inputPoints[i], inputPoints[i + 1]);
         const double exactArea = Cross(pool.ExactPoints()[indices[0]],
             pool.ExactPoints()[indices[i]], pool.ExactPoints()[indices[i + 1]]);
-        if (inputArea == 0.0) continue;
+        if (inputArea == 0.0) {
+            continue;
+        }
         const double emittedArea = Cross(a, b, c);
         const bool generatedTriangle = inputPoints[0].generatedIntersection || inputPoints[i].generatedIntersection
             || inputPoints[i + 1].generatedIntersection;
-        /// @note クリッピング後の細片が最終メッシュで正の面積を持たなければ、描画領域には寄与しない。
-        if (mergeGeneratedSlivers && generatedTriangle && emittedArea <= epsilon * epsilon) continue;
+        // クリッピング後の細片が最終メッシュで正の面積を持たなければ、描画領域には寄与しない。
+        if (mergeGeneratedSlivers && generatedTriangle && emittedArea <= epsilon * epsilon) {
+            continue;
+        }
         if (exactArea == 0.0) {
             const bool repeatedIndex = indices[0] == indices[i] || indices[i] == indices[i + 1]
                 || indices[i + 1] == indices[0];
@@ -639,7 +764,9 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
                     || pool.WasRoundoffAliased(indices[i + 1]))
                 && (inputPoints[0].generatedIntersection || inputPoints[i].generatedIntersection
                     || inputPoints[i + 1].generatedIntersection);
-            if (roundoffIntersectionCollapse) continue;
+            if (roundoffIntersectionCollapse) {
+                continue;
+            }
             pool.MarkPrecisionCollision();
             return false;
         }
@@ -652,26 +779,42 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
             return false;
         }
         output.push_back({indices[0], indices[i], indices[i + 1]});
-        if (output.size() > MAX_ZONE_TRIANGLES) return false;
+        if (output.size() > MAX_ZONE_TRIANGLES) {
+            return false;
+        }
     }
     return true;
 }
 
 bool AddPolygonToCoverage(const Polygon2& polygon, std::vector<Triangle2>& output)
 {
-    if (polygon.points.size() < 3) return true;
+    if (polygon.points.size() < 3) {
+        return true;
+    }
     const double area = SignedArea(polygon.points);
-    if (!std::isfinite(area)) return false;
-    if (area == 0.0) return true;
+    if (!std::isfinite(area)) {
+        return false;
+    }
+    if (area == 0.0) {
+        return true;
+    }
     const bool reverse = area < 0.0;
     for (std::size_t i = 1; i + 1 < polygon.points.size(); ++i) {
         Triangle2 triangle{{polygon.points[0], polygon.points[i], polygon.points[i + 1]}};
-        if (reverse) std::swap(triangle.points[1], triangle.points[2]);
+        if (reverse) {
+            std::swap(triangle.points[1], triangle.points[2]);
+        }
         const double triangleArea = Cross(triangle.points[0], triangle.points[1], triangle.points[2]);
-        if (!std::isfinite(triangleArea)) return false;
-        if (triangleArea == 0.0) continue;
+        if (!std::isfinite(triangleArea)) {
+            return false;
+        }
+        if (triangleArea == 0.0) {
+            continue;
+        }
         output.push_back(triangle);
-        if (output.size() > MAX_ZONE_TRIANGLES) return false;
+        if (output.size() > MAX_ZONE_TRIANGLES) {
+            return false;
+        }
     }
     return true;
 }
@@ -681,9 +824,13 @@ bool PointOnSegment(const Point2& a, const Point2& b, const Point2& point, doubl
     const double dx = b.x - a.x;
     const double dz = b.z - a.z;
     const double lengthSq = dx * dx + dz * dz;
-    if (lengthSq <= epsilon * epsilon) return false;
+    if (lengthSq <= epsilon * epsilon) {
+        return false;
+    }
     const double area = std::abs(dx * (point.z - a.z) - dz * (point.x - a.x));
-    if (area > epsilon * std::sqrt(lengthSq)) return false;
+    if (area > epsilon * std::sqrt(lengthSq)) {
+        return false;
+    }
     t = ((point.x - a.x) * dx + (point.z - a.z) * dz) / lengthSq;
     return t > epsilon / std::sqrt(lengthSq) && t < 1.0 - epsilon / std::sqrt(lengthSq);
 }
@@ -715,9 +862,15 @@ bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>&
         for (auto it = lower; it != sorted.end(); ++it) {
             const std::uint32_t index = *it;
             const Point2& point = pool.ExactPoints()[index];
-            if (point.x > maxX + epsilon) break;
-            if (++work > MAX_ZONE_WORK) return false;
-            if (index == triangle[0] || index == triangle[1] || index == triangle[2]) continue;
+            if (point.x > maxX + epsilon) {
+                break;
+            }
+            if (++work > MAX_ZONE_WORK) {
+                return false;
+            }
+            if (index == triangle[0] || index == triangle[1] || index == triangle[2]) {
+                continue;
+            }
             std::size_t matchedEdge = 0;
             double matchedT = 0.0;
             std::uint32_t matchCount = 0;
@@ -725,7 +878,9 @@ bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>&
                 double t = 0.0;
                 const Point2& a = pool.ExactPoints()[triangle[edge]];
                 const Point2& b = pool.ExactPoints()[triangle[(edge + 1) % 3]];
-                if (!PointOnSegment(a, b, point, epsilon, t)) continue;
+                if (!PointOnSegment(a, b, point, epsilon, t)) {
+                    continue;
+                }
                 matchedEdge = edge;
                 matchedT = t;
                 ++matchCount;
@@ -734,19 +889,25 @@ bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>&
                 pool.MarkPrecisionCollision();
                 return false;
             }
-            if (matchCount == 1) edgePoints[matchedEdge].emplace_back(matchedT, index);
+            if (matchCount == 1) {
+                edgePoints[matchedEdge].emplace_back(matchedT, index);
+            }
         }
         for (std::size_t edge = 0; edge < 3; ++edge) {
             const std::uint32_t start = triangle[edge];
             const std::uint32_t end = triangle[(edge + 1) % 3];
-            if (edge == 0) boundary.push_back(start);
+            if (edge == 0) {
+                boundary.push_back(start);
+            }
             std::sort(edgePoints[edge].begin(), edgePoints[edge].end());
             for (const auto& [t, index] : edgePoints[edge]) {
                 static_cast<void>(t);
                 boundary.push_back(index);
                 split = true;
             }
-            if (edge < 2) boundary.push_back(end);
+            if (edge < 2) {
+                boundary.push_back(end);
+            }
         }
         if (!split) {
             triangles.push_back(triangle);
@@ -757,22 +918,32 @@ bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>&
         const Point2& c = pool.ExactPoints()[triangle[2]];
         const Point2 center{(a.x + b.x + c.x) / 3.0, (a.z + b.z + c.z) / 3.0, mergeGeneratedSlivers};
         std::uint32_t centerIndex = 0;
-        if (!pool.Insert(center, epsilon, centerIndex)) return false;
-        if (triangles.size() + boundary.size() > MAX_ZONE_TRIANGLES) return false;
+        if (!pool.Insert(center, epsilon, centerIndex)) {
+            return false;
+        }
+        if (triangles.size() + boundary.size() > MAX_ZONE_TRIANGLES) {
+            return false;
+        }
         for (std::size_t i = 0; i < boundary.size(); ++i) {
             const std::uint32_t first = boundary[i];
             const std::uint32_t second = boundary[(i + 1) % boundary.size()];
             const double area = Cross(center, pool.ExactPoints()[first], pool.ExactPoints()[second]);
-            if (area == 0.0) continue;
+            if (area == 0.0) {
+                continue;
+            }
             if (mergeGeneratedSlivers && Cross(pool.Points()[centerIndex], pool.Points()[first],
-                    pool.Points()[second]) <= epsilon * epsilon) continue;
+                    pool.Points()[second]) <= epsilon * epsilon) {
+                continue;
+            }
             if (std::abs(area) <= epsilon * epsilon) {
                 pool.MarkPrecisionCollision();
                 return false;
             }
             triangles.push_back({centerIndex, first, second});
         }
-        if (triangles.size() > MAX_ZONE_TRIANGLES) return false;
+        if (triangles.size() > MAX_ZONE_TRIANGLES) {
+            return false;
+        }
     }
     return !triangles.empty();
 }
@@ -842,8 +1013,9 @@ bool BuildBoundaryEdges(const std::vector<WaterSplineTriangle>& triangles,
             const std::uint32_t b = triangle.indices[(edge + 1) % 3];
             const auto key = std::minmax(a, b);
             EdgeUse& use = counts[{key.first, key.second}];
-            if (use.count < use.incidentTriangles.size())
+            if (use.count < use.incidentTriangles.size()) {
                 use.incidentTriangles[use.count] = triangleIndex;
+            }
             ++use.count;
         }
     }
@@ -853,7 +1025,9 @@ bool BuildBoundaryEdges(const std::vector<WaterSplineTriangle>& triangles,
             output.push_back({edge.first, edge.second});
             continue;
         }
-        if (use.count == 2) continue;
+        if (use.count == 2) {
+            continue;
+        }
         if (edge.first >= vertices.size() || edge.second >= vertices.size()) {
             FBZZ_LOG_ERROR("WaterZone topology: edge (%u,%u) has incidence %u and invalid vertex indices (vertexCount=%zu).",
                 edge.first, edge.second, use.count, vertices.size());
@@ -920,16 +1094,24 @@ bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineS
     const auto collect = [](const WaterSplineSnapshot& mesh, std::vector<Triangle2>& triangles) {
         for (const auto& triangle : mesh.triangles) {
             Triangle2 converted;
-            if (!MakeFootprintTriangle(mesh, triangle, converted, 1.0e-16)) return false;
+            if (!MakeFootprintTriangle(mesh, triangle, converted, 1.0e-16)) {
+                return false;
+            }
             triangles.push_back(converted);
         }
         return true;
     };
-    if (!collect(lake, source)) return false;
+    if (!collect(lake, source)) {
+        return false;
+    }
     for (const auto& island : islands)
-        if (!collect(island, clips)) return false;
+        if (!collect(island, clips)) {
+            return false;
+        }
     TriangleIndex sourceIndex, clipIndex;
-    if (!sourceIndex.Build(source) || !clipIndex.Build(clips)) return false;
+    if (!sourceIndex.Build(source) || !clipIndex.Build(clips)) {
+        return false;
+    }
     const double coordinateScale = (std::max)({1.0, std::abs(static_cast<double>(lake.worldBoundsMin.x)),
         std::abs(static_cast<double>(lake.worldBoundsMax.x)), std::abs(static_cast<double>(lake.worldBoundsMin.z)),
         std::abs(static_cast<double>(lake.worldBoundsMax.z))});
@@ -939,12 +1121,18 @@ bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineS
     std::size_t work = 0;
     for (const auto& triangle : source) {
         std::vector<Polygon2> fragments{{{triangle.points[0], triangle.points[1], triangle.points[2]}}};
-        if (!SubtractByIndex(fragments, clipIndex.Triangles(), clipIndex, epsilon, work)) return false;
+        if (!SubtractByIndex(fragments, clipIndex.Triangles(), clipIndex, epsilon, work)) {
+            return false;
+        }
         for (const auto& fragment : fragments)
-            if (!AddPolygonTriangles(fragment, pool, epsilon, triangles)) return false;
+            if (!AddPolygonTriangles(fragment, pool, epsilon, triangles)) {
+                return false;
+            }
     }
     if (!SplitTJunctions(pool, triangles, epsilon, work)
-        || pool.Points().size() + lake.vertices.size() > WATER_SPLINE_MAX_VERTICES) return false;
+        || pool.Points().size() + lake.vertices.size() > WATER_SPLINE_MAX_VERTICES) {
+        return false;
+    }
 
     std::vector<WaterSplineVertex> vertices;
     vertices.reserve(pool.Points().size());
@@ -955,7 +1143,9 @@ bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineS
         WaterSplineVertex vertex;
         bool sampled = false;
         if (!sourceIndex.Query(bounds, epsilon, [&](std::uint32_t id) {
-            if (sampled || !TriangleCoversWithinRounding(exact, source[id], epsilon)) return true;
+            if (sampled || !TriangleCoversWithinRounding(exact, source[id], epsilon)) {
+                return true;
+            }
             const auto& ids = lake.triangles[id].indices;
             const auto& a = lake.vertices[ids[0]];
             const auto& b = lake.vertices[ids[1]];
@@ -977,14 +1167,18 @@ bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineS
             vertex.localPosition = ToOwnerLocal(emitted, vertex.baseHeightOffset, transform);
             sampled = true;
             return true;
-        }, work) || !sampled) return false;
+        }, work) || !sampled) {
+            return false;
+        }
         vertices.push_back(vertex);
     }
     const auto offset = static_cast<std::uint32_t>(lake.vertices.size());
     lake.vertices.insert(lake.vertices.end(), vertices.begin(), vertices.end());
     lake.triangles.clear();
     for (auto indices : triangles) {
-        for (auto& index : indices) index += offset;
+        for (auto& index : indices) {
+            index += offset;
+        }
         lake.triangles.push_back({indices});
     }
     return true;
@@ -999,21 +1193,31 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         diagnostic = reason;
         return false;
     };
-    if (sources.empty() || sources.size() > MAX_ZONE_SOURCES) return fail("source count is outside the Zone limit");
-    if (mouths.size() > MAX_ZONE_MOUTHS) return fail("river mouth count exceeds the Zone limit");
+    if (sources.empty() || sources.size() > MAX_ZONE_SOURCES) {
+        return fail("source count is outside the Zone limit");
+    }
+    if (mouths.size() > MAX_ZONE_MOUTHS) {
+        return fail("river mouth count exceeds the Zone limit");
+    }
     if (!std::isfinite(maximumWaterDepth) || maximumWaterDepth < 0.0f
-        || !std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f)
+        || !std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f) {
         return fail("Zone depth or cell size is invalid");
+    }
     const auto ownerUp = ownerTransform.worldRotation * math::Vector3::UP;
     const double ownerRotationLength = ownerTransform.worldRotation.Length();
-    if (!Finite(ownerTransform.worldPosition) || !Finite(ownerTransform.worldScale)
-        || !Finite(ownerUp) || std::abs(ownerUp.x) > 0.00001f || std::abs(ownerUp.z) > 0.00001f
-        || std::abs(std::abs(ownerUp.y) - 1.0f) > 0.00001f
-        || !std::isfinite(ownerRotationLength) || std::abs(ownerRotationLength - 1.0) > 0.001
-        || std::abs(ownerTransform.worldScale.x) < 0.0001f
-        || std::abs(ownerTransform.worldScale.y) < 0.0001f
-        || std::abs(ownerTransform.worldScale.z) < 0.0001f)
+    // XZ 平面で形状を合成するため、所有元のローカル水面がワールドで水平であることを確認する。
+    if (!Finite(ownerTransform.worldPosition) || !Finite(ownerTransform.worldScale)) {
         return fail("owner transform is unsupported");
+    }
+    const bool horizontalSurface = Finite(ownerUp) && std::abs(ownerUp.x) <= 0.00001f
+        && std::abs(ownerUp.z) <= 0.00001f && std::abs(std::abs(ownerUp.y) - 1.0f) <= 0.00001f;
+    if (!horizontalSurface || !std::isfinite(ownerRotationLength) || std::abs(ownerRotationLength - 1.0) > 0.001) {
+        return fail("owner transform is unsupported");
+    }
+    const auto& ownerScale = ownerTransform.worldScale;
+    if (std::abs(ownerScale.x) < 0.0001f || std::abs(ownerScale.y) < 0.0001f || std::abs(ownerScale.z) < 0.0001f) {
+        return fail("owner transform is unsupported");
+    }
 
     std::size_t sourceTriangleCount = 0;
     std::size_t sourceVertexCount = 0;
@@ -1021,18 +1225,21 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     Bounds2 sourceBounds;
     for (std::size_t sourceIndex = 0; sourceIndex < sources.size(); ++sourceIndex) {
         const auto& geometry = sources[sourceIndex].geometry;
-        if (!geometry || geometry->vertices.empty() || geometry->triangles.empty())
+        if (!geometry || geometry->vertices.empty() || geometry->triangles.empty()) {
             return fail("a Zone source has no valid geometry snapshot");
+        }
         const auto& footprint = FootprintTriangles(*geometry);
         sourceTriangleCount += footprint.size();
         sourceVertexCount += geometry->vertices.size();
-        if (sourceTriangleCount > MAX_ZONE_TRIANGLES || sourceVertexCount > MAX_ZONE_VERTICES * 4)
+        if (sourceTriangleCount > MAX_ZONE_TRIANGLES || sourceVertexCount > MAX_ZONE_VERTICES * 4) {
             return fail("source geometry exceeds the bounded Zone input budget");
+        }
         sourceTriangles[sourceIndex].reserve(footprint.size());
         for (const auto& triangle : footprint) {
             Triangle2 converted;
-            if (!MakeFootprintTriangle(*geometry, triangle, converted, 1.0e-16))
+            if (!MakeFootprintTriangle(*geometry, triangle, converted, 1.0e-16)) {
                 return fail("a Zone source contains invalid footprint triangles");
+            }
             for (const auto& point : converted.points) {
                 sourceBounds.minX = (std::min)(sourceBounds.minX, point.x);
                 sourceBounds.minZ = (std::min)(sourceBounds.minZ, point.z);
@@ -1053,40 +1260,52 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::size_t work = 0;
     std::vector<TriangleIndex> sourceIndices(sources.size());
     for (std::size_t sourceIndex = 0; sourceIndex < sources.size(); ++sourceIndex)
-        if (!sourceIndices[sourceIndex].Build(sourceTriangles[sourceIndex]))
+        if (!sourceIndices[sourceIndex].Build(sourceTriangles[sourceIndex])) {
             return fail("source geometry index exceeds its bounded budget");
+        }
 
     std::vector<MouthGeometry> mouthGeometry;
     mouthGeometry.reserve(mouths.size());
     std::vector<std::uint32_t> sourceMouthCount(sources.size(), 0);
     std::array<bool, MAX_ZONE_SOURCES> isMouthReceiver{};
     for (const auto& mouth : mouths) {
-        if (mouth.sourceIndex == 0 || mouth.sourceIndex >= sources.size()
-            || mouth.receiverIndex >= sources.size() || mouth.receiverIndex == mouth.sourceIndex
-            || sourceMouthCount[mouth.sourceIndex] >= 2 || !Finite(mouth.endpoint)
-            || !Finite(mouth.inwardDirection) || !std::isfinite(mouth.blendLength)
-            || mouth.blendLength <= 0.0f)
+        // 配列を引く前に、別の有効な水域を接続していることを確認する。
+        const bool validSourcePair = mouth.sourceIndex != 0 && mouth.sourceIndex < sources.size()
+            && mouth.receiverIndex < sources.size() && mouth.receiverIndex != mouth.sourceIndex;
+        if (!validSourcePair || sourceMouthCount[mouth.sourceIndex] >= 2) {
             return fail("a river mouth reference or blend length is invalid or ambiguous");
+        }
+        if (!Finite(mouth.endpoint) || !Finite(mouth.inwardDirection)
+            || !std::isfinite(mouth.blendLength) || mouth.blendLength <= 0.0f) {
+            return fail("a river mouth reference or blend length is invalid or ambiguous");
+        }
+
         const double directionLength = std::hypot(static_cast<double>(mouth.inwardDirection.x),
             static_cast<double>(mouth.inwardDirection.y));
-        if (!std::isfinite(directionLength) || directionLength < 0.999 || directionLength > 1.001)
+        if (!std::isfinite(directionLength) || directionLength < 0.999 || directionLength > 1.001) {
             return fail("a river mouth inward direction is not normalized");
+        }
         WaterSplineSample endpointSample;
-        if (!TrySampleWaterSpline(*sources[mouth.receiverIndex].geometry, mouth.endpoint.x, mouth.endpoint.z, endpointSample))
+        if (!TrySampleWaterSpline(*sources[mouth.receiverIndex].geometry, mouth.endpoint.x, mouth.endpoint.z, endpointSample)) {
             return fail("a river mouth endpoint is outside the receiver footprint");
+        }
         MouthGeometry built;
         built.input = mouth;
         built.receiverEndpoint = endpointSample;
         for (const Triangle2& riverTriangle : sourceTriangles[mouth.sourceIndex]) {
             std::vector<Polygon2> clipped;
-            if (!ClipMouthCorridor(riverTriangle, mouth, epsilon, work, clipped))
+            if (!ClipMouthCorridor(riverTriangle, mouth, epsilon, work, clipped)) {
                 return fail("river mouth clipping exceeded its operation budget");
+            }
             for (const Polygon2& polygon : clipped) {
-                if (!AddPolygonToCoverage(polygon, built.corridor))
+                if (!AddPolygonToCoverage(polygon, built.corridor)) {
                     return fail("river mouth geometry exceeds its bounded triangle budget");
+                }
             }
         }
-        if (built.corridor.empty()) return fail("a river mouth corridor does not intersect its river");
+        if (built.corridor.empty()) {
+            return fail("a river mouth corridor does not intersect its river");
+        }
         ++sourceMouthCount[mouth.sourceIndex];
         isMouthReceiver[mouth.receiverIndex] = true;
         mouthGeometry.push_back(std::move(built));
@@ -1095,7 +1314,9 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::vector<Triangle2> allMouthTriangles;
     for (std::size_t mouthIndex = 0; mouthIndex < mouthGeometry.size(); ++mouthIndex) {
         TriangleIndex previousMouths;
-        if (!previousMouths.Build(allMouthTriangles)) return fail("river mouth index exceeds its budget");
+        if (!previousMouths.Build(allMouthTriangles)) {
+            return fail("river mouth index exceeds its budget");
+        }
         for (const Triangle2& triangle : mouthGeometry[mouthIndex].corridor) {
             bool overlaps = false;
             if (!previousMouths.Query(Bounds(triangle), epsilon, [&](std::uint32_t candidate) {
@@ -1104,30 +1325,42 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
                     const auto& other = allMouthTriangles[candidate];
                     for (std::size_t edge = 0; edge < 3 && intersection.points.size() >= 3; ++edge) {
                         if (!ClipHalfPlane(intersection, other.points[edge], other.points[(edge + 1) % 3],
-                                1.0, true, epsilon, work, clipped)) return false;
+                                1.0, true, epsilon, work, clipped)) {
+                            return false;
+                        }
                         intersection = std::move(clipped);
                     }
                     if (intersection.points.size() >= 3) {
                         const double overlapArea = SignedArea(intersection.points);
-                        if (!std::isfinite(overlapArea)) return false;
-                        if (overlapArea != 0.0) overlaps = true;
+                        if (!std::isfinite(overlapArea)) {
+                            return false;
+                        }
+                        if (overlapArea != 0.0) {
+                            overlaps = true;
+                        }
                     }
                     return !overlaps;
                 }, work)) return fail(overlaps ? "river mouth corridors overlap ambiguously"
                     : "river mouth intersection exceeded its operation budget");
             allMouthTriangles.push_back(triangle);
-            if (allMouthTriangles.size() > MAX_ZONE_TRIANGLES) return fail("river mouth geometry exceeds its bounded triangle budget");
+            if (allMouthTriangles.size() > MAX_ZONE_TRIANGLES) {
+                return fail("river mouth geometry exceeds its bounded triangle budget");
+            }
         }
     }
     TriangleIndex mouthIndex;
-    if (!mouthIndex.Build(allMouthTriangles)) return fail("river mouth split index exceeds its budget");
+    if (!mouthIndex.Build(allMouthTriangles)) {
+        return fail("river mouth split index exceeds its budget");
+    }
     PointPool pointPool;
     std::vector<std::array<std::uint32_t, 3>> unionTriangles;
     std::vector<Triangle2> coveredTriangles;
     const auto appendPolygons = [&](const std::vector<Polygon2>& polygons) {
         for (const Polygon2& polygon : polygons) {
             if (!AddPolygonTriangles(polygon, pointPool, epsilon, unionTriangles, followsRiver)
-                || !AddPolygonToCoverage(polygon, coveredTriangles)) return false;
+                || !AddPolygonToCoverage(polygon, coveredTriangles)) {
+                return false;
+            }
         }
         return unionTriangles.size() <= MAX_ZONE_TRIANGLES && coveredTriangles.size() <= MAX_ZONE_TRIANGLES;
     };
@@ -1137,36 +1370,44 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::stable_sort(sourceOrder.begin(), sourceOrder.end(), [&](std::size_t a, std::size_t b) {
         return PreferredSource(a, b, sources);
     });
-    /// @note 元のメッシュが粗くても河口の補間を保つため、採用したメッシュを帯状領域の境界で分割する。
+    // 元のメッシュが粗くても河口の補間を保つため、採用したメッシュを帯状領域の境界で分割する。
     for (const std::size_t sourceIndex : sourceOrder) {
         TriangleIndex coveredIndex;
-        if (!coveredIndex.Build(coveredTriangles)) return fail("union coverage index exceeds its budget");
+        if (!coveredIndex.Build(coveredTriangles)) {
+            return fail("union coverage index exceeds its budget");
+        }
         std::vector<Polygon2> accepted;
-        /// @note 弧長方向の遷移はサンプリング済みの河川断面に含まれる。
+        // 弧長方向の遷移はサンプリング済みの河川断面に含まれる。
         const bool needsMouthBoundarySplit = !followsRiver
             && (isMouthReceiver[sourceIndex] || sourceMouthCount[sourceIndex] > 0);
         for (const Triangle2& triangle : sourceTriangles[sourceIndex]) {
             std::vector<Polygon2> fragments{{{triangle.points[0], triangle.points[1], triangle.points[2]}}};
             if (needsMouthBoundarySplit && !allMouthTriangles.empty()
-                && !SplitByIndex(fragments, mouthIndex.Triangles(), mouthIndex, epsilon, work))
+                && !SplitByIndex(fragments, mouthIndex.Triangles(), mouthIndex, epsilon, work)) {
                 return fail("river mouth boundary split exceeded its bounded work budget");
-            if (!SubtractByIndex(fragments, coveredIndex.Triangles(), coveredIndex, epsilon, work))
+            }
+            if (!SubtractByIndex(fragments, coveredIndex.Triangles(), coveredIndex, epsilon, work)) {
                 return fail("source union exceeded its bounded work budget");
+            }
             accepted.insert(accepted.end(), std::make_move_iterator(fragments.begin()),
                 std::make_move_iterator(fragments.end()));
-            if (accepted.size() > MAX_ZONE_TRIANGLES) return fail("source union exceeds its triangle budget");
+            if (accepted.size() > MAX_ZONE_TRIANGLES) {
+                return fail("source union exceeds its triangle budget");
+            }
         }
         if (!appendPolygons(accepted)) return fail(pointPool.HasPrecisionCollision()
             ? "union geometry is below numeric tolerance or collapses at float precision"
             : "source union exceeds the bounded Zone output budget");
     }
 
-    if (unionTriangles.empty() || pointPool.Points().size() > MAX_ZONE_VERTICES)
+    if (unionTriangles.empty() || pointPool.Points().size() > MAX_ZONE_VERTICES) {
         return fail("Zone union has no finite output triangles");
-    if (!SplitTJunctions(pointPool, unionTriangles, epsilon, work, followsRiver))
+    }
+    if (!SplitTJunctions(pointPool, unionTriangles, epsilon, work, followsRiver)) {
         return fail(pointPool.HasPrecisionCollision()
             ? "union geometry is below numeric tolerance or collapses at float precision"
             : "Zone T-junction split exceeded the bounded output budget");
+    }
 
     WaterZoneSnapshot built;
     built.geometry.shape = WaterSurfaceShape::SPLINE_LAKE;
@@ -1204,18 +1445,28 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
                     return false;
                 }
             }
-            if (!hasSample[sourceIndex]) continue;
-            if (!anySample || PreferredSource(sourceIndex, normalWinner, sources)) normalWinner = sourceIndex;
+            if (!hasSample[sourceIndex]) {
+                continue;
+            }
+            if (!anySample || PreferredSource(sourceIndex, normalWinner, sources)) {
+                normalWinner = sourceIndex;
+            }
             anySample = true;
         }
-        if (!anySample) return false;
+        if (!anySample) {
+            return false;
+        }
 
         for (std::size_t sourceIndex = 0; !followsRiver && sourceIndex < sources.size(); ++sourceIndex) {
-            if (hasSample[sourceIndex]) continue;
+            if (hasSample[sourceIndex]) {
+                continue;
+            }
             bool required = PreferredSource(sourceIndex, normalWinner, sources);
             if (!required && isMouthReceiver[normalWinner]) {
                 for (const MouthGeometry& mouth : mouthGeometry) {
-                    if (mouth.input.sourceIndex != sourceIndex || mouth.input.receiverIndex != normalWinner) continue;
+                    if (mouth.input.sourceIndex != sourceIndex || mouth.input.receiverIndex != normalWinner) {
+                        continue;
+                    }
                     const double dx = point.x - mouth.input.endpoint.x;
                     const double dz = point.z - mouth.input.endpoint.z;
                     const double distance = dx * mouth.input.inwardDirection.x
@@ -1226,7 +1477,9 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
                     }
                 }
             }
-            if (!required || roundingRadius <= 0.0) continue;
+            if (!required || roundingRadius <= 0.0) {
+                continue;
+            }
             bool sourceBoundaryUncertain = false;
             if (!sourceIndices[sourceIndex].Query(queryBounds, roundingRadius,
                     [&](std::uint32_t candidate) {
@@ -1256,13 +1509,17 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         for (const MouthGeometry& mouth : mouthGeometry) {
             const std::size_t riverIndex = mouth.input.sourceIndex;
             if (!hasSample[riverIndex]
-                || (normalWinner != mouth.input.receiverIndex && normalWinner != riverIndex)) continue;
+                || (normalWinner != mouth.input.receiverIndex && normalWinner != riverIndex)) {
+                continue;
+            }
             const double dx = point.x - mouth.input.endpoint.x;
             const double dz = point.z - mouth.input.endpoint.z;
             const double distance = mouth.input.riverEndpointDistance >= 0.0f
                 ? std::abs(samples[riverIndex].riverDistance - mouth.input.riverEndpointDistance)
                 : dx * mouth.input.inwardDirection.x + dz * mouth.input.inwardDirection.y;
-            if (distance < -epsilon || distance > mouth.input.blendLength + epsilon) continue;
+            if (distance < -epsilon || distance > mouth.input.blendLength + epsilon) {
+                continue;
+            }
             selectedMouth = &mouth;
             mouthRiver = riverIndex;
             const double t = (std::clamp)(distance / mouth.input.blendLength, 0.0, 1.0);
@@ -1290,8 +1547,9 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         }
         const double worldBaseHeight = static_cast<double>(ownerTransform.worldPosition.y) + baseHeightOffset;
         if (!std::isfinite(baseHeightOffset) || std::abs(baseHeightOffset) > std::numeric_limits<float>::max()
-            || !std::isfinite(worldBaseHeight) || std::abs(worldBaseHeight) > std::numeric_limits<float>::max())
+            || !std::isfinite(worldBaseHeight) || std::abs(worldBaseHeight) > std::numeric_limits<float>::max()) {
             return false;
+        }
         resolved.baseHeightOffset = static_cast<float>(baseHeightOffset);
         resolved.baseHeight = static_cast<float>(worldBaseHeight);
         resolved.horizonMaterialWeight = hasSample[0] ? samples[0].horizonMaterialWeight : 0.0f;
@@ -1302,11 +1560,15 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     constexpr auto unusedVertex = std::numeric_limits<std::uint32_t>::max();
     std::vector<std::uint32_t> vertexMap(pointPool.Points().size(), unusedVertex);
     for (const auto& triangle : unionTriangles)
-        for (const auto index : triangle) vertexMap[index] = 0;
+        for (const auto index : triangle) {
+            vertexMap[index] = 0;
+        }
     std::vector<Point2> exactPoints;
     exactPoints.reserve(pointPool.Points().size());
     for (std::size_t i = 0; i < pointPool.Points().size(); ++i) {
-        if (followsRiver && vertexMap[i] == unusedVertex) continue;
+        if (followsRiver && vertexMap[i] == unusedVertex) {
+            continue;
+        }
         vertexMap[i] = static_cast<std::uint32_t>(built.geometry.vertices.size());
         exactPoints.push_back(pointPool.ExactPoints()[i]);
         const Point2& point = pointPool.Points()[i];
@@ -1314,8 +1576,9 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         vertex.worldPosition = {static_cast<float>(point.x), built.geometry.worldBaseY,
             static_cast<float>(point.z)};
         vertex.localPosition = ToOwnerLocal(point, 0.0f, ownerTransform);
-        if (!Finite(vertex.localPosition) || !Finite(vertex.worldPosition))
+        if (!Finite(vertex.localPosition) || !Finite(vertex.worldPosition)) {
             return fail("a Zone vertex cannot be represented in owner space");
+        }
         built.geometry.vertices.push_back(vertex);
     }
     for (const auto& indices : unionTriangles) {
@@ -1326,12 +1589,16 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     }
     built.sourceCount = static_cast<std::uint32_t>(sources.size());
     built.mouthCount = static_cast<std::uint32_t>(mouths.size());
-    if (!FinalizeWaterSplineSnapshot(built.geometry, maximumWorldCellSize))
+    if (!FinalizeWaterSplineSnapshot(built.geometry, maximumWorldCellSize)) {
         return fail("Zone mesh refinement or BVH finalization failed");
+    }
     if (!built.geometry.meshQualityLimited && built.geometry.maximumWorldEdgeLength > maximumWorldCellSize
-        * (1.0f + 16.0f * std::numeric_limits<float>::epsilon()))
+        * (1.0f + 16.0f * std::numeric_limits<float>::epsilon())) {
         return fail("Zone mesh refinement could not meet the requested cell size within budget");
-    if (blendMaterials) built.materials.reserve(built.geometry.vertices.size());
+    }
+    if (blendMaterials) {
+        built.materials.reserve(built.geometry.vertices.size());
+    }
     for (WaterSplineVertex& vertex : built.geometry.vertices) {
         const Point2 point{vertex.worldPosition.x, vertex.worldPosition.z};
         WaterSplineSample resolved;
@@ -1346,17 +1613,24 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         vertex.baseHeightOffset = resolved.baseHeightOffset;
         vertex.depth = resolved.depth;
         vertex.horizonMaterialWeight = resolved.horizonMaterialWeight;
-        if (blendMaterials) built.materials.push_back(material);
+        if (blendMaterials) {
+            built.materials.push_back(material);
+        }
         if (!Finite(vertex.localPosition) || !Finite(vertex.worldPosition) || !Finite(vertex.worldVelocity)
-            || !std::isfinite(vertex.baseHeightOffset)) return fail("a Zone vertex cannot be represented in owner space");
+            || !std::isfinite(vertex.baseHeightOffset)) {
+            return fail("a Zone vertex cannot be represented in owner space");
+        }
     }
-    if (!RebuildWaterSplineSnapshotDerivedData(built.geometry))
+    if (!RebuildWaterSplineSnapshotDerivedData(built.geometry)) {
         return fail("Zone attributes or BVH could not be rebuilt after shared refinement");
-    if (!HasValidWaterSplineExtents(built.geometry, ownerTransform))
+    }
+    if (!HasValidWaterSplineExtents(built.geometry, ownerTransform)) {
         return fail("Zone local or transformed extents are not safely representable");
+    }
     if (!BuildBoundaryEdges(built.geometry.triangles, built.geometry.vertices,
-            exactPoints, epsilon, built.boundaryEdges))
+            exactPoints, epsilon, built.boundaryEdges)) {
         return fail("Zone boundary topology is non-manifold or empty");
+    }
     built.geometry.horizonMouth = sources[0].geometry->horizonMouth;
     out = std::move(built);
     diagnostic.clear();

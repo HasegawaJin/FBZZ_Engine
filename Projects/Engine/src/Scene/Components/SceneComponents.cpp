@@ -27,19 +27,23 @@ void ResetCopiedWaterRuntime(Scene& scene, EntityID destination)
         water->ResetSurfaceRuntimeState();
         ResetWaterInteractionRuntime(*water);
     }
-    if (WaterZoneComponent* zone = scene.GetComponent<WaterZoneComponent>(destination))
+    if (WaterZoneComponent* zone = scene.GetComponent<WaterZoneComponent>(destination)) {
         zone->ResetRuntimeState();
+    }
 }
 
 /// @note 個体専用メッシュへの借用は複製先へ持ち越さず、各生成システムが新しい所有メッシュを再公開する。
 void RemapCopiedRuntimeMeshBindings(const Scene& source, EntityID src, Scene& destination, EntityID dst)
 {
     auto* object = source.GetGameObject(src);
-    if (!object) return;
+    if (!object) {
+        return;
+    }
     ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         if constexpr (requires(const T& component) { component.runtimeMesh; }) {
-            if (const auto* component = object->GetComponent<T>())
+            if (const auto* component = object->GetComponent<T>()) {
                 UnlinkRuntimeMesh(destination, dst, component->runtimeMesh);
+            }
         }
     });
 }
@@ -50,7 +54,9 @@ uint64_t AllocateComponentLifetime()
 {
     const uint64_t lifetime = s_componentLifetime.fetch_add(1, std::memory_order_relaxed) + 1;
     assert(lifetime != 0 && "Component lifetime identity exhausted");
-    if (lifetime == 0) std::abort();
+    if (lifetime == 0) {
+        std::abort();
+    }
     return lifetime;
 }
 
@@ -90,7 +96,9 @@ void Scene::RemoveAllComponents(EntityID id)
 {
     std::apply([&](auto&... arrays) {
         const auto remove = [&](auto& array) {
-            if (array.Has(id)) array.Remove(id);
+            if (array.Has(id)) {
+                array.Remove(id);
+            }
         };
         (remove(arrays), ...);
     }, m_components->m_arrays);
@@ -101,7 +109,9 @@ void Scene::CopyComponentValues(const Scene& source, EntityID src, EntityID dst)
     const auto copy = [&]<typename T>(ComponentArray<T>& destination) {
         if constexpr (std::is_copy_constructible_v<T>) {
             const auto& srcArray = source.GetArray<T>();
-            if (srcArray.Has(src) && !destination.Has(dst)) destination.Add(dst, srcArray.Get(src));
+            if (srcArray.Has(src) && !destination.Has(dst)) {
+                destination.Add(dst, srcArray.Get(src));
+            }
         }
     };
     std::apply([&](auto&... arrays) { (copy(arrays), ...); }, m_components->m_arrays);
@@ -146,29 +156,43 @@ void Scene::CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityI
 {
     const auto& srcArr = srcScene.GetArray<ScriptComponent>();
     auto&       dstArr = GetArray<ScriptComponent>();
-    if (!srcArr.Has(src) || dstArr.Has(dst)) return;
+    if (!srcArr.Has(src) || dstArr.Has(dst)) {
+        return;
+    }
 
     ScriptComponent cloned =
         CloneScriptComponent(srcArr.Get(src), &srcScene, this, GetGameObject(dst));
-    if (cloned.scripts.empty()) return;
+    if (cloned.scripts.empty()) {
+        return;
+    }
     dstArr.Add(dst, std::move(cloned));
     struct Identity { std::string entry; std::string birth; };
     std::vector<Identity> identities;
     for (auto& entry : dstArr.Get(dst).scripts) {
-        if (!entry.script) continue;
+        if (!entry.script) {
+            continue;
+        }
         identities.push_back({entry.inspectionId, entry.script->InspectionId()});
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) adapter->RefreshOwnerBinding();
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) {
+            adapter->RefreshOwnerBinding();
+        }
     }
-    /// @note コピー中の forward/self 参照は全 managed 個体の binding が揃ってから接続する。
+    // コピー中の forward/self 参照は全 managed 個体の binding が揃ってから接続する。
     for (auto& entry : dstArr.Get(dst).scripts)
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) adapter->ResolveSavedComponentReferences();
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) {
+            adapter->ResolveSavedComponentReferences();
+        }
     for (const auto& identity : identities) {
-        if (!dstArr.Has(dst)) break;
+        if (!dstArr.Has(dst)) {
+            break;
+        }
         auto& entries = dstArr.Get(dst).scripts;
         const auto found = std::find_if(entries.begin(), entries.end(), [&](const ScriptEntry& entry) {
             return entry.inspectionId == identity.entry && !entry.m_pendingRemoval && entry.script && entry.script->InspectionId() == identity.birth;
         });
-        if (found != entries.end()) found->script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+        if (found != entries.end()) {
+            found->script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+        }
     }
 }
 
@@ -176,9 +200,13 @@ void Scene::CopyScriptComponentPassive(const Scene& srcScene, EntityID src, Enti
 {
     const auto& srcArr = srcScene.GetArray<ScriptComponent>();
     auto& dstArr = GetArray<ScriptComponent>();
-    if (!srcArr.Has(src) || dstArr.Has(dst)) return;
+    if (!srcArr.Has(src) || dstArr.Has(dst)) {
+        return;
+    }
     ScriptComponent copied = CloneScriptComponentPassive(srcArr.Get(src), &srcScene);
-    if (!copied.scripts.empty()) dstArr.Add(dst, std::move(copied));
+    if (!copied.scripts.empty()) {
+        dstArr.Add(dst, std::move(copied));
+    }
 }
 
 }

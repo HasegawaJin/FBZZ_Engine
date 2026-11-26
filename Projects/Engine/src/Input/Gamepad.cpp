@@ -101,12 +101,14 @@ float TickRealSeconds()
 
     const int64_t delta = counter.QuadPart - context.lastCounter;
     context.lastCounter = counter.QuadPart;
-    if (frequency.QuadPart <= 0) return 0.0f;
+    if (frequency.QuadPart <= 0) {
+        return 0.0f;
+    }
 
     const float seconds = static_cast<float>(static_cast<double>(delta)
                                              / static_cast<double>(frequency.QuadPart));
-    /// @note フレーム落ちやブレークポイント停止で巨大な dt が出ると振動が即座に切れる。
-    ///       実用上 0.1 秒で頭打ちにしておけば十分。
+    // フレーム落ちやブレークポイント停止で巨大な dt が出ると振動が即座に切れる。
+    //       実用上 0.1 秒で頭打ちにしておけば十分。
     return std::clamp(seconds, 0.0f, 0.1f);
 }
 
@@ -139,11 +141,11 @@ void Gamepad::Update()
     for (int index = 0; index < MAX_PADS; ++index) {
         PadState& pad = context.pads[index];
 
-        /// @note 現在状態を前フレームへ退避する。
-        ///       シミュレーション時も同じ経路を通ることで Down/Up の判定規則を共通化する。
+        // 現在状態を前フレームへ退避する。
+        //       シミュレーション時も同じ経路を通ることで Down/Up の判定規則を共通化する。
         pad.previous = pad.current;
 
-        /// @name 振動の寿命管理
+        // 振動の寿命管理
         if (pad.vibrationActive) {
             pad.vibrationRemaining -= dt;
             if (pad.vibrationRemaining <= 0.0f) {
@@ -152,7 +154,7 @@ void Gamepad::Update()
         }
 
 
-        /// @name 未接続スロットの再試行スロットリング
+        // 未接続スロットの再試行スロットリング
         if (!pad.connected) {
             pad.retryTimer -= dt;
             if (pad.retryTimer > 0.0f) {
@@ -164,8 +166,8 @@ void Gamepad::Update()
         XINPUT_STATE state{};
         const DWORD result = XInputGetState(static_cast<DWORD>(index), &state);
         if (result != ERROR_SUCCESS) {
-            /// @note 接続していたパッドが外れた場合、押しっぱなし状態が残らないよう全解除する。
-            ///       残すとキャラクターが走り続けるなど、抜線後に操作不能へ見える不具合になる。
+            // 接続していたパッドが外れた場合、押しっぱなし状態が残らないよう全解除する。
+            //       残すとキャラクターが走り続けるなど、抜線後に操作不能へ見える不具合になる。
             if (pad.connected) {
                 pad.current.fill(false);
                 pad.axes.fill(0.0f);
@@ -196,7 +198,7 @@ void Gamepad::Update()
         pad.axes[static_cast<size_t>(GamepadAxis::LEFT_TRIGGER)]  = leftTrigger;
         pad.axes[static_cast<size_t>(GamepadAxis::RIGHT_TRIGGER)] = rightTrigger;
 
-        /// @note アナログトリガーをボタンとしても公開する。
+        // アナログトリガーをボタンとしても公開する。
         pad.current[static_cast<size_t>(GamepadButton::LEFT_TRIGGER)] =
             leftTrigger >= GAMEPAD_TRIGGER_BUTTON_THRESHOLD;
         pad.current[static_cast<size_t>(GamepadButton::RIGHT_TRIGGER)] =
@@ -213,13 +215,15 @@ void Gamepad::Reset()
         pad.previous.fill(false);
         pad.axes.fill(0.0f);
         pad.retryTimer = 0.0f;
-        /// @note connected は実デバイスの状態なので保持する。次の Update で再確認される。
+        // connected は実デバイスの状態なので保持する。次の Update で再確認される。
     }
 }
 
 bool Gamepad::IsConnected(int pad)
 {
-    if (!IsValidPad(pad)) return false;
+    if (!IsValidPad(pad)) {
+        return false;
+    }
     return Ctx().pads[static_cast<size_t>(pad)].connected;
 }
 
@@ -227,20 +231,26 @@ int Gamepad::GetFirstConnectedPad()
 {
     const GamepadContext& context = Ctx();
     for (int index = 0; index < MAX_PADS; ++index) {
-        if (context.pads[static_cast<size_t>(index)].connected) return index;
+        if (context.pads[static_cast<size_t>(index)].connected) {
+            return index;
+        }
     }
     return -1;
 }
 
 bool Gamepad::ButtonHeld(GamepadButton button, int pad)
 {
-    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) return false;
+    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) {
+        return false;
+    }
     return Ctx().pads[static_cast<size_t>(pad)].current[static_cast<size_t>(button)];
 }
 
 bool Gamepad::ButtonDown(GamepadButton button, int pad)
 {
-    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) return false;
+    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) {
+        return false;
+    }
     const PadState& state = Ctx().pads[static_cast<size_t>(pad)];
     const size_t    index = static_cast<size_t>(button);
     return state.current[index] && !state.previous[index];
@@ -248,7 +258,9 @@ bool Gamepad::ButtonDown(GamepadButton button, int pad)
 
 bool Gamepad::ButtonUp(GamepadButton button, int pad)
 {
-    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) return false;
+    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) {
+        return false;
+    }
     const PadState& state = Ctx().pads[static_cast<size_t>(pad)];
     const size_t    index = static_cast<size_t>(button);
     return !state.current[index] && state.previous[index];
@@ -256,19 +268,23 @@ bool Gamepad::ButtonUp(GamepadButton button, int pad)
 
 float Gamepad::Axis(GamepadAxis axis, int pad)
 {
-    if (!IsValidPad(pad) || axis >= GamepadAxis::COUNT) return 0.0f;
+    if (!IsValidPad(pad) || axis >= GamepadAxis::COUNT) {
+        return 0.0f;
+    }
     return Ctx().pads[static_cast<size_t>(pad)].axes[static_cast<size_t>(axis)];
 }
 
 void Gamepad::SetVibration(float lowFrequency, float highFrequency,
                            float durationSeconds, int pad)
 {
-    if (!IsValidPad(pad)) return;
+    if (!IsValidPad(pad)) {
+        return;
+    }
 
     GamepadContext& context = Ctx();
     PadState&       state   = context.pads[static_cast<size_t>(pad)];
 
-    /// @note 継続時間が 0 以下の要求は「振動させない」意図とみなし、実行中の振動も止める。
+    // 継続時間が 0 以下の要求は「振動させない」意図とみなし、実行中の振動も止める。
     if (durationSeconds <= 0.0f) {
         StopVibration(pad);
         return;
@@ -277,7 +293,9 @@ void Gamepad::SetVibration(float lowFrequency, float highFrequency,
     state.vibrationRemaining = durationSeconds;
     state.vibrationActive    = true;
 
-    if (!state.connected) return;
+    if (!state.connected) {
+        return;
+    }
 
     XINPUT_VIBRATION vibration{};
     vibration.wLeftMotorSpeed = static_cast<WORD>(
@@ -289,7 +307,9 @@ void Gamepad::SetVibration(float lowFrequency, float highFrequency,
 
 void Gamepad::StopVibration(int pad)
 {
-    if (!IsValidPad(pad)) return;
+    if (!IsValidPad(pad)) {
+        return;
+    }
 
     GamepadContext& context = Ctx();
     PadState&       state   = context.pads[static_cast<size_t>(pad)];
@@ -297,7 +317,7 @@ void Gamepad::StopVibration(int pad)
     state.vibrationActive    = false;
 
 
-    /// @note 未接続でも停止要求は投げる。抜き挿しの隙間で振動が残るのを防ぐ。
+    // 未接続でも停止要求は投げる。抜き挿しの隙間で振動が残るのを防ぐ。
     XINPUT_VIBRATION vibration{};
     XInputSetState(static_cast<DWORD>(pad), &vibration);
 }
@@ -349,7 +369,9 @@ const char* ToString(GamepadAxis axis) noexcept
 
 bool ParseGamepadButton(const char* name, GamepadButton& out) noexcept
 {
-    if (!name) return false;
+    if (!name) {
+        return false;
+    }
     for (uint16_t index = 0; index < static_cast<uint16_t>(GamepadButton::COUNT); ++index) {
         const auto button = static_cast<GamepadButton>(index);
         if (std::strcmp(name, ToString(button)) == 0) {
@@ -362,7 +384,9 @@ bool ParseGamepadButton(const char* name, GamepadButton& out) noexcept
 
 bool ParseGamepadAxis(const char* name, GamepadAxis& out) noexcept
 {
-    if (!name) return false;
+    if (!name) {
+        return false;
+    }
     for (uint8_t index = 0; index < static_cast<uint8_t>(GamepadAxis::COUNT); ++index) {
         const auto axis = static_cast<GamepadAxis>(index);
         if (std::strcmp(name, ToString(axis)) == 0) {

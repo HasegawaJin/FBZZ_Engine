@@ -35,8 +35,7 @@ private:
         AudioLoop loop;
     };
 
-    /// @note 両方の型で同じ採番を使い、解放後も過去の値を再利用しない。
-    std::unordered_map<int64_t, ClipRecord> m_clips;
+    std::unordered_map<int64_t, ClipRecord> m_clips; ///< 両方の型で同じ採番を使い、解放後も過去の値を再利用しない。
     std::unordered_map<int64_t, LoopRecord> m_loops;
     int64_t m_nextHandle = 1;
 

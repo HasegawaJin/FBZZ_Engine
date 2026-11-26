@@ -91,7 +91,9 @@ float Saturate(float v) { return std::clamp(v, 0.0f, 1.0f); }
 math::Vector3 NormalizeOr(const math::Vector3& v, const math::Vector3& fallback)
 {
     const float lengthSq = Dot(v, v);
-    if (lengthSq < 1.0e-12f) return fallback;
+    if (lengthSq < 1.0e-12f) {
+        return fallback;
+    }
     return v * (1.0f / std::sqrt(lengthSq));
 }
 
@@ -108,14 +110,20 @@ float HlslSourceWeight(bool cylinder, const math::Vector3& center, const math::V
         const float hc = std::clamp(Dot(d, a), -segH, segH);
         const math::Vector3 radial = d - a * hc;
         const float q2 = Dot(radial, radial) / (segR * segR);
-        if (q2 >= 1.0f) return 0.0f;
+        if (q2 >= 1.0f) {
+            return 0.0f;
+        }
         return (1.0f - q2) * (1.0f - q2);
     }
     const float h = Dot(d, a);
-    if (std::fabs(h) > segH) return 0.0f;
+    if (std::fabs(h) > segH) {
+        return 0.0f;
+    }
     const math::Vector3 radial = d - a * h;
     const float q2 = Dot(radial, radial) / (segR * segR);
-    if (q2 >= 1.0f) return 0.0f;
+    if (q2 >= 1.0f) {
+        return 0.0f;
+    }
     return (1.0f - q2) * (1.0f - q2) * Saturate((1.0f - std::fabs(h) / segH) * 4.0f);
 }
 
@@ -232,7 +240,7 @@ TEST(FluidSegmentShapeTest, ShapesRoundTripThroughTheirTomlLabels)
     EXPECT_EQ(loaded.sources[1].shape, FluidSourceShape::Cylinder);
     EXPECT_EQ(loaded.colliders[0].shape, FluidColliderShape::Capsule);
     EXPECT_EQ(loaded.colliders[1].shape, FluidColliderShape::Cylinder);
-    /// @note 軸は direction が持つ (書けても読めないと «保存したのに戻らない»)。
+    // 軸は direction が持つ (書けても読めないと «保存したのに戻らない»)。
     ExpectVectorNear(loaded.sources[0].direction, { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(loaded.colliders[0].direction, { 0.0f, 0.0f, 1.0f });
     EXPECT_FLOAT_EQ(loaded.sources[1].size.y, kHalf);
@@ -244,19 +252,19 @@ TEST(FluidSegmentShapeTest, ShapesRoundTripThroughTheirTomlLabels)
 TEST(FluidSegmentShapeTest, CapsuleWeightMeasuresTheDistanceToItsCoreSegment)
 {
     const FluidSource source = MakeSegmentSource(FluidSourceShape::Capsule);
-    /// @note 芯の上はどこでも 1 (球の «中心だけ 1» と違って «線» が満たされる)。
+    // 芯の上はどこでも 1 (球の «中心だけ 1» と違って «線» が満たされる)。
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, 0.0f, 0.0f }), 1.0f);
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, 0.3f, 0.0f }), 1.0f);
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, 0.5f, 0.0f }), 1.0f);
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, -0.5f, 0.0f }), 1.0f);
-    /// @note 半径の途中は (1 − q²)² (球と同じ落ち方)。
+    // 半径の途中は (1 − q²)² (球と同じ落ち方)。
     EXPECT_FLOAT_EQ(Weight(source, { 0.1f, 0.0f, 0.0f }), 0.5625f);
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, 0.0f, 0.1f }), 0.5625f);
-    /// @note 端の半球も «芯の端点からの距離» なので同じ落ち方。
+    // 端の半球も «芯の端点からの距離» なので同じ落ち方。
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, 0.6f, 0.0f }), 0.5625f);
     EXPECT_FLOAT_EQ(Weight(source, { 0.0f, -0.6f, 0.0f }), 0.5625f);
     EXPECT_NEAR(Weight(source, { 0.1f, 0.55f, 0.0f }), 0.47265625f, 1.0e-6f);
-    /// @note 表面と外 (端から端までは 2 × (H + R) = 1.4)。
+    // 表面と外 (端から端までは 2 × (H + R) = 1.4)。
     EXPECT_EQ(Weight(source, { 0.2f, 0.0f, 0.0f }), 0.0f);
     EXPECT_NEAR(Weight(source, { 0.0f, 0.7f, 0.0f }), 0.0f, 1.0e-6f);
     EXPECT_EQ(Weight(source, { 0.0f, 0.75f, 0.0f }), 0.0f);
@@ -267,14 +275,14 @@ TEST(FluidSegmentShapeTest, CapsuleWeightMeasuresTheDistanceToItsCoreSegment)
 TEST(FluidSegmentShapeTest, CapsuleWithAPointCoreIsTheSphereFormula)
 {
     FluidSource capsule = MakeSegmentSource(FluidSourceShape::Capsule);
-    /// @note 芯が 1 点 = 球
+    // 芯が 1 点 = 球
     capsule.size.y = 0.0f;
     const math::Vector3 points[] = { { 0.05f, 0.0f, 0.0f }, { 0.1f, 0.1f, 0.0f }, { 0.0f, 0.0f, 0.15f } };
     for (const math::Vector3& p : points) {
         const float q2 = (p.x * p.x + p.y * p.y + p.z * p.z) / (kRadius * kRadius);
         EXPECT_NEAR(Weight(capsule, p), (1.0f - q2) * (1.0f - q2), 1.0e-6f);
     }
-    /// @note 端がどちらの向きにも半径ぶんしか伸びない。
+    // 端がどちらの向きにも半径ぶんしか伸びない。
     EXPECT_EQ(Weight(capsule, { 0.0f, 0.2f, 0.0f }), 0.0f);
 }
 
@@ -284,32 +292,32 @@ TEST(FluidSegmentShapeTest, CylinderIsCutFlatAtBothEndsWhereTheCapsuleBulges)
     const FluidSource capsule = MakeSegmentSource(FluidSourceShape::Capsule);
     const FluidSource cylinder = MakeSegmentSource(FluidSourceShape::Cylinder);
 
-    /// @note 芯の真ん中では同じ形 (半径の落ち方は同じ式)。
+    // 芯の真ん中では同じ形 (半径の落ち方は同じ式)。
     EXPECT_FLOAT_EQ(Weight(cylinder, { 0.0f, 0.0f, 0.0f }), 1.0f);
     EXPECT_FLOAT_EQ(Weight(cylinder, { 0.1f, 0.0f, 0.0f }), Weight(capsule, { 0.1f, 0.0f, 0.0f }));
 
-    /// @note 端の先: カプセルは半球ぶん残り、円柱は 0。«端が半球» の証拠。
+    // 端の先: カプセルは半球ぶん残り、円柱は 0。«端が半球» の証拠。
     for (const float y : { 0.55f, 0.6f, 0.65f, -0.55f, -0.6f }) {
         const math::Vector3 p{ 0.0f, y, 0.0f };
         EXPECT_GT(Weight(capsule, p), 0.0f) << "y " << y;
         EXPECT_EQ(Weight(cylinder, p), 0.0f) << "y " << y;
     }
-    /// @note 平らな端の外へ «半径ぶん横へずれた» 点も、カプセルだけが持つ。
+    // 平らな端の外へ «半径ぶん横へずれた» 点も、カプセルだけが持つ。
     EXPECT_GT(Weight(capsule, { 0.1f, 0.55f, 0.0f }), 0.0f);
     EXPECT_EQ(Weight(cylinder, { 0.1f, 0.55f, 0.0f }), 0.0f);
 
-    /// @note 円柱の端は «なめらかに 0» (Cone の底と同じ 4 倍の傾き)。
+    // 円柱の端は «なめらかに 0» (Cone の底と同じ 4 倍の傾き)。
     EXPECT_FLOAT_EQ(Weight(cylinder, { 0.0f, 0.375f, 0.0f }), 1.0f);
     EXPECT_NEAR(Weight(cylinder, { 0.0f, 0.45f, 0.0f }), 0.4f, 1.0e-6f);
     EXPECT_EQ(Weight(cylinder, { 0.0f, 0.5f, 0.0f }), 0.0f);
-    /// @note 半径の外は端の遠近に関わらず 0。
+    // 半径の外は端の遠近に関わらず 0。
     EXPECT_EQ(Weight(cylinder, { 0.2f, 0.0f, 0.0f }), 0.0f);
 }
 
 /// @brief Segment weights widen tiny sizes to the cell width.
 TEST(FluidSegmentShapeTest, SegmentWeightsWidenTinySizesToTheCellWidth)
 {
-    /// @note 格子より細い棒は «どのセル中心も覆えない» ので、Cone / Ring と同じくセル幅まで広げる。
+    // 格子より細い棒は «どのセル中心も覆えない» ので、Cone / Ring と同じくセル幅まで広げる。
     for (const FluidSourceShape shape : { FluidSourceShape::Capsule, FluidSourceShape::Cylinder }) {
         FluidSource tiny = MakeSegmentSource(shape);
         tiny.size = { 0.001f, 0.001f, 0.0f };
@@ -353,7 +361,7 @@ TEST(FluidSegmentShapeTest, SampledPointsStayInsideAndReachTheHemisphereOnlyForT
                             if (!volumetric) EXPECT_EQ(p.z, source.center.z);
                             if (std::fabs(Dot(p - source.center, unit)) > kHalf) beyondTheFlatEnd = true;
                         }
-                /// @note 円柱は芯の端より先へ 1 粒も出ない。カプセルは出る (= 端が半球になっている)。
+                // 円柱は芯の端より先へ 1 粒も出ない。カプセルは出る (= 端が半球になっている)。
                 if (cylinder) EXPECT_FALSE(beyondTheFlatEnd) << "volumetric " << volumetric;
             }
         }
@@ -366,7 +374,7 @@ TEST(FluidSegmentShapeTest, VolumetricCapsuleSamplesReachBothHemispheres)
     const FluidSource capsule = MakeSegmentSource(FluidSourceShape::Capsule);
     bool top = false;
     bool bottom = false;
-    /// @note u0 は円柱と半球の選び分け。両端の半球へ届くことを見る (片側しか出ないと «端が片方だけ丸い»)。
+    // u0 は円柱と半球の選び分け。両端の半球へ届くことを見る (片側しか出ないと «端が片方だけ丸い»)。
     for (int k = 0; k < 64; ++k) {
         const float u0 = (static_cast<float>(k) + 0.5f) / 64.0f;
         for (const float u1 : { 0.05f, 0.95f }) {
@@ -387,26 +395,26 @@ TEST(FluidSegmentShapeTest, SegmentColliderDistanceIsNegativeInsideAndCrossesZer
     const FluidCollider capsule = MakeSegmentCollider(FluidColliderShape::Capsule);
     const FluidCollider cylinder = MakeSegmentCollider(FluidColliderShape::Cylinder);
 
-    /// @note 芯の上はどちらも «半径ぶん» 中。
+    // 芯の上はどちらも «半径ぶん» 中。
     EXPECT_FLOAT_EQ(Distance(capsule, { 0.0f, 0.0f, 0.0f }), -kRadius);
     EXPECT_FLOAT_EQ(Distance(cylinder, { 0.0f, 0.0f, 0.0f }), -kRadius);
-    /// @note 芯の端は、カプセルはまだ半径ぶん中・円柱は平らな端の面そのもの (距離 0)。
+    // 芯の端は、カプセルはまだ半径ぶん中・円柱は平らな端の面そのもの (距離 0)。
     EXPECT_FLOAT_EQ(Distance(capsule, { 0.0f, kHalf, 0.0f }), -kRadius);
     EXPECT_FLOAT_EQ(Distance(cylinder, { 0.0f, kHalf, 0.0f }), 0.0f);
-    /// @note 円柱の中では «近いほうの面» までの深さ。
+    // 円柱の中では «近いほうの面» までの深さ。
     EXPECT_NEAR(Distance(cylinder, { 0.0f, 0.4f, 0.0f }), -0.1f, 1.0e-6f);
     EXPECT_NEAR(Distance(cylinder, { 0.15f, 0.0f, 0.0f }), -0.05f, 1.0e-6f);
-    /// @note 横の表面はどちらも 0。
+    // 横の表面はどちらも 0。
     EXPECT_NEAR(Distance(capsule, { kRadius, 0.0f, 0.0f }), 0.0f, 1.0e-6f);
     EXPECT_NEAR(Distance(cylinder, { kRadius, 0.0f, 0.0f }), 0.0f, 1.0e-6f);
-    /// @note 端の先: カプセルは半球の表面が 0.7、円柱は 0.5。
+    // 端の先: カプセルは半球の表面が 0.7、円柱は 0.5。
     EXPECT_NEAR(Distance(capsule, { 0.0f, kHalf + kRadius, 0.0f }), 0.0f, 1.0e-6f);
     EXPECT_NEAR(Distance(capsule, { 0.0f, 0.8f, 0.0f }), 0.1f, 1.0e-6f);
     EXPECT_NEAR(Distance(cylinder, { 0.0f, 0.6f, 0.0f }), 0.1f, 1.0e-6f);
-    /// @note 角の外: 円柱は «半径の外 + 端の外» の斜め、カプセルは端点からの距離。
+    // 角の外: 円柱は «半径の外 + 端の外» の斜め、カプセルは端点からの距離。
     EXPECT_NEAR(Distance(cylinder, { 0.3f, 0.6f, 0.0f }), std::sqrt(0.02f), 1.0e-6f);
     EXPECT_NEAR(Distance(capsule, { 0.3f, 0.6f, 0.0f }), std::sqrt(0.1f) - kRadius, 1.0e-6f);
-    /// @note 軸を変えても «芯への距離» なので向きに追従する。
+    // 軸を変えても «芯への距離» なので向きに追従する。
     const FluidCollider lying = MakeSegmentCollider(FluidColliderShape::Capsule, { 1.0f, 0.0f, 0.0f });
     EXPECT_FLOAT_EQ(Distance(lying, { kHalf, 0.0f, 0.0f }), -kRadius);
     EXPECT_NEAR(Distance(lying, { 0.0f, 0.8f, 0.0f }), 0.6f, 1.0e-6f);
@@ -421,26 +429,26 @@ TEST(FluidSegmentShapeTest, SegmentColliderNormalsPointOutOfTheSurface)
     ExpectVectorNear(Normal(capsule, { 0.3f, 0.0f, 0.0f }), { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(capsule, { 0.0f, 0.9f, 0.0f }), { 0.0f, 1.0f, 0.0f });
     ExpectVectorNear(Normal(capsule, { 0.3f, 0.6f, 0.0f }), { 0.94868332f, 0.31622776f, 0.0f });
-    /// @note 平らな端の外は軸向き、横は半径向き、角は 2 つの混ざり。
+    // 平らな端の外は軸向き、横は半径向き、角は 2 つの混ざり。
     ExpectVectorNear(Normal(cylinder, { 0.0f, 0.6f, 0.0f }), { 0.0f, 1.0f, 0.0f });
     ExpectVectorNear(Normal(cylinder, { 0.0f, -0.6f, 0.0f }), { 0.0f, -1.0f, 0.0f });
     ExpectVectorNear(Normal(cylinder, { 0.3f, 0.0f, 0.0f }), { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear(Normal(cylinder, { 0.3f, 0.6f, 0.0f }), { 0.70710678f, 0.70710678f, 0.0f });
-    /// @note 中では «近いほうの面» の向き (Box の «同じ深さなら先の軸» と同じ規則)。
+    // 中では «近いほうの面» の向き (Box の «同じ深さなら先の軸» と同じ規則)。
     ExpectVectorNear(Normal(cylinder, { 0.0f, 0.4f, 0.0f }), { 0.0f, 1.0f, 0.0f });
     ExpectVectorNear(Normal(cylinder, { 0.15f, 0.0f, 0.0f }), { 1.0f, 0.0f, 0.0f });
 
-    /// @note 芯の上は «どちら向きでもよい» ので、軸に直交する決まった 1 本を返す (上向きを返すと芯に沿って押す)。
+    // 芯の上は «どちら向きでもよい» ので、軸に直交する決まった 1 本を返す (上向きを返すと芯に沿って押す)。
     const math::Vector3 onCore = Normal(capsule, { 0.0f, 0.2f, 0.0f });
     EXPECT_NEAR(Length(onCore), 1.0f, 1.0e-5f);
     EXPECT_NEAR(Dot(onCore, { 0.0f, 1.0f, 0.0f }), 0.0f, 1.0e-5f);
     ExpectVectorNear(onCore, { 0.0f, 0.0f, -1.0f });
 
-    /// @note 2D では奥行きを持たない (押し出す向きが画面から出ていくと粒子が消える)。
+    // 2D では奥行きを持たない (押し出す向きが画面から出ていくと粒子が消える)。
     EXPECT_EQ(Normal(capsule, { 0.3f, 0.1f, 0.2f }, false).z, 0.0f);
     EXPECT_EQ(Normal(cylinder, { 0.3f, 0.6f, 0.2f }, false).z, 0.0f);
 
-    /// @note 法線は距離の勾配。表面の外側へ少し進めば距離が伸びる。
+    // 法線は距離の勾配。表面の外側へ少し進めば距離が伸びる。
     for (const FluidCollider& collider : { capsule, cylinder }) {
         for (const math::Vector3& p : ProbePoints()) {
             const math::Vector3 n = Normal(collider, p);
@@ -461,7 +469,7 @@ TEST(FluidSegmentShapeTest, GpuSourceWeightMirrorsTheCpuFormula)
                                           math::Vector3{ -1.0f, 0.2f, 0.0f } }) {
             FluidSource source = MakeSegmentSource(shape, axis);
             source.center = { 0.1f, -0.2f, 0.05f };
-            /// @note PackFluidGpuStep と同じ詰め方 (寸法はセル幅まで広げ、軸は正規化する)。
+            // PackFluidGpuStep と同じ詰め方 (寸法はセル幅まで広げ、軸は正規化する)。
             const math::Vector3 packed{ (std::max)(source.size.x, kCellSize), (std::max)(source.size.y, kCellSize),
                                         (std::max)(source.size.z, kCellSize) };
             const math::Vector3 unit = NormalizeOr(source.direction, { 0.0f, 1.0f, 0.0f });
@@ -484,8 +492,8 @@ TEST(FluidSegmentShapeTest, GpuColliderDistanceAndNormalMirrorTheCpuFormula)
                                           math::Vector3{ -1.0f, 0.2f, 0.0f } }) {
             FluidCollider collider = MakeSegmentCollider(shape, axis);
             collider.center = { -0.05f, 0.15f, -0.1f };
-            /// @note 液体は寸法を広げずに詰める (LiquidCollider の «大きさは広げない»)。
-            ///       気体は詰める段でセル幅まで広げるだけで、式は同じ 1 本。
+            // 液体は寸法を広げずに詰める (LiquidCollider の «大きさは広げない»)。
+            //       気体は詰める段でセル幅まで広げるだけで、式は同じ 1 本。
             const math::Vector3 packed{ (std::max)(collider.size.x, 0.0f), (std::max)(collider.size.y, 0.0f),
                                         (std::max)(collider.size.z, 0.0f) };
             const math::Vector3 unit = NormalizeOr(collider.direction, { 0.0f, 1.0f, 0.0f });
@@ -517,12 +525,12 @@ TEST(FluidSegmentShapeTest, GpuStepCarriesTheShapeNumberAndTheAxis)
     EXPECT_FLOAT_EQ(c.sources[1].centerShape[3], 6.0f);
     EXPECT_FLOAT_EQ(c.colliders[0].centerShape[3], 3.0f);
     EXPECT_FLOAT_EQ(c.colliders[1].centerShape[3], 4.0f);
-    /// @note 軸は正規化して渡す (シェーダーは正規化しない)。
+    // 軸は正規化して渡す (シェーダーは正規化しない)。
     ExpectVectorNear({ c.sources[0].axis[0], c.sources[0].axis[1], c.sources[0].axis[2] }, { 0.0f, 1.0f, 0.0f });
     ExpectVectorNear({ c.sources[1].axis[0], c.sources[1].axis[1], c.sources[1].axis[2] }, { 1.0f, 0.0f, 0.0f });
     ExpectVectorNear({ c.colliders[0].normal[0], c.colliders[0].normal[1], c.colliders[0].normal[2] },
                      { 0.0f, 0.0f, -1.0f });
-    /// @note 半径と «軸方向の長さの半分» は x / y に入る (テクスチャのタイル番号は使わない)。
+    // 半径と «軸方向の長さの半分» は x / y に入る (テクスチャのタイル番号は使わない)。
     EXPECT_FLOAT_EQ(c.sources[0].sizeNoise[0], kRadius);
     EXPECT_FLOAT_EQ(c.sources[0].sizeNoise[1], kHalf);
     EXPECT_FLOAT_EQ(c.sources[0].axis[3], -1.0f);
@@ -586,7 +594,7 @@ TEST(FluidSegmentShapeTest, ExistingColliderShapesAreUnchanged)
     box.size = { 0.3f, 0.2f, 0.25f };
     EXPECT_NEAR(fluid::FluidColliderDistance(box, c, { c.x + 0.4f, c.y, c.z }, 0.0f, true), 0.1f, 1.0e-6f);
     EXPECT_FLOAT_EQ(fluid::FluidColliderDistance(box, c, c, 0.0f, true), -0.2f);
-    /// @note 箱の中は «いちばん浅い軸» (ここでは y の 0.2) の向き。
+    // 箱の中は «いちばん浅い軸» (ここでは y の 0.2) の向き。
     ExpectVectorNear(fluid::FluidColliderNormal(box, c, c, 0.0f, true), { 0.0f, 1.0f, 0.0f });
 
     FluidCollider plane = sphere;

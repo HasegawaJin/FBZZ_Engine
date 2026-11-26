@@ -35,23 +35,33 @@ constexpr uint64_t BONE_BAKE_GPU_CACHE_BUDGET = 256ull * 1024ull * 1024ull;
 
 bool BoneBakeLodCompatible(const BoneBakeSkinRequest& request)
 {
-    if (!request.model || !request.model->skeleton) return false;
+    if (!request.model || !request.model->skeleton) {
+        return false;
+    }
     const auto& source = *request.runtime->source;
     const auto key = std::pair{request.model, &source};
-    if (const auto it = s_boneBakeLodCompatibility.find(key); it != s_boneBakeLodCompatibility.end()) return it->second;
+    if (const auto it = s_boneBakeLodCompatibility.find(key); it != s_boneBakeLodCompatibility.end()) {
+        return it->second;
+    }
     bool compatible = asset::BoneBakeSkeletonFingerprint(*request.model->skeleton) == source.skeletonFingerprint;
     for (const auto& mesh : request.model->meshes) {
         if (!mesh || mesh->cpuSkinnedVertices.empty()) { compatible = false; break; }
         for (const auto& vertex : mesh->cpuSkinnedVertices) {
             const auto radius = vertex.position.Length();
-            if (!std::isfinite(radius) || radius > source.sourceMeshRadius) compatible = false;
+            if (!std::isfinite(radius) || radius > source.sourceMeshRadius) {
+                compatible = false;
+            }
             for (uint32_t bone : vertex.boneIndices) if (bone >= source.bones.size()) compatible = false;
             float sum = 0.0f;
             for (float weight : vertex.boneWeights) {
-                if (!std::isfinite(weight) || weight < 0.0f) compatible = false;
+                if (!std::isfinite(weight) || weight < 0.0f) {
+                    compatible = false;
+                }
                 sum += weight;
             }
-            if (std::abs(sum - 1.0f) > 0.00001f) compatible = false;
+            if (std::abs(sum - 1.0f) > 0.00001f) {
+                compatible = false;
+            }
         }
     }
     s_boneBakeLodCompatibility.emplace(key, compatible); return compatible;
@@ -60,14 +70,20 @@ bool BoneBakeLodCompatible(const BoneBakeSkinRequest& request)
 std::shared_ptr<BoneBakeSkinPairAsset> GetBoneBakeSkinAsset(RenderPassContext& ctx, const BoneBakePoseState& runtime)
 {
     const BoneBakeSkinPairKey key{runtime.source.get(), runtime.target.get()};
-    if (const auto it = s_boneBakeSkinAssets.find(key); it != s_boneBakeSkinAssets.end()) return it->second;
+    if (const auto it = s_boneBakeSkinAssets.find(key); it != s_boneBakeSkinAssets.end()) {
+        return it->second;
+    }
     if (!runtime.source || asset::ValidateBakedBoneAnimation(*runtime.source) != asset::BoneBakeStatus::OK
-        || (runtime.target && asset::ValidateBakedBoneAnimation(*runtime.target) != asset::BoneBakeStatus::OK)) return nullptr;
+        || (runtime.target && asset::ValidateBakedBoneAnimation(*runtime.target) != asset::BoneBakeStatus::OK)) {
+        return nullptr;
+    }
     const int creationGeneration = asset::AssetManager::GetAssetGeneration();
     auto samples = runtime.source->samples;
     auto entry = std::make_shared<BoneBakeSkinPairAsset>(); entry->source = runtime.source; entry->target = runtime.target;
     if (runtime.target) {
-        if (samples.size() > UINT32_MAX || runtime.target->samples.size() > UINT32_MAX - samples.size()) return nullptr;
+        if (samples.size() > UINT32_MAX || runtime.target->samples.size() > UINT32_MAX - samples.size()) {
+            return nullptr;
+        }
         entry->targetOffset = static_cast<uint32_t>(samples.size());
         samples.insert(samples.end(), runtime.target->samples.begin(), runtime.target->samples.end());
     }
@@ -75,17 +91,27 @@ std::shared_ptr<BoneBakeSkinPairAsset> GetBoneBakeSkinAsset(RenderPassContext& c
         std::as_bytes(std::span(samples)), std::as_bytes(std::span(runtime.source->nodes)), std::as_bytes(std::span(runtime.source->bones)),
         static_cast<uint32_t>(runtime.source->nodes.size()), static_cast<uint32_t>(runtime.source->bones.size()), runtime.source->rootInverse};
     const uint64_t bytes = upload.samples.size() + upload.nodes.size() + upload.bindings.size();
-    /// @note クリップ対キャッシュの GPU 常駐量に上限を設け、超過時は通常の CPU パレットを使う。
-    if (bytes > BONE_BAKE_GPU_CACHE_BUDGET - s_boneBakeResidentBytes) return nullptr;
+    // クリップ対キャッシュの GPU 常駐量に上限を設け、超過時は通常の CPU パレットを使う。
+    if (bytes > BONE_BAKE_GPU_CACHE_BUDGET - s_boneBakeResidentBytes) {
+        return nullptr;
+    }
     renderer::BoneReplayStatus status;
     entry->gpu = renderer::UploadBakedBoneReplay(ctx.resources, upload, status);
-    if (!entry->gpu) return nullptr;
-    /// @note GPU 資源の作成や再生がエディターのコールバックを起動しても、利用中の項目は破棄されない。
+    if (!entry->gpu) {
+        return nullptr;
+    }
+    // GPU 資源の作成や再生がエディターのコールバックを起動しても、利用中の項目は破棄されない。
     if (s_boneBakeSkinOwner != ctx.resources.GetInstanceId() || s_boneBakeSkinEpoch != ctx.resources.GetResetVersion()
         || s_boneBakeSkinGeneration != creationGeneration || creationGeneration != asset::AssetManager::GetAssetGeneration()
-        || entry->gpu->owner != s_boneBakeSkinOwner || entry->gpu->epoch != s_boneBakeSkinEpoch) return {};
-    if (const auto found = s_boneBakeSkinAssets.find(key); found != s_boneBakeSkinAssets.end()) return found->second;
-    if (bytes > BONE_BAKE_GPU_CACHE_BUDGET - s_boneBakeResidentBytes) return {};
+        || entry->gpu->owner != s_boneBakeSkinOwner || entry->gpu->epoch != s_boneBakeSkinEpoch) {
+        return {};
+    }
+    if (const auto found = s_boneBakeSkinAssets.find(key); found != s_boneBakeSkinAssets.end()) {
+        return found->second;
+    }
+    if (bytes > BONE_BAKE_GPU_CACHE_BUDGET - s_boneBakeResidentBytes) {
+        return {};
+    }
     s_boneBakeResidentBytes += entry->gpu->residentBytes;
     ctx.statsSkinningPaletteUploadBytes += entry->gpu->residentBytes;
     ctx.statsSkinningPaletteUploads += 3;
@@ -102,10 +128,14 @@ renderer::BoneReplayRow MakeBoneBakeSkinRow(const BoneBakePoseState& runtime, co
 
 void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBakeSkinRequest> requests)
 {
-    if (requests.empty()) return;
+    if (requests.empty()) {
+        return;
+    }
     if (!ctx.renderer.GetCapabilities().bindless) {
         for (const auto& request : requests)
-            if (request.runtime) request.runtime->fallback = BoneBakeFallback::GPU_RESOURCE;
+            if (request.runtime) {
+                request.runtime->fallback = BoneBakeFallback::GPU_RESOURCE;
+            }
         return;
     }
     const int generation = asset::AssetManager::GetAssetGeneration();
@@ -119,20 +149,32 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
     const auto sameFrame = [](const auto& a, const auto& b) {
         return a.first == b.first && a.second == b.second && std::bit_cast<uint32_t>(a.alpha) == std::bit_cast<uint32_t>(b.alpha);
     };
-    /// @note GPU 資源の操作中に編集が走り得るため、操作をまたいでコンポーネントのアドレスを保持しない。
+    // GPU 資源の操作中に編集が走り得るため、操作をまたいでコンポーネントのアドレスを保持しない。
     const auto resolve = [&](BoneBakeRuntime* identity) -> BoneBakeRuntime* {
         const auto found = witnesses.find(identity);
         if (found == witnesses.end() || ctx.scene.GetRenderSceneGeneration() != sceneGeneration
             || ctx.resources.GetInstanceId() != owner || ctx.resources.GetResetVersion() != epoch || ctx.resources.FrameStamp() != frame
-            || asset::AssetManager::GetAssetGeneration() != generation) return nullptr;
+            || asset::AssetManager::GetAssetGeneration() != generation) {
+            return nullptr;
+        }
         const auto& witness = found->second;
         auto* animator = ctx.scene.GetComponent<AnimatorComponent>(witness.entity);
-        if (!animator || ctx.scene.GetComponentLifetime<AnimatorComponent>(witness.entity) != witness.lifetime) return nullptr;
+        if (!animator || ctx.scene.GetComponentLifetime<AnimatorComponent>(witness.entity) != witness.lifetime) {
+            return nullptr;
+        }
         auto& live = animator->boneBake;
-        if (&live != identity || !live.active || live.generation != generation || live.source != witness.pose.source
-            || live.target != witness.pose.target || !sameFrame(live.frame, witness.pose.frame)
-            || !sameFrame(live.targetFrame, witness.pose.targetFrame)
-            || std::bit_cast<uint32_t>(live.blendWeight) != std::bit_cast<uint32_t>(witness.pose.blendWeight)) return nullptr;
+        if (&live != identity || !live.active || live.generation != generation) {
+            return nullptr;
+        }
+
+        // 同じ再生状態でも、待機中にクリップや補間位置が変わった結果は破棄する。
+        if (live.source != witness.pose.source || live.target != witness.pose.target) {
+            return nullptr;
+        }
+        if (!sameFrame(live.frame, witness.pose.frame) || !sameFrame(live.targetFrame, witness.pose.targetFrame)
+            || std::bit_cast<uint32_t>(live.blendWeight) != std::bit_cast<uint32_t>(witness.pose.blendWeight)) {
+            return nullptr;
+        }
         return &live;
     };
 
@@ -141,12 +183,16 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
     std::map<BoneBakeRuntime*, bool> eligible;
     for (const auto& request : requests) {
         if (!request.runtime || !request.runtime->active || !request.runtime->source
-            || request.runtime->generation != generation) continue;
+            || request.runtime->generation != generation) {
+            continue;
+        }
         witnesses.try_emplace(request.runtime, RuntimeWitness{request.animatorEntity, request.animatorLifetime,
             {request.runtime->source, request.runtime->target, request.runtime->frame, request.runtime->targetFrame, request.runtime->blendWeight}});
         const bool compatible = BoneBakeLodCompatible(request);
         const auto [entry, inserted] = eligible.emplace(request.runtime, compatible);
-        if (!inserted) entry->second &= compatible;
+        if (!inserted) {
+            entry->second &= compatible;
+        }
     }
     for (const auto& [runtime, compatible] : eligible) {
         runtime->gpuPalette = {}; runtime->gpuPreviousPalette = {};
@@ -191,14 +237,18 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
                 row.targetFirst,row.targetSecond,std::bit_cast<uint32_t>(row.targetAlpha),std::bit_cast<uint32_t>(row.blendWeight)};
             const auto [pose, inserted] = poseIndices.emplace(poseKey, static_cast<uint32_t>(rows.size()));
             rowIndices.push_back(pose->second);
-            if (inserted) rows.push_back(row);
+            if (inserted) {
+                rows.push_back(row);
+            }
         }
-        /// @note 65535 行・128 ボーンの上限で、Dispatch の Y 制限を守りながら float のオブジェクトオフセットを正確に表す。
+        // 65535 行・128 ボーンの上限で、Dispatch の Y 制限を守りながら float のオブジェクトオフセットを正確に表す。
         replayJobs.push_back({asset, &group, std::move(rowIndices), std::move(rows), {}});
     }
-    /// @note 再生は描画スレッドで不変の GPU 命令だけを扱い、シーンへの公開は呼び出し側スレッドで行う。
+    // 再生は描画スレッドで不変の GPU 命令だけを扱い、シーンへの公開は呼び出し側スレッドで行う。
     if (!replayJobs.empty()) ctx.renderer.ExecuteResourceOperation([&] {
-        for (auto& job : replayJobs) job.result = renderer::ReplayBakedBones(ctx, *job.asset->gpu, job.rows);
+        for (auto& job : replayJobs) {
+            job.result = renderer::ReplayBakedBones(ctx, *job.asset->gpu, job.rows);
+        }
     });
     for (const auto& job : replayJobs) {
         auto& group = *job.group;
@@ -214,7 +264,9 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
         for (size_t index = 0; index < group.size(); ++index) {
             auto& input = group[index];
             auto* live = resolve(input.runtime);
-            if (!live) continue;
+            if (!live) {
+                continue;
+            }
             auto& runtime = *live;
             const uint32_t offset = rowIndices[index] * asset->gpu->boneCount;
             if (input.previous) { runtime.gpuPreviousPalette = replay.palette; runtime.gpuPreviousOffset = offset; }
@@ -223,34 +275,48 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
     }
     for (const auto& [identity, compatible] : eligible) {
         auto* runtime = resolve(identity);
-        if (!runtime) continue;
+        if (!runtime) {
+            continue;
+        }
         runtime->gpuReady = compatible && runtime->gpuPalette.IsValid()
             && (!runtime->previousPoseValid || runtime->gpuPreviousPalette.IsValid());
-        if (runtime->gpuReady || !runtime->cpuDeferred) continue;
+        if (runtime->gpuReady || !runtime->cpuDeferred) {
+            continue;
+        }
         const auto owner = std::find_if(requests.begin(), requests.end(),
             [&](const auto& request) { return request.runtime == runtime; });
         if (owner != requests.end()) {
-            if (auto* animator = ctx.scene.GetComponent<AnimatorComponent>(owner->animatorEntity))
+            if (auto* animator = ctx.scene.GetComponent<AnimatorComponent>(owner->animatorEntity)) {
                 MaterializeBoneBakeCpu(*animator, ctx.resources, true);
+            }
         }
         runtime = resolve(runtime);
-        if (!runtime) continue;
+        if (!runtime) {
+            continue;
+        }
         runtime->gpuPalette = {}; runtime->gpuPreviousPalette = {};
-        /// @note CPU のパック範囲は再生前に確定済みなので、フォールバックを既存のバッチが読む前に補正する。
+        // CPU のパック範囲は再生前に確定済みなので、フォールバックを既存のバッチが読む前に補正する。
         for (const auto& request : requests) {
-            if (request.runtime != runtime || request.requestIndex >= ctx.skinningRequests.size()) continue;
+            if (request.runtime != runtime || request.requestIndex >= ctx.skinningRequests.size()) {
+                continue;
+            }
             const auto* animator = ctx.scene.GetComponent<AnimatorComponent>(request.animatorEntity);
-            if (!animator || ctx.scene.GetComponentLifetime<AnimatorComponent>(request.animatorEntity) != request.animatorLifetime) continue;
+            if (!animator || ctx.scene.GetComponentLifetime<AnimatorComponent>(request.animatorEntity) != request.animatorLifetime) {
+                continue;
+            }
             const auto& input = ctx.skinningRequests[request.requestIndex];
             const auto& matrices = animator->boneMatrices;
             if (input.boneCount == matrices.size() && input.boneOffset <= ctx.skinningMatrices.size()
-                && matrices.size() <= ctx.skinningMatrices.size() - input.boneOffset)
+                && matrices.size() <= ctx.skinningMatrices.size() - input.boneOffset) {
                 std::copy(matrices.begin(), matrices.end(), ctx.skinningMatrices.begin() + input.boneOffset);
+            }
         }
     }
     for (const auto& request : requests) {
         const auto* runtime = resolve(request.runtime);
-        if (!runtime || !runtime->gpuPalette.IsValid() || request.requestIndex >= ctx.skinningRequests.size()) continue;
+        if (!runtime || !runtime->gpuPalette.IsValid() || request.requestIndex >= ctx.skinningRequests.size()) {
+            continue;
+        }
         auto& input = ctx.skinningRequests[request.requestIndex];
         input.bonePalette = runtime->gpuPalette; input.boneOffset = runtime->gpuOffset;
         input.boneCount = static_cast<uint32_t>(runtime->source->bones.size()); input.gpuBonePalette = true;
@@ -261,26 +327,36 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
     std::vector<math::Matrix4> remaining;
     for (size_t index = 0; index < ctx.skinningRequests.size(); ++index) {
         const auto& input = ctx.skinningRequests[index];
-        if (input.gpuBonePalette || !input.boneCount) continue;
+        if (input.gpuBonePalette || !input.boneCount) {
+            continue;
+        }
         const uint32_t old = input.boneOffset;
-        /// @note 圧縮する入力をすべて検証できなければ、CPU 側のオフセットを一切更新しない。
-        if (old > ctx.skinningMatrices.size() || input.boneCount > ctx.skinningMatrices.size() - old) return;
+        // 圧縮する入力をすべて検証できなければ、CPU 側のオフセットを一切更新しない。
+        if (old > ctx.skinningMatrices.size() || input.boneCount > ctx.skinningMatrices.size() - old) {
+            return;
+        }
         const auto range = std::pair{old, input.boneCount};
-        if (const auto it = offsets.find(range); it != offsets.end()) rewrites.emplace_back(index, it->second);
+        if (const auto it = offsets.find(range); it != offsets.end()) {
+            rewrites.emplace_back(index, it->second);
+        }
         else {
-            if (remaining.size() > UINT32_MAX - input.boneCount) return;
+            if (remaining.size() > UINT32_MAX - input.boneCount) {
+                return;
+            }
             const auto offset = static_cast<uint32_t>(remaining.size()); offsets.emplace(range, offset);
             rewrites.emplace_back(index, offset);
             remaining.insert(remaining.end(), ctx.skinningMatrices.begin() + old, ctx.skinningMatrices.begin() + old + input.boneCount);
         }
     }
-    for (const auto& [index, offset] : rewrites) ctx.skinningRequests[index].boneOffset = offset;
+    for (const auto& [index, offset] : rewrites) {
+        ctx.skinningRequests[index].boneOffset = offset;
+    }
     ctx.skinningMatrices = std::move(remaining);
 }
 
 void ReleaseBoneBakeSkinningCaches()
 {
-    /// @note 資源の破棄が描画実行器に入る前に、空のキャッシュを公開する。
+    // 資源の破棄が描画実行器に入る前に、空のキャッシュを公開する。
     auto retiredAssets = std::move(s_boneBakeSkinAssets);
     s_boneBakeSkinAssets.clear(); s_boneBakeLodCompatibility.clear(); s_boneBakeResidentBytes = 0;
     s_boneBakeSkinOwner = s_boneBakeSkinEpoch = 0; s_boneBakeSkinGeneration = -1;

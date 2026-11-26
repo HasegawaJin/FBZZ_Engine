@@ -383,7 +383,7 @@ TEST_F(ParticleGpuOwnershipTest, CpuBillboardDrawsPreserveQuadPayloadAndTrailBud
             EXPECT_FLOAT_EQ(vertices[0].color[3], 0.8f);
             EXPECT_FLOAT_EQ(vertices[4].color[3], 0.32f);
             EXPECT_FLOAT_EQ(vertices[8].color[3], 0.24f);
-            /// @note 通常描画はシェーダーと共通のガンマ 2.2 で変換し、選択マスクは変換前の色を使う。
+            // 通常描画はシェーダーと共通のガンマ 2.2 で変換し、選択マスクは変換前の色を使う。
             const float authoredTint = emitter.settings.trail.trailColorTint.x;
             const float expectedTint = drawIndex == 0 ? std::pow(authoredTint, 2.2f) : authoredTint;
             EXPECT_NEAR(vertices[4].color[0], particle.color.x * expectedTint, testkit::kLooseTolerance);

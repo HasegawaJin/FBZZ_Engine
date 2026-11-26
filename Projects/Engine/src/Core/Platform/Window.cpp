@@ -58,7 +58,7 @@ namespace
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-rawinputdevice RAWINPUTDEVICE の前景登録と宛先。
     void RegisterRelativeMouse(HWND hwnd)
     {
-        /// @note メインウィンドウを宛先にし、分離した Game View からも同じ集約経路へ送る。
+        // メインウィンドウを宛先にし、分離した Game View からも同じ集約経路へ送る。
         const RAWINPUTDEVICE mouse{RAW_INPUT_GENERIC_DESKTOP, RAW_INPUT_MOUSE, 0, hwnd};
         if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)))
             FBZZ_LOG_WARN("Raw mouse registration failed (%lu); using cursor position delta.", GetLastError());
@@ -72,20 +72,23 @@ namespace
         if (GetRawInputData(std::bit_cast<HRAWINPUT>(lParam), RID_INPUT, &raw, &size,
                             sizeof(RAWINPUTHEADER)) != sizeof(raw)
             || raw.header.dwType != RIM_TYPEMOUSE
-            || (raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0) return;
+            || (raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0) {
+            return;
+        }
         cursor_detail::HandleRelativeMouseMotion(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
     }
 
     void EnableDpiAwareness()
     {
-        /// @note 正規の宣言は CMake/FBZZApp.manifest 側で、ローダーが起動時に適用するため、ここに
-        /// @note 来た時点で既に PerMonitorV2 が確定し FALSE を返すのが正常系 (ERROR_ACCESS_DENIED)。
-        /// @note マニフェストが剥がれたビルド (手製 exe・旧 SDK 経由の外部ゲーム) への保険として残す。
-        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+        // 正規の宣言は CMake/FBZZApp.manifest 側で、ローダーが起動時に適用するため、ここに
+        // 来た時点で既に PerMonitorV2 が確定し FALSE を返すのが正常系 (ERROR_ACCESS_DENIED)。
+        // マニフェストが剥がれたビルド (手製 exe・旧 SDK 経由の外部ゲーム) への保険として残す。
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
             SetProcessDPIAware();
+        }
 
-        /// @note DPI 非対応のまま起動すると Windows がウィンドウ全体をビットマップ拡大し、100%
-        /// @note 以外の環境で UI と文字が滲む。宣言の成否ではなく確定後の実値をログへ残す。
+        // DPI 非対応のまま起動すると Windows がウィンドウ全体をビットマップ拡大し、100%
+        // 以外の環境で UI と文字が滲む。宣言の成否ではなく確定後の実値をログへ残す。
         const DPI_AWARENESS awareness =
             GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
         switch (awareness) {
@@ -110,8 +113,9 @@ namespace
                                 bool hasMenu = false)
     {
         const BOOL menu = hasMenu ? TRUE : FALSE;
-        if (AdjustWindowRectExForDpi(&rect, style, menu, exStyle, dpi))
+        if (AdjustWindowRectExForDpi(&rect, style, menu, exStyle, dpi)) {
             return true;
+        }
 
         return AdjustWindowRectEx(&rect, style, menu, exStyle) != FALSE;
     }
@@ -123,8 +127,9 @@ namespace
 
         MONITORINFO monitorInfo{};
         monitorInfo.cbSize = sizeof(MONITORINFO);
-        if (!GetMonitorInfoW(monitor, &monitorInfo))
+        if (!GetMonitorInfoW(monitor, &monitorInfo)) {
             return { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+        }
 
         return monitorInfo.rcMonitor;
     }
@@ -136,8 +141,9 @@ namespace
 
         MONITORINFO monitorInfo{};
         monitorInfo.cbSize = sizeof(MONITORINFO);
-        if (!GetMonitorInfoW(monitor, &monitorInfo))
+        if (!GetMonitorInfoW(monitor, &monitorInfo)) {
             return { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+        }
 
         return monitorInfo.rcWork;
     }
@@ -187,16 +193,22 @@ namespace
     std::vector<std::string> ExtractHdropPaths(IDataObject* data)
     {
         std::vector<std::string> paths;
-        if (!data) return paths;
+        if (!data) {
+            return paths;
+        }
         FORMATETC fmt{ CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
         STGMEDIUM stg{};
-        if (data->GetData(&fmt, &stg) != S_OK) return paths;
+        if (data->GetData(&fmt, &stg) != S_OK) {
+            return paths;
+        }
         if (HDROP hdrop = static_cast<HDROP>(GlobalLock(stg.hGlobal))) {
             const UINT count = DragQueryFileW(hdrop, 0xFFFFFFFFu, nullptr, 0);
             paths.reserve(count);
             for (UINT i = 0; i < count; ++i) {
                 const UINT len = DragQueryFileW(hdrop, i, nullptr, 0);
-                if (len == 0) continue;
+                if (len == 0) {
+                    continue;
+                }
                 std::wstring wpath(len, L'\0');
                 DragQueryFileW(hdrop, i, wpath.data(), len + 1);
                 paths.push_back(fbzz::util::FileSystem::PathToUtf8(std::filesystem::path(wpath)));
@@ -209,7 +221,9 @@ namespace
 
     bool DataHasFiles(IDataObject* data)
     {
-        if (!data) return false;
+        if (!data) {
+            return false;
+        }
         FORMATETC fmt{ CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
         return data->QueryGetData(&fmt) == S_OK;
     }
@@ -253,32 +267,46 @@ namespace
         HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
         {
             m_hasFiles = m_window && !m_window->IsLoading() && DataHasFiles(data);
-            if (effect) *effect = m_hasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
-            if (m_hasFiles) NotifyOver(pt);
+            if (effect) {
+                *effect = m_hasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+            }
+            if (m_hasFiles) {
+                NotifyOver(pt);
+            }
             return S_OK;
         }
         HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt, DWORD* effect) override
         {
             const bool canDrop = m_hasFiles && m_window && !m_window->IsLoading();
-            if (effect) *effect = canDrop ? DROPEFFECT_COPY : DROPEFFECT_NONE;
-            if (canDrop) NotifyOver(pt);
+            if (effect) {
+                *effect = canDrop ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+            }
+            if (canDrop) {
+                NotifyOver(pt);
+            }
             return S_OK;
         }
         HRESULT STDMETHODCALLTYPE DragLeave() override
         {
             m_hasFiles = false;
-            if (m_window) m_window->InvokeFileDragLeave();
+            if (m_window) {
+                m_window->InvokeFileDragLeave();
+            }
             return S_OK;
         }
         HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
         {
             m_hasFiles = false;
             if (m_window && m_window->IsLoading()) {
-                if (effect) *effect = DROPEFFECT_NONE;
+                if (effect) {
+                    *effect = DROPEFFECT_NONE;
+                }
                 m_window->InvokeFileDragLeave();
                 return S_OK;
             }
-            if (effect) *effect = DROPEFFECT_COPY;
+            if (effect) {
+                *effect = DROPEFFECT_COPY;
+            }
             POINT p{ pt.x, pt.y };
             ScreenToClient(m_hwnd, &p);
             const std::vector<std::string> paths = ExtractHdropPaths(data);
@@ -294,7 +322,9 @@ namespace
         {
             POINT p{ pt.x, pt.y };
             ScreenToClient(m_hwnd, &p);
-            if (m_window) m_window->InvokeFileDragOver(p.x, p.y);
+            if (m_window) {
+                m_window->InvokeFileDragOver(p.x, p.y);
+            }
         }
 
         std::unique_ptr<FileDropTarget> m_lifetime;
@@ -306,8 +336,8 @@ namespace
 
     HICON LoadApplicationIcon(HINSTANCE instance, int size)
     {
-        /// @note Window クラスにアイコンを設定しないと exe 埋め込みアイコンがタイトルバーや Alt+Tab に
-        /// @note 反映されない環境がある。LR_SHARED で HICON の寿命を OS 管理にし、Window 側は解放しない。
+        // Window クラスにアイコンを設定しないと exe 埋め込みアイコンがタイトルバーや Alt+Tab に
+        // 反映されない環境がある。LR_SHARED で HICON の寿命を OS 管理にし、Window 側は解放しない。
         return static_cast<HICON>(LoadImageW(
             instance,
             MAKEINTRESOURCEW(kDefaultApplicationIconId),
@@ -385,23 +415,25 @@ bool Window::Initialize(const Config& config)
         this);
 
     assert(m_hwnd && "Window creation failed");
-    if (!m_hwnd) return false;
+    if (!m_hwnd) {
+        return false;
+    }
     RegisterRelativeMouse(m_hwnd);
 
-    /// @note ダークモード有効化
+    // ダークモード有効化
     BOOL darkMode = TRUE;
     DwmSetWindowAttribute(m_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
 
-    /// @note エクスプローラーからのファイル D&D を OLE ドロップターゲットとして受け付ける。OLE なら
-    /// @note ドロップ確定前のドラッグオーバー位置を取得でき、取り込み先フォルダをリアルタイムで
-    /// @note ハイライトできる (WM_DROPFILES では不可能)。
+    // エクスプローラーからのファイル D&D を OLE ドロップターゲットとして受け付ける。OLE なら
+    // ドロップ確定前のドラッグオーバー位置を取得でき、取り込み先フォルダをリアルタイムで
+    // ハイライトできる (WM_DROPFILES では不可能)。
     if (SUCCEEDED(OleInitialize(nullptr))) {
         m_oleInitialized = true;
-        /// @note ref=1 (自分の参照)
+        // ref=1 (自分の参照)
         auto* target = FileDropTarget::Create(this, m_hwnd);
         if (RegisterDragDrop(m_hwnd, target) == S_OK) {
-            /// @note RegisterDragDrop が AddRef 済み。自分の初期参照は手放し、OLE 側の 1 参照だけ残す。
-            /// @note Shutdown の RevokeDragDrop が最後の参照を返却して破棄する。
+            // RegisterDragDrop が AddRef 済み。自分の初期参照は手放し、OLE 側の 1 参照だけ残す。
+            // Shutdown の RevokeDragDrop が最後の参照を返却して破棄する。
             m_dropTarget = target;
             target->Release();
         } else {
@@ -409,7 +441,7 @@ bool Window::Initialize(const Config& config)
         }
     }
 
-    /// @note 自動 Play は通常のウィンドウを描画できるが、アクティブ化してはならない。
+    // 自動 Play は通常のウィンドウを描画できるが、アクティブ化してはならない。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
     ShowWindow(m_hwnd, Cursor::IsPhysicalInputAllowed() ? SW_SHOW : SW_SHOWNOACTIVATE);
     UpdateWindow(m_hwnd);
@@ -419,24 +451,27 @@ bool Window::Initialize(const Config& config)
     m_width  = static_cast<uint32_t>(clientRect.right - clientRect.left);
     m_height = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
 
-    /// @note ウィンドウへ戻したときの寸法の初期値。CalculateInitialWindowRect が
-    /// @note 作業領域に収まるようクランプしているため、config の値ではなく実寸を覚える。
+    // ウィンドウへ戻したときの寸法の初期値。CalculateInitialWindowRect が
+    // 作業領域に収まるようクランプしているため、config の値ではなく実寸を覚える。
     m_windowedWidth  = m_width;
     m_windowedHeight = m_height;
 
-    if (config.fullscreen)
+    if (config.fullscreen) {
         SetWindowMode(WindowMode::BorderlessFullscreen);
+    }
 
     return m_hwnd != nullptr;
 }
 
 void Window::SetWindowMode(WindowMode mode)
 {
-    if (!m_hwnd || mode == m_windowMode) return;
+    if (!m_hwnd || mode == m_windowMode) {
+        return;
+    }
 
     if (mode == WindowMode::BorderlessFullscreen) {
-        /// @note 復帰用にウィンドウ配置を控える。WS_OVERLAPPEDWINDOW を戻すだけでは
-        /// @note 位置とサイズがフルスクリーンのまま残る。
+        // 復帰用にウィンドウ配置を控える。WS_OVERLAPPEDWINDOW を戻すだけでは
+        // 位置とサイズがフルスクリーンのまま残る。
         m_placement->m_value.length = sizeof(WINDOWPLACEMENT);
         m_hasWindowedPlacement = GetWindowPlacement(m_hwnd, &m_placement->m_value) != FALSE;
 
@@ -452,10 +487,12 @@ void Window::SetWindowMode(WindowMode mode)
         SetWindowLongPtrW(m_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
         if (m_hasWindowedPlacement) {
             auto placement = m_placement->m_value;
-            if (!Cursor::IsPhysicalInputAllowed()) placement.showCmd = SW_SHOWNOACTIVATE;
+            if (!Cursor::IsPhysicalInputAllowed()) {
+                placement.showCmd = SW_SHOWNOACTIVATE;
+            }
             SetWindowPlacement(m_hwnd, &placement);
         }
-        /// @note 新しい枠を反映させる。SetWindowPlacement だけでは非クライアント領域が再計算されない。
+        // 新しい枠を反映させる。SetWindowPlacement だけでは非クライアント領域が再計算されない。
         SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED
                      | (Cursor::IsPhysicalInputAllowed() ? 0u : SWP_NOACTIVATE));
@@ -463,13 +500,14 @@ void Window::SetWindowMode(WindowMode mode)
 
     m_windowMode = mode;
 
-    /// @note フルスクリーン中に要求されたウィンドウ寸法をここで反映する。
-    if (mode == WindowMode::Windowed)
+    // フルスクリーン中に要求されたウィンドウ寸法をここで反映する。
+    if (mode == WindowMode::Windowed) {
         ApplyWindowedClientSize(m_windowedWidth, m_windowedHeight);
+    }
 
-    /// @note 実寸は WM_SIZE で更新されるが、ここでも取り直しておく。SetWindowPos は WM_SIZE を
-    /// @note 同期的に届けるとは限らず、直後に GetWidth() を読む呼び出し側 (Option 画面) が
-    /// @note 1 フレーム古い値を見ることがある。
+    // 実寸は WM_SIZE で更新されるが、ここでも取り直しておく。SetWindowPos は WM_SIZE を
+    // 同期的に届けるとは限らず、直後に GetWidth() を読む呼び出し側 (Option 画面) が
+    // 1 フレーム古い値を見ることがある。
     RECT clientRect{};
     if (GetClientRect(m_hwnd, &clientRect)) {
         m_width  = static_cast<uint32_t>(clientRect.right - clientRect.left);
@@ -479,19 +517,25 @@ void Window::SetWindowMode(WindowMode mode)
 
 void Window::SetClientSize(uint32_t width, uint32_t height)
 {
-    if (width == 0 || height == 0) return;
+    if (width == 0 || height == 0) {
+        return;
+    }
 
     m_windowedWidth  = width;
     m_windowedHeight = height;
 
-    /// @note フルスクリーン中はモニター解像度が優先。覚えるだけで画面は変えない。
-    if (!m_hwnd || m_windowMode != WindowMode::Windowed) return;
+    // フルスクリーン中はモニター解像度が優先。覚えるだけで画面は変えない。
+    if (!m_hwnd || m_windowMode != WindowMode::Windowed) {
+        return;
+    }
     ApplyWindowedClientSize(width, height);
 }
 
 void Window::ApplyWindowedClientSize(uint32_t width, uint32_t height)
 {
-    if (!m_hwnd || width == 0 || height == 0) return;
+    if (!m_hwnd || width == 0 || height == 0) {
+        return;
+    }
 
     const DWORD style   = static_cast<DWORD>(GetWindowLongPtrW(m_hwnd, GWL_STYLE));
     const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtrW(m_hwnd, GWL_EXSTYLE));
@@ -500,7 +544,7 @@ void Window::ApplyWindowedClientSize(uint32_t width, uint32_t height)
     RECT rect{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
     AdjustWindowRectForDpi(rect, style, exStyle, dpi, GetMenu(m_hwnd) != nullptr);
 
-    /// @note 位置は動かさない。解像度を変えるたびにウィンドウが飛ぶのは操作として不快。
+    // 位置は動かさない。解像度を変えるたびにウィンドウが飛ぶのは操作として不快。
     SetWindowPos(m_hwnd, nullptr, 0, 0,
                  rect.right - rect.left, rect.bottom - rect.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER
@@ -527,28 +571,35 @@ std::vector<std::pair<uint32_t, uint32_t>> Window::EnumerateResolutions() const
     DEVMODEW mode{};
     mode.dmSize = sizeof(DEVMODEW);
     for (DWORD index = 0; EnumDisplaySettingsW(deviceName, index, &mode); ++index) {
-        /// @note リフレッシュレートと色深度違いで同じ寸法が何度も出る。寸法だけを見て畳む。
+        // リフレッシュレートと色深度違いで同じ寸法が何度も出る。寸法だけを見て畳む。
         const std::pair<uint32_t, uint32_t> entry{
             static_cast<uint32_t>(mode.dmPelsWidth),
             static_cast<uint32_t>(mode.dmPelsHeight)
         };
-        if (entry.first < 640u || entry.second < 480u) continue;
-        if (std::find(modes.begin(), modes.end(), entry) == modes.end())
+        if (entry.first < 640u || entry.second < 480u) {
+            continue;
+        }
+        if (std::find(modes.begin(), modes.end(), entry) == modes.end()) {
             modes.push_back(entry);
+        }
     }
 
-    /// @note 大きい順。Option のドロップダウンは上が最大解像度である方が選びやすい。
+    // 大きい順。Option のドロップダウンは上が最大解像度である方が選びやすい。
     std::sort(modes.begin(), modes.end(), [](const auto& a, const auto& b) {
-        if (a.first != b.first) return a.first > b.first;
+        if (a.first != b.first) {
+            return a.first > b.first;
+        }
         return a.second > b.second;
     });
 
-    /// @note 列挙に失敗するのはリモートデスクトップ等の特殊な表示ドライバー。
-    /// @note 空を返すと Option の解像度欄が消えるので、現在の寸法だけは必ず 1 つ入れる。
+    // 列挙に失敗するのはリモートデスクトップ等の特殊な表示ドライバー。
+    // 空を返すと Option の解像度欄が消えるので、現在の寸法だけは必ず 1 つ入れる。
     if (modes.empty()) {
         uint32_t width = 0, height = 0;
         GetMonitorSize(width, height);
-        if (width > 0 && height > 0) modes.emplace_back(width, height);
+        if (width > 0 && height > 0) {
+            modes.emplace_back(width, height);
+        }
     }
 
     return modes;
@@ -557,10 +608,11 @@ std::vector<std::pair<uint32_t, uint32_t>> Window::EnumerateResolutions() const
 void Window::Shutdown()
 {
     Cursor::ResetForEditor();
-    if (!m_hwnd)
+    if (!m_hwnd) {
         return;
+    }
 
-    /// @note OLE ドロップターゲットを解除する。RevokeDragDrop が最後の参照を解放し FileDropTarget を delete する。
+    // OLE ドロップターゲットを解除する。RevokeDragDrop が最後の参照を解放し FileDropTarget を delete する。
     if (m_dropTarget) {
         RevokeDragDrop(m_hwnd);
         m_dropTarget = nullptr;
@@ -578,18 +630,23 @@ void Window::Shutdown()
 void Window::SetTitle(const std::wstring& title)
 {
     m_title = title;
-    if (m_hwnd && !IsLoading())
+    if (m_hwnd && !IsLoading()) {
         SetWindowTextW(m_hwnd, title.c_str());
+    }
 }
 
 void Window::SetNativeMenu(std::vector<NativeMenuItem> menus,
                            NativeMenuCommandCallback callback)
 {
     ClearNativeMenu();
-    if (!m_hwnd) return;
+    if (!m_hwnd) {
+        return;
+    }
 
     m_nativeMenu = CreateMenu();
-    if (!m_nativeMenu) return;
+    if (!m_nativeMenu) {
+        return;
+    }
     AppendNativeMenuItems(m_nativeMenu, menus);
     m_nativeMenuCommandCallback = std::move(callback);
     SetMenu(m_hwnd, m_nativeMenu);
@@ -619,9 +676,15 @@ constexpr wchar_t LOADING_PANEL_CLASS[] = L"FBZZLoadingPanel";
 
 LRESULT CALLBACK LoadingPanelProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (msg == WM_NCHITTEST) return HTTRANSPARENT;
-    if (msg == WM_ERASEBKGND) return 1;
-    if (msg != WM_PAINT) return DefWindowProcW(hwnd, msg, wParam, lParam);
+    if (msg == WM_NCHITTEST) {
+        return HTTRANSPARENT;
+    }
+    if (msg == WM_ERASEBKGND) {
+        return 1;
+    }
+    if (msg != WM_PAINT) {
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
 
     PAINTSTRUCT paint{};
     HDC dc = BeginPaint(hwnd, &paint);
@@ -659,7 +722,9 @@ HWND CreateLoadingPanel(HWND owner, const std::wstring& status)
     windowClass.hInstance = instance;
     windowClass.lpfnWndProc = LoadingPanelProc;
     windowClass.lpszClassName = LOADING_PANEL_CLASS;
-    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        return nullptr;
+    }
     return CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, LOADING_PANEL_CLASS, status.c_str(),
         WS_POPUP | WS_BORDER, 0, 0, 0, 0, owner, nullptr, instance, nullptr);
 }
@@ -677,9 +742,10 @@ void UpdateLoadingPanel(HWND panel, HWND owner)
         center.x - width / 2 + width, center.y - height / 2 + height};
     RECT current{};
     GetWindowRect(panel, &current);
-    if (!EqualRect(&bounds, &current) || !IsWindowVisible(panel))
+    if (!EqualRect(&bounds, &current) || !IsWindowVisible(panel)) {
         SetWindowPos(panel, nullptr, bounds.left, bounds.top, width, height,
             SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
     RedrawWindow(panel, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
 }
 
@@ -700,19 +766,22 @@ void DisableOwnedWindows(HWND owner, std::vector<HWND>& disabled)
     }, std::bit_cast<LPARAM>(&enumeration));
 }
 
-} /// @note namespace
+} // namespace
 
 Window::LoadingScope::LoadingScope(Window& window, const std::wstring& status)
 {
-    if (s_loadingWindow || !window.m_hwnd) return;
+    if (s_loadingWindow || !window.m_hwnd) {
+        return;
+    }
     m_window = &window;
     s_loadingWindow = &window;
     s_nextLoadingPoll = {};
     s_showLoadingPanelAfter = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
     window.m_loadingStatus = status;
     DisableOwnedWindows(window.m_hwnd, m_disabledOwnedWindows);
-    if (const HWND capture = GetCapture(); capture && GetAncestor(capture, GA_ROOTOWNER) == window.m_hwnd)
+    if (const HWND capture = GetCapture(); capture && GetAncestor(capture, GA_ROOTOWNER) == window.m_hwnd) {
         ReleaseCapture();
+    }
     const std::wstring title = window.m_title + L" | " + status;
     SetWindowTextW(window.m_hwnd, title.c_str());
     Pump();
@@ -720,17 +789,24 @@ Window::LoadingScope::LoadingScope(Window& window, const std::wstring& status)
 
 Window::LoadingScope::~LoadingScope()
 {
-    if (!m_window) return;
+    if (!m_window) {
+        return;
+    }
     s_nextLoadingPoll = {};
     Pump();
-    if (HWND panel = std::exchange(m_window->m_loadingPanel, nullptr)) DestroyWindow(panel);
+    if (HWND panel = std::exchange(m_window->m_loadingPanel, nullptr)) {
+        DestroyWindow(panel);
+    }
     for (HWND hwnd : m_disabledOwnedWindows)
-        if (IsWindow(hwnd)) EnableWindow(hwnd, TRUE);
+        if (IsWindow(hwnd)) {
+            EnableWindow(hwnd, TRUE);
+        }
     input::Input::ResetNativeState();
     s_loadingWindow = nullptr;
     SetWindowTextW(m_window->m_hwnd, m_window->m_title.c_str());
-    if (std::exchange(m_window->m_closeAfterLoading, false))
+    if (std::exchange(m_window->m_closeAfterLoading, false)) {
         PostMessageW(m_window->m_hwnd, WM_CLOSE, 0, 0);
+    }
 }
 
 void Window::LoadingScope::Pump()
@@ -747,9 +823,13 @@ bool Window::IsLoading() const
 bool Window::PollLoadingEvents()
 {
     Window* const window = s_loadingWindow;
-    if (!window) return false;
+    if (!window) {
+        return false;
+    }
     const auto now = std::chrono::steady_clock::now();
-    if (now < s_nextLoadingPoll) return false;
+    if (now < s_nextLoadingPoll) {
+        return false;
+    }
     s_nextLoadingPoll = now + std::chrono::milliseconds(16);
 
     MSG msg{};
@@ -780,9 +860,12 @@ bool Window::PollLoadingEvents()
         }
     }
     if (now >= s_showLoadingPanelAfter && IsWindowVisible(window->m_hwnd) && !IsIconic(window->m_hwnd)) {
-        if (!window->m_loadingPanel)
+        if (!window->m_loadingPanel) {
             window->m_loadingPanel = CreateLoadingPanel(window->m_hwnd, window->m_loadingStatus);
-        if (window->m_loadingPanel) UpdateLoadingPanel(window->m_loadingPanel, window->m_hwnd);
+        }
+        if (window->m_loadingPanel) {
+            UpdateLoadingPanel(window->m_loadingPanel, window->m_hwnd);
+        }
     }
     return true;
 }
@@ -792,15 +875,17 @@ void Window::PollEvents()
     MSG msg{};
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
     {
-        if (msg.message == WM_QUIT)
+        if (msg.message == WM_QUIT) {
             m_shouldClose = true;
+        }
 
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
     if (std::exchange(m_resizeAfterLoading, false) && m_resizeCallback
-        && !m_shouldClose && IsWindow(m_hwnd) && !IsIconic(m_hwnd))
+        && !m_shouldClose && IsWindow(m_hwnd) && !IsIconic(m_hwnd)) {
         m_resizeCallback(m_width, m_height);
+    }
 }
 
 LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -817,14 +902,18 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
     /// @see https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-input 前景パケットを処理した後の DefWindowProc による解放。
     if (msg == WM_INPUT) {
-        if (!loading && GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT) ReadRelativeMouse(lParam);
+        if (!loading && GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT) {
+            ReadRelativeMouse(lParam);
+        }
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
-    /// @note ImGui フックがウィンドウメッセージを消費した場合も、安全のためのライフサイクル処理は実行する。
+    // ImGui フックがウィンドウメッセージを消費した場合も、安全のためのライフサイクル処理は実行する。
     if (msg == WM_ACTIVATEAPP) {
         Cursor::SetWindowActive(wParam != FALSE);
-        if (wParam == FALSE && GetCapture() == hwnd) ReleaseCapture();
+        if (wParam == FALSE && GetCapture() == hwnd) {
+            ReleaseCapture();
+        }
     } else if (msg == WM_ENTERSIZEMOVE) {
         Cursor::ReleaseGameInput(CursorSuspendReason::WINDOW_MOVING);
     } else if (msg == WM_SIZE && wParam == SIZE_MINIMIZED) {
@@ -841,11 +930,15 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case WM_COMMAND:
             return 0;
         case WM_SYSCOMMAND:
-            if ((wParam & 0xFFF0) == SC_KEYMENU || (wParam & 0xFFF0) == SC_MOUSEMENU) return 0;
+            if ((wParam & 0xFFF0) == SC_KEYMENU || (wParam & 0xFFF0) == SC_MOUSEMENU) {
+                return 0;
+            }
             break;
         case WM_NCLBUTTONDOWN:
         case WM_NCLBUTTONDBLCLK:
-            if (wParam == HTMENU || wParam == HTSYSMENU) return 0;
+            if (wParam == HTMENU || wParam == HTSYSMENU) {
+                return 0;
+            }
             break;
         case WM_ACTIVATEAPP:
         case WM_SIZE:
@@ -866,21 +959,24 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         }
     }
 
-    /// @note 登録済みフック (ImGui 等) に先にメッセージを渡す
+    // 登録済みフック (ImGui 等) に先にメッセージを渡す
     if (window && window->m_wndProcHook && (!loading || (msg != WM_SIZE && msg != WM_DPICHANGED)))
-        if (window->m_wndProcHook(hwnd, msg, wParam, lParam))
+        if (window->m_wndProcHook(hwnd, msg, wParam, lParam)) {
             return true;
+        }
 
-    /// @note 子ウィンドウから親へ転送された場合や非クライアント領域では既定のカーソルを保つ。
+    // 子ウィンドウから親へ転送された場合や非クライアント領域では既定のカーソルを保つ。
     /// @see https://learn.microsoft.com/en-us/windows/win32/menurc/wm-setcursor 対象 HWND、ヒットテスト、親への転送。
     if (msg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT && std::bit_cast<HWND>(wParam) == hwnd
-        && cursor_detail::TrySetWindowClientCursor(hwnd))
+        && cursor_detail::TrySetWindowClientCursor(hwnd)) {
         return TRUE;
+    }
 
     if (window && msg == WM_COMMAND && HIWORD(wParam) == 0 && lParam == 0
         && window->m_nativeMenuCommandCallback) {
-        if (window->m_nativeMenuCommandCallback(LOWORD(wParam)))
+        if (window->m_nativeMenuCommandCallback(LOWORD(wParam))) {
             return 0;
+        }
     }
 
     switch (msg)
@@ -895,51 +991,58 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
     case WM_SIZE:
     {
-        if (!window) return 0;
+        if (!window) {
+            return 0;
+        }
         const uint32_t w = LOWORD(lParam);
         const uint32_t h = HIWORD(lParam);
-        if (w == 0 || h == 0) return 0;
+        if (w == 0 || h == 0) {
+            return 0;
+        }
         window->m_width  = w;
         window->m_height = h;
-        if (loading)
+        if (loading) {
             window->m_resizeAfterLoading = true;
+        }
         else if (window->m_resizeCallback) {
             window->m_resizeAfterLoading = false;
             window->m_resizeCallback(w, h);
         }
-        /// @note 拘束中はクライアント矩形が変わった時点で拘束範囲も古くなる。
+        // 拘束中はクライアント矩形が変わった時点で拘束範囲も古くなる。
         fbzz::core::Cursor::ApplyLock();
         return 0;
     }
 
-    /// @note 拘束範囲はスクリーン座標なので、寸法が同じでも «動いた» だけで古くなる。
+    // 拘束範囲はスクリーン座標なので、寸法が同じでも «動いた» だけで古くなる。
     case WM_MOVE:
         fbzz::core::Cursor::ApplyLock();
         return 0;
 
-    /// @note ClipCursor はフォアグラウンドが変わると OS 側で外れ、ShowCursor(FALSE) は復帰時に
-    /// @note 戻す責任がこちらに残る。要求状態は Cursor が持ち «いま OS へ効かせてよいか» だけを
-    /// @note ここから渡す。無いと Alt+Tab の出入りで拘束/表示状態が復活しない。
+    // ClipCursor はフォアグラウンドが変わると OS 側で外れ、ShowCursor(FALSE) は復帰時に
+    // 戻す責任がこちらに残る。要求状態は Cursor が持ち «いま OS へ効かせてよいか» だけを
+    // ここから渡す。無いと Alt+Tab の出入りで拘束/表示状態が復活しない。
     case WM_ACTIVATEAPP:
         return 0;
 
-    /// @note DPI の異なるモニターへ移動した / 表示スケールが変更された。
+    // DPI の異なるモニターへ移動した / 表示スケールが変更された。
     case WM_DPICHANGED:
     {
-        /// @note PER_MONITOR_AWARE_V2 は非クライアント領域の再スケールのみ OS が自動処理するため、
-        /// @note ウィンドウ本体の寸法を新 DPI へ合わせるのはアプリの責務 (放置すると移動先モニターで
-        /// @note 全体が相対的に小さく/大きくなる)。lParam は OS 算出の推奨矩形 (新 DPI・フレーム込み)。
+        // PER_MONITOR_AWARE_V2 は非クライアント領域の再スケールのみ OS が自動処理するため、
+        // ウィンドウ本体の寸法を新 DPI へ合わせるのはアプリの責務 (放置すると移動先モニターで
+        // 全体が相対的に小さく/大きくなる)。lParam は OS 算出の推奨矩形 (新 DPI・フレーム込み)。
         const auto* suggested = std::bit_cast<const RECT*>(lParam);
-        if (!suggested) return 0;
+        if (!suggested) {
+            return 0;
+        }
 
         SetWindowPos(hwnd, nullptr,
                      suggested->left, suggested->top,
                      suggested->right - suggested->left,
                      suggested->bottom - suggested->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
-        /// @note クライアント寸法が変われば SetWindowPos から WM_SIZE が届き Application 側でスワップ
-        /// @note チェーンを再構築するため、直接 Resize は呼ばず WM_SIZE に任せる。ImGui のフォント/
-        /// @note スタイル倍率 (EditorTheme::SetUiScale) はユーザー明示設定なので DPI 変更で上書きしない。
+        // クライアント寸法が変われば SetWindowPos から WM_SIZE が届き Application 側でスワップ
+        // チェーンを再構築するため、直接 Resize は呼ばず WM_SIZE に任せる。ImGui のフォント/
+        // スタイル倍率 (EditorTheme::SetUiScale) はユーザー明示設定なので DPI 変更で上書きしない。
         return 0;
     }
 
@@ -966,7 +1069,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN:
     case WM_MBUTTONDOWN:
-        /// @note ウィンドウ外でもマウスイベントを受け取る
+        // ウィンドウ外でもマウスイベントを受け取る
         SetCapture(hwnd);
         fbzz::input::Input::HandleMouseButton(msg);
         return 0;
@@ -985,8 +1088,8 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return 0;
     }
     }
-    /// @note エクスプローラーからのファイルドロップは OLE の IDropTarget (FileDropTarget) で扱う。
-    /// @note WM_DROPFILES は使わない (ドラッグ中の位置が取れずハイライトできないため)。
+    // エクスプローラーからのファイルドロップは OLE の IDropTarget (FileDropTarget) で扱う。
+    // WM_DROPFILES は使わない (ドラッグ中の位置が取れずハイライトできないため)。
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }

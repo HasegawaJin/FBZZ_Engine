@@ -11,4 +11,4 @@ namespace particle_runtime_detail {
 bool StepParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& transform, float deltaTime);
 bool AdvanceParticleEmitterPlaybackAtFrame(ParticleEmitter& emitter, const Transform& transform, float deltaTime, uint64_t frame);
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

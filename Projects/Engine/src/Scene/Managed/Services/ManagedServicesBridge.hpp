@@ -23,11 +23,9 @@ namespace managed_detail {
 struct ManagedServiceResult {
     std::vector<float> values;
     std::vector<std::string> text;
-    /// @note SaveStore の既存 string だけを同期 reply encoding まで借用する。fallback/一時文字列は text が所有する。
-    std::string_view borrowedText;
+    std::string_view borrowedText; ///< SaveStore の既存 string だけを同期 reply encoding まで借用する。fallback/一時文字列は text が所有する。
     bool hasBorrowedText = false;
-    /// @note 同期 read 応答だけが Animator の既存配列を借用する。Runtime が復号を終えるまで callback を配送しない。
-    std::span<const std::pair<std::string, float>> blendWeights;
+    std::span<const std::pair<std::string, float>> blendWeights; ///< 同期 read 応答だけが Animator の既存配列を借用する。Runtime が復号を終えるまで callback を配送しない。
     int64_t integer = 0;
     GameObject* object = nullptr;
 };
@@ -62,5 +60,5 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} /// @note namespace managed_detail
-} /// @note namespace fbzz::scene
+} // namespace managed_detail
+} // namespace fbzz::scene

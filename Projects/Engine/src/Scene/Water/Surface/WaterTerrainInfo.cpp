@@ -54,10 +54,14 @@ bool ValidParameters(float waterY, float depthLimit, float threshold, float fade
 bool ValidTerrainShape(const TerrainComponent& terrain, const Transform& transform)
 {
     if (terrain.columns < 2 || terrain.rows < 2 || !std::isfinite(terrain.cellSize) || terrain.cellSize <= 0.0f
-        || !std::isfinite(terrain.maxHeight)) return false;
+        || !std::isfinite(terrain.maxHeight)) {
+        return false;
+    }
     const size_t columns = static_cast<size_t>(terrain.columns), rows = static_cast<size_t>(terrain.rows);
     if (rows > std::numeric_limits<size_t>::max() / columns || terrain.heightData.size() != columns * rows
-        || (!terrain.holeData.empty() && terrain.holeData.size() != (columns - 1) * (rows - 1))) return false;
+        || (!terrain.holeData.empty() && terrain.holeData.size() != (columns - 1) * (rows - 1))) {
+        return false;
+    }
     math::Vector3 normal;
     return Finite(transform.worldPosition) && TryTerrainNormalToWorld(transform, math::Vector3::UP, normal);
 }
@@ -84,7 +88,7 @@ bool IsUpright(const Transform& transform)
 bool SupportsLocalAtlasProjection(const Transform& transform)
 {
     const auto rotation = transform.worldRotation;
-    /// @note 高さ照会はクォータニオンの逆元を使う。領域の投影は正規化されたヨー回転に限る。
+    // 高さ照会はクォータニオンの逆元を使う。領域の投影は正規化されたヨー回転に限る。
     return rotation.x == 0.0f && rotation.z == 0.0f && std::abs(rotation.Length() - 1.0f) <= 0.000001f;
 }
 bool IsContiguousHeightPreview(const TerrainComponent& terrain, uint64_t previousRevision)
@@ -106,7 +110,9 @@ bool SourceBounds(WaterTerrainSource& source, float minHeight, float maxHeight)
         const auto& pose = source.transform;
         const auto world = pose.worldPosition + pose.worldRotation * math::Vector3{
             x * pose.worldScale.x, y * pose.worldScale.y, z * pose.worldScale.z};
-        if (!Finite(world)) return false;
+        if (!Finite(world)) {
+            return false;
+        }
         if (first) { source.boundsMin = source.boundsMax = world; first = false; }
         else {
             source.boundsMin = {(std::min)(source.boundsMin.x, world.x), (std::min)(source.boundsMin.y, world.y), (std::min)(source.boundsMin.z, world.z)};
@@ -117,11 +123,13 @@ bool SourceBounds(WaterTerrainSource& source, float minHeight, float maxHeight)
         const auto& pose = source.transform;
         const auto world = pose.worldPosition + pose.worldRotation * math::Vector3{
             local.x * pose.worldScale.x, local.y * pose.worldScale.y, local.z * pose.worldScale.z};
-        if (!Finite(world)) return false;
+        if (!Finite(world)) {
+            return false;
+        }
         source.boundsMin = {(std::min)(source.boundsMin.x, world.x), (std::min)(source.boundsMin.y, world.y), (std::min)(source.boundsMin.z, world.z)};
         source.boundsMax = {(std::max)(source.boundsMax.x, world.x), (std::max)(source.boundsMax.y, world.y), (std::max)(source.boundsMax.z, world.z)};
     }
-    /// @note TRS と鉛直 ray の丸め差で、水際の境界セルを早期除外しないよう外側へ広げる。
+    // TRS と鉛直 ray の丸め差で、水際の境界セルを早期除外しないよう外側へ広げる。
     const float marginX = (std::max)(0.0001f, 8.0f * std::numeric_limits<float>::epsilon()
         * (std::max)(std::abs(source.boundsMin.x), std::abs(source.boundsMax.x)));
     const float marginZ = (std::max)(0.0001f, 8.0f * std::numeric_limits<float>::epsilon()
@@ -132,7 +140,9 @@ bool SourceBounds(WaterTerrainSource& source, float minHeight, float maxHeight)
 }
 float ShoreFoam(double depth, float threshold, float fade)
 {
-    if (fade == 0.0f) return depth < threshold ? 1.0f : 0.0f;
+    if (fade == 0.0f) {
+        return depth < threshold ? 1.0f : 0.0f;
+    }
     const double t = (std::clamp)((depth - (static_cast<double>(threshold) - fade)) / (2.0 * fade), 0.0, 1.0);
     return static_cast<float>(1.0 - t * t * (3.0 - 2.0 * t));
 }
@@ -145,7 +155,9 @@ bool ValidWaterTerrainSource(const WaterTerrainSource& source)
 void ConsiderWaterTerrainBottom(const WaterTerrainSource& source, math::Vector2 worldXZ, WaterTerrainSample& sample)
 {
     if (worldXZ.x < source.boundsMin.x || worldXZ.x > source.boundsMax.x
-        || worldXZ.y < source.boundsMin.z || worldXZ.y > source.boundsMax.z) return;
+        || worldXZ.y < source.boundsMin.z || worldXZ.y > source.boundsMax.z) {
+        return;
+    }
     TerrainSurfaceSample bottom;
     if (TrySampleTerrainWorld(*source.terrain, source.transform, worldXZ.x, worldXZ.y, bottom)
         && (!sample.hasBottom || bottom.position.y > sample.bottomY)) {
@@ -179,11 +191,17 @@ bool WaterTerrainInfoCache::TryCollect(const Scene& scene, WaterTerrainInfoInput
     for (const EntityID id : scene.GetEntities<TerrainComponent>()) {
         auto* object = scene.GetGameObject(id);
         const auto* terrain = object ? object->GetComponent<TerrainComponent>() : nullptr;
-        if (!object || !terrain || !terrain->enabled || !object->activeInHierarchy() || terrain->heightData.empty()) continue;
-        if (!ValidTerrainShape(*terrain, object->transform)) return false;
+        if (!object || !terrain || !terrain->enabled || !object->activeInHierarchy() || terrain->heightData.empty()) {
+            continue;
+        }
+        if (!ValidTerrainShape(*terrain, object->transform)) {
+            return false;
+        }
         const uint64_t entityKey = (static_cast<uint64_t>(id.generation) << 32u) | id.index;
         const uint64_t key = scene.GetComponentLifetime<TerrainComponent>(id);
-        if (key == 0) return false;
+        if (key == 0) {
+            return false;
+        }
         live.insert(key);
         const uint64_t content = ContentSignature(*terrain);
         auto found = m_validations.find(key);
@@ -208,7 +226,7 @@ bool WaterTerrainInfoCache::TryCollect(const Scene& scene, WaterTerrainInfoInput
                 }
             };
             if (local) {
-                /// @note 従来の極値は引き続き保守的な境界として使える。傾きのない地形の XZ 境界は高さに依存しない。
+                // 従来の極値は引き続き保守的な境界として使える。傾きのない地形の XZ 境界は高さに依存しない。
                 validation.valid = true;
                 validation.conservative = true;
                 validation.minHeight = found->second.minHeight;
@@ -217,8 +235,9 @@ bool WaterTerrainInfoCache::TryCollect(const Scene& scene, WaterTerrainInfoInput
                     const auto& region = terrain->heightPreview.region;
                     const auto heights = std::span<const float>(terrain->heightData);
                     const auto width = static_cast<size_t>(region.maxX - region.minX + 1);
-                    for (int z = region.minZ; z <= region.maxZ && validation.valid; ++z)
+                    for (int z = region.minZ; z <= region.maxZ && validation.valid; ++z) {
                         validate(heights.subspan(static_cast<size_t>(z) * terrain->columns + region.minX, width));
+                    }
                 }
             } else {
                 validation.valid = IsValidTerrainSurfaceGeometry(terrain->surfacePositions, terrain->surfaceIndices);
@@ -228,9 +247,13 @@ bool WaterTerrainInfoCache::TryCollect(const Scene& scene, WaterTerrainInfoInput
             }
             found = m_validations.insert_or_assign(key, validation).first;
         }
-        if (!found->second.valid) return false;
+        if (!found->second.valid) {
+            return false;
+        }
         WaterTerrainSource source{terrain, object->transform, {}, {}, key};
-        if (!SourceBounds(source, found->second.minHeight, found->second.maxHeight)) return false;
+        if (!SourceBounds(source, found->second.minHeight, found->second.maxHeight)) {
+            return false;
+        }
         inputs.terrains.push_back(source);
         Mix(inputs.signature, entityKey); Mix(inputs.signature, key);
         Mix(inputs.signature, content); MixTransform(inputs.signature, source.transform);
@@ -244,10 +267,14 @@ bool TrySampleWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, math::Vecto
     float meanWaterY, float depthLimit, float foamThreshold, float foamFade, WaterTerrainSample& out)
 {
     if (!std::isfinite(worldXZ.x) || !std::isfinite(worldXZ.y)
-        || !ValidParameters(meanWaterY, depthLimit, foamThreshold, foamFade)) return false;
+        || !ValidParameters(meanWaterY, depthLimit, foamThreshold, foamFade)) {
+        return false;
+    }
     WaterTerrainSample sample;
     for (const auto& source : inputs.terrains) {
-        if (!ValidWaterTerrainSource(source)) return false;
+        if (!ValidWaterTerrainSource(source)) {
+            return false;
+        }
         ConsiderWaterTerrainBottom(source, worldXZ, sample);
     }
     SetWaterTerrainDepth(sample, meanWaterY, depthLimit, foamThreshold, foamFade);
@@ -280,21 +307,32 @@ bool TryWaterTerrainSignature(uint64_t sourceSignature, const WaterComponent& wa
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(view);
     const bool horizon = WaterSurfaceUsesHorizon(water, view);
     const uint32_t maxResolution = horizon ? MAX_HORIZON_WATER_TERRAIN_RESOLUTION : MAX_FINITE_WATER_TERRAIN_RESOLUTION;
-    if (!IsWaterSurfaceSupported(water, transform, view)
-        || !std::isfinite(water.buoyancyDepth) || water.buoyancyDepth < 0.0f
-        || !std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
-        || !std::isfinite(settings.depthRange) || settings.depthRange < 0.0f
-        || !ValidParameters(transform.worldPosition.y, depthRange, settings.foamThreshold, settings.foamFade)
-        || settings.width == 0 || settings.height == 0
-        || settings.width > maxResolution || settings.height > maxResolution) return false;
+    if (!IsWaterSurfaceSupported(water, transform, view)) {
+        return false;
+    }
+
+    // 地形との水深を格納するための範囲と、泡の評価パラメーターを確認する。
+    const auto isValidDepth = [](float depth) { return std::isfinite(depth) && depth >= 0.0f; };
+    if (!isValidDepth(water.buoyancyDepth) || !isValidDepth(attenuationDepth) || !isValidDepth(settings.depthRange)) {
+        return false;
+    }
+    if (!ValidParameters(transform.worldPosition.y, depthRange, settings.foamThreshold, settings.foamFade)) {
+        return false;
+    }
+    if (settings.width == 0 || settings.height == 0 || settings.width > maxResolution || settings.height > maxResolution) {
+        return false;
+    }
+
+    // ベイク結果に影響する水面形状、焼き込み範囲、設定を署名に含める。
     uint64_t signature = sourceSignature;
     MixTransform(signature, transform);
     MixFloat(signature, water.extentX); MixFloat(signature, water.extentZ); MixFloat(signature, water.buoyancyDepth);
     MixFloat(signature, attenuationDepth);
     Mix(signature, horizon);
     Mix(signature, static_cast<uint64_t>(WaterSurfaceEffectiveShape(water, view)));
-    if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view))
+    if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view)) {
         Mix(signature, geometry->signature);
+    }
     MixFloat(signature, settings.foamThreshold); MixFloat(signature, settings.foamFade);
     MixFloat(signature, settings.depthRange);
     Mix(signature, settings.width); Mix(signature, settings.height);
@@ -311,7 +349,9 @@ bool PrepareWaterTerrainAtlas(const WaterTerrainInfoInputs& inputs, const WaterC
     const Transform& transform, const WaterTerrainBakeSettings& settings, WaterTerrainInfoAtlas& atlas, AtlasMapping& mapping,
     WaterSurfaceReadView view)
 {
-    if (!TryWaterTerrainSignature(inputs.signature, water, transform, settings, atlas.signature, view)) return false;
+    if (!TryWaterTerrainSignature(inputs.signature, water, transform, settings, atlas.signature, view)) {
+        return false;
+    }
     atlas.width = settings.width; atlas.height = settings.height;
     atlas.depthRange = settings.depthRange == 0.0f ? water.buoyancyDepth : settings.depthRange;
     mapping.extent = WaterSurfaceLocalExtent(water, view);
@@ -335,12 +375,14 @@ bool PrepareWaterTerrainAtlas(const WaterTerrainInfoInputs& inputs, const WaterC
         }
         const auto center = minimum * 0.5f + maximum * 0.5f;
         const auto span = maximum - minimum;
-        /// @note 両端に空テクセルを 1 個ずつ置き、境界のクランプで最後の地形タイルが沖へ伸びないようにする。
+        // 両端に空テクセルを 1 個ずつ置き、境界のクランプで最後の地形タイルが沖へ伸びないようにする。
         const math::Vector2 padded{
             span.x + 2.0f * (std::max)(1.0f, span.x / (std::max)(1.0f, static_cast<float>(atlas.width) - 2.0f)),
             span.y + 2.0f * (std::max)(1.0f, span.y / (std::max)(1.0f, static_cast<float>(atlas.height) - 2.0f))};
         if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(padded.x)
-            || !std::isfinite(padded.y) || padded.x <= 0.0f || padded.y <= 0.0f) return false;
+            || !std::isfinite(padded.y) || padded.x <= 0.0f || padded.y <= 0.0f) {
+            return false;
+        }
         const float scaleX = std::abs(transform.worldScale.x), scaleZ = std::abs(transform.worldScale.z);
         atlas.domain = {center.x, center.y, padded.x, padded.y};
         mapping.center = {center.x / scaleX, center.y / scaleZ};
@@ -353,7 +395,9 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
     const Transform& transform, const WaterTerrainBakeSettings& settings, const AtlasMapping& mapping,
     const TerrainHeightRegion& region, WaterTerrainInfoAtlas& atlas, WaterSurfaceReadView view)
 {
-    if (region.Empty()) return true;
+    if (region.Empty()) {
+        return true;
+    }
     const auto world = transform.GetWorldMatrix();
     const bool usesGeometry = UsesWaterSurfaceGeometry(water, view);
     const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view);
@@ -367,19 +411,27 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
     const auto bake = [&](const TerrainHeightRegion& area, std::span<const WaterTerrainSource* const> sources) {
         for (int z = area.minZ; z <= area.maxZ; ++z) for (int x = area.minX; x <= area.maxX; ++x) {
             const auto point = worldAt(x, z);
-            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) return false;
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
+                return false;
+            }
             float meanWaterY = point.y;
             WaterSplineSample spline;
             if (usesGeometry) {
-                if (!geometry || !TrySampleWaterSpline(*geometry, point.x, point.z, spline)) continue;
+                if (!geometry || !TrySampleWaterSpline(*geometry, point.x, point.z, spline)) {
+                    continue;
+                }
                 meanWaterY = spline.baseHeight;
             }
             WaterTerrainSample sample;
-            if (!validSources || !std::isfinite(meanWaterY)) return false;
-            for (const auto* source : sources) ConsiderWaterTerrainBottom(*source, {point.x, point.z}, sample);
+            if (!validSources || !std::isfinite(meanWaterY)) {
+                return false;
+            }
+            for (const auto* source : sources) {
+                ConsiderWaterTerrainBottom(*source, {point.x, point.z}, sample);
+            }
             SetWaterTerrainDepth(sample, meanWaterY, atlas.depthRange, settings.foamThreshold, settings.foamFade);
             if (usesGeometry) {
-                /// @note Splineの指定水深は仮想の底を持つ。地形の底がさらに浅ければ、そちらを水深情報へ使う。
+                // Splineの指定水深は仮想の底を持つ。地形の底がさらに浅ければ、そちらを水深情報へ使う。
                 sample.signedDepth = sample.hasBottom
                     ? (std::min)(sample.signedDepth, static_cast<double>(spline.depth))
                     : static_cast<double>(spline.depth);
@@ -401,7 +453,9 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
         }
         return true;
     };
-    if (!validSources || inputs.terrains.empty()) return bake(region, {});
+    if (!validSources || inputs.terrains.empty()) {
+        return bake(region, {});
+    }
     if (inputs.terrains.size() == 1u) {
         const std::array source{inputs.terrains.data()};
         return bake(region, source);
@@ -409,7 +463,9 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
 
     SourceList sources;
     sources.reserve(inputs.terrains.size());
-    for (const auto& source : inputs.terrains) sources.push_back(&source);
+    for (const auto& source : inputs.terrains) {
+        sources.push_back(&source);
+    }
     constexpr int TILE_SIZE = 16;
     constexpr size_t MAX_TILE_DEPTH = std::bit_width(MAX_HORIZON_WATER_TERRAIN_RESOLUTION);
     std::array<SourceList, MAX_TILE_DEPTH> candidatesAtDepth;
@@ -420,9 +476,11 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
         const auto bottomLeft = worldAt(area.minX, area.maxZ);
         const auto bottomRight = worldAt(area.maxX, area.maxZ);
         for (const auto& point : {topLeft, topRight, bottomLeft, bottomRight})
-            if (!std::isfinite(point.x) || !std::isfinite(point.z)) return bake(area, parent);
+            if (!std::isfinite(point.x) || !std::isfinite(point.z)) {
+                return bake(area, parent);
+            }
 
-        /// @note 基準のテクセル写像は、単精度の丸めを含めてもアトラスの各軸で対応するワールド座標に対して単調。
+        // 基準のテクセル写像は、単精度の丸めを含めてもアトラスの各軸で対応するワールド座標に対して単調。
         const float minX = (std::min)({topLeft.x, topRight.x, bottomLeft.x, bottomRight.x});
         const float maxX = (std::max)({topLeft.x, topRight.x, bottomLeft.x, bottomRight.x});
         const float minZ = (std::min)({topLeft.z, topRight.z, bottomLeft.z, bottomRight.z});
@@ -440,7 +498,9 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
         }
         const bool splitX = area.maxX - area.minX >= TILE_SIZE;
         const bool splitZ = area.maxZ - area.minZ >= TILE_SIZE;
-        if (covered || candidates.size() <= 1u || (!splitX && !splitZ)) return bake(area, candidates);
+        if (covered || candidates.size() <= 1u || (!splitX && !splitZ)) {
+            return bake(area, candidates);
+        }
         const int midX = splitX ? (area.minX + area.maxX) / 2 : area.maxX;
         const int midZ = splitZ ? (area.minZ + area.maxZ) / 2 : area.maxZ;
         return self(self, {area.minX, area.minZ, midX, midZ}, candidates, depth + 1u)
@@ -482,23 +542,29 @@ bool TryAtlasEditRegion(const WaterTerrainSource& source, const Transform& water
     const auto terrainForward = terrainInverse * math::Vector3{0.0f, 0.0f, 1.0f};
     const double terrainDeterminant = static_cast<double>(terrainRight.x) * terrainForward.z
         - static_cast<double>(terrainForward.x) * terrainRight.z;
-    if (!std::isfinite(terrainDeterminant) || terrainDeterminant == 0.0) return false;
+    if (!std::isfinite(terrainDeterminant) || terrainDeterminant == 0.0) {
+        return false;
+    }
     const auto waterWorld = waterTransform.GetWorldMatrix();
     const double a = waterWorld.m[0][0], b = waterWorld.m[0][2];
     const double c = waterWorld.m[2][0], d = waterWorld.m[2][2];
     const double determinant = a * d - b * c;
-    if (!std::isfinite(determinant) || determinant == 0.0) return false;
+    if (!std::isfinite(determinant) || determinant == 0.0) {
+        return false;
+    }
     const auto coordinateScale = (std::max)({std::abs(source.boundsMin.x), std::abs(source.boundsMin.z),
         std::abs(source.boundsMax.x), std::abs(source.boundsMax.z), std::abs(waterTransform.worldPosition.x),
         std::abs(waterTransform.worldPosition.z), 1.0f});
     const double worldMargin = coordinateScale * 32.0 * std::numeric_limits<float>::epsilon();
     const double texelWorldX = std::abs(static_cast<double>(mapping.extent.x) * waterTransform.worldScale.x) / atlas.width;
     const double texelWorldZ = std::abs(static_cast<double>(mapping.extent.y) * waterTransform.worldScale.z) / atlas.height;
-    if (worldMargin >= (std::min)(texelWorldX, texelWorldZ)) return false;
+    if (worldMargin >= (std::min)(texelWorldX, texelWorldZ)) {
+        return false;
+    }
     double lowX = std::numeric_limits<double>::infinity(), lowZ = lowX;
     double highX = -lowX, highZ = -lowX;
     for (const int x : {minX, maxX}) for (const int z : {minZ, maxZ}) {
-        /// @note 高さ場の鉛直照会が入力セルを特定するために使う XZ 写像と同じ写像を逆変換する。
+        // 高さ場の鉛直照会が入力セルを特定するために使う XZ 写像と同じ写像を逆変換する。
         const double terrainX = static_cast<double>(x) * terrain.cellSize * pose.worldScale.x;
         const double terrainZ = static_cast<double>(z) * terrain.cellSize * pose.worldScale.z;
         const double worldX = (terrainX * terrainForward.z - terrainForward.x * terrainZ) / terrainDeterminant + pose.worldPosition.x;
@@ -509,13 +575,15 @@ bool TryAtlasEditRegion(const WaterTerrainSource& source, const Transform& water
         const double localZ = (a * dz - dx * c) / determinant;
         const double u = (localX - mapping.center.x) / mapping.extent.x;
         const double v = (localZ - mapping.center.y) / mapping.extent.y;
-        if (!std::isfinite(u) || !std::isfinite(v)) return false;
+        if (!std::isfinite(u) || !std::isfinite(v)) {
+            return false;
+        }
         lowX = (std::min)(lowX, (u + 0.5) * atlas.width);
         highX = (std::max)(highX, (u + 0.5) * atlas.width);
         lowZ = (std::min)(lowZ, (v + 0.5) * atlas.height);
         highZ = (std::max)(highZ, (v + 0.5) * atlas.height);
     }
-    /// @note テクセルを 1 個余分に含め、ワールド座標への順変換と逆変換の丸め差を吸収する。
+    // テクセルを 1 個余分に含め、ワールド座標への順変換と逆変換の丸め差を吸収する。
     const auto low = [](double value, uint32_t limit) {
         return static_cast<int>((std::clamp)(std::floor(value) - 1.0, 0.0, static_cast<double>(limit)));
     };
@@ -541,10 +609,13 @@ bool TryBakeWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, const WaterCo
 {
     WaterTerrainInfoAtlas atlas;
     AtlasMapping mapping;
-    if (!PrepareWaterTerrainAtlas(inputs, water, transform, settings, atlas, mapping, view)) return false;
-    atlas.rgba.resize(static_cast<size_t>(atlas.width) * atlas.height * 4u);
-    if (!BakeWaterTerrainAtlasRegion(inputs, water, transform, settings, mapping, FullAtlasRegion(atlas), atlas, view))
+    if (!PrepareWaterTerrainAtlas(inputs, water, transform, settings, atlas, mapping, view)) {
         return false;
+    }
+    atlas.rgba.resize(static_cast<size_t>(atlas.width) * atlas.height * 4u);
+    if (!BakeWaterTerrainAtlasRegion(inputs, water, transform, settings, mapping, FullAtlasRegion(atlas), atlas, view)) {
+        return false;
+    }
     out = std::move(atlas);
     return true;
 }
@@ -554,7 +625,9 @@ bool WaterTerrainInfoAtlasCache::TryBake(const WaterTerrainInfoInputs& inputs, c
     WaterSurfaceReadView view)
 {
     std::shared_ptr<const WaterTerrainInfoAtlas> snapshot;
-    if (!TryBakeSnapshot(inputs, water, transform, settings, snapshot, view)) return false;
+    if (!TryBakeSnapshot(inputs, water, transform, settings, snapshot, view)) {
+        return false;
+    }
     out = *snapshot;
     return true;
 }
@@ -565,11 +638,16 @@ bool WaterTerrainInfoAtlasCache::TryBakeSnapshot(const WaterTerrainInfoInputs& i
 {
     WaterTerrainInfoAtlas atlas;
     AtlasMapping mapping;
-    if (!PrepareWaterTerrainAtlas(inputs, water, transform, settings, atlas, mapping, view)) return false;
+    if (!PrepareWaterTerrainAtlas(inputs, water, transform, settings, atlas, mapping, view)) {
+        return false;
+    }
     uint64_t layout = 0;
-    if (!TryWaterTerrainSignature(HASH_BASIS, water, transform, settings, layout, view)) return false;
-    for (const float coordinate : {mapping.center.x, mapping.center.y, mapping.extent.x, mapping.extent.y})
+    if (!TryWaterTerrainSignature(HASH_BASIS, water, transform, settings, layout, view)) {
+        return false;
+    }
+    for (const float coordinate : {mapping.center.x, mapping.center.y, mapping.extent.x, mapping.extent.y}) {
         MixFloat(layout, coordinate);
+    }
 
     std::vector<SourceVersion> sources;
     sources.reserve(inputs.terrains.size());
@@ -578,11 +656,15 @@ bool WaterTerrainInfoAtlasCache::TryBakeSnapshot(const WaterTerrainInfoInputs& i
     TerrainHeightRegion changed;
     for (size_t i = 0; i < inputs.terrains.size(); ++i) {
         const auto& source = inputs.terrains[i];
-        if (!source.terrain || !Finite(source.boundsMin) || !Finite(source.boundsMax)) return false;
+        if (!source.terrain || !Finite(source.boundsMin) || !Finite(source.boundsMax)) {
+            return false;
+        }
         const auto& terrain = *source.terrain;
         const auto& current = sources.emplace_back(SourceVersion{
             SourceLayout(source), ContentSignature(terrain), terrain.surfaceRevision});
-        if (!local) continue;
+        if (!local) {
+            continue;
+        }
         const auto& previous = m_sources[i];
         if (source.lifetime == 0 || current.layout != previous.layout) {
             local = false;
@@ -597,7 +679,9 @@ bool WaterTerrainInfoAtlasCache::TryBakeSnapshot(const WaterTerrainInfoInputs& i
         atlas.rgba.resize(static_cast<size_t>(atlas.width) * atlas.height * 4u);
         changed = FullAtlasRegion(atlas);
     }
-    if (!BakeWaterTerrainAtlasRegion(inputs, water, transform, settings, mapping, changed, atlas, view)) return false;
+    if (!BakeWaterTerrainAtlasRegion(inputs, water, transform, settings, mapping, changed, atlas, view)) {
+        return false;
+    }
     auto snapshot = std::make_shared<const WaterTerrainInfoAtlas>(std::move(atlas));
     m_layout = layout;
     m_sources = std::move(sources);
@@ -608,11 +692,15 @@ bool WaterTerrainInfoAtlasCache::TryBakeSnapshot(const WaterTerrainInfoInputs& i
 
 bool TryDecodeWaterTerrainDepth(uint8_t highByte, uint8_t lowByte, float depthRange, float& out)
 {
-    if (!std::isfinite(depthRange) || depthRange <= 0.0f) return false;
+    if (!std::isfinite(depthRange) || depthRange <= 0.0f) {
+        return false;
+    }
     const uint32_t word = (static_cast<uint32_t>(highByte) << 8u) | lowByte;
     const double depth = (static_cast<double>(word) / 65535.0 * 2.0 - 1.0) * depthRange;
     const float result = static_cast<float>(depth);
-    if (!std::isfinite(result)) return false;
+    if (!std::isfinite(result)) {
+        return false;
+    }
     out = result;
     return true;
 }

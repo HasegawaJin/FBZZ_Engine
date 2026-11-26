@@ -14,11 +14,11 @@
 namespace fbzz::asset {
 
 /// @brief 画像を読み、kFluidSourceMaskSize² へ縮めて «輝度 × α» のマスクにする。
-/// @param path Assets 相対・guid:・実パスのどれでもよい。Sprite 参照
+/// @param[in] path Assets 相対・guid:・実パスのどれでもよい。Sprite 参照
 /// @note ("<画像>::sprite::<ID または名前>") ならその 1 コマだけを切り抜いて縮める。
 /// @return 失敗したら false (out は空のまま)。理由は outError へ。
 /// @note どのスレッドから呼んでもよい (WIC を使わない)。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out,
                                        std::string* outError = nullptr);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

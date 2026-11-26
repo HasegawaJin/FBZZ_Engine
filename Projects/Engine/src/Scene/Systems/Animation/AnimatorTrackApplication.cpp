@@ -22,8 +22,9 @@ namespace fbzz::scene::animator_detail {
 /// @return 見つからなければ nullptr。
 GameObject* FindAnimationTarget(GameObject& root, const std::string_view pathView)
 {
-    if (pathView.empty() || pathView == "." || pathView == std::string_view{ root.name })
+    if (pathView.empty() || pathView == "." || pathView == std::string_view{ root.name }) {
         return &root;
+    }
 
     GameObject* current = &root;
     size_t begin = 0;
@@ -32,7 +33,9 @@ GameObject* FindAnimationTarget(GameObject& root, const std::string_view pathVie
         const std::string_view part = pathView.substr(
             begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
         begin = end == std::string_view::npos ? pathView.size() : end + 1;
-        if (part.empty() || (current == &root && part == std::string_view{ root.name })) continue;
+        if (part.empty() || (current == &root && part == std::string_view{ root.name })) {
+            continue;
+        }
         GameObject* next = nullptr;
         for (int i = 0; i < current->GetChildCount(); ++i) {
             GameObject* child = current->GetChild(i);
@@ -41,7 +44,9 @@ GameObject* FindAnimationTarget(GameObject& root, const std::string_view pathVie
                 break;
             }
         }
-        if (!next) return nullptr;
+        if (!next) {
+            return nullptr;
+        }
         current = next;
     }
     return current;
@@ -56,15 +61,19 @@ GameObject* FindAnimationBoneByNameRecursive(GameObject& current,
 {
     if (auto* bone = current.GetComponent<BoneComponent>()) {
         if (asset::CanonicalNodeName(bone->boneName) == canonicalName ||
-            asset::CanonicalNodeName(current.name) == canonicalName)
+            asset::CanonicalNodeName(current.name) == canonicalName) {
             return &current;
+        }
     }
 
     for (int i = 0; i < current.GetChildCount(); ++i) {
         GameObject* child = current.GetChild(i);
-        if (!child) continue;
-        if (GameObject* found = FindAnimationBoneByNameRecursive(*child, canonicalName))
+        if (!child) {
+            continue;
+        }
+        if (GameObject* found = FindAnimationBoneByNameRecursive(*child, canonicalName)) {
             return found;
+        }
     }
     return nullptr;
 }
@@ -73,12 +82,17 @@ GameObject* FindAnimationBoneByNameRecursive(GameObject& current,
 /// @note submesh は MaterialComponent のスロットなので、どのスロットへ書くかは ApplyMaterialProperty が決める。
 GameObject* FindMaterialSlotTarget(GameObject& root)
 {
-    if (root.GetComponent<SkinnedMeshRenderer>() && root.GetComponent<MaterialComponent>())
+    if (root.GetComponent<SkinnedMeshRenderer>() && root.GetComponent<MaterialComponent>()) {
         return &root;
+    }
     for (int i = 0; i < root.GetChildCount(); ++i) {
         GameObject* child = root.GetChild(i);
-        if (!child) continue;
-        if (GameObject* found = FindMaterialSlotTarget(*child)) return found;
+        if (!child) {
+            continue;
+        }
+        if (GameObject* found = FindMaterialSlotTarget(*child)) {
+            return found;
+        }
     }
     return nullptr;
 }
@@ -88,7 +102,9 @@ GameObject* FindMaterialSlotTarget(GameObject& root)
 GameObject* FindAnimationTargetByNodeName(GameObject& root, std::string_view nodeName)
 {
     const std::string canonicalName = asset::CanonicalNodeName(nodeName);
-    if (canonicalName.empty()) return nullptr;
+    if (canonicalName.empty()) {
+        return nullptr;
+    }
     return FindAnimationBoneByNameRecursive(root, canonicalName);
 }
 
@@ -99,7 +115,9 @@ void ApplyTransformTracks(GameObject& root,
     for (const auto& track : clip.tracks) {
         GameObject* target = track.targetPath.empty()
             ? nullptr : FindAnimationTarget(root, track.targetPath);
-        if (!target) continue;
+        if (!target) {
+            continue;
+        }
         target->transform.position = SampleVectorKeys(
             track.positions, ticks, target->transform.position, track.interp);
         target->transform.rotation = SampleQuaternionKeys(
@@ -116,17 +134,23 @@ void ApplyPropertyTracks(GameObject& root,
 {
     for (const auto& track : clip.propertyTracks) {
         if (track.targetType == asset::AnimTargetType::MorphWeight) {
-            if (smr && !track.floatKeys.empty())
+            if (smr && !track.floatKeys.empty()) {
                 smr->morphWeights[track.propertyName] =
                     SampleFloatKeys(track.floatKeys, ticks, track.interp);
+            }
             continue;
         }
-        if (track.targetPath.empty()) continue;
+        if (track.targetPath.empty()) {
+            continue;
+        }
         GameObject* target = FindAnimationTarget(root, track.targetPath);
         if (track.targetType == asset::AnimTargetType::MaterialProperty &&
-            (!target || !target->GetComponent<MaterialComponent>()))
+            (!target || !target->GetComponent<MaterialComponent>())) {
             target = FindMaterialSlotTarget(root);
-        if (!target) continue;
+        }
+        if (!target) {
+            continue;
+        }
         switch (track.targetType) {
         case asset::AnimTargetType::ComponentProperty:
             ApplyComponentProperty(*target, track, ticks);
@@ -148,19 +172,25 @@ void DispatchAnimationEvents(GameObject& owner,
                              bool looped,
                              bool reverse)
 {
-    if (clip.events.empty()) return;
+    if (clip.events.empty()) {
+        return;
+    }
     ScriptComponent* scripts = owner.GetComponent<ScriptComponent>();
     const float duration = static_cast<float>(clip.GetDurationSeconds());
     for (const auto& event : clip.events) {
         const float eventTime = static_cast<float>(event.time);
         bool crossed = false;
-        if (!reverse)
+        if (!reverse) {
             crossed = looped ? (eventTime > previousTime || eventTime <= currentTime)
                              : (eventTime > previousTime && eventTime <= currentTime);
-        else
+        }
+        else {
             crossed = looped ? (eventTime < previousTime || eventTime >= currentTime)
                              : (eventTime < previousTime && eventTime >= currentTime);
-        if (!crossed || eventTime < 0.0f || eventTime > duration) continue;
+        }
+        if (!crossed || eventTime < 0.0f || eventTime > duration) {
+            continue;
+        }
         const AnimationEventInfo info{
             event.name.c_str(), event.intParam, event.floatParam, eventTime
         };
@@ -168,8 +198,9 @@ void DispatchAnimationEvents(GameObject& owner,
             event.name, event.intParam, event.floatParam, eventTime, Time::frameCount });
         if (scripts != nullptr)
             for (auto& entry : scripts->scripts)
-                if (entry.script)
+                if (entry.script) {
                     entry.script->ExecuteProfiledCallback(&Script::OnAnimationEvent, info, ScriptCallbackKind::ANIMATION_EVENT, "OnAnimationEvent");
+                }
     }
 }
 

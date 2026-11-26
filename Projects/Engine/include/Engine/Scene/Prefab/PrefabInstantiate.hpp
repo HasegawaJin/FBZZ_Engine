@@ -59,19 +59,19 @@ FBZZ_ENGINE_API void RemapPrefabObjectReferences(toml::table& object,
 /// @brief プレファブ定義とインスタンスの差分 1 件。
 /// @note path は GO テーブル内のドット区切りパス (例 `transform.position`, `LightComponent.intensity`)。
 struct PrefabOverride {
-    std::string prefabSourceId; ///< @note プレファブ側 GO の instanceId (対応キー)
-    std::string instanceGuid;   ///< @note インスタンス側 GO の instanceId
-    std::string objectName;     ///< @note 表示用 (インスタンス側の名前)
-    std::string path;           ///< @note 差分のあったプロパティパス
-    std::string prefabValue;    ///< @note 表示用の元値
-    std::string instanceValue;  ///< @note 表示用の現在値
+    std::string prefabSourceId; ///< プレファブ側 GO の instanceId (対応キー)
+    std::string instanceGuid; ///< インスタンス側 GO の instanceId
+    std::string objectName; ///< 表示用 (インスタンス側の名前)
+    std::string path; ///< 差分のあったプロパティパス
+    std::string prefabValue; ///< 表示用の元値
+    std::string instanceValue; ///< 表示用の現在値
 };
 
 /// @brief 1 インスタンス階層ぶんの差分と、パッチ適用に必要な現在値のスナップショット。
 struct PrefabOverrideSet {
-    std::string prefabAssetPath; ///< @note GUID 参照。旧パスも読み取る。
+    std::string prefabAssetPath; ///< GUID 参照。旧パスも読み取る。
     std::vector<PrefabOverride> entries;
-    bool hasStructuralOverrides = false; ///< @note 子の追加・削除・親変更は自動更新で失わないよう拒否する。
+    bool hasStructuralOverrides = false; ///< 子の追加・削除・親変更は自動更新で失わないよう拒否する。
     /// @brief prefabSourceId → そのインスタンス GO の現在のシリアライズ表現。
     /// @note entries は「どのパスが違うか」しか持たないため、値の書き戻しはここから引く。
     std::unordered_map<std::string, toml::table> instanceTables;
@@ -106,9 +106,9 @@ FBZZ_ENGINE_API void RemapCopiedObjectReferences(Scene& source, Scene& destinati
                                  std::span<const EntityID> copiedOwners);
 
 /// @brief プレファブアセットを展開してシーンへ追加する。
-/// @param path 絶対パスまたはプロジェクトルートからのパス。拡張子が無ければ .prefab を補う。
-/// @param overrides 渡すと展開後に該当プロパティだけをその値で上書きする (個別調整を保ったまま作り直す用)。
-/// @param preserveGuids プレファブ側 instanceId → 生成後に名乗らせたい instanceId。Revert/Apply の作り直し経路で使う。
+/// @param[in] path 絶対パスまたはプロジェクトルートからのパス。拡張子が無ければ .prefab を補う。
+/// @param[in] overrides 渡すと展開後に該当プロパティだけをその値で上書きする (個別調整を保ったまま作り直す用)。
+/// @param[in] preserveGuids プレファブ側 instanceId → 生成後に名乗らせたい instanceId。Revert/Apply の作り直し経路で使う。
 /// @note GPU が無い場合はデータだけを復元する。既存実体の差し替えは ReplacePrefabInstanceAsset を使う。
 /// @note 渡した guid が既にシーンで使われていないことは呼び出し側の責任。表に無い分は新規採番する。
 FBZZ_ENGINE_API bool InstantiatePrefabAsset(Scene& scene,

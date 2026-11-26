@@ -69,4 +69,4 @@ inline constexpr float GAMEPAD_TRIGGER_BUTTON_THRESHOLD = 0.5f;
 [[nodiscard]] FBZZ_ENGINE_API bool ParseGamepadButton(const char* name, GamepadButton& out) noexcept;
 [[nodiscard]] FBZZ_ENGINE_API bool ParseGamepadAxis(const char* name, GamepadAxis& out) noexcept;
 
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

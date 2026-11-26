@@ -13,13 +13,16 @@ namespace fbzz::scene::detail {
 template<class Work>
 auto RunSceneLoadWork(Work&& work, void (*pump)())
 {
-    if (!pump || TaskSystem::WorkerCount() == 0) return work();
+    if (!pump || TaskSystem::WorkerCount() == 0) {
+        return work();
+    }
 
     auto result = TaskSystem::Submit(std::forward<Work>(work));
-    while (result.wait_for(std::chrono::milliseconds(16)) != std::future_status::ready)
+    while (result.wait_for(std::chrono::milliseconds(16)) != std::future_status::ready) {
         pump();
+    }
     pump();
     return result.get();
 }
 
-} /// @note namespace fbzz::scene::detail
+} // namespace fbzz::scene::detail

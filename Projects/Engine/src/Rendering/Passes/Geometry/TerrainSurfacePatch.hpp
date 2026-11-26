@@ -46,4 +46,4 @@ inline TerrainSurfacePatchData BuildTerrainSurfacePatch(const TerrainComponent& 
     }
     return result;
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

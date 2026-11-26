@@ -15,10 +15,18 @@ namespace fbzz::asset {
 namespace {
 using math::Vector3;
 constexpr auto CONTENT_KIND = MakeFourCC('W', 'F', 'L', '1');
+constexpr int MIN_GRID_RESOLUTION = 24;
+constexpr int MAX_GRID_RESOLUTION = 64;
+constexpr int MIN_FRAMES = 8;
 constexpr int MAX_FRAMES = 120;
+constexpr int MIN_FRAMES_PER_SECOND = 12;
+constexpr int MAX_FRAMES_PER_SECOND = 30;
+constexpr int MIN_PARTICLES_PER_SECOND = 100;
+constexpr int MAX_PARTICLES_PER_SECOND = 3000;
 constexpr std::size_t MAX_VERTICES = 65535;
 constexpr std::size_t MAX_INDICES = 360000;
 constexpr std::size_t MAX_CLIP_BYTES = 64 * 1024 * 1024;
+constexpr char INVALID_BAKE_SETTINGS[] = "Invalid waterfall fluid bake settings.";
 
 struct ClipInfo {
     std::uint32_t frameCount;
@@ -54,7 +62,9 @@ std::size_t Index(int n, int x, int y, int z)
 
 float TerrainHeight(const WaterfallFluidBakeInput& input, float x, float z)
 {
-    if (input.ground.empty()) return -2.0f;
+    if (input.ground.empty()) {
+        return -2.0f;
+    }
     const float scale = 0.5f * static_cast<float>(input.grid - 1);
     const float u = std::clamp(x + 1.0f, 0.0f, 2.0f) * scale;
     const float v = std::clamp(z + 1.0f, 0.0f, 2.0f) * scale;
@@ -68,7 +78,9 @@ float TerrainHeight(const WaterfallFluidBakeInput& input, float x, float z)
 float ObstacleDistance(const WaterfallFluidObstacle& obstacle, const Vector3& point)
 {
     const Vector3 offset = point - obstacle.center;
-    if (obstacle.sphereRadius > 0.0f) return offset.Length() - obstacle.sphereRadius;
+    if (obstacle.sphereRadius > 0.0f) {
+        return offset.Length() - obstacle.sphereRadius;
+    }
     const Vector3 local = obstacle.rotation.Conjugate() * offset;
     const Vector3 q{std::abs(local.x) - obstacle.halfSize.x, std::abs(local.y) - obstacle.halfSize.y,
         std::abs(local.z) - obstacle.halfSize.z};
@@ -89,11 +101,15 @@ bool SampleContact(const void* context, const Vector3& point, float radius, flui
         const float dz = TerrainHeight(input, point.x, point.z + delta) - TerrainHeight(input, point.x, point.z - delta);
         const auto normal = Vector3{-dx, 2.0f * delta, -dz}.NormalizedOr(Vector3::UP);
         terrain *= normal.y;
-        if (terrain < out.distance) out = {normal, terrain, 0.12f};
+        if (terrain < out.distance) {
+            out = {normal, terrain, 0.12f};
+        }
     }
     for (const auto& obstacle : input.obstacles) {
         const float distance = ObstacleDistance(obstacle, point);
-        if (distance >= radius * 1.05f || distance >= out.distance) continue;
+        if (distance >= radius * 1.05f || distance >= out.distance) {
+            continue;
+        }
         const Vector3 dx{delta, 0.0f, 0.0f}, dy{0.0f, delta, 0.0f}, dz{0.0f, 0.0f, delta};
         const Vector3 gradient{ObstacleDistance(obstacle, point + dx) - ObstacleDistance(obstacle, point - dx),
             ObstacleDistance(obstacle, point + dy) - ObstacleDistance(obstacle, point - dy),
@@ -106,7 +122,7 @@ bool SampleContact(const void* context, const Vector3& point, float radius, flui
 bool Drain(const void* context, const Vector3& point, const Vector3& velocity)
 {
     const auto& input = *static_cast<const WaterfallFluidBakeInput*>(context);
-    /// @note 流入粒子が衝突面へ到達してから、落ち着いた水を吸収する。
+    // 流入粒子が衝突面へ到達してから、落ち着いた水を吸収する。
     return std::abs(point.x) > 1.0f || std::abs(point.z) > 1.0f || point.y > 1.0f
         || (point.y < input.receiverHeight + 0.06f && std::abs(velocity.y) < 0.09f);
 }
@@ -126,7 +142,9 @@ void Splat(const fluid::FluidLiquidSolver& solver, const WaterfallFluidBakeInput
                 for (int x = first(center.x); x <= last(center.x); ++x) {
                     const float q = 1.0f - (Vector3{static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)}
                         - center).LengthSq() / (radius * radius);
-                    if (q > 0.0f) density[Index(n, x, y, z)] += q * q * q;
+                    if (q > 0.0f) {
+                        density[Index(n, x, y, z)] += q * q * q;
+                    }
                 }
     }
 }
@@ -150,10 +168,16 @@ bool ExtractSurface(const WaterfallFluidBakeInput& input, const std::vector<floa
                 for (unsigned int corner = 0; corner < samples.size(); ++corner) {
                     samples[corner] = density[Index(n, x + (corner & 1), y + ((corner >> 1) & 1),
                         z + (corner >> 2))];
-                    if (samples[corner] >= iso) inside |= 1u << corner;
+                    if (samples[corner] >= iso) {
+                        inside |= 1u << corner;
+                    }
                 }
-                if (inside == 0 || inside == 255) continue;
-                if (vertices.size() >= MAX_VERTICES) return false;
+                if (inside == 0 || inside == 255) {
+                    continue;
+                }
+                if (vertices.size() >= MAX_VERTICES) {
+                    return false;
+                }
 
                 const auto offset = [](unsigned int corner) {
                     return Vector3{static_cast<float>(corner & 1), static_cast<float>((corner >> 1) & 1),
@@ -164,7 +188,9 @@ bool ExtractSurface(const WaterfallFluidBakeInput& input, const std::vector<floa
                 for (unsigned int axis = 0; axis < 3; ++axis) {
                     const unsigned int bit = 1u << axis;
                     for (unsigned int low = 0; low < samples.size(); ++low) {
-                        if (low & bit) continue;
+                        if (low & bit) {
+                            continue;
+                        }
                         const auto high = low | bit;
                         const float difference = samples[low] - samples[high];
                         gradient += offset(bit) * difference;
@@ -191,13 +217,20 @@ bool ExtractSurface(const WaterfallFluidBakeInput& input, const std::vector<floa
                 const std::array coords{x, y, z};
                 for (unsigned int axis = 0; axis < 3; ++axis) {
                     const auto u = (axis + 1) % 3, v = (axis + 2) % 3;
-                    if (coords[u] == 0 || coords[v] == 0 || ((inside ^ (inside >> (1u << axis))) & 1u) == 0) continue;
+                    if (coords[u] == 0 || coords[v] == 0 || ((inside ^ (inside >> (1u << axis))) & 1u) == 0) {
+                        continue;
+                    }
                     const int a = cells[cell], b = cells[cell - strides[u]];
                     const int c = cells[cell - strides[u] - strides[v]], d = cells[cell - strides[v]];
-                    if ((std::min)({b, c, d}) < 0) continue;
-                    if (indices.size() + 6 > MAX_INDICES) return false;
-                    for (int index : (inside & 1u) ? std::array{a, b, c, a, c, d} : std::array{a, d, c, a, c, b})
+                    if ((std::min)({b, c, d}) < 0) {
+                        continue;
+                    }
+                    if (indices.size() + 6 > MAX_INDICES) {
+                        return false;
+                    }
+                    for (int index : (inside & 1u) ? std::array{a, b, c, a, c, d} : std::array{a, d, c, a, c, b}) {
                         indices.push_back(static_cast<std::uint16_t>(index));
+                    }
                 }
             }
     return true;
@@ -227,22 +260,41 @@ fluid::FluidRecipe MakeRecipe(const WaterfallFluidBakeInput& input, float durati
     }
     return recipe;
 }
-} /// @note namespace
+} // namespace
 
 std::string BakeWaterfallFluidClip(const WaterfallFluidBakeInput& input, const std::string& path,
     const std::atomic<bool>& cancel, std::atomic<int>& progress)
 {
+    // グリッドとフレーム数を先に制限し、後続の配列サイズとシミュレーション量を抑える。
+    if (input.grid < MIN_GRID_RESOLUTION || input.grid > MAX_GRID_RESOLUTION) {
+        return INVALID_BAKE_SETTINGS;
+    }
+    if (input.frameCount < MIN_FRAMES || input.frameCount > MAX_FRAMES
+        || input.framesPerSecond < MIN_FRAMES_PER_SECOND || input.framesPerSecond > MAX_FRAMES_PER_SECOND) {
+        return INVALID_BAKE_SETTINGS;
+    }
+    if (input.particlesPerSecond < MIN_PARTICLES_PER_SECOND || input.particlesPerSecond > MAX_PARTICLES_PER_SECOND) {
+        return INVALID_BAKE_SETTINGS;
+    }
+
+    // 液体を発生させる入口と、接触判定に使う受け側の高さを確認する。
     const auto finite = [](const Vector3& value) {
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     };
-    if (input.grid < 24 || input.grid > 64 || input.frameCount < 8 || input.frameCount > MAX_FRAMES
-        || input.framesPerSecond < 12 || input.framesPerSecond > 30
-        || input.particlesPerSecond < 100 || input.particlesPerSecond > 3000
-        || !finite(input.inlet) || !finite(input.inletVelocity) || !finite(input.inletAxis)
-        || !std::isfinite(input.gravity) || input.gravity <= 0.0f || !std::isfinite(input.receiverHeight)
-        || !std::isfinite(input.inletHalfWidth) || input.inletHalfWidth <= 0.0f || input.inletHalfWidth > 1.0f
-        || (!input.ground.empty() && input.ground.size() != static_cast<std::size_t>(input.grid * input.grid)))
-        return "Invalid waterfall fluid bake settings.";
+    if (!finite(input.inlet) || !finite(input.inletVelocity) || !finite(input.inletAxis)) {
+        return INVALID_BAKE_SETTINGS;
+    }
+    if (!std::isfinite(input.gravity) || input.gravity <= 0.0f || !std::isfinite(input.receiverHeight)) {
+        return INVALID_BAKE_SETTINGS;
+    }
+    if (!std::isfinite(input.inletHalfWidth) || input.inletHalfWidth <= 0.0f || input.inletHalfWidth > 1.0f) {
+        return INVALID_BAKE_SETTINGS;
+    }
+
+    // 地形を指定する場合は、各 XZ 格子点の高さが必要。grid の積は検証済みの範囲で求める。
+    if (!input.ground.empty() && input.ground.size() != static_cast<std::size_t>(input.grid * input.grid)) {
+        return INVALID_BAKE_SETTINGS;
+    }
 
     constexpr int warmupFrames = 24;
     const float dt = 1.0f / static_cast<float>(input.framesPerSecond);
@@ -263,28 +315,45 @@ std::string BakeWaterfallFluidClip(const WaterfallFluidBakeInput& input, const s
     std::size_t storedBytes = 0;
     bool hasSurface = false;
     for (int frame = -warmupFrames; frame < input.frameCount; ++frame) {
-        if (cancel.load()) return "Bake canceled.";
+        if (cancel.load()) {
+            return "Bake canceled.";
+        }
         solver.Advance(dt, boundary);
         progress.store((frame + warmupFrames + 1) * 99 / (input.frameCount + warmupFrames));
-        if (frame < 0) continue;
+        if (frame < 0) {
+            continue;
+        }
         Splat(solver, input, density);
-        if (!ExtractSurface(input, density, cells, vertices, indices))
+        if (!ExtractSurface(input, density, cells, vertices, indices)) {
             return "Fluid mesh budget exceeded. Reduce grid resolution or emission.";
+        }
         const FrameInfo info{static_cast<std::uint32_t>(vertices.size()), static_cast<std::uint32_t>(indices.size())};
         const std::size_t vertexBytes = vertices.size() * sizeof(PackedVertex);
         const std::size_t indexBytes = indices.size() * sizeof(std::uint16_t);
         std::vector<std::uint8_t> bytes(sizeof(info) + vertexBytes + indexBytes);
-        if (storedBytes + bytes.size() > MAX_CLIP_BYTES) return "Fluid clip exceeds 64 MiB. Reduce the frame count or resolution.";
+        if (storedBytes + bytes.size() > MAX_CLIP_BYTES) {
+            return "Fluid clip exceeds 64 MiB. Reduce the frame count or resolution.";
+        }
         storedBytes += bytes.size();
         std::memcpy(bytes.data(), &info, sizeof(info));
-        if (vertexBytes) std::memcpy(bytes.data() + sizeof(info), vertices.data(), vertexBytes);
-        if (indexBytes) std::memcpy(bytes.data() + sizeof(info) + vertexBytes, indices.data(), indexBytes);
+        if (vertexBytes) {
+            std::memcpy(bytes.data() + sizeof(info), vertices.data(), vertexBytes);
+        }
+        if (indexBytes) {
+            std::memcpy(bytes.data() + sizeof(info) + vertexBytes, indices.data(), indexBytes);
+        }
         hasSurface |= !indices.empty();
         writer.AddChunk(static_cast<std::uint32_t>(frame + 1), std::move(bytes));
     }
-    if (cancel.load()) return "Bake canceled.";
-    if (!hasSurface) return "No visible liquid surface. Check the inlet, rocks, and emission.";
-    if (!writer.WriteAtomically(path, CONTENT_KIND, input.stamp)) return "Could not write the waterfall fluid clip.";
+    if (cancel.load()) {
+        return "Bake canceled.";
+    }
+    if (!hasSurface) {
+        return "No visible liquid surface. Check the inlet, rocks, and emission.";
+    }
+    if (!writer.WriteAtomically(path, CONTENT_KIND, input.stamp)) {
+        return "Could not write the waterfall fluid clip.";
+    }
     progress.store(100);
     return {};
 }
@@ -296,25 +365,45 @@ bool LoadWaterfallFluidFrame(const std::string& path, std::uint64_t stamp, int r
     ClipInfo clip{};
     std::error_code error;
     const auto fileBytes = std::filesystem::file_size(util::FileSystem::PathFromUtf8(path), error);
-    if (requestedFrame < 0 || error || fileBytes > MAX_CLIP_BYTES + 8192
-        || !reader.Open(path) || reader.Header().contentKind != CONTENT_KIND
-        || reader.Header().sourceStamp != stamp || reader.Header().chunkCount > MAX_FRAMES + 1) return false;
+    // ファイルを開く前にフレーム番号とファイルの大きさを調べる。
+    constexpr std::size_t MAX_CLIP_CONTAINER_OVERHEAD = 8192;
+    if (requestedFrame < 0 || error || fileBytes > MAX_CLIP_BYTES + MAX_CLIP_CONTAINER_OVERHEAD) {
+        return false;
+    }
+    if (!reader.Open(path)) {
+        return false;
+    }
+
+    // 種類と生成元が一致するファイルだけを読み、ヘッダーを含むチャンク数を制限する。
+    if (reader.Header().contentKind != CONTENT_KIND || reader.Header().sourceStamp != stamp
+        || reader.Header().chunkCount > MAX_FRAMES + 1) {
+        return false;
+    }
+
     const auto* header = reader.Find(0);
-    if (!header || header->rawSize != sizeof(clip) || !reader.ReadChunk(0, bytes)) return false;
+    if (!header || header->rawSize != sizeof(clip) || !reader.ReadChunk(0, bytes)) {
+        return false;
+    }
     std::memcpy(&clip, bytes.data(), sizeof(clip));
-    if (clip.frameCount < 8 || clip.frameCount > MAX_FRAMES || clip.framesPerSecond < 12 || clip.framesPerSecond > 30
-        || reader.Header().chunkCount != clip.frameCount + 1) return false;
+    if (clip.frameCount < MIN_FRAMES || clip.frameCount > MAX_FRAMES
+        || clip.framesPerSecond < MIN_FRAMES_PER_SECOND || clip.framesPerSecond > MAX_FRAMES_PER_SECOND
+        || reader.Header().chunkCount != clip.frameCount + 1) {
+        return false;
+    }
     const auto frame = static_cast<std::uint32_t>(requestedFrame) % clip.frameCount;
     const auto* chunk = reader.Find(frame + 1);
     const std::size_t maxBytes = sizeof(FrameInfo) + MAX_VERTICES * sizeof(PackedVertex) + MAX_INDICES * sizeof(std::uint16_t);
-    if (!chunk || chunk->rawSize > maxBytes || !reader.ReadChunk(frame + 1, bytes) || bytes.size() < sizeof(FrameInfo))
+    if (!chunk || chunk->rawSize > maxBytes || !reader.ReadChunk(frame + 1, bytes) || bytes.size() < sizeof(FrameInfo)) {
         return false;
+    }
     FrameInfo info{};
     std::memcpy(&info, bytes.data(), sizeof(info));
     const std::size_t vertexBytes = static_cast<std::size_t>(info.vertices) * sizeof(PackedVertex);
     const std::size_t indexBytes = static_cast<std::size_t>(info.indices) * sizeof(std::uint16_t);
     if (info.vertices > MAX_VERTICES || info.indices > MAX_INDICES || info.indices % 3 != 0
-        || bytes.size() != sizeof(info) + vertexBytes + indexBytes) return false;
+        || bytes.size() != sizeof(info) + vertexBytes + indexBytes) {
+        return false;
+    }
 
     WaterfallFluidFrame candidate;
     candidate.frame = static_cast<int>(frame);
@@ -331,9 +420,13 @@ bool LoadWaterfallFluidFrame(const std::string& path, std::uint64_t stamp, int r
                 static_cast<float>(vertex.normal[2])}.NormalizedOr(Vector3::UP), vertex.coverage / 255.0f});
     }
     candidate.indices.resize(info.indices);
-    if (indexBytes) std::memcpy(candidate.indices.data(), bytes.data() + sizeof(info) + vertexBytes, indexBytes);
-    if (std::any_of(candidate.indices.begin(), candidate.indices.end(), [&](auto index) { return index >= info.vertices; })) return false;
+    if (indexBytes) {
+        std::memcpy(candidate.indices.data(), bytes.data() + sizeof(info) + vertexBytes, indexBytes);
+    }
+    if (std::any_of(candidate.indices.begin(), candidate.indices.end(), [&](auto index) { return index >= info.vertices; })) {
+        return false;
+    }
     out = std::move(candidate);
     return true;
 }
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

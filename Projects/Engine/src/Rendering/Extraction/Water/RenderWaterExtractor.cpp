@@ -35,7 +35,9 @@ void ExtractRenderWater(RenderPassContext& context, renderer::RenderScene& outpu
     for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
         if (!water.enabled || WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION)
                 != WaterSurfaceShape::RECTANGLE
-            || !IsWaterSurfaceSupported(water, transform, WaterSurfaceReadView::SIMULATION)) continue;
+            || !IsWaterSurfaceSupported(water, transform, WaterSurfaceReadView::SIMULATION)) {
+            continue;
+        }
         water.extentX = (std::clamp)(water.extentX, 0.1f, 10000.0f);
         water.extentZ = (std::clamp)(water.extentZ, 0.1f, 10000.0f);
     }
@@ -51,15 +53,18 @@ void ExtractRenderWater(RenderPassContext& context, renderer::RenderScene& outpu
     }
     WaterTerrainInfoInputs terrainInputs;
     const bool validTerrainInputs = cache.CollectTerrainInputs(scene, terrainInputs);
-    if (!validTerrainInputs) terrainInputs = {};
+    if (!validTerrainInputs) {
+        terrainInputs = {};
+    }
     std::unordered_set<uint64_t> selectedZoneOwners;
     for (const auto& selected : context.settings.selectedObjects) {
         const EntityID selectedId{selected.index, selected.generation};
         const WaterComponent* selectedWater = scene.GetComponent<WaterComponent>(selectedId);
         if (selectedWater) {
             const EntityID owner = WaterSurfaceZoneOwner(*selectedWater, WaterSurfaceReadView::SIMULATION);
-            if (owner.IsValid())
+            if (owner.IsValid()) {
                 selectedZoneOwners.insert((static_cast<uint64_t>(owner.generation) << 32u) | owner.index);
+            }
         }
     }
     std::vector<HorizonMaterialLink> horizonMaterialLinks;
@@ -70,25 +75,37 @@ void ExtractRenderWater(RenderPassContext& context, renderer::RenderScene& outpu
     for (const EntityID entity : candidates) {
         auto* ownerObject = scene.GetGameObject(entity);
         auto* waterComponent = scene.GetComponent<WaterComponent>(entity);
-        if (!ownerObject || !waterComponent) continue;
+        if (!ownerObject || !waterComponent) {
+            continue;
+        }
         auto& water = *waterComponent;
         const auto& objectTransform = ownerObject->transform;
-        if (!water.enabled || WaterSurfaceZoneOwner(water, WaterSurfaceReadView::SIMULATION).IsValid()) continue;
+        if (!water.enabled || WaterSurfaceZoneOwner(water, WaterSurfaceReadView::SIMULATION).IsValid()) {
+            continue;
+        }
         const Transform& surfaceTransform = WaterSurfaceTransform(water, objectTransform,
             WaterSurfaceReadView::SIMULATION);
-        if (!IsWaterSurfaceSupported(water, surfaceTransform, WaterSurfaceReadView::SIMULATION)) continue;
-        /// @note 無効な除外設定を空のmaskへ置き換えると乾燥領域が水没するため、描画はfail-closed。
+        if (!IsWaterSurfaceSupported(water, surfaceTransform, WaterSurfaceReadView::SIMULATION)) {
+            continue;
+        }
+        // 無効な除外設定を空のmaskへ置き換えると乾燥領域が水没するため、描画はfail-closed。
         if (const auto* exclusions = WaterSurfaceExclusions(water, WaterSurfaceReadView::SIMULATION);
-            exclusions && !exclusions->valid) continue;
+            exclusions && !exclusions->valid) {
+            continue;
+        }
         const bool splineSurface = UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
         const bool horizonSurface = WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
         const WaterSplineSnapshot* spline = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
-        if (splineSurface && !spline) continue;
+        if (splineSurface && !spline) {
+            continue;
+        }
         NormalizeWaterMeshSettings(water, splineSurface);
 
         const WaterCacheKey cacheKey{scene.GetRenderSceneGeneration(), entity.index, entity.generation};
         WaterRenderCache::Invalidate(cacheKey, water.meshDirty, water.texDirty || water.foamDirty);
-        if (!ownerObject->activeInHierarchy()) continue;
+        if (!ownerObject->activeInHierarchy()) {
+            continue;
+        }
 
         const auto margin = ComputeWaveMargin(water, horizonSurface);
         const auto materialSnapshot = LoadWaterMaterial(water.materialPath);
@@ -96,8 +113,9 @@ void ExtractRenderWater(RenderPassContext& context, renderer::RenderScene& outpu
         const auto textureRequest = ResolveWaterTextureRequest(water, surfaceTransform, terrainInputs,
             validTerrainInputs, material);
 
-        const bool buildSurfaceClusters = splineSurface
-            && context.settings.geometryDrawMode == renderer::GeometryDrawMode::MESH_SHADER;
+        // 湖岸・川岸を固定したクラスターは、通常のインデックス描画でも選択できる。
+        const bool meshShaderMode = context.settings.geometryDrawMode == renderer::GeometryDrawMode::MESH_SHADER;
+        const bool buildSurfaceClusters = splineSurface && (water.adaptivePatchLod || meshShaderMode);
         cache.PrepareMesh(cacheKey, water, resources, buildSurfaceClusters);
         cache.PrepareTerrainTextures(cacheKey, water, surfaceTransform, terrainInputs, textureRequest,
             context.renderer, resources);

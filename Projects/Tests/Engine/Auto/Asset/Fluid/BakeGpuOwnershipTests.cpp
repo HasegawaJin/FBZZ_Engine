@@ -40,14 +40,14 @@ protected:
             solver.BeginTick();
             EXPECT_TRUE(solver.StepFrame(secondDevice, second));
             EXPECT_GT(secondDevice.m_dispatches, 0u);
-            /// @note 引数の Manager と独立に、各資源の作成元へ返却する。
+            // 引数の Manager と独立に、各資源の作成元へ返却する。
             solver.Release(first);
             EXPECT_EQ(secondDevice.m_constantsAlive, 0u);
             ASSERT_TRUE(solver.Initialize(second, recipe, 16, 1.0f / 24.0f, 1.0f, error)) << error;
         }
         EXPECT_EQ(secondDevice.m_constantsAlive, 0u);
         EXPECT_EQ(secondDevice.m_structuredAlive, 0u);
-        /// @note Step が借りる白テクスチャは Manager の共有キャッシュに残る。
+        // Step が借りる白テクスチャは Manager の共有キャッシュに残る。
         second.Reset();
         EXPECT_EQ(secondDevice.m_texturesAlive, 0u);
     }

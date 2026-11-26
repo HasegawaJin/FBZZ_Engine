@@ -16,8 +16,9 @@ class RenderCandidateLease {
 public:
     RenderCandidateLease() : m_pool(PoolForThread())
     {
-        if (m_pool.depth == m_pool.lists.size())
+        if (m_pool.depth == m_pool.lists.size()) {
             m_pool.lists.push_back(std::make_unique<std::vector<EntityID>>());
+        }
         m_entities = m_pool.lists[m_pool.depth++].get();
     }
 

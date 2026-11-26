@@ -28,10 +28,14 @@ namespace {
 ///       «無効にしたのに動く» になる。原因が物理側にあるとは読めない壊れ方。
 physics::RigidBody* SimulatedJointBody(GameObject* go)
 {
-    if (!go || !go->activeInHierarchy()) return nullptr;
+    if (!go || !go->activeInHierarchy()) {
+        return nullptr;
+    }
     auto* rb = go->GetComponent<RigidBodyComponent>();
     if (!rb || !rb->enabled || managed_detail::ManagedObjectControls::IsPendingComponentRemoval(
-            *go, static_cast<uint32_t>(ManagedNativeComponentKind::RIGID_BODY))) return nullptr;
+            *go, static_cast<uint32_t>(ManagedNativeComponentKind::RIGID_BODY))) {
+        return nullptr;
+    }
     return rb->rigidBody.get();
 }
 
@@ -41,7 +45,9 @@ physics::RigidBody* SimulatedJointBody(GameObject* go)
 physics::RigidBody* FindAncestorJointBody(GameObject& go)
 {
     for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent())
-        if (physics::RigidBody* body = SimulatedJointBody(parent)) return body;
+        if (physics::RigidBody* body = SimulatedJointBody(parent)) {
+            return body;
+        }
     return nullptr;
 }
 
@@ -61,7 +67,9 @@ physics::ConstraintType ToPhysicsConstraintType(JointType type)
 
 void ReleaseJoint(physics::World& world, JointComponent& joint)
 {
-    if (joint.constraintHandle.IsValid()) world.RemoveConstraint(joint.constraintHandle);
+    if (joint.constraintHandle.IsValid()) {
+        world.RemoveConstraint(joint.constraintHandle);
+    }
     joint.constraintHandle = {};
     joint.connected = false;
 }
@@ -102,23 +110,29 @@ void ApplyJointTunables(physics::Constraint& constraint, const JointComponent& j
         auto& hinge = static_cast<physics::HingeConstraint&>(constraint);
         hinge.m_localAnchorA = joint.anchor;
         hinge.m_localAnchorB = joint.connectedAnchor;
-        if (joint.useLimits)
+        if (joint.useLimits) {
             hinge.SetLimits(math::ToRad(joint.lowerLimit), math::ToRad(joint.upperLimit));
-        else
+        }
+        else {
             hinge.ClearLimits();
-        if (joint.useMotor)
+        }
+        if (joint.useMotor) {
             hinge.SetMotor(math::ToRad(joint.motorSpeed), joint.motorMaxTorque);
-        else
+        }
+        else {
             hinge.ClearMotor();
+        }
         break;
     }
     case JointType::Slider: {
         auto& slider = static_cast<physics::SliderConstraint&>(constraint);
         slider.m_axis = SafeJointAxis(joint.axis);
-        if (joint.useLimits)
+        if (joint.useLimits) {
             slider.SetLimits(joint.lowerLimit, joint.upperLimit);
-        else
+        }
+        else {
             slider.ClearLimits();
+        }
         break;
     }
     case JointType::Chain: {
@@ -137,22 +151,30 @@ bool JointStillMatches(const physics::Constraint& constraint,
              const JointComponent& joint,
              const std::vector<physics::RigidBody*>& bodies)
 {
-    if (constraint.GetType() != ToPhysicsConstraintType(joint.type)) return false;
+    if (constraint.GetType() != ToPhysicsConstraintType(joint.type)) {
+        return false;
+    }
 
     if (joint.type == JointType::Chain) {
         const auto& current = static_cast<const physics::ChainConstraint&>(constraint).GetBodies();
         return current == bodies;
     }
 
-    if (bodies.size() != 2u) return false;
-    if (constraint.GetBodyA() != bodies[0] || constraint.GetBodyB() != bodies[1]) return false;
+    if (bodies.size() != 2u) {
+        return false;
+    }
+    if (constraint.GetBodyA() != bodies[0] || constraint.GetBodyB() != bodies[1]) {
+        return false;
+    }
 
-    /// @note Hinge は構築時に軸の直交基準を焼き込む。軸だけ書き換えると角度の測り方が
-    ///       古い基準のまま残り、可動域が «違う向きで» 効く。軸が変わったら作り直す。
+    // Hinge は構築時に軸の直交基準を焼き込む。軸だけ書き換えると角度の測り方が
+    //       古い基準のまま残り、可動域が «違う向きで» 効く。軸が変わったら作り直す。
     if (joint.type == JointType::Hinge) {
         const auto& hinge = static_cast<const physics::HingeConstraint&>(constraint);
         const math::Vector3 wanted = SafeJointAxis(joint.axis);
-        if ((hinge.m_axis - wanted).LengthSq() > 1e-6f) return false;
+        if ((hinge.m_axis - wanted).LengthSq() > 1e-6f) {
+            return false;
+        }
     }
     return true;
 }
@@ -161,12 +183,15 @@ std::unique_ptr<physics::Constraint> BuildJointConstraint(
     const JointComponent& joint,
     const std::vector<physics::RigidBody*>& bodies)
 {
-    if (joint.type == JointType::Chain)
+    if (joint.type == JointType::Chain) {
         return std::make_unique<physics::ChainConstraint>(
             bodies, joint.resolvedDistance,
             joint.solverIterations < 1 ? 1 : joint.solverIterations);
+    }
 
-    if (bodies.size() != 2u) return nullptr;
+    if (bodies.size() != 2u) {
+        return nullptr;
+    }
     physics::RigidBody* a = bodies[0];
     physics::RigidBody* b = bodies[1];
 
@@ -204,18 +229,24 @@ std::vector<physics::RigidBody*> CollectJointBodies(Scene& scene,
         bodies.push_back(self);
         for (const EntityRef& ref : joint.chainBodies) {
             physics::RigidBody* body = SimulatedJointBody(ref.Resolve(scene));
-            if (!body) return {};
+            if (!body) {
+                return {};
+            }
             bodies.push_back(body);
         }
-        if (bodies.size() < 2u) return {};
+        if (bodies.size() < 2u) {
+            return {};
+        }
         return bodies;
     }
 
     physics::RigidBody* other = ResolveJointPartner(scene, go, joint);
 
-    /// @note 自分自身を相手にすると invMass の和で 0 除算を踏む手前まで行って、
-    ///       «動かないのに CPU だけ食う» 制約になる。黙って張らない方が読み解ける。
-    if (!other || other == self) return {};
+    // 自分自身を相手にすると invMass の和で 0 除算を踏む手前まで行って、
+    //       «動かないのに CPU だけ食う» 制約になる。黙って張らない方が読み解ける。
+    if (!other || other == self) {
+        return {};
+    }
 
     bodies.push_back(self);
     bodies.push_back(other);
@@ -240,11 +271,12 @@ void SyncOneJoint(Scene& scene, GameObject& go, JointComponent& joint, physics::
     const bool reusable = live && JointStillMatches(*live, joint, bodies);
 
     if (!reusable) {
-        /// @note 距離は «張った瞬間の間隔» を採る。以降は resolvedDistance を正として扱うので、
-        ///       毎フレーム測り直して距離がじわじわ伸びていく (制約が効かない) ことはない。
+        // 距離は «張った瞬間の間隔» を採る。以降は resolvedDistance を正として扱うので、
+        //       毎フレーム測り直して距離がじわじわ伸びていく (制約が効かない) ことはない。
         joint.resolvedDistance = joint.distance;
-        if (joint.autoDistance && joint.UsesDistance())
+        if (joint.autoDistance && joint.UsesDistance()) {
             joint.resolvedDistance = GapBetweenBodies(*bodies[0], *bodies[1]);
+        }
 
         std::unique_ptr<physics::Constraint> built = BuildJointConstraint(joint, bodies);
         if (!built) {
@@ -261,7 +293,9 @@ void SyncOneJoint(Scene& scene, GameObject& go, JointComponent& joint, physics::
         ReleaseJoint(world, joint);
         return;
     }
-    if (!joint.autoDistance) joint.resolvedDistance = joint.distance;
+    if (!joint.autoDistance) {
+        joint.resolvedDistance = joint.distance;
+    }
     ApplyJointTunables(*live, joint);
     joint.connected = true;
 }
@@ -272,9 +306,12 @@ physics::RigidBody* ResolveJointPartner(Scene& scene,
                                         GameObject& go,
                                         const JointComponent& joint)
 {
-    if (joint.type == JointType::Chain) return nullptr;
-    if (joint.connectedBody.IsValid())
+    if (joint.type == JointType::Chain) {
+        return nullptr;
+    }
+    if (joint.connectedBody.IsValid()) {
         return SimulatedJointBody(joint.connectedBody.Resolve(scene));
+    }
     return joint.connectToParent ? FindAncestorJointBody(go) : nullptr;
 }
 
@@ -284,7 +321,9 @@ void SyncJointComponents(Scene& scene, physics::World& world)
 
     for (EntityID id : scene.GetEntities<JointComponent>()) {
         auto* joint = scene.GetComponent<JointComponent>(id);
-        if (!joint) continue;
+        if (!joint) {
+            continue;
+        }
 
         GameObject* go = scene.GetGameObject(id);
         if (!go || !go->activeInHierarchy() || !joint->enabled

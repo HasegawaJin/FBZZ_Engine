@@ -10,7 +10,9 @@ namespace fbzz::scene {
 math::Vector3 NavMeshPolygon::Center() const
 {
     math::Vector3 sum = math::Vector3::ZERO;
-    for (const auto& v : vertices) sum += v;
+    for (const auto& v : vertices) {
+        sum += v;
+    }
     return vertices.empty() ? sum : sum / static_cast<float>(vertices.size());
 }
 
@@ -49,7 +51,9 @@ float NavMeshPolygon::DistanceSqXZ(float x, float z) const
         const float px = xi + t * ex, pz = zi + t * ez;
         const float dx = x - px, dz = z - pz;
         const float distSq = dx * dx + dz * dz;
-        if (distSq < best) best = distSq;
+        if (distSq < best) {
+            best = distSq;
+        }
     }
     return best;
 }

@@ -44,20 +44,18 @@ struct TerrainGpuState {
     EntityID entityId = EntityID::INVALID;
     std::unordered_map<TerrainChunkKey, TerrainChunk, TerrainChunkKeyHash> chunks;
     uint64_t surfaceRevision = UINT64_MAX, vegetationRevision = UINT64_MAX;
-    renderer::ResourceHandle<renderer::TextureTag> splatIndices;   ///< @note 所有
-    renderer::ResourceHandle<renderer::TextureTag> splatWeights;   ///< @note 所有
-    renderer::ResourceHandle<renderer::StructuredBufferTag> layerBuffer; ///< @note 所有
+    renderer::ResourceHandle<renderer::TextureTag> splatIndices; ///< 所有
+    renderer::ResourceHandle<renderer::TextureTag> splatWeights; ///< 所有
+    renderer::ResourceHandle<renderer::StructuredBufferTag> layerBuffer; ///< 所有
     uint32_t layerCapacity = 0;
     bool splatDynamic = false;
-    /// @note 直前に転送したバイト列。同じなら Update を省く。
-    std::vector<TerrainLayerGpu> uploadedLayers;
+    std::vector<TerrainLayerGpu> uploadedLayers; ///< 直前に転送したバイト列。同じなら Update を省く。
     renderer::ResourceHandle<renderer::StructuredBufferTag> heights, patches;
     renderer::ResourceHandle<renderer::BufferTag> indices;
     std::vector<decltype(renderer::RenderTerrainPatch::gpuStartIndexLOD)> indexStarts;
     uint32_t indexCount = 0, vertexCapacity = 0;
     size_t lodCount = 0;
-    /// @note 通常・右端・下端・角の格子は、寸法が一致すると描画専用バッファを共有する。
-    std::array<RasterStrip, 4> rasterStrips;
+    std::array<RasterStrip, 4> rasterStrips; ///< 通常・右端・下端・角の格子は、寸法が一致すると描画専用バッファを共有する。
     bool geometryDirty = true;
     bool heightsDirty = true;
     bool heightsDynamic = false;
@@ -89,4 +87,4 @@ TerrainRenderCache& AcquireTerrainRenderCache(Scene& scene, renderer::ResourceMa
 void ReleaseTerrainChunkBuffers(renderer::ResourceManager& resources, TerrainChunk& chunk);
 void ReleaseTerrainChunks(TerrainGpuState& state, renderer::ResourceManager& resources);
 void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& resources);
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

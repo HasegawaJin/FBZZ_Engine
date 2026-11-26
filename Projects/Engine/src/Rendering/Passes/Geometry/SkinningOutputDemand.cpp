@@ -45,12 +45,16 @@ bool Finite(const math::Matrix4& value)
 }
 bool SafeWorldTransform(const Transform& transform)
 {
-    if(!Finite(transform.worldPosition) || !Finite(transform.worldScale))return false;
+    if(!Finite(transform.worldPosition) || !Finite(transform.worldScale)) {
+        return false;
+    }
     const auto& rotation=transform.worldRotation;
     if(!std::isfinite(rotation.x) || !std::isfinite(rotation.y)
-        || !std::isfinite(rotation.z) || !std::isfinite(rotation.w))return false;
+        || !std::isfinite(rotation.z) || !std::isfinite(rotation.w)) {
+        return false;
+    }
     const float squared=rotation.x*rotation.x+rotation.y*rotation.y+rotation.z*rotation.z+rotation.w*rotation.w;
-    /// @note Matrix4::TRS は四元数を正規化するため、ゼロ長で契約違反になる前に除外する。
+    // Matrix4::TRS は四元数を正規化するため、ゼロ長で契約違反になる前に除外する。
     return std::isfinite(squared) && squared>math::EPSILON*math::EPSILON;
 }
 bool StoredPoseBounds(GameObject& object,const SkinnedMeshRenderer& skin,WorldBounds& bounds)
@@ -60,33 +64,49 @@ bool StoredPoseBounds(GameObject& object,const SkinnedMeshRenderer& skin,WorldBo
     for(GameObject* current=&object;current;current=current->GetParent()) {
         if(const auto* candidate=current->GetComponent<AnimatorComponent>()) { animator=candidate;owner=current;break; }
     }
-    /// @note 暫定診断でも、バインド姿勢の境界だけでは現在の CPU 姿勢が存在するとは判断できない。
+    // 暫定診断でも、バインド姿勢の境界だけでは現在の CPU 姿勢が存在するとは判断できない。
     if(!animator || !owner || !Finite(animator->skinnedBoundsCenter)
         || !std::isfinite(animator->skinnedBoundsRadius) || animator->skinnedBoundsRadius<=0
-        || !SafeWorldTransform(owner->transform))return false;
+        || !SafeWorldTransform(owner->transform)) {
+        return false;
+    }
     for(size_t slot=0;slot<skin.SubmeshCount();++slot) {
         const auto* mesh=skin.SubmeshMesh(slot);
-        if(!mesh || !std::isfinite(mesh->boundsRadius))return false;
+        if(!mesh || !std::isfinite(mesh->boundsRadius)) {
+            return false;
+        }
     }
-    if(!Finite(owner->transform.GetWorldMatrix()))return false;
+    if(!Finite(owner->transform.GetWorldMatrix())) {
+        return false;
+    }
     return ComputeSkinnedWorldBounds(object,skin,bounds) && Finite(bounds.center)
         && std::isfinite(bounds.radius) && bounds.radius>0;
 }
 uint32_t ObserveMorphContainersAndSelection(const SkinnedMeshRenderer& skin)
 {
     uint32_t flags=0;
-    if(!skin.morphWeights.empty())flags|=InputBit(InputFlag::WEIGHT_MAP_PRESENT);
-    if(!skin.appliedMorphWeights.empty())flags|=InputBit(InputFlag::APPLIED_MAP_PRESENT);
-    if(!skin.morphVertexBuffers.empty())flags|=InputBit(InputFlag::BUFFER_VECTOR_PRESENT);
+    if(!skin.morphWeights.empty()) {
+        flags|=InputBit(InputFlag::WEIGHT_MAP_PRESENT);
+    }
+    if(!skin.appliedMorphWeights.empty()) {
+        flags|=InputBit(InputFlag::APPLIED_MAP_PRESENT);
+    }
+    if(!skin.morphVertexBuffers.empty()) {
+        flags|=InputBit(InputFlag::BUFFER_VECTOR_PRESENT);
+    }
     const auto weights=[&](const auto& map,InputFlag nonzero,InputFlag nonfinite) {
         for(const auto& entry:map) {
-            if(!std::isfinite(entry.second))flags|=InputBit(nonfinite);
+            if(!std::isfinite(entry.second)) {
+                flags|=InputBit(nonfinite);
+            }
             else if(entry.second!=0.0f)flags|=InputBit(nonzero);
         }
     };
     weights(skin.morphWeights,InputFlag::WEIGHT_FINITE_NONZERO,InputFlag::WEIGHT_NONFINITE);
     weights(skin.appliedMorphWeights,InputFlag::APPLIED_WEIGHT_FINITE_NONZERO,InputFlag::APPLIED_WEIGHT_NONFINITE);
-    if(skin.morphWeights!=skin.appliedMorphWeights)flags|=InputBit(InputFlag::REQUESTED_APPLIED_DIFFER);
+    if(skin.morphWeights!=skin.appliedMorphWeights) {
+        flags|=InputBit(InputFlag::REQUESTED_APPLIED_DIFFER);
+    }
     bool bitwiseDiffer=skin.morphWeights.size()!=skin.appliedMorphWeights.size();
     if(!bitwiseDiffer)for(const auto& entry:skin.morphWeights) {
         const auto found=skin.appliedMorphWeights.find(entry.first);
@@ -94,23 +114,35 @@ uint32_t ObserveMorphContainersAndSelection(const SkinnedMeshRenderer& skin)
             bitwiseDiffer=true;break;
         }
     }
-    if(bitwiseDiffer)flags|=InputBit(InputFlag::REQUESTED_APPLIED_BITWISE_DIFFER);
+    if(bitwiseDiffer) {
+        flags|=InputBit(InputFlag::REQUESTED_APPLIED_BITWISE_DIFFER);
+    }
     for(const auto& handle:skin.morphVertexBuffers)
         if(handle.IsValid()) {flags|=InputBit(InputFlag::LOGICAL_BUFFER_HANDLE_PRESENT);break;}
     for(size_t slot=0;slot<skin.SubmeshCount();++slot) {
         const auto* mesh=skin.SubmeshMesh(slot);
-        if(!mesh)continue;
+        if(!mesh) {
+            continue;
+        }
         const uint32_t index=skin.SubmeshAt(slot);
         if(index<skin.morphVertexBuffers.size() && skin.morphVertexBuffers[index].IsValid()) {
             flags|=InputBit(InputFlag::SELECTED_MORPH_PATH);
-            if(skin.morphVertexBuffers[index]!=mesh->vertexBuffer)flags|=InputBit(InputFlag::SELECTED_SOURCE_DIFFERS_FROM_BASE);
+            if(skin.morphVertexBuffers[index]!=mesh->vertexBuffer) {
+                flags|=InputBit(InputFlag::SELECTED_SOURCE_DIFFERS_FROM_BASE);
+            }
         }
-        if(!mesh->morphTargets.empty())flags|=InputBit(InputFlag::SELECTED_TARGET_PRESENT);
+        if(!mesh->morphTargets.empty()) {
+            flags|=InputBit(InputFlag::SELECTED_TARGET_PRESENT);
+        }
         for(const auto& target:mesh->morphTargets) {
             const auto classify=[&](const auto& map,InputFlag nonzero,InputFlag nonfinite) {
                 const auto found=map.find(target.name);
-                if(found==map.end())return;
-                if(!std::isfinite(found->second))flags|=InputBit(nonfinite);
+                if(found==map.end()) {
+                    return;
+                }
+                if(!std::isfinite(found->second)) {
+                    flags|=InputBit(nonfinite);
+                }
                 else if(found->second!=0.0f)flags|=InputBit(nonzero);
             };
             classify(skin.morphWeights,InputFlag::SELECTED_TARGET_REQUESTED_NONZERO,InputFlag::SELECTED_TARGET_REQUESTED_NONFINITE);
@@ -120,9 +152,13 @@ uint32_t ObserveMorphContainersAndSelection(const SkinnedMeshRenderer& skin)
     constexpr uint32_t maps=InputBit(InputFlag::WEIGHT_MAP_PRESENT)|InputBit(InputFlag::APPLIED_MAP_PRESENT);
     constexpr uint32_t nonzeroOrNonfinite=InputBit(InputFlag::WEIGHT_FINITE_NONZERO)|InputBit(InputFlag::WEIGHT_NONFINITE)
         |InputBit(InputFlag::APPLIED_WEIGHT_FINITE_NONZERO)|InputBit(InputFlag::APPLIED_WEIGHT_NONFINITE);
-    if((flags&maps)!=0 && (flags&nonzeroOrNonfinite)==0)flags|=InputBit(InputFlag::MAPS_ALL_FINITE_ZERO);
+    if((flags&maps)!=0 && (flags&nonzeroOrNonfinite)==0) {
+        flags|=InputBit(InputFlag::MAPS_ALL_FINITE_ZERO);
+    }
     if((flags&maps)==0 && (flags&InputBit(InputFlag::BUFFER_VECTOR_PRESENT))!=0
-        && (flags&InputBit(InputFlag::LOGICAL_BUFFER_HANDLE_PRESENT))==0)flags|=InputBit(InputFlag::VECTOR_PRESENCE_ONLY);
+        && (flags&InputBit(InputFlag::LOGICAL_BUFFER_HANDLE_PRESENT))==0) {
+        flags|=InputBit(InputFlag::VECTOR_PRESENCE_ONLY);
+    }
     return flags;
 }
 
@@ -130,13 +166,17 @@ bool FiniteCullingView(const RenderPassContext& context)
 {
     if(!Finite(context.camera.m_position) || !Finite(context.cullCameraForward)
         || !std::isfinite(context.cullingBoundsPadding) || !std::isfinite(context.cullMaxDistance)
-        || !std::isfinite(context.cullProjScaleY) || !std::isfinite(context.smallObjectScreenHeight))return false;
+        || !std::isfinite(context.cullProjScaleY) || !std::isfinite(context.smallObjectScreenHeight)) {
+        return false;
+    }
     if(context.hasLayerCullDistances)
         for(float distance:context.cullLayerDistances)if(!std::isfinite(distance))return false;
     if(context.frustumCullingEnabled && context.cameraFrustum)
         for(int index=0;index<math::Frustum::PLANE_COUNT;++index) {
             const auto plane=context.cameraFrustum->GetPlane(index);
-            if(!Finite(plane.normal) || !std::isfinite(plane.distance))return false;
+            if(!Finite(plane.normal) || !std::isfinite(plane.distance)) {
+                return false;
+            }
         }
     return true;
 }
@@ -161,18 +201,26 @@ SceneDemandSnapshot ObserveSceneDemand(const RenderPassContext& context)
     result.animatorComponents=scene.GetEntities<AnimatorComponent>().size();
     result.skinnedRendererComponents=scene.GetEntities<SkinnedMeshRenderer>().size();
     result.scopeActive=IsOutputDemandScoped(context);
-    if(!result.scopeActive)result.globalReasons|=Bit(Reason::UNSCOPED_OR_REENTRY);
+    if(!result.scopeActive) {
+        result.globalReasons|=Bit(Reason::UNSCOPED_OR_REENTRY);
+    }
     result.shadowRequested=context.settings.shadowEnabled
         && (context.shadowStrength>0 || context.settings.volumetricLight.enabled || context.punctualShadowViewCount>0);
     result.rayRequested=context.experimentalRayTracingEnabled
         && (context.settings.modeRequest.mode!=renderer::RenderMode::RASTER || renderer::IsRayDebugView(context.settings.viewMode));
-    if(result.rayRequested)result.globalReasons|=Bit(Reason::RAY);
-    if(context.objectMaskEnabled || !context.settings.objectMaskRequests.empty())result.globalReasons|=Bit(Reason::OBJECT_MASK);
+    if(result.rayRequested) {
+        result.globalReasons|=Bit(Reason::RAY);
+    }
+    if(context.objectMaskEnabled || !context.settings.objectMaskRequests.empty()) {
+        result.globalReasons|=Bit(Reason::OBJECT_MASK);
+    }
     for(EntityID id:scene.GetEntities<ReflectionProbeComponent>()) {
         const auto* object=scene.GetGameObject(id);const auto* probe=scene.GetComponent<ReflectionProbeComponent>(id);
         if(object && object->activeInHierarchy() && probe && probe->enabled) {
             ++result.activeReflectionProbes;
-            if(probe->captureMode==ReflectionProbeCaptureMode::DynamicScene)++result.activeReflectionSceneProbes;
+            if(probe->captureMode==ReflectionProbeCaptureMode::DynamicScene) {
+                ++result.activeReflectionSceneProbes;
+            }
         }
     }
     const bool canBake=context.handles.lightProbeProjectCS.IsValid() && context.handles.lightProbeProjectCB.IsValid()
@@ -181,51 +229,78 @@ SceneDemandSnapshot ObserveSceneDemand(const RenderPassContext& context)
         const auto* object=scene.GetGameObject(id);const auto* volume=scene.GetComponent<LightProbeVolumeComponent>(id);
         if(object && object->activeInHierarchy() && volume && volume->enabled) {
             ++result.activeLightProbeVolumes;
-            if(canBake)++result.activeLightProbeBakeConsumers;
+            if(canBake) {
+                ++result.activeLightProbeBakeConsumers;
+            }
         }
     }
-    if(result.activeReflectionSceneProbes || result.activeLightProbeBakeConsumers)result.globalReasons|=Bit(Reason::PROBE_GI);
+    if(result.activeReflectionSceneProbes || result.activeLightProbeBakeConsumers) {
+        result.globalReasons|=Bit(Reason::PROBE_GI);
+    }
     for(EntityID id:scene.GetEntities<InstancedMeshComponent>()) {
         const auto* object=scene.GetGameObject(id);const auto* instances=scene.GetComponent<InstancedMeshComponent>(id);
-        if(object && object->activeInHierarchy() && instances && instances->m_enabled)++result.activeInstancedComponents;
-    }
-    /// @note 静的インスタンスの抽出はスキンドメッシュが所有する変形バッファを解決しないため、シーン内の存在と実際の需要を区別する。
-    if(!scene.GetUserRenderPasses().empty())result.globalReasons|=Bit(Reason::NATIVE_SCRIPT_OR_PASS);
-    for(EntityID id:scene.GetEntities<ScriptComponent>()) {
-        const auto* object=scene.GetGameObject(id);const auto* scripts=scene.GetComponent<ScriptComponent>(id);
-        if(!object || !object->activeInHierarchy() || !scripts)continue;
-        for(const auto& entry:scripts->scripts) {
-            if(!entry.script || !entry.script->enabled)continue;
-            if(ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()))++result.activeManagedScriptEntries;
-            else ++result.activeNativeScriptEntries;
+        if(object && object->activeInHierarchy() && instances && instances->m_enabled) {
+            ++result.activeInstancedComponents;
         }
     }
-    if(result.activeNativeScriptEntries)result.globalReasons|=Bit(Reason::NATIVE_SCRIPT_OR_PASS);
+    // 静的インスタンスの抽出はスキンドメッシュが所有する変形バッファを解決しないため、シーン内の存在と実際の需要を区別する。
+    if(!scene.GetUserRenderPasses().empty()) {
+        result.globalReasons|=Bit(Reason::NATIVE_SCRIPT_OR_PASS);
+    }
+    for(EntityID id:scene.GetEntities<ScriptComponent>()) {
+        const auto* object=scene.GetGameObject(id);const auto* scripts=scene.GetComponent<ScriptComponent>(id);
+        if(!object || !object->activeInHierarchy() || !scripts) {
+            continue;
+        }
+        for(const auto& entry:scripts->scripts) {
+            if(!entry.script || !entry.script->enabled) {
+                continue;
+            }
+            if(ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) {
+                ++result.activeManagedScriptEntries;
+            }
+            else {
+                ++result.activeNativeScriptEntries;
+            }
+        }
+    }
+    if(result.activeNativeScriptEntries) {
+        result.globalReasons|=Bit(Reason::NATIVE_SCRIPT_OR_PASS);
+    }
     return result;
 }
 Observation ObserveRendererDemand(const RenderPassContext& context,GameObject& object,
     const SkinnedMeshRenderer& skin,const SceneDemandSnapshot& scene)
 {
     Observation result;result.reasons=scene.globalReasons;
-    if(scene.shadowRequested && skin.castShadows)result.reasons|=Bit(Reason::SHADOW);
-    if(const auto* fiber=object.GetComponent<FiberComponent>();fiber && fiber->m_enabled)
+    if(scene.shadowRequested && skin.castShadows) {
+        result.reasons|=Bit(Reason::SHADOW);
+    }
+    if(const auto* fiber=object.GetComponent<FiberComponent>();fiber && fiber->m_enabled) {
         result.reasons|=Bit(Reason::FIBER_OR_PROCEDURAL);
+    }
     result.inputFlags=ObserveMorphContainersAndSelection(skin);
-    if(result.HasInput(InputFlag::SELECTED_MORPH_PATH))result.reasons|=Bit(Reason::MORPH_OR_BAKE);
+    if(result.HasInput(InputFlag::SELECTED_MORPH_PATH)) {
+        result.reasons|=Bit(Reason::MORPH_OR_BAKE);
+    }
     for(GameObject* current=&object;current;current=current->GetParent()) {
         if(const auto* animator=current->GetComponent<AnimatorComponent>()) {
             if(animator->boneBake.active) {
                 result.reasons|=Bit(Reason::MORPH_OR_BAKE);
                 result.inputFlags|=InputBit(InputFlag::BONE_BAKE_ACTIVE);
-                if(animator->boneBake.source)result.inputFlags|=InputBit(InputFlag::BONE_BAKE_WITH_SOURCE);
-                if(animator->boneBakeMode>=static_cast<int>(BoneBakeMode::GPU_SHARED))result.inputFlags|=InputBit(InputFlag::BONE_BAKE_GPU_MODE);
+                if(animator->boneBake.source) {
+                    result.inputFlags|=InputBit(InputFlag::BONE_BAKE_WITH_SOURCE);
+                }
+                if(animator->boneBakeMode>=static_cast<int>(BoneBakeMode::GPU_SHARED)) {
+                    result.inputFlags|=InputBit(InputFlag::BONE_BAKE_GPU_MODE);
+                }
             }
             break;
         }
     }
     constexpr uint32_t containers=InputBit(InputFlag::WEIGHT_MAP_PRESENT)|InputBit(InputFlag::APPLIED_MAP_PRESENT)|InputBit(InputFlag::BUFFER_VECTOR_PRESENT);
     if((result.inputFlags&containers)!=0 && !result.HasInput(InputFlag::SELECTED_MORPH_PATH) && !result.HasInput(InputFlag::BONE_BAKE_ACTIVE)) {
-        /// @note 存在しても入力元を選べなければ未確定として扱い、モーフの利用側には数えない。
+        // 存在しても入力元を選べなければ未確定として扱い、モーフの利用側には数えない。
         result.inputFlags|=InputBit(InputFlag::CONTAINERS_WITHOUT_SELECTED_MORPH_OR_BAKE);
         result.reasons|=Bit(Reason::INPUT_PROOF_PENDING);
     }
@@ -243,10 +318,14 @@ Observation ObserveRendererDemand(const RenderPassContext& context,GameObject& o
     color &= visibleSlot;
     if(color) {
         WorldBounds bounds{};
-        if(!FiniteCullingView(context) || !StoredPoseBounds(object,skin,bounds))result.reasons|=Bit(Reason::UNPROVEN_BOUNDS);
+        if(!FiniteCullingView(context) || !StoredPoseBounds(object,skin,bounds)) {
+            result.reasons|=Bit(Reason::UNPROVEN_BOUNDS);
+        }
         else {
             bounds.radius+=(std::max)(context.cullingBoundsPadding,0.0f);
-            if(!std::isfinite(bounds.radius))result.reasons|=Bit(Reason::UNPROVEN_BOUNDS);
+            if(!std::isfinite(bounds.radius)) {
+                result.reasons|=Bit(Reason::UNPROVEN_BOUNDS);
+            }
             else {
                 const float layerDistance=context.cullLayerDistances[layer];
                 const float distance=context.hasLayerCullDistances && layerDistance>0 ? layerDistance:context.cullMaxDistance;
@@ -257,15 +336,20 @@ Observation ObserveRendererDemand(const RenderPassContext& context,GameObject& o
             }
         }
     }
-    if(color)result.reasons|=Bit(Reason::COLOR);
+    if(color) {
+        result.reasons|=Bit(Reason::COLOR);
+    }
     else {
         result.provisionalColorExcluded=true;
-        /// @note 診断件数のみ。現在の姿勢や GPU 入力の整合性はまだ検証していない。
+        // 診断件数のみ。現在の姿勢や GPU 入力の整合性はまだ検証していない。
         result.reasons|=Bit(Reason::UNPROVEN_BOUNDS)|Bit(Reason::INPUT_PROOF_PENDING)|Bit(Reason::MATERIAL_PROOF_PENDING);
     }
-    if(skin.gpuSkinningContent.empty() || skin.skinnedBufferModel!=skin.model)
+    if(skin.gpuSkinningContent.empty() || skin.skinnedBufferModel!=skin.model) {
         result.reasons|=Bit(Reason::INITIAL_OR_FAILED);
-    if(!scene.scopeActive)result.reasons|=Bit(Reason::UNSCOPED_OR_REENTRY);
+    }
+    if(!scene.scopeActive) {
+        result.reasons|=Bit(Reason::UNSCOPED_OR_REENTRY);
+    }
     return result;
 }
 
@@ -276,7 +360,9 @@ thread_local GpuOutputDemandState* s_gpuDemandState = nullptr;
 GpuOutputDemandState* FindGpuOutputDemand(RenderPassContext& context)
 {
     auto* state = s_gpuDemandState;
-    if (state && (&state->context != &context || state->cancelled || state->committed)) return nullptr;
+    if (state && (&state->context != &context || state->cancelled || state->committed)) {
+        return nullptr;
+    }
     return state;
 }
 
@@ -299,7 +385,9 @@ bool GpuOutputDemandState::SubmitTicket(const std::shared_ptr<renderer::Prepared
         context.statsSkinningDemandSubmitted += writes.size();
         context.statsSkinningDemandSkipped -= (std::min)(context.statsSkinningDemandSkipped, static_cast<uint64_t>(writes.size()));
         uint64_t vertices = 0;
-        for (const auto& write : writes) vertices += write.vertexCount;
+        for (const auto& write : writes) {
+            vertices += write.vertexCount;
+        }
         skinning_cache_detail::RecordDeferredSkinningDispatches(static_cast<uint32_t>(writes.size()), vertices);
         context.statsSkinningDispatchCount += static_cast<uint32_t>(writes.size());
         context.statsSkinningVertexCount += vertices;
@@ -311,17 +399,23 @@ bool GpuOutputDemandState::Complete()
 {
     if (!committed) {
         cancelled = true;
-        if (publications.empty()) return true;
+        if (publications.empty()) {
+            return true;
+        }
     }
     bool success = true;
     std::array<const renderer::PreparedSkinningTicket*, 16> submittedTickets{};
     std::array<bool, 16> submittedResults{};
     size_t submittedCount = 0;
-    /// @note 全 native 結果を先に確定する。以後の所有値 COW は Logger/pump/Scene 再抽出を呼ばない。
+    // 全 native 結果を先に確定する。以後の所有値 COW は Logger/pump/Scene 再抽出を呼ばない。
     for (auto& publication : publications) {
         size_t index = 0;
-        while (index < submittedCount && submittedTickets[index] != publication.ticket.get()) ++index;
-        if (index < submittedCount) publication.submitted = submittedResults[index];
+        while (index < submittedCount && submittedTickets[index] != publication.ticket.get()) {
+            ++index;
+        }
+        if (index < submittedCount) {
+            publication.submitted = submittedResults[index];
+        }
         else {
             publication.submitted = SubmitTicket(publication.ticket);
             if (submittedCount < submittedTickets.size()) {
@@ -335,7 +429,9 @@ bool GpuOutputDemandState::Complete()
         auto* component = context.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
         if (!component || context.scene.GetRenderSceneGeneration() != publication.generation
             || context.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.lifetime
-            || component->model != publication.model || component->preparedSkinning != publication.ticket) continue;
+            || component->model != publication.model || component->preparedSkinning != publication.ticket) {
+            continue;
+        }
         bool written = publication.submitted && publication.ticket->ResourceInstance() == context.resources.GetInstanceId()
             && publication.ticket->ResourceEpoch() == context.resources.GetResetVersion();
         const auto writes = publication.ticket->Writes();
@@ -349,23 +445,42 @@ bool GpuOutputDemandState::Complete()
         component->gpuSkinningFrame = written ? Time::frameCount : (std::numeric_limits<uint64_t>::max)();
         component->gpuSkinningVertexCount = written ? publication.vertices : 0;
         component->gpuSkinningDispatchCount = written ? publication.dispatches : 0;
-        if (!written) component->gpuSkinningContent.clear();
+        if (!written) {
+            component->gpuSkinningContent.clear();
+        }
     }
-    if (auto previous = CompletePreparedSkinningSnapshot(context)) retiredSnapshots.push_back(std::move(previous));
+    if (auto previous = CompletePreparedSkinningSnapshot(context)) {
+        retiredSnapshots.push_back(std::move(previous));
+    }
     return success;
 }
 
 bool NeedsCurrentOutput(RenderPassContext& context, GameObject& object,
     const SkinnedMeshRenderer& skin, const AnimatorComponent* animator)
 {
-    if ((animator && animator->boneBake.active) || !skin.morphWeights.empty()
-        || !skin.appliedMorphWeights.empty()
-        || (object.GetComponent<FiberComponent>() && object.GetComponent<FiberComponent>()->m_enabled)
-        || !FiniteCullingView(context) || context.selectionOutlineEnabled
-        || !context.settings.objectMaskRequests.empty()) return true;
-    for (const auto& handle : skin.morphVertexBuffers) if (handle.IsValid()) return true;
+    // ベイク済みボーンやモーフ、表面の草描画が最新の変形を参照する場合は出力を省かない。
+    if ((animator && animator->boneBake.active) || !skin.morphWeights.empty() || !skin.appliedMorphWeights.empty()) {
+        return true;
+    }
+    const auto* fiber = object.GetComponent<FiberComponent>();
+    if (fiber && fiber->m_enabled) {
+        return true;
+    }
+
+    // カリングできないビューと選択・マスクの描画では、保存済み境界だけで省略を決めない。
+    if (!FiniteCullingView(context) || context.selectionOutlineEnabled || !context.settings.objectMaskRequests.empty()) {
+        return true;
+    }
+    for (const auto& handle : skin.morphVertexBuffers) {
+        if (handle.IsValid()) {
+            return true;
+        }
+    }
+
     WorldBounds bounds;
-    if (!StoredPoseBounds(object, skin, bounds)) return true;
+    if (!StoredPoseBounds(object, skin, bounds)) {
+        return true;
+    }
     renderer::RenderObject captured;
     captured.layer = static_cast<uint32_t>(object.layer);
     captured.lodVisible = skin.lodVisible;
@@ -380,13 +495,19 @@ GpuOutputDemandScope::GpuOutputDemandScope(RenderPassContext& context) : m_previ
 {
     s_gpuDemandState = nullptr;
     if (!renderer::GpuSkinningDemandEnabled() || m_previous || !context.scene.GetUserRenderPasses().empty()
-        || !renderer::SupportsCapturedSkinning(context.renderer, context.resources)) return;
+        || !renderer::SupportsCapturedSkinning(context.renderer, context.resources)) {
+        return;
+    }
     for (EntityID id : context.scene.GetEntities<ScriptComponent>()) {
         const auto* object = context.scene.GetGameObject(id);
         const auto* scripts = context.scene.GetComponent<ScriptComponent>(id);
-        if (!object || !object->activeInHierarchy() || !scripts) continue;
+        if (!object || !object->activeInHierarchy() || !scripts) {
+            continue;
+        }
         for (const auto& entry : scripts->scripts)
-            if (entry.script && entry.script->enabled && !ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) return;
+            if (entry.script && entry.script->enabled && !ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) {
+                return;
+            }
     }
     m_state = std::make_unique<GpuOutputDemandState>(context);
     s_gpuDemandState = m_state.get();

@@ -103,24 +103,21 @@ private:
     /// @brief シーン本文から参照を拾って利用権の束を作る。既にあれば優先度だけ上げる。
     FBZZ_ENGINE_API bool AcquireSceneLeases(const std::string& name, asset::AssetPriority priority);
 
-    std::unordered_map<std::string, SceneFactory> m_factories;
-    /// @note RegisterFromFile の本文の場所。先読みで参照を拾うのに使う。
-    std::unordered_map<std::string, std::string>  m_scenePaths;
-    /// @note シーンごとの利用権。切り替えが成功したら旧シーンの束だけを手放す (共有物は他の束が持ち続ける)。
-    std::unordered_map<std::string, asset::AssetLeaseSet> m_sceneLeases;
-    std::unique_ptr<Scene>                        m_active;
-    std::string                                   m_pendingLoad;
-    std::string                                   m_activeName;
-    Scene*                                        m_externalScene  = nullptr;
-    uint64_t m_resourceOwner = 0;
-    bool                                          m_simulating     = true;
-    bool                                          m_playing        = false;
-    /// @note 開始前に一度だけstatic bakeを検証し、runtime中の非追従TargetPoint移動を再Bake要求へ変えない。
-    uint64_t m_staticBakeValidationScene = 0;
-    bool m_staticBakeValidationSucceeded = true;
-    audio::AudioManager*                          m_audioManager   = nullptr;
+    std::unordered_map<std::string, SceneFactory> m_factories; ///< 登録名から Scene 実体を作成するファクトリーの対応表。
+    std::unordered_map<std::string, std::string>  m_scenePaths; ///< RegisterFromFile の本文の場所。先読みで参照を拾うのに使う。
+    std::unordered_map<std::string, asset::AssetLeaseSet> m_sceneLeases; ///< シーンごとの利用権。切り替えが成功したら旧シーンの束だけを手放す (共有物は他の束が持ち続ける)。
+    std::unique_ptr<Scene>                        m_active; ///< 現在実行する Scene を、このマネージャー内で所有する場合の実体。
+    std::string                                   m_pendingLoad; ///< 安全な更新境界で読み込む登録シーン名。
+    std::string                                   m_activeName; ///< 現在の登録シーンの名前。
+    Scene*                                        m_externalScene  = nullptr; ///< ホストが所有し、このマネージャーが実行する Scene の非所有参照。
+    uint64_t m_resourceOwner = 0; ///< シーンで使う描画資源管理器の生存期間 ID。
+    bool                                          m_simulating     = true; ///< この更新でシミュレーション用システムを進めるか。
+    bool                                          m_playing        = false; ///< 一時停止を含め、Play セッションが続いているか。
+    uint64_t m_staticBakeValidationScene = 0; ///< 開始前に一度だけstatic bakeを検証し、runtime中の非追従TargetPoint移動を再Bake要求へ変えない。
+    bool m_staticBakeValidationSucceeded = true; ///< 対象シーンの静的ベイクの開始時検証を通過したか。
+    audio::AudioManager*                          m_audioManager   = nullptr; ///< AudioSystem に渡す音声管理器の非所有参照。
 
-    SystemScheduler m_scheduler;
+    SystemScheduler m_scheduler; ///< フェーズ順、固定更新、システムの登録を管理するスケジューラー。
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

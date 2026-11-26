@@ -30,7 +30,7 @@ ComponentAccess ParticleSimulationSystem::GetAccess() const
 
 OrderingHints ParticleSimulationSystem::GetOrder() const
 {
-    /// @note MeshSurfaceのスキン姿勢が確定した後、描画パスより前にEmissionを確定する。
+    // MeshSurfaceのスキン姿勢が確定した後、描画パスより前にEmissionを確定する。
     return OrderingHints{}.After<IKSystem>();
 }
 
@@ -39,11 +39,13 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<ParticleEmitter>()) {
         auto* emitter = ctx.scene.GetComponent<ParticleEmitter>(id);
         GameObject* gameObject = ctx.scene.GetGameObject(id);
-        if (!emitter || !gameObject || !gameObject->activeInHierarchy() || !emitter->settings.enabled) continue;
+        if (!emitter || !gameObject || !gameObject->activeInHierarchy() || !emitter->settings.enabled) {
+            continue;
+        }
 
         particle_simulation_detail::PrepareParticleSimulationInputs(*emitter);
-        /// @note VFX Editor のタイムラインスクラブ要求。決定論的な再シミュレーションで状態を作り直すため、
-        /// @note このフレームの通常再生はスキップする (フレームガードはスクラブ側が立てる)。
+        // VFX Editor のタイムラインスクラブ要求。決定論的な再シミュレーションで状態を作り直すため、
+        // このフレームの通常再生はスキップする (フレームガードはスクラブ側が立てる)。
         if (emitter->runtime.editorScrubTime >= 0.0f) {
             const float target = emitter->runtime.editorScrubTime;
             emitter->runtime.editorScrubTime = -1.0f;
@@ -51,16 +53,18 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        if (emitter->settings.culling.pauseWhenCulled && emitter->runtime.isCulledThisFrame) continue;
+        if (emitter->settings.culling.pauseWhenCulled && emitter->runtime.isCulledThisFrame) {
+            continue;
+        }
 
-        /// @note 再生進行の実体は AdvanceParticleEmitterPlayback が持つ (描画パスと共用)。
-        /// @note VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) だけここで dt へ掛ける。
+        // 再生進行の実体は AdvanceParticleEmitterPlayback が持つ (描画パスと共用)。
+        // VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) だけここで dt へ掛ける。
         (void)AdvanceParticleEmitterPlayback(*emitter, gameObject->transform,
                                              ctx.dt * emitter->GetEditorTimeScale(Time::frameCount));
     }
 
-    /// @note 描画されないScene Viewや非表示Viewportでも寿命・衝突を進めるため、CPU更新はScheduler側で完結させる。
+    // 描画されないScene Viewや非表示Viewportでも寿命・衝突を進めるため、CPU更新はScheduler側で完結させる。
     UpdateParticleCpuSimulation(ctx.scene, ctx.world, ctx.dt, Time::time);
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

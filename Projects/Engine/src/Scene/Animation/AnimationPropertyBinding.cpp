@@ -23,28 +23,34 @@ public:
         : m_track(track), m_ticks(ticks) {}
 
     void Field(const char* name, float& value) override {
-        if (Matches(name) && !m_track.floatKeys.empty())
+        if (Matches(name) && !m_track.floatKeys.empty()) {
             value = asset::SampleFloatKeys(m_track.floatKeys, m_ticks, m_track.interp);
+        }
     }
     void Field(const char* name, int& value) override {
-        if (Matches(name) && !m_track.intKeys.empty())
+        if (Matches(name) && !m_track.intKeys.empty()) {
             value = asset::SampleDiscreteKey(m_track.intKeys, m_ticks).value;
+        }
     }
     void Field(const char* name, bool& value) override {
-        if (Matches(name) && !m_track.boolKeys.empty())
+        if (Matches(name) && !m_track.boolKeys.empty()) {
             value = asset::SampleDiscreteKey(m_track.boolKeys, m_ticks).value;
+        }
     }
     void Field(const char* name, math::Vector2& value) override {
-        if (Matches(name) && !m_track.vector2Keys.empty())
+        if (Matches(name) && !m_track.vector2Keys.empty()) {
             value = asset::SampleVector2Keys(m_track.vector2Keys, m_ticks, m_track.interp);
+        }
     }
     void Field(const char* name, math::Vector3& value) override {
-        if (Matches(name) && !m_track.vector3Keys.empty())
+        if (Matches(name) && !m_track.vector3Keys.empty()) {
             value = asset::SampleVectorKeys(m_track.vector3Keys, m_ticks, value, m_track.interp);
+        }
     }
     void Field(const char* name, math::Vector4& value) override {
-        if (Matches(name) && !m_track.vector4Keys.empty())
+        if (Matches(name) && !m_track.vector4Keys.empty()) {
             value = asset::SampleVector4Keys(m_track.vector4Keys, m_ticks, m_track.interp);
+        }
     }
     void Field(const char*, std::string&) override {}
     void Field(const char*, math::Quaternion&) override {}
@@ -65,35 +71,47 @@ public:
         : m_track(track), m_sample(sample) {}
 
     void Field(const char* name, float& value) override {
-        if (!Matches(name)) return;
+        if (!Matches(name)) {
+            return;
+        }
         m_sample.floats[0] = value;
         Mark(asset::AnimValueType::Float);
     }
     void Field(const char* name, int& value) override {
-        if (!Matches(name)) return;
+        if (!Matches(name)) {
+            return;
+        }
         m_sample.intValue = value;
         Mark(asset::AnimValueType::Int);
     }
     void Field(const char* name, bool& value) override {
-        if (!Matches(name)) return;
+        if (!Matches(name)) {
+            return;
+        }
         m_sample.boolValue = value;
         Mark(asset::AnimValueType::Bool);
     }
     void Field(const char* name, math::Vector2& value) override {
-        if (!Matches(name)) return;
+        if (!Matches(name)) {
+            return;
+        }
         m_sample.floats[0] = value.x;
         m_sample.floats[1] = value.y;
         Mark(asset::AnimValueType::Vector2);
     }
     void Field(const char* name, math::Vector3& value) override {
-        if (!Matches(name)) return;
+        if (!Matches(name)) {
+            return;
+        }
         m_sample.floats[0] = value.x;
         m_sample.floats[1] = value.y;
         m_sample.floats[2] = value.z;
         Mark(asset::AnimValueType::Vector3);
     }
     void Field(const char* name, math::Vector4& value) override {
-        if (!Matches(name)) return;
+        if (!Matches(name)) {
+            return;
+        }
         m_sample.floats[0] = value.x;
         m_sample.floats[1] = value.y;
         m_sample.floats[2] = value.z;
@@ -123,26 +141,35 @@ public:
         : m_track(track), m_sample(sample) {}
 
     void Field(const char* name, float& value) override {
-        if (Matches(name, asset::AnimValueType::Float)) value = m_sample.floats[0];
+        if (Matches(name, asset::AnimValueType::Float)) {
+            value = m_sample.floats[0];
+        }
     }
     void Field(const char* name, int& value) override {
-        if (Matches(name, asset::AnimValueType::Int)) value = m_sample.intValue;
+        if (Matches(name, asset::AnimValueType::Int)) {
+            value = m_sample.intValue;
+        }
     }
     void Field(const char* name, bool& value) override {
-        if (Matches(name, asset::AnimValueType::Bool)) value = m_sample.boolValue;
+        if (Matches(name, asset::AnimValueType::Bool)) {
+            value = m_sample.boolValue;
+        }
     }
     void Field(const char* name, math::Vector2& value) override {
-        if (Matches(name, asset::AnimValueType::Vector2))
+        if (Matches(name, asset::AnimValueType::Vector2)) {
             value = { m_sample.floats[0], m_sample.floats[1] };
+        }
     }
     void Field(const char* name, math::Vector3& value) override {
-        if (Matches(name, asset::AnimValueType::Vector3))
+        if (Matches(name, asset::AnimValueType::Vector3)) {
             value = { m_sample.floats[0], m_sample.floats[1], m_sample.floats[2] };
+        }
     }
     void Field(const char* name, math::Vector4& value) override {
-        if (Matches(name, asset::AnimValueType::Vector4))
+        if (Matches(name, asset::AnimValueType::Vector4)) {
             value = { m_sample.floats[0], m_sample.floats[1],
                       m_sample.floats[2], m_sample.floats[3] };
+        }
     }
     void Field(const char*, std::string&) override {}
     void Field(const char*, math::Quaternion&) override {}
@@ -164,7 +191,9 @@ void VisitComponent(GameObject& target,
 {
     bool visited = false;
     ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (visited || track.componentType != Registration::serializedName) return;
+        if (visited || track.componentType != Registration::serializedName) {
+            return;
+        }
         if constexpr (requires(T& component, IReflector& reflector) {
             component.Reflect(reflector);
         }) {
@@ -174,18 +203,22 @@ void VisitComponent(GameObject& target,
             }
         }
     });
-    if (visited) return;
+    if (visited) {
+        return;
+    }
 
     if (ScriptComponent* scripts = target.GetComponent<ScriptComponent>()) {
         for (auto& entry : scripts->scripts) {
-            if (!entry.script || track.componentType != entry.script->GetTypeName()) continue;
+            if (!entry.script || track.componentType != entry.script->GetTypeName()) {
+                continue;
+            }
             make(*entry.script);
             break;
         }
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void ApplyComponentProperty(GameObject& target,
                             const asset::PropertyAnimationTrack& track,
@@ -202,8 +235,10 @@ void ApplyMaterialProperty(GameObject& target,
                            double ticks)
 {
     MaterialComponent* material = target.GetComponent<MaterialComponent>();
-    if (!material || track.propertyName.empty()) return;
-    /// @note materialSlot が submesh (= マテリアルスロット) を選ぶ。負値は主スロット。
+    if (!material || track.propertyName.empty()) {
+        return;
+    }
+    // materialSlot が submesh (= マテリアルスロット) を選ぶ。負値は主スロット。
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
     auto& slot = material->SlotAt(slotIndex);
     auto edit = slot.BeginAuthoringEdit();
@@ -230,12 +265,14 @@ void ApplyMaterialProperty(GameObject& target,
         break;
     }
     case asset::AnimValueType::Int:
-        if (!track.intKeys.empty())
+        if (!track.intKeys.empty()) {
             values = { static_cast<float>(asset::SampleDiscreteKey(track.intKeys, ticks).value) };
+        }
         break;
     case asset::AnimValueType::Bool:
-        if (!track.boolKeys.empty())
+        if (!track.boolKeys.empty()) {
             values = { asset::SampleDiscreteKey(track.boolKeys, ticks).value ? 1.0f : 0.0f };
+        }
         break;
     }
     if (edit.Commit(slot) == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
@@ -257,7 +294,9 @@ void RestoreComponentProperty(GameObject& target,
                               const asset::PropertyAnimationTrack& track,
                               const AnimationPropertySample& sample)
 {
-    if (!sample.found) return;
+    if (!sample.found) {
+        return;
+    }
     VisitComponent(target, track, [&](auto& reflectable) {
         PropertyRestoreReflector reflector(track, sample);
         reflectable.Reflect(reflector);
@@ -270,14 +309,22 @@ bool CaptureMaterialProperty(GameObject& target,
 {
     outValues.clear();
     MaterialComponent* material = target.GetComponent<MaterialComponent>();
-    if (!material || track.propertyName.empty()) return false;
+    if (!material || track.propertyName.empty()) {
+        return false;
+    }
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
-    if (slotIndex >= material->SlotCount()) return false;
+    if (slotIndex >= material->SlotCount()) {
+        return false;
+    }
     const auto snapshot = material->SlotAt(slotIndex).ReadAuthoring();
-    if (!snapshot) return false;
+    if (!snapshot) {
+        return false;
+    }
     const auto& overrides = snapshot->Data().paramOverrides;
     const auto it = overrides.find(track.propertyName);
-    if (it == overrides.end()) return false;
+    if (it == overrides.end()) {
+        return false;
+    }
     outValues = it->second;
     return true;
 }
@@ -288,17 +335,23 @@ void RestoreMaterialProperty(GameObject& target,
                              bool hadOverride)
 {
     MaterialComponent* material = target.GetComponent<MaterialComponent>();
-    if (!material || track.propertyName.empty()) return;
+    if (!material || track.propertyName.empty()) {
+        return;
+    }
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
-    if (slotIndex >= material->SlotCount()) return;
+    if (slotIndex >= material->SlotCount()) {
+        return;
+    }
     auto& slot = material->SlotAt(slotIndex);
     auto edit = slot.BeginAuthoringEdit();
     auto& overrides = edit.Draft().paramOverrides;
-    /// @note 演出が付けた override は、演出が終わったら跡形もなく消えるのが正しい。
-    if (!hadOverride) overrides.erase(track.propertyName);
+    // 演出が付けた override は、演出が終わったら跡形もなく消えるのが正しい。
+    if (!hadOverride) {
+        overrides.erase(track.propertyName);
+    }
     else              overrides[track.propertyName] = values;
     if (edit.Commit(slot) == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
         FBZZ_LOG_WARN("Animation material restoration conflicted with a newer edit: %s", track.propertyName.c_str());
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -35,14 +35,18 @@ bool Finite(const Transform& transform)
 /// @see Projects/Math/src/Quaternion.cpp Quaternion::Normalized / Quaternion::Inverse。
 bool FiniteNormalization(const math::Quaternion& value)
 {
-    if (!Finite(value)) return false;
+    if (!Finite(value)) {
+        return false;
+    }
     const float length = value.Length();
     return std::isfinite(length) && !math::NearlyZero(length);
 }
 
 bool FiniteInverse(const math::Quaternion& value)
 {
-    if (!Finite(value)) return false;
+    if (!Finite(value)) {
+        return false;
+    }
     const float lengthSq = value.x * value.x + value.y * value.y
         + value.z * value.z + value.w * value.w;
     return std::isfinite(lengthSq) && !math::NearlyZero(lengthSq);
@@ -67,7 +71,9 @@ void Write(char* bytes, const T& value)
 Transform* ManagedTransformBatch::Shadow(GameObject& object)
 {
     const uint32_t index = object.GetID().index;
-    if (index >= m_shadow.size()) return nullptr;
+    if (index >= m_shadow.size()) {
+        return nullptr;
+    }
     if (m_cloneEpoch[index] != m_epoch) {
         m_shadow[index] = object.transform;
         m_cloneEpoch[index] = m_epoch;
@@ -80,13 +86,19 @@ bool ManagedTransformBatch::Update(GameObject& object, bool shadow)
     GameObject* parent = object.GetParent();
     Transform* transform = shadow ? Shadow(object) : &object.transform;
     const Transform* parentTransform = parent ? (shadow ? Shadow(*parent) : &parent->transform) : nullptr;
-    if (!transform || (parent && !parentTransform)) return false;
+    if (!transform || (parent && !parentTransform)) {
+        return false;
+    }
     if (shadow) {
         if (!Finite(transform->position) || !Finite(transform->scale)
-            || !FiniteNormalization(transform->rotation)) return false;
+            || !FiniteNormalization(transform->rotation)) {
+            return false;
+        }
         if (parentTransform && (!Finite(parentTransform->worldPosition)
             || !Finite(parentTransform->worldScale) || !FiniteNormalization(parentTransform->worldRotation)
-            || !FiniteNormalization(parentTransform->worldRotation * transform->rotation))) return false;
+            || !FiniteNormalization(parentTransform->worldRotation * transform->rotation))) {
+            return false;
+        }
     }
     UpdateWorldTransform(*transform, parentTransform);
     return !shadow || Finite(*transform);
@@ -100,33 +112,45 @@ bool ManagedTransformBatch::Synchronize(GameObject& root, bool shadow)
 bool ManagedTransformBatch::SynchronizeAncestors(GameObject& root, bool shadow)
 {
     Scene* scene = root.GetScene();
-    if (!scene) return false;
+    if (!scene) {
+        return false;
+    }
     const size_t slots = scene->EntitySlotCount();
     m_ancestors.clear();
     for (GameObject* parent = root.GetParent(); parent; parent = parent->GetParent()) {
         if (m_ancestors.size() >= slots || parent->GetScene() != scene
-            || scene->GetGameObject(parent->GetID()) != parent) return false;
+            || scene->GetGameObject(parent->GetID()) != parent) {
+            return false;
+        }
         m_ancestors.push_back(parent);
     }
     for (auto it = m_ancestors.rbegin(); it != m_ancestors.rend(); ++it)
-        if (!Update(**it, shadow)) return false;
+        if (!Update(**it, shadow)) {
+            return false;
+        }
     return true;
 }
 
 bool ManagedTransformBatch::SynchronizeSubtree(GameObject& root, bool shadow)
 {
     Scene* scene = root.GetScene();
-    if (!scene) return false;
+    if (!scene) {
+        return false;
+    }
     const size_t slots = scene->EntitySlotCount();
     m_queue.clear();
     m_queue.push_back(&root);
     for (size_t i = 0; i < m_queue.size(); ++i) {
         GameObject& object = *m_queue[i];
         if (object.GetScene() != scene || scene->GetGameObject(object.GetID()) != &object
-            || !Update(object, shadow)) return false;
+            || !Update(object, shadow)) {
+            return false;
+        }
         for (int childIndex = 0; childIndex < object.GetChildCount(); ++childIndex) {
             if (GameObject* child = object.GetChild(childIndex)) {
-                if (m_queue.size() >= slots || child->GetParent() != &object) return false;
+                if (m_queue.size() >= slots || child->GetParent() != &object) {
+                    return false;
+                }
                 m_queue.push_back(child);
             }
         }
@@ -138,26 +162,42 @@ bool ManagedTransformBatch::PrepareWrite(Entry& entry, bool translate, const mat
 {
     GameObject& object = *entry.object;
     Transform* transform = Shadow(object);
-    if (!transform) return false;
-    /// @note 最初の world 読み取りは描画補間も含む現在値。setter の祖先同期より前に加算する。
-    if (translate) entry.position = transform->worldPosition + displacement;
-    if (!Finite(entry.position) || !Synchronize(object, true)) return false;
+    if (!transform) {
+        return false;
+    }
+    // 最初の world 読み取りは描画補間も含む現在値。setter の祖先同期より前に加算する。
+    if (translate) {
+        entry.position = transform->worldPosition + displacement;
+    }
+    if (!Finite(entry.position) || !Synchronize(object, true)) {
+        return false;
+    }
     const math::Quaternion localRotation = transform->rotation;
     const math::Vector3 localScale = transform->scale;
     GameObject* parent = object.GetParent();
     const Transform* parentTransform = parent ? Shadow(*parent) : nullptr;
-    if (parent && !parentTransform) return false;
+    if (parent && !parentTransform) {
+        return false;
+    }
     if (parentTransform) {
-        if (!FiniteInverse(parentTransform->worldRotation)) return false;
+        if (!FiniteInverse(parentTransform->worldRotation)) {
+            return false;
+        }
         const math::Quaternion inverse = parentTransform->worldRotation.Inverse();
-        if (!Finite(inverse) || !FiniteNormalization(inverse * transform->worldRotation)) return false;
-        /// @note ゼロスケール投影で隠れる非有限値も、親との差分と逆回転の段階で拒否する。
+        if (!Finite(inverse) || !FiniteNormalization(inverse * transform->worldRotation)) {
+            return false;
+        }
+        // ゼロスケール投影で隠れる非有限値も、親との差分と逆回転の段階で拒否する。
         const math::Vector3 offset = entry.position - parentTransform->worldPosition;
-        if (!Finite(offset) || !Finite(inverse * offset)) return false;
+        if (!Finite(offset) || !Finite(inverse * offset)) {
+            return false;
+        }
     }
     SetWorldPose(*transform, parentTransform, entry.position, transform->worldRotation, transform->worldScale);
-    /// @note 位置操作は local 回転とスケールを変更しない。逆算の非有限値は復元で隠す前に拒否する。
-    if (!Finite(*transform)) return false;
+    // 位置操作は local 回転とスケールを変更しない。逆算の非有限値は復元で隠す前に拒否する。
+    if (!Finite(*transform)) {
+        return false;
+    }
     transform->rotation = localRotation;
     transform->scale = localScale;
     return Synchronize(object, true);
@@ -179,12 +219,16 @@ bool ManagedTransformBatch::CanStageIndependentRoots(const Scene& scene)
 {
     BeginEpoch(scene);
     for (const Entry& entry : m_entries) {
-        if (!entry.apply) continue;
+        if (!entry.apply) {
+            continue;
+        }
         GameObject& object = *entry.object;
         const uint32_t index = object.GetID().index;
         if (object.GetScene() != &scene || scene.GetGameObject(object.GetID()) != &object
             || object.GetParent() || object.GetChildCount() != 0
-            || index >= m_cloneEpoch.size() || m_cloneEpoch[index] == m_epoch) return false;
+            || index >= m_cloneEpoch.size() || m_cloneEpoch[index] == m_epoch) {
+            return false;
+        }
         m_cloneEpoch[index] = m_epoch;
     }
     return true;
@@ -194,19 +238,29 @@ bool ManagedTransformBatch::StageIndependentRoots(bool translate, const math::Ve
 {
     m_rootShadow.resize(m_entries.size());
     for (size_t index = 0; index < m_entries.size(); ++index)
-        if (m_entries[index].apply) m_rootShadow[index] = m_entries[index].object->transform;
+        if (m_entries[index].apply) {
+            m_rootShadow[index] = m_entries[index].object->transform;
+        }
     for (size_t index = 0; index < m_entries.size(); ++index) {
         Entry& entry = m_entries[index];
-        if (!entry.apply) continue;
+        if (!entry.apply) {
+            continue;
+        }
         Transform& transform = m_rootShadow[index];
-        /// @note translate は local 同期前の world キャッシュに加算し、既存 setter と同じ初期値を使う。
-        if (translate) entry.position = transform.worldPosition + displacement;
+        // translate は local 同期前の world キャッシュに加算し、既存 setter と同じ初期値を使う。
+        if (translate) {
+            entry.position = transform.worldPosition + displacement;
+        }
         if (!Finite(entry.position) || !Finite(transform.position) || !Finite(transform.scale)
-            || !FiniteNormalization(transform.rotation)) return false;
-        /// @note 独立ルートの位置変更後は local 回転・拡縮を保持し、world はそれぞれの local と一致する。
+            || !FiniteNormalization(transform.rotation)) {
+            return false;
+        }
+        // 独立ルートの位置変更後は local 回転・拡縮を保持し、world はそれぞれの local と一致する。
         transform.position = entry.position;
         UpdateWorldTransform(transform, nullptr);
-        if (!Finite(transform)) return false;
+        if (!Finite(transform)) {
+            return false;
+        }
     }
     return true;
 }
@@ -214,13 +268,17 @@ bool ManagedTransformBatch::StageIndependentRoots(bool translate, const math::Ve
 void ManagedTransformBatch::CommitIndependentRoots()
 {
     for (size_t index = 0; index < m_entries.size(); ++index)
-        if (m_entries[index].apply) m_entries[index].object->transform = m_rootShadow[index];
+        if (m_entries[index].apply) {
+            m_entries[index].object->transform = m_rootShadow[index];
+        }
 }
 
 void ManagedTransformBatch::BeginEpoch(const Scene& scene)
 {
     const size_t slots = scene.EntitySlotCount();
-    if (m_cloneEpoch.size() != slots) m_cloneEpoch.resize(slots);
+    if (m_cloneEpoch.size() != slots) {
+        m_cloneEpoch.resize(slots);
+    }
     if (++m_epoch == 0) {
         std::fill(m_cloneEpoch.begin(), m_cloneEpoch.end(), 0);
         m_epoch = 1;
@@ -231,13 +289,19 @@ void ManagedTransformBatch::BeginShadow(const Scene& scene)
 {
     BeginEpoch(scene);
     const size_t slots = scene.EntitySlotCount();
-    if (m_shadow.size() != slots) m_shadow.resize(slots);
+    if (m_shadow.size() != slots) {
+        m_shadow.resize(slots);
+    }
 }
 
 void ManagedTransformBatch::CommitShadow()
 {
-    for (GameObject* object : m_ancestors) object->transform = *Shadow(*object);
-    for (GameObject* object : m_queue) object->transform = *Shadow(*object);
+    for (GameObject* object : m_ancestors) {
+        object->transform = *Shadow(*object);
+    }
+    for (GameObject* object : m_queue) {
+        object->transform = *Shadow(*object);
+    }
 }
 
 ManagedBridgeStatus ManagedTransformBatch::RunPosition(GameObject& target,
@@ -245,24 +309,41 @@ ManagedBridgeStatus ManagedTransformBatch::RunPosition(GameObject& target,
 {
     if (request.op != ManagedBridgeOp::TRANSFORM_WRITE_LOCAL
         && request.op != ManagedBridgeOp::TRANSFORM_WRITE_WORLD
-        && request.op != ManagedBridgeOp::TRANSFORM_TRANSLATE_LOCAL)
+        && request.op != ManagedBridgeOp::TRANSFORM_TRANSLATE_LOCAL) {
         return ManagedBridgeStatus::UNSUPPORTED;
-    if (request.flags || request.index || request.inputBytes) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (request.flags || request.index || request.inputBytes) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const math::Vector3 value{request.x, request.y, request.z};
-    if (!Finite(value)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (!target.GetScene()) return ManagedBridgeStatus::NOT_FOUND;
+    if (!Finite(value)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (!target.GetScene()) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     BeginShadow(*target.GetScene());
     if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_WORLD) {
         Entry entry;
         entry.object = &target;
         entry.position = value;
-        if (!PrepareWrite(entry, false, math::Vector3::ZERO)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!PrepareWrite(entry, false, math::Vector3::ZERO)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
     } else {
         Transform* transform = Shadow(target);
-        if (!transform) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL) transform->position = value;
-        else transform->Translate(value);
-        if (!Synchronize(target, true)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!transform) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL) {
+            transform->position = value;
+        }
+        else {
+            transform->Translate(value);
+        }
+        if (!Synchronize(target, true)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
     }
     CommitShadow();
     return ManagedBridgeStatus::OK;
@@ -271,7 +352,9 @@ ManagedBridgeStatus ManagedTransformBatch::RunPosition(GameObject& target,
 ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
     const ManagedBridgeRequest& request, ManagedBridgeReply& reply)
 {
-    if (request.flags || request.inputBytes) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (request.flags || request.inputBytes) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const auto vectorReply = [&](const math::Vector3& value) {
         reply.valueKind = ManagedValueKind::VECTOR3;
         reply.x = value.x;
@@ -281,7 +364,9 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
     };
     switch (request.op) {
     case ManagedBridgeOp::TRANSFORM_READ_ROTATION: {
-        if (request.index > 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (request.index > 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const math::Quaternion& rotation = request.index ? target.transform.worldRotation : target.transform.rotation;
         reply.x = rotation.x;
         reply.y = rotation.y;
@@ -290,10 +375,14 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
         return ManagedBridgeStatus::OK;
     }
     case ManagedBridgeOp::TRANSFORM_READ_SCALE:
-        if (request.index) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (request.index) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return vectorReply(target.transform.scale);
     case ManagedBridgeOp::TRANSFORM_READ_DIRECTION:
-        if (request.index > 2) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (request.index > 2) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return vectorReply(request.index == 0 ? target.transform.Forward()
             : request.index == 1 ? target.transform.Right() : target.transform.Up());
     case ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_ROTATION:
@@ -304,35 +393,56 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
         break;
     default: return ManagedBridgeStatus::UNSUPPORTED;
     }
-    if (request.index) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (request.index) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const auto* body = target.GetComponent<RigidBodyComponent>();
-    if (body && body->enabled && body->rigidBody) return ManagedBridgeStatus::PHYSICS_BODY;
+    if (body && body->enabled && body->rigidBody) {
+        return ManagedBridgeStatus::PHYSICS_BODY;
+    }
     const math::Vector3 value{request.x, request.y, request.z};
-    if (!Finite(value)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Finite(value)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     if (request.op == ManagedBridgeOp::TRANSFORM_ROTATE) {
         const float lengthSq = value.LengthSq();
-        if (!std::isfinite(request.w) || !std::isfinite(lengthSq)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        /// @note 零軸は C++ proxy と同じ完全な no-op。描画補間された world キャッシュも同期しない。
-        if (lengthSq < math::EPSILON * math::EPSILON) return ManagedBridgeStatus::OK;
+        if (!std::isfinite(request.w) || !std::isfinite(lengthSq)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        // 零軸は C++ proxy と同じ完全な no-op。描画補間された world キャッシュも同期しない。
+        if (lengthSq < math::EPSILON * math::EPSILON) {
+            return ManagedBridgeStatus::OK;
+        }
     }
-    if (!target.GetScene()) return ManagedBridgeStatus::NOT_FOUND;
+    if (!target.GetScene()) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     BeginShadow(*target.GetScene());
     Transform* transform = Shadow(target);
-    if (!transform) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!transform) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const bool worldRotationWrite = request.op == ManagedBridgeOp::TRANSFORM_WRITE_WORLD_ROTATION;
     if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_ROTATION || worldRotationWrite) {
         math::Quaternion rotation{request.x, request.y, request.z, request.w};
-        if (!FiniteNormalization(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!FiniteNormalization(rotation)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         if (worldRotationWrite) {
-            /// @note 描画補間のキャッシュは逆算に使わず、祖先をローカル姿勢から確定して回転成分だけを書き換える。
-            if (!SynchronizeAncestors(target, true)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            // 描画補間のキャッシュは逆算に使わず、祖先をローカル姿勢から確定して回転成分だけを書き換える。
+            if (!SynchronizeAncestors(target, true)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             rotation = rotation.Normalized();
             if (auto* parent = target.GetParent()) {
                 const auto* parentTransform = Shadow(*parent);
-                if (!parentTransform || !FiniteNormalization(parentTransform->worldRotation))
+                if (!parentTransform || !FiniteNormalization(parentTransform->worldRotation)) {
                     return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
                 rotation = parentTransform->worldRotation.Normalized().Inverse() * rotation;
-                if (!FiniteNormalization(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                if (!FiniteNormalization(rotation)) {
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
                 rotation = rotation.Normalized();
             }
         }
@@ -340,30 +450,42 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
     } else if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_SCALE) {
         transform->scale = value;
     } else {
-        if (!Synchronize(target, true)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!Synchronize(target, true)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         if (request.op == ManagedBridgeOp::TRANSFORM_ROTATE) {
-            /// @note C++ ScriptTransformProxy と同じ親のローカル軸・度単位・左積の回転。
+            // C++ ScriptTransformProxy と同じ親のローカル軸・度単位・左積の回転。
             /// @see Projects/Engine/src/Scene/ScriptProxy/Runtime/ScriptRuntimeProxies.cpp ScriptTransformProxy::Rotate。
             const math::Quaternion delta = math::Quaternion::FromAxisAngle(value.Normalized(), request.w * math::DEG2RAD);
             const math::Quaternion rotation = delta * transform->rotation;
-            if (!FiniteNormalization(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!FiniteNormalization(rotation)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             transform->rotation = rotation.Normalized();
         } else {
             const math::Vector3 direction = value - transform->worldPosition;
             const float lengthSq = direction.LengthSq();
-            if (!Finite(direction) || !std::isfinite(lengthSq)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!Finite(direction) || !std::isfinite(lengthSq)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             if (lengthSq >= 1e-6f) {
-                if (!FiniteInverse(transform->rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                if (!FiniteInverse(transform->rotation)) {
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
                 const math::Quaternion parentRotation = transform->worldRotation * transform->rotation.Inverse();
-                if (!FiniteInverse(parentRotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-                /// @note 自分と重なる対象は回転しない。親子計算を変更せず、MathContract の前提を満たしてから呼ぶ。
+                if (!FiniteInverse(parentRotation)) {
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
+                // 自分と重なる対象は回転しない。親子計算を変更せず、MathContract の前提を満たしてから呼ぶ。
                 /// @see Projects/Engine/src/Scene/Hierarchy/Transform.cpp Transform::LookAt。
                 transform->LookAt(value);
             }
         }
     }
     const bool synchronized = worldRotationWrite ? SynchronizeSubtree(target, true) : Synchronize(target, true);
-    if (!synchronized) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!synchronized) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     CommitShadow();
     return ManagedBridgeStatus::OK;
 }
@@ -371,7 +493,9 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
 ManagedBridgeStatus ManagedTransformBatch::Run(Scene& scene, const ManagedBridgeRequest& request,
     ManagedBridgeReply& reply, ObjectResolver resolver, void* resolverState)
 {
-    if ((request.inputBytes && !request.input) || (request.outputCapacity && !request.output)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if ((request.inputBytes && !request.input) || (request.outputCapacity && !request.output)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     return RunAggregate(scene, request, {request.input, request.inputBytes}, {request.output, request.outputCapacity}, reply, resolver, resolverState);
 }
 
@@ -386,18 +510,23 @@ ManagedBridgeStatus ManagedTransformBatch::RunAggregate(Scene& scene, const Mana
     const bool set = request.op == ManagedBridgeOp::OBJECTS_SET_WORLD_POSITIONS;
     const bool translate = request.op == ManagedBridgeOp::OBJECTS_TRANSLATE_WORLD;
     if ((!read && !set && !translate) || !resolver
-        || (translate ? (request.flags & ~1u) != 0 : request.flags != 0))
+        || (translate ? (request.flags & ~1u) != 0 : request.flags != 0)) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const uint32_t inputStride = set ? kManagedBatchSetItemBytes : kManagedBatchReferenceBytes;
     const uint32_t outputStride = read ? kManagedBatchReadItemBytes : (set ? kManagedBatchStatusBytes : 0u);
-    if (input.size() != static_cast<uint64_t>(request.index) * inputStride)
+    if (input.size() != static_cast<uint64_t>(request.index) * inputStride) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const math::Vector3 displacement{request.x, request.y, request.z};
-    if (translate && !Finite(displacement)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (translate && !Finite(displacement)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const uint64_t outputBytes = static_cast<uint64_t>(request.index) * outputStride;
     reply.outputBytes = outputBytes <= UINT32_MAX ? static_cast<uint32_t>(outputBytes) : 0;
-    if (outputBytes > output.size())
+    if (outputBytes > output.size()) {
         return ManagedBridgeStatus::BUFFER_TOO_SMALL;
+    }
 
     m_entries.resize(request.index);
     const uint64_t lifetime = scene.GetRenderSceneGeneration();
@@ -408,45 +537,70 @@ ManagedBridgeStatus ManagedTransformBatch::RunAggregate(Scene& scene, const Mana
         const char* row = input.data() + static_cast<size_t>(i) * inputStride;
         const uint64_t objectId = Read<uint64_t>(row);
         const uint64_t rowLifetime = Read<uint64_t>(row + sizeof(uint64_t));
-        if (!objectId && !rowLifetime) continue;
-        if (rowLifetime != lifetime) return ManagedBridgeStatus::SCENE_MISMATCH;
+        if (!objectId && !rowLifetime) {
+            continue;
+        }
+        if (rowLifetime != lifetime) {
+            return ManagedBridgeStatus::SCENE_MISMATCH;
+        }
         entry.status = ManagedObjectStatus::EXPIRED;
-        if (!objectId) continue;
+        if (!objectId) {
+            continue;
+        }
         const auto status = resolver(resolverState, objectId, entry.object);
-        if (status != ManagedBridgeStatus::OK) return status;
-        if (!entry.object) continue;
-        if (translate && (request.flags & 1u) && !entry.object->activeInHierarchy()) continue;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
+        if (!entry.object) {
+            continue;
+        }
+        if (translate && (request.flags & 1u) && !entry.object->activeInHierarchy()) {
+            continue;
+        }
         if (!read) {
             const auto* body = entry.object->GetComponent<RigidBodyComponent>();
-            if (body && body->enabled && body->rigidBody) return ManagedBridgeStatus::PHYSICS_BODY;
+            if (body && body->enabled && body->rigidBody) {
+                return ManagedBridgeStatus::PHYSICS_BODY;
+            }
         }
         entry.status = ManagedObjectStatus::VALID;
         entry.apply = true;
         ++applied;
         if (read) {
             entry.position = entry.object->transform.worldPosition;
-            if (!Finite(entry.position)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!Finite(entry.position)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
         } else if (set) {
             entry.position = {Read<float>(row + 16), Read<float>(row + 20), Read<float>(row + 24)};
-            if (!Finite(entry.position)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!Finite(entry.position)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
         }
     }
 
     if (!read && applied) {
         if (CanStageIndependentRoots(scene)) {
-            if (!StageIndependentRoots(translate, displacement)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-            if (publish) CommitIndependentRoots();
+            if (!StageIndependentRoots(translate, displacement)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
+            if (publish) {
+                CommitIndependentRoots();
+            }
         } else {
             BeginShadow(scene);
             for (Entry& entry : m_entries)
-                if (entry.apply && !PrepareWrite(entry, translate, displacement))
+                if (entry.apply && !PrepareWrite(entry, translate, displacement)) {
                     return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
             if (publish) for (const Entry& entry : m_entries)
-                if (entry.apply) ApplyWrite(entry);
+                if (entry.apply) {
+                    ApplyWrite(entry);
+                }
         }
     }
 
-    /// @note output の借用領域へは成功が確定してから書く。失効 slot の位置はゼロのまま残す。
+    // output の借用領域へは成功が確定してから書く。失効 slot の位置はゼロのまま残す。
     for (uint32_t i = 0; i < request.index && outputStride; ++i) {
         const Entry& entry = m_entries[i];
         char* row = output.data() + static_cast<size_t>(i) * outputStride;

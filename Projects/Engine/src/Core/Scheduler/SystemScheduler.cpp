@@ -26,12 +26,16 @@ using SystemBatches = std::vector<SystemBatch>;
 
 bool HasConflict(const ComponentAccess& a, const ComponentAccess& b)
 {
-    if (a.unrestricted || b.unrestricted) return true;
+    if (a.unrestricted || b.unrestricted) {
+        return true;
+    }
 
     const auto intersects = [](const std::vector<std::type_index>& left,
                                const std::vector<std::type_index>& right) {
         for (const auto& type : left) {
-            if (std::find(right.begin(), right.end(), type) != right.end()) return true;
+            if (std::find(right.begin(), right.end(), type) != right.end()) {
+                return true;
+            }
         }
         return false;
     };
@@ -46,10 +50,16 @@ bool HasPath(const std::vector<std::vector<size_t>>& successors, size_t from, si
     while (!pending.empty()) {
         const size_t current = pending.back();
         pending.pop_back();
-        if (current == to) return true;
-        if (visited[current]) continue;
+        if (current == to) {
+            return true;
+        }
+        if (visited[current]) {
+            continue;
+        }
         visited[current] = true;
-        for (size_t next : successors[current]) pending.push_back(next);
+        for (size_t next : successors[current]) {
+            pending.push_back(next);
+        }
     }
     return false;
 }
@@ -64,40 +74,47 @@ size_t BuildPhaseBatches(const SystemBatch& systems, SystemBatches& batches)
         ++dependenciesRemaining[next];
     };
 
-    /// @note 明示の順序を先に登録する。同じ Phase 内の同型 System はすべてヒントの対象になる。
+    // 明示の順序を先に登録する。同じ Phase 内の同型 System はすべてヒントの対象になる。
     for (size_t index = 0; index < systemCount; ++index) {
         const OrderingHints hints = systems[index]->GetOrder();
         for (const auto& type : hints.after) {
             for (size_t candidate = 0; candidate < systemCount; ++candidate) {
-                if (std::type_index(typeid(*systems[candidate])) == type)
+                if (std::type_index(typeid(*systems[candidate])) == type) {
                     addDependency(candidate, index);
+                }
             }
         }
         for (const auto& type : hints.before) {
             for (size_t candidate = 0; candidate < systemCount; ++candidate) {
-                if (std::type_index(typeid(*systems[candidate])) == type)
+                if (std::type_index(typeid(*systems[candidate])) == type) {
                     addDependency(index, candidate);
+                }
             }
         }
     }
 
-    /// @note 両方向に経路がない競合だけを登録順で直列化する。間接的な依存にも従うことで逆向きの辺による循環を防ぐ。
+    // 両方向に経路がない競合だけを登録順で直列化する。間接的な依存にも従うことで逆向きの辺による循環を防ぐ。
     for (size_t first = 0; first < systemCount; ++first) {
         for (size_t second = first + 1; second < systemCount; ++second) {
-            if (!HasConflict(systems[first]->GetAccess(), systems[second]->GetAccess())) continue;
-            if (!HasPath(successors, first, second) && !HasPath(successors, second, first))
+            if (!HasConflict(systems[first]->GetAccess(), systems[second]->GetAccess())) {
+                continue;
+            }
+            if (!HasPath(successors, first, second) && !HasPath(successors, second, first)) {
                 addDependency(first, second);
+            }
         }
     }
 
     std::queue<size_t> ready;
     for (size_t index = 0; index < systemCount; ++index) {
-        if (dependenciesRemaining[index] == 0) ready.push(index);
+        if (dependenciesRemaining[index] == 0) {
+            ready.push(index);
+        }
     }
 
     size_t processed = 0;
     while (!ready.empty()) {
-        /// @note Kahn 法の各ラウンドの先頭でバッチ幅を確定する。今回の完了で実行可能になる後続は次のバッチへ回す。
+        // Kahn 法の各ラウンドの先頭でバッチ幅を確定する。今回の完了で実行可能になる後続は次のバッチへ回す。
         const size_t batchSize = ready.size();
         SystemBatch batch;
         for (size_t slot = 0; slot < batchSize; ++slot) {
@@ -105,7 +122,9 @@ size_t BuildPhaseBatches(const SystemBatch& systems, SystemBatches& batches)
             ready.pop();
             batch.push_back(systems[index]);
             for (size_t next : successors[index]) {
-                if (--dependenciesRemaining[next] == 0) ready.push(next);
+                if (--dependenciesRemaining[next] == 0) {
+                    ready.push(next);
+                }
             }
             ++processed;
         }
@@ -130,9 +149,11 @@ void SystemScheduler::AddSystemPtr(std::unique_ptr<ISystem> sys)
 bool SystemScheduler::Build()
 {
     assert(!m_built);
-    if (m_built) return false;
+    if (m_built) {
+        return false;
+    }
 
-    /// @note Phase 間の順序は Update にあり、ここでは各 Phase 内の依存だけを実行バッチに変換する。
+    // Phase 間の順序は Update にあり、ここでは各 Phase 内の依存だけを実行バッチに変換する。
     for (size_t phaseIndex = 0; phaseIndex < static_cast<size_t>(Phase::Count); ++phaseIndex) {
         const Phase phase = static_cast<Phase>(phaseIndex);
         auto& batches = m_batches[phaseIndex];
@@ -140,22 +161,29 @@ bool SystemScheduler::Build()
 
         SystemBatch phaseSystems;
         for (auto& system : m_systems) {
-            if (system->GetPhase() == phase) phaseSystems.push_back(system.get());
+            if (system->GetPhase() == phase) {
+                phaseSystems.push_back(system.get());
+            }
         }
-        if (phaseSystems.empty()) continue;
+        if (phaseSystems.empty()) {
+            continue;
+        }
 
         const size_t processed = BuildPhaseBatches(phaseSystems, batches);
         if (processed != phaseSystems.size()) {
             FBZZ_LOG_ERROR("SystemScheduler: cyclic ordering in phase %zu (%zu/%zu systems).",
                            phaseIndex, processed, phaseSystems.size());
-            for (auto& phaseBatches : m_batches) phaseBatches.clear();
+            for (auto& phaseBatches : m_batches) {
+                phaseBatches.clear();
+            }
             return false;
         }
     }
 
-    /// @note 全 Phase を検証してから初期化する。循環のあるスケジュールで OnInit の副作用を一部だけ起こさない。
-    for (auto& system : m_systems)
+    // 全 Phase を検証してから初期化する。循環のあるスケジュールで OnInit の副作用を一部だけ起こさない。
+    for (auto& system : m_systems) {
         system->OnInit();
+    }
 
     m_built = true;
     return true;
@@ -193,13 +221,15 @@ void RunParallelBatch(const SystemBatch& systems, SystemContext& context)
         }));
     }
 
-    /// @note 後続バッチはこのバッチの書き込みを読む。全タスクの完了と書き込みの可視化をここで待つ。
+    // 後続バッチはこのバッチの書き込みを読む。全タスクの完了と書き込みの可視化をここで待つ。
     const auto waitBegin = std::chrono::steady_clock::now();
-    for (auto& task : tasks) task.get();
+    for (auto& task : tasks) {
+        task.get();
+    }
     const double mainWaitMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - waitBegin).count();
 
-    /// @note ワーカーで測った値は呼び出し側でまとめ、タスクの完了順に左右されないバッチ順で記録する。
+    // ワーカーで測った値は呼び出し側でまとめ、タスクの完了順に左右されないバッチ順で記録する。
     double totalQueueWaitMs = 0.0;
     for (size_t index = 0; index < systems.size(); ++index) {
         totalQueueWaitMs += queueWaitMs[index];
@@ -220,26 +250,38 @@ void SystemScheduler::RunPhase(Phase phase, SystemContext& ctx)
 
     const auto runBatches = [&](SystemContext& context) {
         for (const auto& batch : m_batches[phaseIndex]) {
-            /// @note 前のバッチが状態を書き換え得るので、ShouldRun は各バッチの直前に評価する。
+            // 前のバッチが状態を書き換え得るので、ShouldRun は各バッチの直前に評価する。
             SystemBatch runnable;
             for (ISystem* system : batch) {
                 const RunMode mode = system->GetRunMode();
-                if (mode == RunMode::SimOnly && !context.simulating) continue;
-                if (mode == RunMode::EditorOnly && context.simulating) continue;
-                /// @note 実行間隔は外側のフレーム基準。1 フレーム内で追いつく固定ステップも同じ番号を使う。
-                if (m_frameCounter % system->RunInterval() != 0) continue;
-                if (!system->ShouldRun(context)) continue;
+                if (mode == RunMode::SimOnly && !context.simulating) {
+                    continue;
+                }
+                if (mode == RunMode::EditorOnly && context.simulating) {
+                    continue;
+                }
+                // 実行間隔は外側のフレーム基準。1 フレーム内で追いつく固定ステップも同じ番号を使う。
+                if (m_frameCounter % system->RunInterval() != 0) {
+                    continue;
+                }
+                if (!system->ShouldRun(context)) {
+                    continue;
+                }
                 runnable.push_back(system);
             }
-            if (runnable.empty()) continue;
+            if (runnable.empty()) {
+                continue;
+            }
 
-            if (runnable.size() == 1 || TaskSystem::WorkerCount() <= 1) {
-                for (ISystem* system : runnable) {
-                    FBZZ_PROFILE_SCOPE(system->Name().data());
-                    system->Update(context);
-                }
-            } else {
+            // 実行対象が複数あり、ワーカーに並行実行を割り当てられるときだけ仕事を分ける。
+            const bool dispatchInParallel = runnable.size() > 1 && TaskSystem::WorkerCount() > 1;
+            if (dispatchInParallel) {
                 RunParallelBatch(runnable, context);
+                continue;
+            }
+            for (ISystem* system : runnable) {
+                FBZZ_PROFILE_SCOPE(system->Name().data());
+                system->Update(context);
             }
         }
     };
@@ -255,13 +297,13 @@ void SystemScheduler::RunPhase(Phase phase, SystemContext& ctx)
     fixedCtx.fixedDt = fixedDt;
 
     if (m_singleStep) {
-        /// @note 単発ステップでは固定刻みを一度だけ実行し、通常の蓄積時間を消費しない。
+        // 単発ステップでは固定刻みを一度だけ実行し、通常の蓄積時間を消費しない。
         runBatches(fixedCtx);
         m_singleStep = false;
         return;
     }
 
-    /// @note 長いフレームの後に固定ステップだけで次のフレームを占有しないよう、追いつく時間を制限する。
+    // 長いフレームの後に固定ステップだけで次のフレームを占有しないよう、追いつく時間を制限する。
     m_accumulator = std::min(m_accumulator + ctx.dt, maxAccumulatedTime);
     while (m_accumulator >= fixedDt) {
         runBatches(fixedCtx);
@@ -272,18 +314,20 @@ void SystemScheduler::RunPhase(Phase phase, SystemContext& ctx)
 void SystemScheduler::Update(SystemContext ctx)
 {
     assert(m_built);
-    if (!m_built) return;
+    if (!m_built) {
+        return;
+    }
     RunPhase(Phase::PreScript,   ctx);
     RunPhase(Phase::Script,      ctx);
 
-    /// @note Script が書いたローカル姿勢と流れを物理の前に確定し、物理の書き戻しを Navigation が読む。
+    // Script が書いたローカル姿勢と流れを物理の前に確定し、物理の書き戻しを Navigation が読む。
     RunPhase(Phase::PrePhysics,  ctx);
     RunPhase(Phase::Physics,     ctx);
     RunPhase(Phase::PostPhysics, ctx);
     RunPhase(Phase::Navigation,  ctx);
     RunPhase(Phase::LateScript,  ctx);
 
-    /// @note シミュレーションからの破棄要求を処理してから、別入口の LateUpdate が描画用の姿勢を組む。
+    // シミュレーションからの破棄要求を処理してから、別入口の LateUpdate が描画用の姿勢を組む。
     RunPhase(Phase::Cleanup,     ctx);
     ++m_frameCounter;
 }
@@ -291,13 +335,15 @@ void SystemScheduler::Update(SystemContext ctx)
 void SystemScheduler::LateUpdate(SystemContext ctx)
 {
     assert(m_built);
-    if (!m_built) return;
+    if (!m_built) {
+        return;
+    }
     const PhaseConfig& physicsConfig = m_phaseConfigs[static_cast<size_t>(Phase::Physics)];
     if (physicsConfig.fixedStep && physicsConfig.hz > 0)
     {
         const float fixedDt = 1.0f / static_cast<float>(physicsConfig.hz);
-        /// @note Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
-        /// @note までの経過割合。LateUpdate の描画だけをこの係数で補間する。
+        // Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
+        // までの経過割合。LateUpdate の描画だけをこの係数で補間する。
         ctx.interpolationAlpha = std::clamp(m_accumulator / fixedDt, 0.0f, 1.0f);
     }
     RunPhase(Phase::LateUpdate, ctx);
@@ -305,11 +351,17 @@ void SystemScheduler::LateUpdate(SystemContext ctx)
 
 void SystemScheduler::Shutdown()
 {
-    if (m_built)
-        for (auto& sys : m_systems)
+    if (m_built) {
+        for (auto& sys : m_systems) {
             sys->OnShutdown();
+        }
+    }
+
+    // 非所有参照を持つバッチは破棄済みシステムへ実行を渡さないように空にする。
     m_systems.clear();
-    for (auto& b : m_batches) b.clear();
+    for (auto& b : m_batches) {
+        b.clear();
+    }
     m_built = false;
 }
 
@@ -335,19 +387,23 @@ void SystemScheduler::DumpGraph() const
     oss << "=== SystemScheduler Graph ===\n";
     for (size_t pi = 0; pi < static_cast<size_t>(Phase::Count); ++pi) {
         const auto& batches = m_batches[pi];
-        if (batches.empty()) continue;
+        if (batches.empty()) {
+            continue;
+        }
         oss << "Phase::" << phaseNames[pi] << "\n";
         for (size_t bi = 0; bi < batches.size(); ++bi) {
             oss << "  Batch[" << bi << "]: ";
             for (size_t si = 0; si < batches[bi].size(); ++si) {
-                if (si) oss << " || ";
+                if (si) {
+                    oss << " || ";
+                }
                 oss << batches[bi][si]->Name();
             }
             oss << "\n";
         }
     }
-    /// @note Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されずそのまま出力され、
-    /// @note std::string を ... へ渡すのは未定義動作になるため %s を使う。
+    // Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されずそのまま出力され、
+    // std::string を ... へ渡すのは未定義動作になるため %s を使う。
     FBZZ_LOG_INFO("%s", oss.str().c_str());
 }
 

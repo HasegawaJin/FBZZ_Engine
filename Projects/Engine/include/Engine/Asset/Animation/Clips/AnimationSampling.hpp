@@ -20,15 +20,23 @@ namespace fbzz::asset {
                                                     const math::Vector3& fallback,
                                                     AnimInterp interp = AnimInterp::Linear)
 {
-    if (keys.empty()) return fallback;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    if (keys.empty()) {
+        return fallback;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
 
     const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
         [](double value, const VectorKey& key) { return value < key.time; });
     const auto& b = *upper;
     const auto& a = *(upper - 1);
-    if (interp == AnimInterp::Step) return a.value;
+    if (interp == AnimInterp::Step) {
+        return a.value;
+    }
     const double span = b.time - a.time;
     const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
     return math::Vector3::Lerp(a.value, b.value, t);
@@ -39,15 +47,23 @@ namespace fbzz::asset {
                                                            const math::Quaternion& fallback,
                                                            AnimInterp interp = AnimInterp::Linear)
 {
-    if (keys.empty()) return fallback;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    if (keys.empty()) {
+        return fallback;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
 
     const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
         [](double value, const QuaternionKey& key) { return value < key.time; });
     const auto& b = *upper;
     const auto& a = *(upper - 1);
-    if (interp == AnimInterp::Step) return a.value;
+    if (interp == AnimInterp::Step) {
+        return a.value;
+    }
     const double span = b.time - a.time;
     const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
     return math::Quaternion::Slerp(a.value, b.value, t).Normalized();
@@ -57,19 +73,31 @@ namespace fbzz::asset {
                                            double ticks,
                                            AnimInterp interp)
 {
-    /// @note NaN は順序付き区間を定められないため、upper_bound に渡して end() を間接参照する経路を避ける。
-    if (std::isnan(ticks)) return 0.0f;
-    if (keys.empty()) return 0.0f;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    // NaN は順序付き区間を定められないため、upper_bound に渡して end() を間接参照する経路を避ける。
+    if (std::isnan(ticks)) {
+        return 0.0f;
+    }
+    if (keys.empty()) {
+        return 0.0f;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
     const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
         [](double value, const FloatKey& key) { return value < key.time; });
     const auto& b = *upper;
     const auto& a = *(upper - 1);
-    if (interp == AnimInterp::Step) return a.value;
+    if (interp == AnimInterp::Step) {
+        return a.value;
+    }
     const double span = b.time - a.time;
     const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
-    if (interp != AnimInterp::Cubic) return a.value + (b.value - a.value) * t;
+    if (interp != AnimInterp::Cubic) {
+        return a.value + (b.value - a.value) * t;
+    }
     const float t2 = t * t;
     const float t3 = t2 * t;
     const float duration = static_cast<float>(span);
@@ -83,14 +111,22 @@ namespace fbzz::asset {
                                                      double ticks,
                                                      AnimInterp interp)
 {
-    if (keys.empty()) return math::Vector2::ZERO;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    if (keys.empty()) {
+        return math::Vector2::ZERO;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
     const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
         [](double value, const Vector2Key& key) { return value < key.time; });
     const auto& b = *upper;
     const auto& a = *(upper - 1);
-    if (interp == AnimInterp::Step) return a.value;
+    if (interp == AnimInterp::Step) {
+        return a.value;
+    }
     const float t = static_cast<float>((ticks - a.time) / (b.time - a.time));
     return math::Vector2::Lerp(a.value, b.value, t);
 }
@@ -99,14 +135,22 @@ namespace fbzz::asset {
                                                      double ticks,
                                                      AnimInterp interp)
 {
-    if (keys.empty()) return math::Vector4::ZERO;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
+    if (keys.empty()) {
+        return math::Vector4::ZERO;
+    }
+    if (keys.size() == 1 || ticks <= keys.front().time) {
+        return keys.front().value;
+    }
+    if (ticks >= keys.back().time) {
+        return keys.back().value;
+    }
     const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
         [](double value, const Vector4Key& key) { return value < key.time; });
     const auto& b = *upper;
     const auto& a = *(upper - 1);
-    if (interp == AnimInterp::Step) return a.value;
+    if (interp == AnimInterp::Step) {
+        return a.value;
+    }
     const float t = static_cast<float>((ticks - a.time) / (b.time - a.time));
     return a.value + (b.value - a.value) * t;
 }

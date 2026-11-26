@@ -50,7 +50,7 @@ public:
             std::wstring title      = L"FBZZ Engine";
             uint32_t     width      = 1920;
             uint32_t     height     = 1080;
-            bool         fullscreen = false;   ///< @note Standalone モードでフルスクリーン起動時に true。エディタは常に false (ウィンドウモード)。
+            bool         fullscreen = false; ///< Standalone モードでフルスクリーン起動時に true。エディタは常に false (ウィンドウモード)。
         };
 
         FBZZ_ENGINE_API bool Initialize(const Config& config);
@@ -134,13 +134,19 @@ public:
 
         /// @brief FileDropTarget (OLE 実装) からコールバックを叩くための内部アクセサ。
         void InvokeFileDrop(const std::vector<std::string>& paths, int x, int y) const {
-            if (m_fileDropCallback && !paths.empty()) m_fileDropCallback(paths, x, y);
+            if (m_fileDropCallback && !paths.empty()) {
+                m_fileDropCallback(paths, x, y);
+            }
         }
         void InvokeFileDragOver(int x, int y) const {
-            if (m_fileDragOverCallback) m_fileDragOverCallback(x, y);
+            if (m_fileDragOverCallback) {
+                m_fileDragOverCallback(x, y);
+            }
         }
         void InvokeFileDragLeave() const {
-            if (m_fileDragLeaveCallback) m_fileDragLeaveCallback();
+            if (m_fileDragLeaveCallback) {
+                m_fileDragLeaveCallback();
+            }
         }
 
     private:
@@ -165,8 +171,7 @@ public:
         struct PlacementState;
         std::unique_ptr<PlacementState> m_placement;
         bool            m_hasWindowedPlacement = false;
-        /// @note ウィンドウモードで狙うクライアント寸法。フルスクリーン中に SetClientSize を呼ばれたら、ここへ溜めて復帰時に適用する。
-        uint32_t m_windowedWidth  = 0;
+        uint32_t m_windowedWidth  = 0; ///< ウィンドウモードで狙うクライアント寸法。フルスクリーン中に SetClientSize を呼ばれたら、ここへ溜めて復帰時に適用する。
         uint32_t m_windowedHeight = 0;
 
         ResizeCallback        m_resizeCallback;
@@ -176,7 +181,7 @@ public:
         FileDragLeaveCallback m_fileDragLeaveCallback;
         HMENU__* m_nativeMenu = nullptr;
         NativeMenuCommandCallback m_nativeMenuCommandCallback;
-        IDropTarget*          m_dropTarget = nullptr;   ///< @note OLE ドロップターゲット (RegisterDragDrop に登録)。Shutdown で Revoke + Release する。
+        IDropTarget*          m_dropTarget = nullptr; ///< OLE ドロップターゲット (RegisterDragDrop に登録)。Shutdown で Revoke + Release する。
         bool                  m_oleInitialized = false;
     };
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

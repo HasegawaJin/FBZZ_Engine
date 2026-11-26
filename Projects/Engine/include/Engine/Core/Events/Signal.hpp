@@ -50,7 +50,9 @@ public:
     {
         const auto snapshot = m_slots;
         for (const auto& s : snapshot)
-            if (s.fn) s.fn(args...);
+            if (s.fn) {
+                s.fn(args...);
+            }
     }
 
     bool Empty() const { return m_slots.empty(); }

@@ -83,4 +83,4 @@ FBZZ_ENGINE_API void ApplyMaterialAssetParams(const MaterialAssetAuthoring& asse
 [[nodiscard]] FBZZ_ENGINE_API std::array<std::string, kMaterialTextureSlotNames.size()>
 ResolveMaterialTexturePaths(const MaterialAssetAuthoring& asset);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

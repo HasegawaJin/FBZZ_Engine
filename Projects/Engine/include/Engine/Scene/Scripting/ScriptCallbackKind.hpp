@@ -18,4 +18,4 @@ enum class ScriptCallbackKind : uint8_t {
     DEFERRED, FRAME_DELAY, EVENT_HANDLER, COROUTINE_STEP
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

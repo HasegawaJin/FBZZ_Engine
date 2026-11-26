@@ -72,7 +72,9 @@ protected:
         if (!scripts) scripts = &object.AddComponent<scene::ScriptComponent>();
         auto& entry = scripts->scripts.emplace_back();
         entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.EngineNotificationComponent", entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&m_scene, &object);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;

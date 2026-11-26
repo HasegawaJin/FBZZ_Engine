@@ -23,7 +23,9 @@ template<typename T>
 void Read(const char* bytes, std::size_t& offset, std::uint32_t count, std::vector<T>& values)
 {
     values.resize(count);
-    if (count) std::memcpy(values.data(), bytes + offset, count * sizeof(T));
+    if (count) {
+        std::memcpy(values.data(), bytes + offset, count * sizeof(T));
+    }
     offset += count * sizeof(T);
 }
 }
@@ -31,34 +33,62 @@ void Read(const char* bytes, std::size_t& offset, std::uint32_t count, std::vect
 ManagedBridgeStatus ManagedAiCrowdTransfer::Run(const ManagedBridgeRequest& request, ManagedBridgeReply& reply)
 {
     FBZZ_PROFILE_SCOPE("LateScriptSystem::NativeCrowdTransfer");
-    reply.index = 0; reply.flags = 0; reply.outputBytes = 0; reply.reserved = 0;
-    if (m_inFlight) return ManagedBridgeStatus::INVALID_SCOPE;
-    if (request.flags || request.index || request.integer || request.reserved0 || request.reserved1
-        || request.x != 0 || request.y != 0 || request.z != 0 || request.w != 0
-        || !request.input || request.inputBytes < HEADER_BYTES || request.inputBytes > MAX_PACKET_BYTES
-        || request.outputCapacity > MAX_PACKET_BYTES || (request.outputCapacity && !request.output))
+    reply.index = 0;
+    reply.flags = 0;
+    reply.outputBytes = 0;
+    reply.reserved = 0;
+
+    // 作業バッファを共有するため、前の呼び出しが終わるまで再入を拒否する。
+    if (m_inFlight) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
+
+    // 数値シミュレーションの要求は、パケット以外の引数を使わない。
+    if (request.flags || request.index || request.integer || request.reserved0 || request.reserved1) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (request.x != 0 || request.y != 0 || request.z != 0 || request.w != 0) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+
+    // ポインターを参照する前に、ヘッダーが読めることと転送のサイズ上限を確認する。
+    if (!request.input || request.inputBytes < HEADER_BYTES || request.inputBytes > MAX_PACKET_BYTES) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (request.outputCapacity > MAX_PACKET_BYTES || (request.outputCapacity && !request.output)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+
+    // スナップショットをコピーする前に、パケットのレイアウトと配列の件数を検証する。
     std::array<std::uint32_t, 12> header{};
     std::memcpy(header.data(), request.input, HEADER_BYTES);
     if (header[0] != VERSION || header[1] != sizeof(ai::CrowdSettings) || header[2] != sizeof(ai::CrowdProfile)
         || header[3] != sizeof(ai::CrowdAgent) || header[4] != sizeof(ai::CrowdThreat)
-        || header[5] != sizeof(ai::CrowdObstacle) || header[6] != sizeof(ai::CrowdStats) || header[11])
+        || header[5] != sizeof(ai::CrowdObstacle) || header[6] != sizeof(ai::CrowdStats) || header[11]) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const auto agents = header[7], profiles = header[8], threats = header[9], obstacles = header[10];
-    if (agents > MAX_AGENTS || !profiles || profiles > MAX_PROFILES || threats > MAX_THREATS || obstacles > MAX_OBSTACLES)
+    if (agents > MAX_AGENTS || !profiles || profiles > MAX_PROFILES || threats > MAX_THREATS || obstacles > MAX_OBSTACLES) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const std::size_t inputBytes = HEADER_BYTES + sizeof(ai::CrowdSettings) + profiles * sizeof(ai::CrowdProfile)
         + agents * sizeof(ai::CrowdAgent) + threats * sizeof(ai::CrowdThreat) + obstacles * sizeof(ai::CrowdObstacle);
     const std::size_t outputBytes = sizeof(ai::CrowdStats) + agents * sizeof(ai::CrowdAgent);
-    if (inputBytes != request.inputBytes) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (inputBytes != request.inputBytes) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+
+    // 容量照会では、シミュレーションを実行せずに必要なバイト数だけ返す。
     if (request.outputCapacity < outputBytes || !request.output) {
         reply.outputBytes = static_cast<std::uint32_t>(outputBytes);
         return ManagedBridgeStatus::BUFFER_TOO_SMALL;
     }
-    /// @note 入出力のメモリ範囲が重複している場合は拒否する。エラーで呼び出し元の入力スナップショットを上書きしない。
+    // 入出力のメモリ範囲が重複している場合は拒否する。エラーで呼び出し元の入力スナップショットを上書きしない。
     const std::less<const char*> before;
-    if (before(request.input, request.output + outputBytes) && before(request.output, request.input + inputBytes))
+    if (before(request.input, request.output + outputBytes) && before(request.output, request.input + inputBytes)) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    // バイト列を作業領域にコピーし、シミュレーションの結果を出力バッファと分離する。
     m_inFlight = true;
     struct FlightGuard { bool& flight; ~FlightGuard() { flight = false; } } guard{m_inFlight};
     std::size_t offset = HEADER_BYTES;
@@ -70,12 +100,17 @@ ManagedBridgeStatus ManagedAiCrowdTransfer::Run(const ManagedBridgeRequest& requ
     ai::CrowdStats stats{};
     {
         FBZZ_PROFILE_SCOPE("LateScriptSystem::NativeCrowdStep");
-        if (!ai::StepCrowd(settings, m_profiles, m_agents, m_threats, m_obstacles, m_output, stats, m_workspace))
+        if (!ai::StepCrowd(settings, m_profiles, m_agents, m_threats, m_obstacles, m_output, stats, m_workspace)) {
             return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
     }
+    // 全個体の更新に成功してから、統計とスロット順のスナップショットを公開する。
     std::memcpy(request.output, &stats, sizeof(stats));
-    if (agents) std::memcpy(request.output + sizeof(stats), m_output.data(), agents * sizeof(ai::CrowdAgent));
-    reply.index = agents; reply.outputBytes = static_cast<std::uint32_t>(outputBytes);
+    if (agents) {
+        std::memcpy(request.output + sizeof(stats), m_output.data(), agents * sizeof(ai::CrowdAgent));
+    }
+    reply.index = agents;
+    reply.outputBytes = static_cast<std::uint32_t>(outputBytes);
     return ManagedBridgeStatus::OK;
 }
 }

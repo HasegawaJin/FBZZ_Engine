@@ -79,8 +79,7 @@ public:
     using AuthoringSnapshot = AuthoringState::Snapshot;
     using AuthoringSnapshotPtr = AuthoringState::SnapshotPtr;
     using AuthoringEdit = AuthoringState::Edit;
-    /// @note 現在の選択と有効条件は Sync や SlotAt ごとに評価するため、実効 CPU テンプレートには含めない。
-    bool visible = true;
+    bool visible = true; ///< 現在の選択と有効条件は Sync や SlotAt ごとに評価するため、実効 CPU テンプレートには含めない。
     std::unique_ptr<renderer::Material> material;
     std::unordered_map<std::string, RuntimeMaterialTexture> runtimeTextureOverrides;
     std::unordered_map<uint64_t, std::string> propertyNameCache;
@@ -169,9 +168,13 @@ public:
     /// @pre インポーターのコールバック中も、このスロットが生存しアドレスが変わらないこと。移動し得るスロットは MaterialComponent のインデックス指定で解決する。
     bool EnsureMaterialAsset()
     {
-        if (GetMaterialAsset().IsValid()) return true;
+        if (GetMaterialAsset().IsValid()) {
+            return true;
+        }
         const auto snapshot = ReadAuthoring();
-        if (!snapshot || snapshot->Data().materialPath.empty()) return false;
+        if (!snapshot || snapshot->Data().materialPath.empty()) {
+            return false;
+        }
         const auto revision = m_referenceRevision;
         const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(snapshot->Data().materialPath);
         return PublishResolvedMaterialAsset(snapshot, revision, handle);
@@ -180,7 +183,9 @@ public:
     /// @note パスが変わった場合だけ、明示・遅延バインディングとネイティブ資源の検証状態を破棄する。
     void SetMaterialPath(std::string path)
     {
-        if (GetMaterialPath() == path) return;
+        if (GetMaterialPath() == path) {
+            return;
+        }
         auto edit = BeginAuthoringEdit();
         edit.Draft().materialPath = std::move(path); edit.Draft().materialAsset = {};
         CommitSetter(edit);
@@ -204,16 +209,21 @@ public:
         const std::string& texture, int64_t sortValue, bool receiveLighting)
     {
         auto edit = BeginAuthoringEdit(); auto& values = edit.Draft();
-        if (!values.hasPresentationDefaults && !values.materialPath.empty() && values.materialPath != path)
+        if (!values.hasPresentationDefaults && !values.materialPath.empty() && values.materialPath != path) {
             values.hasPresentationMaterialOverride = true;
+        }
         if (!values.hasPresentationMaterialOverride && values.materialPath != path) {
             values.materialPath = path; values.materialAsset = {};
         }
         values.hasPresentationDefaults = true;
         values.presentationParamDefaults["albedo"] = {tint.x, tint.y, tint.z, tint.w};
         values.presentationParamDefaults["receiveLighting"] = {receiveLighting ? 1.0f : 0.0f};
-        if (texture.empty()) values.presentationTextureDefaults.erase("albedo");
-        else values.presentationTextureDefaults["albedo"] = texture;
+        if (texture.empty()) {
+            values.presentationTextureDefaults.erase("albedo");
+        }
+        else {
+            values.presentationTextureDefaults["albedo"] = texture;
+        }
         values.presentationDoubleSided = true;
         values.presentationRenderQueue = static_cast<int32_t>(std::clamp<int64_t>(
             static_cast<int64_t>(renderer::RenderQueue::TRANSPARENT_QUEUE) + sortValue, INT32_MIN, INT32_MAX));
@@ -223,15 +233,21 @@ public:
     renderer::BlendMode GetBlendMode() const
     {
         const auto& values = Authoring();
-        if (values.hasBlendModeOverride) return values.blendModeOverride;
+        if (values.hasBlendModeOverride) {
+            return values.blendModeOverride;
+        }
         const auto* source = asset::AssetManager::Get<asset::MaterialAsset>(GetMaterialAsset());
         return source ? source->Authoring().blendMode : renderer::BlendMode::OPAQUE_BLEND;
     }
     bool IsDoubleSided() const
     {
         const auto& values = Authoring();
-        if (values.hasDoubleSidedOverride) return values.doubleSidedOverride;
-        if (values.hasPresentationDefaults) return values.presentationDoubleSided;
+        if (values.hasDoubleSidedOverride) {
+            return values.doubleSidedOverride;
+        }
+        if (values.hasPresentationDefaults) {
+            return values.presentationDoubleSided;
+        }
         const auto* source = asset::AssetManager::Get<asset::MaterialAsset>(GetMaterialAsset());
         return source && source->Authoring().doubleSided;
     }
@@ -248,8 +264,12 @@ public:
     int32_t GetRenderQueue() const
     {
         const auto& values = Authoring();
-        if (values.hasRenderQueueOverride) return values.renderQueueOverride;
-        if (values.hasPresentationDefaults) return values.presentationRenderQueue;
+        if (values.hasRenderQueueOverride) {
+            return values.renderQueueOverride;
+        }
+        if (values.hasPresentationDefaults) {
+            return values.presentationRenderQueue;
+        }
         const auto* source = asset::AssetManager::Get<asset::MaterialAsset>(GetMaterialAsset());
         return source ? source->Authoring().renderQueue : renderer::RenderQueue::GEOMETRY;
     }
@@ -271,7 +291,9 @@ private:
         asset::AssetHandle<asset::MaterialAsset> handle)
     {
         const auto current = ReadAuthoring();
-        if (!current || current->OwnerToken() != expected->OwnerToken() || referenceRevision != m_referenceRevision) return false;
+        if (!current || current->OwnerToken() != expected->OwnerToken() || referenceRevision != m_referenceRevision) {
+            return false;
+        }
         m_resolvedAsset = handle; m_resolvedReferenceRevision = referenceRevision;
         return handle.IsValid();
     }
@@ -279,7 +301,9 @@ private:
     {
         const auto previous = ReadAuthoring();
         const auto result = m_authoring.Commit(edit);
-        if (result != asset::detail::MaterialAuthoringCommitResult::COMMITTED) return result;
+        if (result != asset::detail::MaterialAuthoringCommitResult::COMMITTED) {
+            return result;
+        }
         m_effectiveTemplates = {};
         const auto current = ReadAuthoring();
         if (!previous || previous->Data().materialPath != current->Data().materialPath
@@ -310,20 +334,23 @@ private:
 struct MaterialComponent : MaterialSlot {
 public:
     MaterialComponent() = default;
-    /// @note 公開フラグは共通リフレクションとマネージド特性から直接読み取る。テンプレートのキャッシュ照合には使わない。
-    bool enabled = true;
+    bool enabled = true; ///< 公開フラグは共通リフレクションとマネージド特性から直接読み取る。テンプレートのキャッシュ照合には使わない。
     std::vector<MaterialSlot> extraSlots;
     [[nodiscard]] bool IsEnabled() const { return enabled; }
     void SetEnabled(bool enabled) { this->enabled = enabled; }
     [[nodiscard]] size_t SlotCount() const { return 1u + extraSlots.size(); }
     [[nodiscard]] MaterialSlot& RawSlotAt(size_t index)
     {
-        if (index == 0 || index > extraSlots.size()) return *this;
+        if (index == 0 || index > extraSlots.size()) {
+            return *this;
+        }
         return extraSlots[index - 1u];
     }
     [[nodiscard]] const MaterialSlot& RawSlotAt(size_t index) const
     {
-        if (index == 0 || index > extraSlots.size()) return *this;
+        if (index == 0 || index > extraSlots.size()) {
+            return *this;
+        }
         return extraSlots[index - 1u];
     }
     [[nodiscard]] MaterialSlot& SlotAt(size_t index)
@@ -343,8 +370,9 @@ public:
     void ResizeSlots(size_t count) { extraSlots.resize(count > 0 ? count - 1u : 0u); }
     void SetOnlyVisibleSlot(int index)
     {
-        for (size_t slot = 0; slot < SlotCount(); ++slot)
+        for (size_t slot = 0; slot < SlotCount(); ++slot) {
             RawSlotAt(slot).SetVisible(index < 0 || static_cast<size_t>(index) == slot);
+        }
     }
     const char* GetTypeName() const { return "Material"; }
     void Reflect(IReflector& reflector)
@@ -358,12 +386,16 @@ private:
     bool EnsureIndexedMaterialAsset(size_t index, bool raw)
     {
         const auto existing = (raw ? RawSlotAt(index) : SlotAt(index)).GetMaterialAsset();
-        if (existing.IsValid()) return true;
+        if (existing.IsValid()) {
+            return true;
+        }
         const auto snapshot = (raw ? RawSlotAt(index) : SlotAt(index)).ReadAuthoring();
-        if (!snapshot || snapshot->Data().materialPath.empty()) return false;
+        if (!snapshot || snapshot->Data().materialPath.empty()) {
+            return false;
+        }
         const uint64_t revision = (raw ? RawSlotAt(index) : SlotAt(index)).m_referenceRevision;
         const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(snapshot->Data().materialPath);
-        /// @note ロードで追加スロットが移動・差し替えされ得るため、ロード前のスロットのポインターや参照は保持しない。
+        // ロードで追加スロットが移動・差し替えされ得るため、ロード前のスロットのポインターや参照は保持しない。
         return (raw ? RawSlotAt(index) : SlotAt(index)).PublishResolvedMaterialAsset(snapshot, revision, handle);
     }
 };

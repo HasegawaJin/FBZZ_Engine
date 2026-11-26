@@ -24,4 +24,4 @@ struct UserRenderPassDesc {
     bool allowCulling = true;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

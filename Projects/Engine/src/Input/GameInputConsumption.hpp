@@ -109,4 +109,4 @@ struct GameInputAccess final {
     }
 };
 
-} /// @note namespace fbzz::input::input_detail
+} // namespace fbzz::input::input_detail

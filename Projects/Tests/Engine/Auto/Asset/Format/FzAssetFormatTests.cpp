@@ -38,8 +38,8 @@ TEST_F(FzAssetFormatTest, MeshHeaderFieldsSitAtTheirOnDiskOffsets)
 /// @brief Keeps the pre colour vertex layout for old files.
 TEST_F(FzAssetFormatTest, KeepsThePreColourVertexLayoutForOldFiles)
 {
-    /// @note v1 の頂点は «色が付く前» の renderer::Vertex と同じ 44 バイト。
-    ///       ここが変わると、焼き直していない .mesh の読み込みがずれる。
+    // v1 の頂点は «色が付く前» の renderer::Vertex と同じ 44 バイト。
+    // ここが変わると、焼き直していない .mesh の読み込みがずれる。
     EXPECT_EQ(sizeof(asset::FzVertexV1), 44u);
     EXPECT_EQ(offsetof(asset::FzVertexV1, position), 0u);
     EXPECT_EQ(offsetof(asset::FzVertexV1, normal), 12u);
@@ -59,8 +59,8 @@ TEST_F(FzAssetFormatTest, MeshFlagsAreDistinctBits)
 /// @brief Anim header fields sit at their on-disk offsets.
 TEST_F(FzAssetFormatTest, AnimHeaderFieldsSitAtTheirOnDiskOffsets)
 {
-    /// @note 名前は 128 バイト固定。ここを縮めると尺と ticksPerSecond の位置がずれ、
-    ///       «再生速度だけおかしいアニメ» になる。
+    // 名前は 128 バイト固定。ここを縮めると尺と ticksPerSecond の位置がずれ、
+    // «再生速度だけおかしいアニメ» になる。
     EXPECT_EQ(offsetof(asset::FzAnimHeader, magic), 0u);
     EXPECT_EQ(offsetof(asset::FzAnimHeader, version), 4u);
     EXPECT_EQ(offsetof(asset::FzAnimHeader, name), 8u);
@@ -84,8 +84,8 @@ TEST_F(FzAssetFormatTest, AnimTrackHeaderKeepsItsCountsAfterTheName)
 /// @brief Versions are the ones already baked on disk.
 TEST_F(FzAssetFormatTest, VersionsAreTheOnesAlreadyBakedOnDisk)
 {
-    /// @note 版を上げたらこのテストも一緒に直す。«直すべきものが 2 つある» ことを
-    ///       気づかせるのが目的で、上げること自体を止めるものではない。
+    // 版を上げたらこのテストも一緒に直す。«直すべきものが 2 つある» ことを
+    // 気づかせるのが目的で、上げること自体を止めるものではない。
     EXPECT_EQ(asset::FZMESH_VERSION, 2u);
     EXPECT_EQ(asset::FZANIM_VERSION, 3u);
     EXPECT_EQ(asset::FZSKEL_VERSION, 1u);
@@ -94,8 +94,8 @@ TEST_F(FzAssetFormatTest, VersionsAreTheOnesAlreadyBakedOnDisk)
 /// @brief Headers are trivially copyable.
 TEST_F(FzAssetFormatTest, HeadersAreTriviallyCopyable)
 {
-    /// @note ヘッダーは fread / fwrite でそのまま往復する。仮想関数や
-    ///       std::string を足した瞬間に、書けはするが読めないファイルが生まれる。
+    // ヘッダーは fread / fwrite でそのまま往復する。仮想関数や
+    // std::string を足した瞬間に、書けはするが読めないファイルが生まれる。
     EXPECT_TRUE(std::is_trivially_copyable_v<asset::FzMeshHeader>);
     EXPECT_TRUE(std::is_trivially_copyable_v<asset::FzAnimHeader>);
     EXPECT_TRUE(std::is_trivially_copyable_v<asset::FzAnimTrackHeader>);

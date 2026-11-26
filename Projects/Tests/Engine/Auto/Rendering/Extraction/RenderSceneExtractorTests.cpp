@@ -263,7 +263,9 @@ protected:
     asset::AssetHandle<asset::MaterialAsset> LoadMaterial(const std::string& name, const asset::MaterialAssetAuthoring& material)
     {
         const std::string path = m_temp.File(name).generic_string();
-        if (!asset::SaveMaterialAssetToFile(path, material)) return {};
+        if (!asset::SaveMaterialAssetToFile(path, material)) {
+            return {};
+        }
         return asset::AssetManager::Load<asset::MaterialAsset>(path);
     }
 
@@ -634,10 +636,10 @@ TEST_F(RenderSceneExtractorTest, CopiesWorldBoundsAndHandlesWithoutOwningTheSour
 {
     auto& go = StaticObject();
     go.transform.worldPosition = { 10.0f, 2.0f, 3.0f };
-    /// @note 中心をローカル原点からずらし、抽出時にメッシュの中心にもワールド変換が掛かることを確認する。
+    // 中心をローカル原点からずらし、抽出時にメッシュの中心にもワールド変換が掛かることを確認する。
     m_mesh.boundsCenter = { 1.0f, 0.0f, 0.0f };
     m_mesh.boundsRadius = 2.0f;
-    /// @note ハンドルは抽出結果の比較用。GPU バッファの実体は作らない。
+    // ハンドルは抽出結果の比較用。GPU バッファの実体は作らない。
     m_mesh.vertexBuffer = { 11, 4 };
     m_mesh.indexBuffer = { 12, 5 };
     m_mesh.indexCount = 36;
@@ -645,13 +647,13 @@ TEST_F(RenderSceneExtractorTest, CopiesWorldBoundsAndHandlesWithoutOwningTheSour
     ASSERT_EQ(snapshot.items.size(), 1u);
     EXPECT_VEC3_NEAR(snapshot.Objects()[0].boundsCenter, (math::Vector3{ 11.0f, 2.0f, 3.0f }), testkit::kTolerance);
     EXPECT_FLOAT_EQ(snapshot.Objects()[0].boundsRadius, 2.0f);
-    /// @note スナップショットの生成後に元データを変更し、抽出結果の独立性を検証する。
+    // スナップショットの生成後に元データを変更し、抽出結果の独立性を検証する。
     m_mesh.vertexBuffer = {};
     m_mesh.indexCount = 0;
     go.transform.worldPosition = {};
     EXPECT_EQ(snapshot.items[0].vertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{ 11, 4 }));
     EXPECT_EQ(snapshot.items[0].indexCount, 36u);
-    /// @note ワールド行列の第4列に抽出時の平行移動が残る。
+    // ワールド行列の第4列に抽出時の平行移動が残る。
     EXPECT_FLOAT_EQ(snapshot.Objects()[0].world.m[0][3], 10.0f);
 }
 
@@ -1184,7 +1186,7 @@ TEST_F(RenderSceneExtractorMaterialTest, RechecksChangedAndRemovedShaderMetadata
     EXPECT_EQ(ShaderCapabilitySampleCount(), 1u);
 
     ASSERT_TRUE(WriteShader("Changing.hlsl", false));
-    /// @note sleep を使わず、能力キャッシュが照合するファイル時刻だけを確実に進める。
+    // sleep を使わず、能力キャッシュが照合するファイル時刻だけを確実に進める。
     std::filesystem::last_write_time(metaPath, originalTime + std::chrono::seconds(2), error);
     ASSERT_FALSE(error);
     const auto changed = ExtractWithProfile(10);
@@ -1239,12 +1241,16 @@ TEST_F(RenderSceneExtractorMaterialTest, FullExtractionDefersItemCapabilitiesUnt
         const auto& snapshot = profiler::Profiler::GetSnapshot();
         const auto nameOf = [&](uint64_t key) -> std::string_view {
             for (const auto& descriptor : snapshot.descriptors)
-                if (descriptor.sampleKey == key) return descriptor.name;
+                if (descriptor.sampleKey == key) {
+                    return descriptor.name;
+                }
             return {};
         };
         std::vector<std::string> parents;
         for (const auto& sample : snapshot.samples) {
-            if (nameOf(sample.sampleKey) != "RenderSceneExtractor::ShaderCapabilities") continue;
+            if (nameOf(sample.sampleKey) != "RenderSceneExtractor::ShaderCapabilities") {
+                continue;
+            }
             const auto parent = std::find_if(snapshot.samples.begin(), snapshot.samples.end(), [&](const auto& candidate) {
                 return candidate.sampleId == sample.parentSampleId;
             });
@@ -1266,7 +1272,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FullExtractionDefersItemCapabilitiesUnt
     const auto full = ExtractView({}, cache);
     profiler::Profiler::EndFrame();
     ASSERT_EQ(full->items.size(), 1u);
-    /// @note Scope-name filtering is not hierarchical, so unfiltered parent identities locate the actual derivation boundary.
+    // Scope-name filtering is not hierarchical, so unfiltered parent identities locate the actual derivation boundary.
     EXPECT_EQ(ShaderCapabilitySampleCount(), 1u);
     EXPECT_EQ(shaderCapabilityParents(), (std::vector<std::string>{"RenderSceneExtractor::Materials"}));
     EXPECT_TRUE(full->items[0].material.capabilities.gbufferEquivalentShader);
@@ -1601,7 +1607,7 @@ TEST_F(RenderSceneExtractorMaterialTest, StaticRasterSeedRejectsReplacedOwnersAn
     EXPECT_EQ(replaced->items[0].vertexCount, 6u);
     EXPECT_EQ(retained->items[0].vertexCount, 3u);
 
-    /// @note A retired deferred source without compact rows is an incomplete cache, even when its pose owner still matches.
+    // A retired deferred source without compact rows is an incomplete cache, even when its pose owner still matches.
     cache.deferredItemGeometry.reset();
     m_mesh.vertexCount = 9;
     const auto missing = ExtractView({}, cache);
@@ -1821,7 +1827,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansFallBackForLegacyReplacedAndI
     ++Time::frameCount;
     skinned.gpuSkinningFrame = Time::frameCount;
     (void)ExtractView({}, cache);
-    /// @note A caller-replaced immutable geometry owner does not inherit the original producer's range certificate.
+    // A caller-replaced immutable geometry owner does not inherit the original producer's range certificate.
     cache.geometry = std::make_shared<renderer::RenderScene>(*cache.geometry);
     skinned.skinnedVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{101, 7};
     const auto replaced = ExtractView({}, cache);
@@ -2255,7 +2261,7 @@ protected:
         m_item.vertexBuffer = {1, 1};
         m_item.indexBuffer = {2, 1};
         m_item.material.capabilities.blend = renderer::BlendMode::OPAQUE_BLEND;
-        /// @note Controlled value tests isolate known-consumer predicates; the production collector never certifies user-pass absence.
+        // 既知の利用側の判定を固定値で検証する。実際の収集処理はユーザーパスが存在しないことまでは保証しない。
         m_view.consumerScopeCertified = true;
         m_view.materialCoverageKnown = true;
         m_view.culling.frustum = &m_frustum;
@@ -2776,7 +2782,7 @@ TEST_F(RenderSpatialPublicationTest, IncludesParentPropagationAndRawTransformRes
     EXPECT_EQ(moved.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
     EXPECT_VEC3_NEAR(moved.Objects()[1].boundsCenter, (math::Vector3{7, 0, 0}), 0.0f);
 
-    /// @note Undo restores the public Transform value before the existing hierarchy flush.
+    // Undo restores the public Transform value before the existing hierarchy flush.
     parent.transform = saved;
     scene::FlushWorldTransforms(m_scene);
     const auto restored = scene::ExtractRenderSceneGeometry(m_scene, 12);

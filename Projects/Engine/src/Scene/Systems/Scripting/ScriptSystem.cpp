@@ -78,9 +78,15 @@ struct ScriptSnapshot : ScriptSnapshotStorage {
     ~ScriptSnapshot()
     {
         entities.clear(); targets.clear(); identities.clear();
-        if (entities.capacity() > m_idle->entities.capacity()) entities.swap(m_idle->entities);
-        if (targets.capacity() > m_idle->targets.capacity()) targets.swap(m_idle->targets);
-        if (identities.capacity() > m_idle->identities.capacity()) identities.swap(m_idle->identities);
+        if (entities.capacity() > m_idle->entities.capacity()) {
+            entities.swap(m_idle->entities);
+        }
+        if (targets.capacity() > m_idle->targets.capacity()) {
+            targets.swap(m_idle->targets);
+        }
+        if (identities.capacity() > m_idle->identities.capacity()) {
+            identities.swap(m_idle->identities);
+        }
     }
     ScriptSnapshot(const ScriptSnapshot&) = delete;
     ScriptSnapshot& operator=(const ScriptSnapshot&) = delete;
@@ -102,13 +108,16 @@ void SnapshotScripts(Scene& scene, ScriptSnapshot& snapshot)
     SnapshotScriptEntities(scene, snapshot.entities);
     const auto& entities = snapshot.entities;
     snapshot.targets.reserve(entities.size());
-    /// @note 二つの通常 UUID の byte 数だけを確保の目安にし、長い ID や複数 Script も動的に伸ばす。
-    if (entities.size() <= snapshot.identities.max_size() / 72U)
+    // 二つの通常 UUID の byte 数だけを確保の目安にし、長い ID や複数 Script も動的に伸ばす。
+    if (entities.size() <= snapshot.identities.max_size() / 72U) {
         snapshot.identities.reserve(entities.size() * 72U);
+    }
     for (EntityID id : entities) {
         auto* go = scene.GetGameObject(id);
         auto* component = scene.GetComponent<ScriptComponent>(id);
-        if (!go || !component) continue;
+        if (!go || !component) {
+            continue;
+        }
         for (const auto& entry : component->scripts)
             if (entry.script) {
                 const auto& instanceId = entry.script->InspectionId();
@@ -119,19 +128,23 @@ void SnapshotScripts(Scene& scene, ScriptSnapshot& snapshot)
     const auto byExecutionOrder = [](const ScriptTarget& left, const ScriptTarget& right) {
         return left.executionOrder < right.executionOrder;
     };
-    if (!std::is_sorted(snapshot.targets.begin(), snapshot.targets.end(), byExecutionOrder))
+    if (!std::is_sorted(snapshot.targets.begin(), snapshot.targets.end(), byExecutionOrder)) {
         std::stable_sort(snapshot.targets.begin(), snapshot.targets.end(), byExecutionOrder);
+    }
 }
 
 ScriptEntry* Resolve(Scene& scene, const ScriptSnapshot& snapshot, const ScriptTarget& target)
 {
     auto* component = scene.GetComponent<ScriptComponent>(target.entity);
-    if (!component) return nullptr;
+    if (!component) {
+        return nullptr;
+    }
     for (auto& entry : component->scripts)
         if (entry.inspectionId == snapshot.Identity(target.inspectionOffset, target.inspectionBytes)
             && entry.script && entry.script->InspectionId() == snapshot.Identity(target.instanceOffset, target.instanceBytes)
-            && !entry.m_pendingRemoval)
+            && !entry.m_pendingRemoval) {
             return &entry;
+        }
     return nullptr;
 }
 
@@ -139,8 +152,12 @@ ScriptEntry* Runnable(Scene& scene, const ScriptSnapshot& snapshot, const Script
 {
     auto* entry = Resolve(scene, snapshot, target);
     auto* go = scene.GetGameObject(target.entity);
-    if (!entry || !go || !target.activeAtSnapshot || !go->activeInHierarchy()) return nullptr;
-    if (!playMode && !entry->script->ExecuteInEditMode()) return nullptr;
+    if (!entry || !go || !target.activeAtSnapshot || !go->activeInHierarchy()) {
+        return nullptr;
+    }
+    if (!playMode && !entry->script->ExecuteInEditMode()) {
+        return nullptr;
+    }
     entry->script->SetContext(&scene, go);
     return entry;
 }
@@ -150,26 +167,36 @@ void Prepare(Scene& scene, const ScriptSnapshot& snapshot, const ScriptTarget& t
 {
     auto* entry = Resolve(scene, snapshot, target);
     auto* go = scene.GetGameObject(target.entity);
-    if (!entry || !go) return;
+    if (!entry || !go) {
+        return;
+    }
     const bool reset = entry->m_awoken && entry->m_lifecyclePlayMode != playMode;
     if (reset) {
         entry->m_awoken = false;
         entry->m_started = false;
         entry->script->SetContext(&scene, go);
         entry->script->SynchronizeEnabledState(false);
-        if (!(entry = Resolve(scene, snapshot, target))) return;
+        if (!(entry = Resolve(scene, snapshot, target))) {
+            return;
+        }
         entry->script->ExecuteProfiledCallback(&Script::OnDestroy, ScriptCallbackKind::DESTROY, "OnDestroy");
-        if (!(entry = Resolve(scene, snapshot, target))) return;
+        if (!(entry = Resolve(scene, snapshot, target))) {
+            return;
+        }
         entry->script->ResetLifecycleState();
     }
-    if (!playMode && !entry->script->ExecuteInEditMode()) return;
+    if (!playMode && !entry->script->ExecuteInEditMode()) {
+        return;
+    }
     go = scene.GetGameObject(target.entity);
-    if (!go) return;
+    if (!go) {
+        return;
+    }
     entry->script->SetContext(&scene, go);
     entry->script->SynchronizeEnabledState(go->activeInHierarchy());
 }
 
-} /// @note namespace
+} // namespace
 
 void ScriptSystem::Update(SystemContext& ctx)
 {
@@ -178,9 +205,11 @@ void ScriptSystem::Update(SystemContext& ctx)
     const bool playMode = InPlayMode(ctx);
     Script::SetInPlayMode(playMode);
     ScriptProfiler::ObserveScene(scene);
-    if (IsPausedFrame(ctx)) return;
+    if (IsPausedFrame(ctx)) {
+        return;
+    }
 
-    /// @note フレーム中の追加は次回から参加する。生成を繰り返す Awake でも必ず有限で終える。
+    // フレーム中の追加は次回から参加する。生成を繰り返す Awake でも必ず有限で終える。
     ScriptSnapshot snapshot;
     {
         FBZZ_PROFILE_SCOPE("ScriptSystem::Snapshot");
@@ -188,7 +217,9 @@ void ScriptSystem::Update(SystemContext& ctx)
     }
     {
         FBZZ_PROFILE_SCOPE("ScriptSystem::Prepare");
-        for (const auto& target : snapshot.targets) Prepare(scene, snapshot, target, playMode);
+        for (const auto& target : snapshot.targets) {
+            Prepare(scene, snapshot, target, playMode);
+        }
     }
     if (playMode) {
         FBZZ_PROFILE_SCOPE("ScriptSystem::OwnedJobs");
@@ -199,19 +230,27 @@ void ScriptSystem::Update(SystemContext& ctx)
         FBZZ_PROFILE_SCOPE("ScriptSystem::AwakeStart");
         for (const auto& target : snapshot.targets) {
             auto* entry = Runnable(scene, snapshot, target, playMode);
-            if (!entry || entry->m_awoken) continue;
+            if (!entry || entry->m_awoken) {
+                continue;
+            }
             entry->m_awoken = true;
             entry->m_lifecyclePlayMode = playMode;
             entry->script->ExecuteProfiledCallback(&Script::OnAwake, ScriptCallbackKind::AWAKE, "OnAwake");
         }
 
-        /// @note 他者の Awake が設定した状態を Start から参照できる。Start 同士の依存は作らない。
+        // 他者の Awake が設定した状態を Start から参照できる。Start 同士の依存は作らない。
         for (const auto& target : snapshot.targets) {
             auto* entry = Runnable(scene, snapshot, target, playMode);
-            if (!entry || !entry->m_awoken || entry->m_started) continue;
-            if (!ValidateScriptRequirementsForStart(*scene.GetGameObject(target.entity), *entry->script)) continue;
+            if (!entry || !entry->m_awoken || entry->m_started) {
+                continue;
+            }
+            if (!ValidateScriptRequirementsForStart(*scene.GetGameObject(target.entity), *entry->script)) {
+                continue;
+            }
             entry->script->ExecuteProfiledCallback(&Script::OnStart, ScriptCallbackKind::START, "OnStart");
-            if ((entry = Resolve(scene, snapshot, target))) entry->m_started = true;
+            if ((entry = Resolve(scene, snapshot, target))) {
+                entry->m_started = true;
+            }
         }
     }
 
@@ -222,23 +261,31 @@ void ScriptSystem::Update(SystemContext& ctx)
                 auto* entry = Runnable(scene, snapshot, target, playMode);
                 return entry && entry->m_started && !entry->script->RequirementsBlocked() && entry->script->enabled ? entry->script.get() : nullptr;
             };
-            /// @note 遅延処理でも自身や他者を無効化・削除できるため、各呼び出し後に引き直す。
+            // 遅延処理でも自身や他者を無効化・削除できるため、各呼び出し後に引き直す。
             auto* script = active();
-            /// @note 一度条件を満たさなかった対象は、この順番の途中で後続条件が成功するようなコールバックを実行しない。
-            if (!script) continue;
+            // 一度条件を満たさなかった対象は、この順番の途中で後続条件が成功するようなコールバックを実行しない。
+            if (!script) {
+                continue;
+            }
             script->UpdateFrameDelays();
-            if (!(script = active())) continue;
+            if (!(script = active())) {
+                continue;
+            }
             script->UpdateInvocations(ctx.dt);
-            if (!(script = active())) continue;
+            if (!(script = active())) {
+                continue;
+            }
             script->UpdateCoroutines();
-            if ((script = active())) script->ExecuteProfiledCallback(&Script::OnUpdate, ScriptCallbackKind::UPDATE, "OnUpdate");
+            if ((script = active())) {
+                script->ExecuteProfiledCallback(&Script::OnUpdate, ScriptCallbackKind::UPDATE, "OnUpdate");
+            }
         }
     }
 }
 
 OrderingHints FixedScriptSystem::GetOrder() const
 {
-    /// @note スクリプトが加えた力・速度変更を同じステップ内で積分させるため、物理より前。
+    // スクリプトが加えた力・速度変更を同じステップ内で積分させるため、物理より前。
     return OrderingHints{}.Before<PhysicsSystem>();
 }
 
@@ -248,19 +295,23 @@ void FixedScriptSystem::Update(SystemContext& ctx)
     FBZZ_PROFILE_SCOPE("FixedScriptSystem");
     Script::SetInPlayMode(InPlayMode(ctx));
 
-    /// @note OnFixedUpdate 内から time.FixedDeltaTime() で参照できるようにする。刻み幅は
-    /// @note       SystemScheduler の PhaseConfig が持っており Time 側からは見えないため、固定
-    /// @note       ステップループに入るこの System が唯一正しい値を知る場所になる。
+    // OnFixedUpdate 内から time.FixedDeltaTime() で参照できるようにする。刻み幅は
+    // SystemScheduler の PhaseConfig が持っており Time 側からは見えないため、固定
+    // ステップループに入るこの System が唯一正しい値を知る場所になる。
     fbzz::Time::fixedDeltaTime = ctx.fixedDt;
 
     const bool playMode = InPlayMode(ctx);
-    if (!playMode || IsPausedFrame(ctx)) return;
+    if (!playMode || IsPausedFrame(ctx)) {
+        return;
+    }
     ScriptSnapshot snapshot;
     SnapshotScripts(scene, snapshot);
     for (const auto& target : snapshot.targets) {
         auto* entry = Runnable(scene, snapshot, target, playMode);
-        if (!entry || !entry->m_started || entry->script->RequirementsBlocked() || !entry->script->enabled) continue;
-        /// @note 初期化は Phase::Script が担い、この固定 step では開始済みの snapshot 個体だけを配送する。
+        if (!entry || !entry->m_started || entry->script->RequirementsBlocked() || !entry->script->enabled) {
+            continue;
+        }
+        // 初期化は Phase::Script が担い、この固定 step では開始済みの snapshot 個体だけを配送する。
         entry->script->ExecuteProfiledCallback(&Script::OnFixedUpdate, ScriptCallbackKind::FIXED_UPDATE, "OnFixedUpdate");
     }
 }
@@ -268,10 +319,12 @@ void FixedScriptSystem::Update(SystemContext& ctx)
 void LateScriptSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    /// @note Scheduler の外側 LateScriptSystem と配送区間を別名にし、Flat の同名 Inclusive 合算を避ける。
+    // Scheduler の外側 LateScriptSystem と配送区間を別名にし、Flat の同名 Inclusive 合算を避ける。
     FBZZ_PROFILE_SCOPE("LateScriptSystem::Dispatch");
 
-    if (IsPausedFrame(ctx)) return;
+    if (IsPausedFrame(ctx)) {
+        return;
+    }
 
     const bool playMode = InPlayMode(ctx);
     Script::SetInPlayMode(playMode);
@@ -281,15 +334,20 @@ void LateScriptSystem::Update(SystemContext& ctx)
     for (const auto& target : snapshot.targets) {
         auto* entry = Resolve(scene, snapshot, target);
         auto* go = scene.GetGameObject(target.entity);
-        if (!entry || !go || !entry->m_started || entry->script->RequirementsBlocked()) continue;
-        if (!playMode && !entry->script->ExecuteInEditMode()) continue;
+        if (!entry || !go || !entry->m_started || entry->script->RequirementsBlocked()) {
+            continue;
+        }
+        if (!playMode && !entry->script->ExecuteInEditMode()) {
+            continue;
+        }
         entry->script->SetContext(&scene, go);
         entry->script->SynchronizeEnabledState(go->activeInHierarchy());
-        /// @note OnEnable / OnDisable の構成変更を越え、entry の参照を再取得してから配送する。
+        // OnEnable / OnDisable の構成変更を越え、entry の参照を再取得してから配送する。
         entry = Runnable(scene, snapshot, target, playMode);
-        if (entry && entry->m_started && !entry->script->RequirementsBlocked() && entry->script->enabled)
+        if (entry && entry->m_started && !entry->script->RequirementsBlocked() && entry->script->enabled) {
             entry->script->ExecuteProfiledCallback(&Script::OnLateUpdate, ScriptCallbackKind::LATE_UPDATE, "OnLateUpdate");
+        }
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

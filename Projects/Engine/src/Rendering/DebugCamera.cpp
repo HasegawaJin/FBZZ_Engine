@@ -29,9 +29,10 @@ void DebugCamera::LookAt(const math::Vector3& target) {
     m_pivot         = target;
     m_dollyVelocity = 0.0f;
     ApplyRotation();
-    /// @note 正投影は「引き」がそのまま near クリップの余裕なので、狙った点を中央へ置き直す。
-    if (camera.m_projection == ProjectionMode::Orthographic)
+    // 正投影は「引き」がそのまま near クリップの余裕なので、狙った点を中央へ置き直す。
+    if (camera.m_projection == ProjectionMode::Orthographic) {
         RepositionFromPivot();
+    }
 }
 
 void DebugCamera::Teleport(const math::Vector3& pos, const math::Quaternion& rot) {
@@ -49,10 +50,12 @@ void DebugCamera::RepositionFromPivot() {
 }
 
 void DebugCamera::SetProjection(ProjectionMode mode) {
-    if (camera.m_projection == mode) return;
+    if (camera.m_projection == mode) {
+        return;
+    }
 
-    /// @note 切り替えた瞬間に対象の大きさが変わると迷子になるため、画角を引き継ぎ
-    ///       ピボット位置での見かけの縦幅を保つ。
+    // 切り替えた瞬間に対象の大きさが変わると迷子になるため、画角を引き継ぎ
+    //       ピボット位置での見かけの縦幅を保つ。
     const float halfTan = HalfFovTan(camera.m_fovY);
     if (mode == ProjectionMode::Orthographic) {
         camera.m_orthoHeight = math::Max(0.01f, 2.0f * m_focusDistance * halfTan);
@@ -73,8 +76,8 @@ void DebugCamera::ApplyRotation() {
 }
 
 void DebugCamera::ApplyDolly(float dt) {
-    /// @note 正投影は前後移動で見え方が変わらないため、ホイールはズーム (m_orthoHeight) が
-    ///       受け持つ。ここでドリーを効かせると「動いているのに何も起きない」操作になる。
+    // 正投影は前後移動で見え方が変わらないため、ホイールはズーム (m_orthoHeight) が
+    //       受け持つ。ここでドリーを効かせると「動いているのに何も起きない」操作になる。
     if (camera.m_projection == ProjectionMode::Orthographic) {
         m_dollyVelocity = 0.0f;
         return;
@@ -105,7 +108,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
 
     if (viewportHovered) {
         if (ortho) {
-            /// @note 倍率で拡縮する。引き算にすると、寄るほど 1 ノッチの効きが荒くなる。
+            // 倍率で拡縮する。引き算にすると、寄るほど 1 ノッチの効きが荒くなる。
             camera.m_orthoHeight = math::Clamp(
                 camera.m_orthoHeight * std::exp(-scroll * 0.15f), 0.01f, 100000.0f);
         } else {
@@ -113,10 +116,10 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         }
     }
 
-    /// @note パンの効き。正投影では焦点距離が画角と無関係になるので、見えている縦幅を基準にする。
+    // パンの効き。正投影では焦点距離が画角と無関係になるので、見えている縦幅を基準にする。
     const float panRef = ortho ? camera.m_orthoHeight * 0.5f : m_focusDistance;
 
-    /// @name 中ドラッグ : オービット回転 / Shift+中 : パン
+    // 中ドラッグ : オービット回転 / Shift+中 : パン
     if (mmb) {
         if (shiftHeld) {
             const float panScale = panRef * panSensitivity;
@@ -134,7 +137,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         return;
     }
 
-    /// @name Alt + 左ドラッグ : オービット回転 (Unity 互換)
+    // Alt + 左ドラッグ : オービット回転 (Unity 互換)
     if (altHeld && lmb) {
         m_yaw   += mouseDelta.x * mouseSens;
         m_pitch += mouseDelta.y * mouseSens;
@@ -145,7 +148,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         return;
     }
 
-    /// @name 右ドラッグ : FPS ルック + フライ
+    // 右ドラッグ : FPS ルック + フライ
     if (rmb) {
         m_yaw   += mouseDelta.x * mouseSens;
         m_pitch += mouseDelta.y * mouseSens;
@@ -153,28 +156,43 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         ApplyRotation();
 
         float speed = moveSpeed;
-        if (shiftHeld) speed *= fastMultiplier;
+        if (shiftHeld) {
+            speed *= fastMultiplier;
+        }
 
         math::Vector3 move    = math::Vector3::ZERO;
         math::Vector3 forward = camera.GetForward();
         math::Vector3 right   = camera.GetRight();
 
-        if (Input::KeyHeld(KeyCode::W)) move += forward;
-        if (Input::KeyHeld(KeyCode::S)) move -= forward;
-        if (Input::KeyHeld(KeyCode::D)) move += right;
-        if (Input::KeyHeld(KeyCode::A)) move -= right;
-        if (Input::KeyHeld(KeyCode::E)) move += worldUp;
-        if (Input::KeyHeld(KeyCode::Q)) move -= worldUp;
+        if (Input::KeyHeld(KeyCode::W)) {
+            move += forward;
+        }
+        if (Input::KeyHeld(KeyCode::S)) {
+            move -= forward;
+        }
+        if (Input::KeyHeld(KeyCode::D)) {
+            move += right;
+        }
+        if (Input::KeyHeld(KeyCode::A)) {
+            move -= right;
+        }
+        if (Input::KeyHeld(KeyCode::E)) {
+            move += worldUp;
+        }
+        if (Input::KeyHeld(KeyCode::Q)) {
+            move -= worldUp;
+        }
 
-        if (move.LengthSq() > math::EPSILON)
+        if (move.LengthSq() > math::EPSILON) {
             camera.m_position += move.Normalized() * (speed * dt);
+        }
 
         m_pivot = camera.m_position + camera.GetForward() * ViewDistance();
         ApplyDolly(dt);
         return;
     }
 
-    /// @name フリー : ドリーのみ
+    // フリー : ドリーのみ
     m_pivot = camera.m_position + camera.GetForward() * ViewDistance();
     ApplyDolly(dt);
 }

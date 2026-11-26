@@ -11,7 +11,9 @@ class CursorControlPolicy final {
 public:
     bool Acquire()
     {
-        if (!m_physicalInputAllowed || !m_windowActive) return false;
+        if (!m_physicalInputAllowed || !m_windowActive) {
+            return false;
+        }
         m_owner = CursorInputOwner::GAME;
         m_reason = CursorSuspendReason::NONE;
         return true;
@@ -26,7 +28,9 @@ public:
     void SetPhysicalInputAllowed(bool allowed)
     {
         m_physicalInputAllowed = allowed;
-        if (!allowed) Release(CursorSuspendReason::HOST_OVERRIDE);
+        if (!allowed) {
+            Release(CursorSuspendReason::HOST_OVERRIDE);
+        }
     }
 
     [[nodiscard]] bool IsPhysicalInputAllowed() const { return m_physicalInputAllowed; }
@@ -34,7 +38,9 @@ public:
     void SetWindowActive(bool active)
     {
         m_windowActive = active;
-        if (!active) Release(CursorSuspendReason::WINDOW_INACTIVE);
+        if (!active) {
+            Release(CursorSuspendReason::WINDOW_INACTIVE);
+        }
     }
 
     [[nodiscard]] bool OwnsGameInput() const
@@ -58,17 +64,18 @@ public:
         if (state.suspendedReason == CursorSuspendReason::NONE) {
             state.effective = requested;
             /// @see https://docs.unity3d.com/ScriptReference/Cursor-lockState.html ロックが実際のカーソル表示状態に優先する規定。
-            if (requested.lockMode == CursorLockMode::Locked) state.effective.visible = false;
+            if (requested.lockMode == CursorLockMode::Locked) {
+                state.effective.visible = false;
+            }
         }
         return state;
     }
 
 private:
-    /// @note 明示的なホストの引き渡し前は、既定の所有権で従来のスタンドアロン起動時の挙動を保つ。
-    CursorInputOwner m_owner = CursorInputOwner::GAME;
+    CursorInputOwner m_owner = CursorInputOwner::GAME; ///< 明示的なホストの引き渡し前は、既定の所有権で従来のスタンドアロン起動時の挙動を保つ。
     CursorSuspendReason m_reason = CursorSuspendReason::NONE;
     bool m_windowActive = true;
     bool m_physicalInputAllowed = true;
 };
 
-} /// @note namespace fbzz::core::cursor_detail
+} // namespace fbzz::core::cursor_detail

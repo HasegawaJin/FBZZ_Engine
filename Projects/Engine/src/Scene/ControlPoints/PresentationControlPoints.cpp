@@ -124,12 +124,16 @@ std::uint64_t CanonicalLineSignature(ControlPointSourceMode sourceMode,
 
 bool ValidatePoints(std::span<const LineControlPointValue> points)
 {
-    if (points.size() < 2 || points.size() > MAX_LINE_CONTROL_POINTS) return false;
+    if (points.size() < 2 || points.size() > MAX_LINE_CONTROL_POINTS) {
+        return false;
+    }
     std::unordered_set<std::uint32_t> ids;
     ids.reserve(points.size());
     for (const LineControlPointValue& point : points) {
         if (point.id == 0 || point.id > static_cast<std::uint32_t>((std::numeric_limits<std::int32_t>::max)())
-            || !ids.insert(point.id).second || !IsFinite(point.position)) return false;
+            || !ids.insert(point.id).second || !IsFinite(point.position)) {
+            return false;
+        }
     }
     return true;
 }
@@ -137,13 +141,17 @@ bool ValidatePoints(std::span<const LineControlPointValue> points)
 bool MatchesBakedPoints(const LineRendererComponent& line,
     std::span<const math::Vector3> current)
 {
-    if (current.size() != line.bakedPoints.size()) return false;
+    if (current.size() != line.bakedPoints.size()) {
+        return false;
+    }
     for (std::size_t index = 0; index < current.size(); ++index) {
         const std::uint32_t expectedId = line.pointSourceMode == ControlPointSourceMode::INLINE
             ? static_cast<std::uint32_t>(index + 1) : line.pointBindings[index].id;
         const LineControlPointValue& baked = line.bakedPoints[index];
         if (baked.id != expectedId || baked.position.x != current[index].x
-            || baked.position.y != current[index].y || baked.position.z != current[index].z) return false;
+            || baked.position.y != current[index].y || baked.position.z != current[index].z) {
+            return false;
+        }
     }
     return true;
 }
@@ -153,16 +161,18 @@ void ReflectRows(IReflector& reflector, const char* fieldName,
     std::vector<T>& values, ReflectRow reflectRow)
 {
     const std::size_t requested = reflector.BeginObjectList(fieldName, values.size());
-    if (requested != values.size())
+    if (requested != values.size()) {
         values.resize((std::min)(requested, MAX_LINE_CONTROL_POINTS + 1));
+    }
     for (std::size_t index = 0; index < values.size(); ++index) {
         reflector.BeginObjectElement(index);
         reflectRow(values[index]);
         reflector.EndObjectElement();
     }
     const std::size_t removed = reflector.EndObjectList();
-    if (removed < values.size())
+    if (removed < values.size()) {
         values.erase(values.begin() + static_cast<std::ptrdiff_t>(removed));
+    }
     std::size_t from = 0;
     std::size_t to = 0;
     if (reflector.ObjectListMove(from, to) && from < values.size() && to < values.size() && from != to) {
@@ -178,7 +188,9 @@ void FailResolution(LineControlPointSnapshot& snapshot,
     snapshot.status = LineControlPointStatus::RESOLUTION_FAILED;
     snapshot.inputSignature = RawLineSignature(line, runtimeMode);
     HashValue(snapshot.inputSignature, snapshot.resolveStatus);
-    if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+    if (snapshot.inputSignature == 0) {
+        snapshot.inputSignature = 1;
+    }
 }
 
 }
@@ -245,8 +257,9 @@ LineControlPointSnapshot ResolveLineControlPointAuthoring(Scene& scene, EntityID
         }
         snapshot.points = line.points;
         ids.reserve(snapshot.points.size());
-        for (std::size_t index = 0; index < snapshot.points.size(); ++index)
+        for (std::size_t index = 0; index < snapshot.points.size(); ++index) {
             ids.push_back(static_cast<std::uint32_t>(index + 1));
+        }
     } else {
         if (line.pointBindings.size() > MAX_LINE_CONTROL_POINTS) {
             snapshot.status = LineControlPointStatus::INVALID_NUMERIC_DATA;
@@ -255,8 +268,9 @@ LineControlPointSnapshot ResolveLineControlPointAuthoring(Scene& scene, EntityID
         }
         std::vector<ControlPointBinding> bindings;
         bindings.reserve(line.pointBindings.size());
-        for (const LineControlPointBinding& binding : line.pointBindings)
+        for (const LineControlPointBinding& binding : line.pointBindings) {
             bindings.push_back({binding.id, &binding.target});
+        }
         std::vector<ResolvedControlPoint> resolved;
         std::uint64_t resolverSignature = 0;
         if (!ResolveControlPointBindings(scene, ownerId, bindings, true,
@@ -277,8 +291,12 @@ LineControlPointSnapshot ResolveLineControlPointAuthoring(Scene& scene, EntityID
         || !std::all_of(snapshot.points.begin(), snapshot.points.end(), IsFinite)) {
         snapshot.status = LineControlPointStatus::INVALID_NUMERIC_DATA;
         snapshot.inputSignature = RawLineSignature(line, signatureRuntimeMode);
-        for (const math::Vector3& point : snapshot.points) HashVector(snapshot.inputSignature, point);
-        if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+        for (const math::Vector3& point : snapshot.points) {
+            HashVector(snapshot.inputSignature, point);
+        }
+        if (snapshot.inputSignature == 0) {
+            snapshot.inputSignature = 1;
+        }
         return snapshot;
     }
     snapshot.inputSignature = CanonicalLineSignature(line.pointSourceMode,
@@ -292,8 +310,9 @@ LineControlPointSnapshot ResolveLineControlPointAuthoring(Scene& scene, EntityID
 LineControlPointSnapshot ResolveLineControlPoints(Scene& scene, EntityID ownerId,
     LineRendererComponent& line, ControlPointReadContext context)
 {
-    if (line.pointRuntimeMode == ControlPointRuntimeMode::LIVE)
+    if (line.pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
         return ResolveLineControlPointAuthoring(scene, ownerId, line, ControlPointRuntimeMode::LIVE);
+    }
 
     LineControlPointSnapshot current;
     if (!IsKnownRuntimeMode(line.pointRuntimeMode)) {
@@ -301,10 +320,12 @@ LineControlPointSnapshot ResolveLineControlPoints(Scene& scene, EntityID ownerId
         current.valid = false;
         return current;
     }
-    if (context == ControlPointReadContext::AUTHORING)
+    if (context == ControlPointReadContext::AUTHORING) {
         current = ResolveLineControlPointAuthoring(scene, ownerId, line, ControlPointRuntimeMode::BAKED_STATIC);
-    else
+    }
+    else {
         current.inputSignature = line.bakedInputSignature;
+    }
 
     if (!line.bakeValid || line.bakedPoints.empty()) {
         current.points.clear();
@@ -312,10 +333,11 @@ LineControlPointSnapshot ResolveLineControlPoints(Scene& scene, EntityID ownerId
         current.valid = false;
         return current;
     }
-    if (context == ControlPointReadContext::AUTHORING)
+    if (context == ControlPointReadContext::AUTHORING) {
         current.bakeStale = !current.valid || current.inputSignature != line.bakedInputSignature
             || line.bakedSourceMode != line.pointSourceMode || line.bakedSpace != line.space
             || (current.valid && !MatchesBakedPoints(line, current.points));
+    }
     if (line.bakedInputSignature == 0 || !IsKnownSourceMode(line.bakedSourceMode)
         || line.bakedAdapterVersion != LINE_CONTROL_POINT_ADAPTER_VERSION
         || (line.bakedSpace != LineSpace::Local && line.bakedSpace != LineSpace::World)
@@ -329,8 +351,9 @@ LineControlPointSnapshot ResolveLineControlPoints(Scene& scene, EntityID ownerId
     current.space = line.bakedSpace;
     current.points.clear();
     current.points.reserve(line.bakedPoints.size());
-    for (const LineControlPointValue& point : line.bakedPoints)
+    for (const LineControlPointValue& point : line.bakedPoints) {
         current.points.push_back(point.position);
+    }
     current.valid = true;
     current.status = current.bakeStale ? LineControlPointStatus::STALE_BAKE
                                        : LineControlPointStatus::SUCCESS;
@@ -342,15 +365,21 @@ bool BeginMotionWarpToTarget(Scene& scene, EntityID ownerId,
 {
     if (!std::isfinite(duration) || duration <= 0.0f
         || (warp.targetPointMode != MotionWarpPointMode::CAPTURED
-            && warp.targetPointMode != MotionWarpPointMode::LIVE)) return false;
+            && warp.targetPointMode != MotionWarpPointMode::LIVE)) {
+        return false;
+    }
     const ControlPointBinding binding{1, &warp.targetReference};
     std::vector<ResolvedControlPoint> resolved;
     ControlPointResolveStatus status = ControlPointResolveStatus::SUCCESS;
     std::uint64_t signature = 0;
     if (!ResolveControlPointBindings(scene, ownerId, std::span{&binding, std::size_t{1}},
-            true, resolved, status, signature) || resolved.size() != 1) return false;
+            true, resolved, status, signature) || resolved.size() != 1) {
+        return false;
+    }
     if (warp.targetPointMode == MotionWarpPointMode::LIVE
-        && IsSelfOrDescendantTarget(scene, ownerId, resolved.front().targetId)) return false;
+        && IsSelfOrDescendantTarget(scene, ownerId, resolved.front().targetId)) {
+        return false;
+    }
 
     MotionWarpTarget& target = warp.target;
     target.active = true;
@@ -370,8 +399,12 @@ bool BeginMotionWarpToTarget(Scene& scene, EntityID ownerId,
 bool RefreshLiveMotionWarpTarget(Scene& scene, EntityID ownerId,
     MotionWarpComponent& warp)
 {
-    if (!warp.target.active || warp.runtimeTargetSource != MotionWarpTargetSource::POINT_OBJECT) return true;
-    if (warp.targetPointMode == MotionWarpPointMode::CAPTURED) return true;
+    if (!warp.target.active || warp.runtimeTargetSource != MotionWarpTargetSource::POINT_OBJECT) {
+        return true;
+    }
+    if (warp.targetPointMode == MotionWarpPointMode::CAPTURED) {
+        return true;
+    }
     if (warp.targetPointMode != MotionWarpPointMode::LIVE) {
         warp.target.active = false;
         warp.target.remaining = 0.0f;

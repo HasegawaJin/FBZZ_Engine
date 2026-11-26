@@ -50,8 +50,12 @@ bool IsInsideProbe(const ReflectionProbeComponent& probe, const math::Vector3& p
 
 void ReleaseProbeTextures(ReflectionProbeComponent& probe, renderer::ResourceManager& resources)
 {
-    if (probe.runtimeIrradiance.IsValid()) resources.Release(probe.runtimeIrradiance);
-    if (probe.runtimePrefilter.IsValid())  resources.Release(probe.runtimePrefilter);
+    if (probe.runtimeIrradiance.IsValid()) {
+        resources.Release(probe.runtimeIrradiance);
+    }
+    if (probe.runtimePrefilter.IsValid()) {
+        resources.Release(probe.runtimePrefilter);
+    }
     probe.runtimeIrradiance = {};
     probe.runtimePrefilter = {};
     probe.runtimePrefilterMipCount = 0;
@@ -66,22 +70,32 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
 {
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
-    if (!h.skyShader.IsValid() || !h.skyVB.IsValid() || !h.skyIB.IsValid() || !h.skyCaptureFrameCB.IsValid()) return false;
+    if (!h.skyShader.IsValid() || !h.skyVB.IsValid() || !h.skyIB.IsValid() || !h.skyCaptureFrameCB.IsValid()) {
+        return false;
+    }
     const uint32_t resolution = std::clamp(probe.captureResolution, 32u, 1024u);
     if (!probe.runtimeCubeRT.IsValid() || probe.runtimeResolution != resolution) {
-        if (probe.runtimeCubeRT.IsValid()) resources.Release(probe.runtimeCubeRT);
+        if (probe.runtimeCubeRT.IsValid()) {
+            resources.Release(probe.runtimeCubeRT);
+        }
         ReleaseProbeTextures(probe, resources);
         probe.runtimeCubeRT = resources.CreateCubemapRenderTarget(resolution, 1);
         probe.runtimeResolution = resolution;
     }
-    if (!probe.runtimeCubeRT.IsValid()) return false;
+    if (!probe.runtimeCubeRT.IsValid()) {
+        return false;
+    }
 
     SkyRenderer* sky = nullptr;
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
+        if (!go.activeInHierarchy()) {
+            continue;
+        }
         if (auto* candidate = go.GetComponent<SkyRenderer>(); candidate && candidate->enabled) { sky = candidate; break; }
     }
-    if (!sky) return false;
+    if (!sky) {
+        return false;
+    }
 
     AtmosphereCB atmosphere{};
     atmosphere.rayleighScattering[0] = sky->rayleighScattering.x;
@@ -101,7 +115,9 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     input.resolution = resolution;
     input.atmosphere = atmosphere;
     renderer::RenderReflectionProbeResult output;
-    if (!renderer::CaptureReflectionProbe(ctx, input, output)) return false;
+    if (!renderer::CaptureReflectionProbe(ctx, input, output)) {
+        return false;
+    }
     ReleaseProbeTextures(probe, resources);
     probe.runtimeIrradiance = output.irradiance;
     probe.runtimePrefilter = output.prefilter;
@@ -120,8 +136,10 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
 
 ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx)
 {
-    /// @note 各ビューで有効なプローブを確認し、対象がなければ捕捉・選択・予算の変更を省く。
-    if (ctx.scene.GetEntities<ReflectionProbeComponent>().empty()) return nullptr;
+    // 各ビューで有効なプローブを確認し、対象がなければ捕捉・選択・予算の変更を省く。
+    if (ctx.scene.GetEntities<ReflectionProbeComponent>().empty()) {
+        return nullptr;
+    }
     struct CaptureCandidate { GameObject* owner; ReflectionProbeComponent* probe; };
     std::vector<CaptureCandidate> dueProbes;
     const bool bounded = ctx.experimentalRayTracingEnabled
@@ -133,15 +151,23 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
     for (auto& go : ctx.scene.GameObjects()) {
         auto* probe = go.GetComponent<ReflectionProbeComponent>();
         if (!probe || !probe->enabled || !go.activeInHierarchy()
-            || probe->captureMode == ReflectionProbeCaptureMode::Static) continue;
+            || probe->captureMode == ReflectionProbeCaptureMode::Static) {
+            continue;
+        }
         const bool due = probe->refreshRequested || probe->lastCaptureTime < -1.0e20f
             || probe->updateInterval <= 0.0f || (Time::time - probe->lastCaptureTime) >= probe->updateInterval;
         if (due) {
-            if (bounded) dueProbes.push_back({&go, probe});
-            else (void)CaptureAndBake(ctx, go, *probe);
+            if (bounded) {
+                dueProbes.push_back({&go, probe});
+            }
+            else {
+                (void)CaptureAndBake(ctx, go, *probe);
+            }
         }
         if (!probe->runtimeIrradiance.IsValid() || !probe->runtimePrefilter.IsValid()
-            || !IsInsideProbe(*probe, go.transform.worldPosition, ctx.camera.m_position)) continue;
+            || !IsInsideProbe(*probe, go.transform.worldPosition, ctx.camera.m_position)) {
+            continue;
+        }
         const math::Vector3 d = ctx.camera.m_position - go.transform.worldPosition;
         const float distanceSq = d.LengthSq();
         if (!selected || distanceSq < selectedDistanceSq) { selected = probe; selectedDistanceSq = distanceSq; }
@@ -155,26 +181,35 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
             const auto a = first.owner->GetID(), b = second.owner->GetID();
             return a.index < b.index || (a.index == b.index && a.generation < b.generation);
         });
-        /// @note 失敗時も次の所有者から再開し、失敗するプローブや毎フレーム更新のプローブが他の更新を妨げないようにする。
+        // 失敗時も次の所有者から再開し、失敗するプローブや毎フレーム更新のプローブが他の更新を妨げないようにする。
         while (!dueProbes.empty() && budget.CanAttempt(frame, epoch, quality.maxProbeCapturesPerFrame)) {
             auto candidate = std::find_if(dueProbes.begin(), dueProbes.end(), [&](const auto& entry) {
                 const auto id = entry.owner->GetID();
                 return budget.IsAfterCursor(sceneGeneration, id.index, id.generation);
             });
-            if (candidate == dueProbes.end()) candidate = dueProbes.begin();
+            if (candidate == dueProbes.end()) {
+                candidate = dueProbes.begin();
+            }
             const auto id = candidate->owner->GetID();
             budget.MarkAttempt(sceneGeneration, id.index, id.generation);
             (void)CaptureAndBake(ctx, *candidate->owner, *candidate->probe);
             dueProbes.erase(candidate);
         }
-        /// @note 初回捕捉も同じフレームで使えるよう、公開後に選択する。
+        // 初回捕捉も同じフレームで使えるよう、公開後に選択する。
         selected = nullptr;
         for (auto& go : ctx.scene.GameObjects()) {
             auto* probe = go.GetComponent<ReflectionProbeComponent>();
             if (!probe || !probe->enabled || !go.activeInHierarchy()
-                || probe->captureMode == ReflectionProbeCaptureMode::Static
-                || !probe->runtimeIrradiance.IsValid() || !probe->runtimePrefilter.IsValid()
-                || !IsInsideProbe(*probe, go.transform.worldPosition, ctx.camera.m_position)) continue;
+                || probe->captureMode == ReflectionProbeCaptureMode::Static) {
+                continue;
+            }
+
+            // 公開済みの照明マップが揃い、カメラを含むプローブから一番近いものを選ぶ。
+            const bool mapsReady = probe->runtimeIrradiance.IsValid() && probe->runtimePrefilter.IsValid();
+            if (!mapsReady || !IsInsideProbe(*probe, go.transform.worldPosition, ctx.camera.m_position)) {
+                continue;
+            }
+
             const float distanceSq = (ctx.camera.m_position - go.transform.worldPosition).LengthSq();
             if (!selected || distanceSq < selectedDistanceSq) { selected = probe; selectedDistanceSq = distanceSq; }
         }

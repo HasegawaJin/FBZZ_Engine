@@ -140,8 +140,12 @@ public:
     void ClearDepth() override {}
     void SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) override {}
     std::unique_ptr<renderer::IShader> CreateNativeShader(const std::string& path) override {
-        if (path == "ManagedMaterialFixture.hlsl") return std::make_unique<CpuMaterialShader>(path);
-        if(materialPathFixture && path.ends_with("MaterialPathScratchFixture.hlsl"))return std::make_unique<CpuPathMaterialShader>(path, beforeMaterialDescriptor);
+        if (path == "ManagedMaterialFixture.hlsl") {
+            return std::make_unique<CpuMaterialShader>(path);
+        }
+        if(materialPathFixture && path.ends_with("MaterialPathScratchFixture.hlsl")) {
+            return std::make_unique<CpuPathMaterialShader>(path, beforeMaterialDescriptor);
+        }
         return {};
     }
     std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t size) override {
@@ -154,7 +158,9 @@ public:
     std::unique_ptr<renderer::ITexture> CreateNativeTexture(const std::string&) override { RunTextureCallback(); ++fileLoads; return std::make_unique<CpuTexture>(16, 16); }
     std::unique_ptr<renderer::ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t width, uint32_t height) override { RunTextureCallback(); ++memoryLoads; return std::make_unique<CpuTexture>(width, height); }
     std::unique_ptr<renderer::ITexture> CreateNativeTextureFromDataMips(const renderer::TextureMipData* mips, uint32_t count) override {
-        if (!mips || count == 0) return {};
+        if (!mips || count == 0) {
+            return {};
+        }
         RunTextureCallback();
         ++memoryLoads;
         return std::make_unique<CpuTexture>(mips[0].width, mips[0].height);
@@ -280,7 +286,7 @@ private:
 /// @brief Material load reacquires relocated and replaced selected slots.
 TEST_F(MaterialPathScratchTest, MaterialLoadReacquiresRelocatedAndReplacedSelectedSlots)
 {
-    /// @note This fixture's Init installs MatAssetImporter in the DLL; restore that known dependency on every exit.
+    // This fixture's Init installs MatAssetImporter in the DLL; restore that known dependency on every exit.
     struct RestoreImporter final {
         ~RestoreImporter() { asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::make_unique<asset::MatAssetImporter>()); }
     } restore;
@@ -335,7 +341,7 @@ TEST_F(MaterialPathScratchTest, MaterialLoadReacquiresRelocatedAndReplacedSelect
 /// @brief Managed transfer reacquires load owners and honors reflection callback cancellation.
 TEST_F(MaterialPathScratchTest, ManagedTransferReacquiresLoadOwnersAndHonorsReflectionCallbackCancellation)
 {
-    /// @note This fixture's Init installs MatAssetImporter in the DLL; restore that known dependency on every exit.
+    // This fixture's Init installs MatAssetImporter in the DLL; restore that known dependency on every exit.
     struct RestoreImporter final {
         ~RestoreImporter() { asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::make_unique<asset::MatAssetImporter>()); }
     } restore;
@@ -769,10 +775,12 @@ TEST_F(AssetStreamingIntegrationTest, ConsumerLeasePreventsEvictionAndReloadsAft
     EXPECT_EQ(width, 1u); EXPECT_EQ(height, 1u);
     EXPECT_EQ(m_renderer.fileLoads, 0);
     EXPECT_EQ(m_renderer.memoryLoads, 1);
-    /// @note Complete a temporary typed request explicitly; its lease ends before retention is tested, leaving only the Resolver consumer.
+    // Complete a temporary typed request explicitly; its lease ends before retention is tested, leaving only the Resolver consumer.
     const auto completeReady = [&] {
         auto request = streamer.Request<asset::TextureAsset>(path);
-        if (!request.IsHeld()) return false;
+        if (!request.IsHeld()) {
+            return false;
+        }
         return streamer.CompleteNow(request.Handle());
     };
     ASSERT_TRUE(completeReady());

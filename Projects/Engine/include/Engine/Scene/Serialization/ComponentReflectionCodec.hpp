@@ -35,8 +35,9 @@ void DeserializeReflected(const toml::table& table, T& outComponent)
 template<class T>
 void WriteComponentReflected(GameObject& go, toml::table& goTable, const char* key)
 {
-    if (auto* component = go.GetComponent<T>())
+    if (auto* component = go.GetComponent<T>()) {
         goTable.insert(key, SerializeReflected(*component));
+    }
 }
 
 /// @brief goTable[key] があれば AddComponent して読み込む。
@@ -45,7 +46,9 @@ template<class T>
 void ReadComponentReflected(GameObject& go, const toml::table& goTable, const char* key)
 {
     const auto* table = goTable[key].as_table();
-    if (table == nullptr) return;
+    if (table == nullptr) {
+        return;
+    }
     T component{};
     DeserializeReflected(*table, component);
     go.AddComponent<T>(component);

@@ -50,12 +50,15 @@ struct StbiPixelsDeleter {
 
 std::filesystem::path MaskImageFile(const std::string& path)
 {
-    /// @note guid: は AssetDatabase を直に引く。ResolveAssetPath の guid 分岐は «切れた参照» の報告済み集合を
-    ///       ロックなしで書くので、焼きのワーカーから呼ぶと競合する (AssetDatabase の参照系はロックで守られている)。
-    if (AssetDatabase::IsGuidRef(path))
+    // guid: は AssetDatabase を直に引く。ResolveAssetPath の guid 分岐は «切れた参照» の報告済み集合を
+    //       ロックなしで書くので、焼きのワーカーから呼ぶと競合する (AssetDatabase の参照系はロックで守られている)。
+    if (AssetDatabase::IsGuidRef(path)) {
         return util::FileSystem::PathFromUtf8(AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(path)));
+    }
     const std::filesystem::path direct = util::FileSystem::PathFromUtf8(path);
-    if (direct.is_absolute()) return direct;
+    if (direct.is_absolute()) {
+        return direct;
+    }
     return util::FileSystem::PathFromUtf8(AssetManager::ResolveAssetPath(path));
 }
 
@@ -98,7 +101,7 @@ bool SpriteCrop(const std::string& imageFile, const std::string& token, MaskCrop
                 static_cast<int>(sprite->width), static_cast<int>(sprite->height) };
         return true;
     }
-    /// @note sprites を 1 つも持たない Single は «全面 1 枚» を画像名で参照する (ResolveSpriteReference と同じ規約)。
+    // sprites を 1 つも持たない Single は «全面 1 枚» を画像名で参照する (ResolveSpriteReference と同じ規約)。
     if (settings.sprites.empty() && settings.type == TextureType::Sprite
         && settings.spriteMode == SpriteMode::Single
         && token == util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(imageFile).stem())) {
@@ -117,8 +120,8 @@ std::vector<std::vector<MaskTap>> MaskResampleTaps(int sourceCount, int targetCo
     for (int i = 0; i < targetCount; ++i) {
         std::vector<MaskTap>& row = taps[static_cast<std::size_t>(i)];
         if (scale > 1.0f) {
-            /// @note 縮めるときは面積平均にする。双線形のまま大きく縮めると出力 1 画素が元の 2×2 画素
-            ///       しか拾わず、細い線 (文字・魔法陣) が途切れたり消えたりするため。
+            // 縮めるときは面積平均にする。双線形のまま大きく縮めると出力 1 画素が元の 2×2 画素
+            //       しか拾わず、細い線 (文字・魔法陣) が途切れたり消えたりするため。
             const float begin = static_cast<float>(i) * scale;
             const float end = begin + scale;
             const int first = static_cast<int>(std::floor(begin));
@@ -127,12 +130,16 @@ std::vector<std::vector<MaskTap>> MaskResampleTaps(int sourceCount, int targetCo
             for (int j = first; j < last; ++j) {
                 const float overlap =
                     (std::min)(end, static_cast<float>(j + 1)) - (std::max)(begin, static_cast<float>(j));
-                if (overlap <= 0.0f) continue;
+                if (overlap <= 0.0f) {
+                    continue;
+                }
                 row.push_back({ j, overlap });
                 total += overlap;
             }
             if (total > 0.0f)
-                for (MaskTap& tap : row) tap.weight /= total;
+                for (MaskTap& tap : row) {
+                    tap.weight /= total;
+                }
         } else {
             const float center = (static_cast<float>(i) + 0.5f) * scale - 0.5f;
             const float base = std::floor(center);
@@ -151,10 +158,14 @@ bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, s
 {
     out.values.clear();
     const auto fail = [outError](std::string message) {
-        if (outError != nullptr) *outError = std::move(message);
+        if (outError != nullptr) {
+            *outError = std::move(message);
+        }
         return false;
     };
-    if (path.empty()) return fail("画像が指定されていません");
+    if (path.empty()) {
+        return fail("画像が指定されていません");
+    }
 
     std::string imagePath;
     std::string spriteToken;
@@ -162,10 +173,12 @@ bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, s
 
     const std::filesystem::path file = MaskImageFile(imagePath);
     std::vector<uint8_t> bytes;
-    if (file.empty() || !util::FileSystem::ReadBinary(file, bytes) || bytes.empty())
+    if (file.empty() || !util::FileSystem::ReadBinary(file, bytes) || bytes.empty()) {
         return fail("開けません: " + path);
-    if (bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
+    }
+    if (bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
         return fail("画像が大きすぎます: " + path);
+    }
 
     int width = 0;
     int height = 0;
@@ -180,10 +193,11 @@ bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, s
     MaskCrop crop;
     if (isSprite) {
         std::string reason;
-        if (!SpriteCrop(util::FileSystem::PathToUtf8(file), spriteToken, crop, reason))
+        if (!SpriteCrop(util::FileSystem::PathToUtf8(file), spriteToken, crop, reason)) {
             return fail(std::move(reason));
+        }
     }
-    /// @note 矩形が画像からはみ出していても中へ収める (Sprite Editor で切ったあとに元画像を差し替えられる)。
+    // 矩形が画像からはみ出していても中へ収める (Sprite Editor で切ったあとに元画像を差し替えられる)。
     const int cropX = std::clamp(crop.x, 0, width - 1);
     const int cropY = std::clamp(crop.y, 0, height - 1);
     const int cropWidth = crop.width > 0 ? (std::min)(crop.width, width - cropX) : width - cropX;
@@ -193,7 +207,7 @@ bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, s
     const std::vector<std::vector<MaskTap>> columnTaps = MaskResampleTaps(cropWidth, size);
     const std::vector<std::vector<MaskTap>> rowTaps = MaskResampleTaps(cropHeight, size);
 
-    /// @note 横だけ size へ写した中間 (切り抜きの行数 × size)。縦横を分けると 1 画素あたりの重みが «横 + 縦» 本で済む。
+    // 横だけ size へ写した中間 (切り抜きの行数 × size)。縦横を分けると 1 画素あたりの重みが «横 + 縦» 本で済む。
     std::vector<float> horizontal(static_cast<std::size_t>(cropHeight) * static_cast<std::size_t>(size), 0.0f);
     for (int y = 0; y < cropHeight; ++y) {
         const stbi_uc* sourceRow = pixels.get()
@@ -202,8 +216,9 @@ bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, s
         float* target = horizontal.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(size);
         for (int x = 0; x < size; ++x) {
             float sum = 0.0f;
-            for (const MaskTap& tap : columnTaps[static_cast<std::size_t>(x)])
+            for (const MaskTap& tap : columnTaps[static_cast<std::size_t>(x)]) {
                 sum += tap.weight * MaskPixelValue(sourceRow + static_cast<std::size_t>(tap.index) * 4);
+            }
             target[x] = sum;
         }
     }
@@ -213,10 +228,11 @@ bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, s
         const std::vector<MaskTap>& taps = rowTaps[static_cast<std::size_t>(y)];
         for (int x = 0; x < size; ++x) {
             float sum = 0.0f;
-            for (const MaskTap& tap : taps)
+            for (const MaskTap& tap : taps) {
                 sum += tap.weight
                      * horizontal[static_cast<std::size_t>(tap.index) * static_cast<std::size_t>(size)
                                   + static_cast<std::size_t>(x)];
+            }
             values[static_cast<std::size_t>(y) * static_cast<std::size_t>(size) + static_cast<std::size_t>(x)] =
                 std::clamp(sum, 0.0f, 1.0f);
         }

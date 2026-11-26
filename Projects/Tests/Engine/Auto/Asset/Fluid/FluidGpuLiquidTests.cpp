@@ -93,7 +93,7 @@ TEST(FluidGpuLiquidTest, TimedSourceSpreadsSpawnsOverItsDuration)
     stream.duration = 2.0f;
     recipe.sources = { stream };
 
-    /// @note CPU は «count × 経過割合» を切り捨てた数だけ出すので、k 番目は start + duration × (k + 1) / count で出る。
+    // CPU は «count × 経過割合» を切り捨てた数だけ出すので、k 番目は start + duration × (k + 1) / count で出る。
     const auto spawns = asset::BuildGpuLiquidEmission(recipe, 1000);
     ASSERT_EQ(spawns.size(), 4u);
     EXPECT_NEAR(spawns[0].positionTime[3], 1.0f, 1.0e-6f);
@@ -117,7 +117,7 @@ TEST(FluidGpuLiquidTest, EarliestSpawnsTakeTheSlotsWhenTheyRunOut)
     ASSERT_EQ(spawns.size(), 12u);
     for (std::size_t i = 1; i < spawns.size(); ++i)
         EXPECT_LE(spawns[i - 1].positionTime[3], spawns[i].positionTime[3]);
-    /// @note 先に出る 10 粒 (early) が全部入り、残りの 2 枠が late に回る。
+    // 先に出る 10 粒 (early) が全部入り、残りの 2 枠が late に回る。
     EXPECT_NEAR(spawns[0].positionTime[3], 0.1f, 1.0e-6f);
     EXPECT_NEAR(spawns[9].positionTime[3], 1.0f, 1.0e-6f);
     EXPECT_EQ(spawns[10].positionTime[3], 2.0f);
@@ -163,7 +163,7 @@ TEST(FluidGpuLiquidTest, BoxSpawnsStayInsideTheBoxAndLaunchWithTheSourceVelocity
         EXPECT_LE(std::fabs(spawn.positionTime[0] - 0.0f), 0.3f + 1.0e-5f);
         EXPECT_LE(std::fabs(spawn.positionTime[1] + 0.5f), 0.1f + 1.0e-5f);
         EXPECT_LE(std::fabs(spawn.positionTime[2] - 0.0f), 0.2f + 1.0e-5f);
-        /// @note spread = 0 ならばらつきは 0。撃ち出す速度そのまま。
+        // spread = 0 ならばらつきは 0。撃ち出す速度そのまま。
         EXPECT_FLOAT_EQ(spawn.velocityKey[0], 0.0f);
         EXPECT_FLOAT_EQ(spawn.velocityKey[1], 2.0f);
         EXPECT_FLOAT_EQ(spawn.velocityKey[2], 0.0f);
@@ -202,7 +202,7 @@ TEST(FluidGpuLiquidTest, SameSeedGivesTheSameSpawnsAndAnotherSeedDiffers)
 /// @brief Overcrowded source is widened like the CPU solver.
 TEST(FluidGpuLiquidTest, OvercrowdedSourceIsWidenedLikeTheCpuSolver)
 {
-    /// @note Blood Burst の形 (半径 0.06 に 650 粒)。そのまま出すと静止密度の何十倍にも詰まって爆ぜる。
+    // Blood Burst の形 (半径 0.06 に 650 粒)。そのまま出すと静止密度の何十倍にも詰まって爆ぜる。
     fluid::FluidRecipe recipe = LiquidRecipe();
     recipe.liquid.particleRadius = 0.012f;
     const math::Vector3 center = { 0.0f, 0.0f, 0.0f };
@@ -210,7 +210,7 @@ TEST(FluidGpuLiquidTest, OvercrowdedSourceIsWidenedLikeTheCpuSolver)
 
     const auto spawns = asset::BuildGpuLiquidEmission(recipe, 1000);
     ASSERT_EQ(spawns.size(), 650u);
-    /// @note 同時に中に居る粒 325 (= 650 / kEmitPacking) が直径の間隔で収まる半径 ≈ 0.06 × 1.706。
+    // 同時に中に居る粒 325 (= 650 / kEmitPacking) が直径の間隔で収まる半径 ≈ 0.06 × 1.706。
     float farthest = 0.0f;
     for (const auto& spawn : spawns) farthest = (std::max)(farthest, DistanceTo(spawn, center));
     EXPECT_GT(farthest, 0.08f);
@@ -242,16 +242,16 @@ TEST(FluidGpuLiquidTest, GridCoversTheCpuBoundsWithCellsOfH)
 {
     const asset::GpuLiquidGrid grid = asset::MakeGpuLiquidGrid(0.012f);
     EXPECT_NEAR(grid.cellSize, 0.048f, 1.0e-7f);
-    /// @note 3.2 / 0.048 = 66.7
+    // 3.2 / 0.048 = 66.7
     EXPECT_EQ(grid.cellsX, 67);
-    /// @note 4.6 / 0.048 = 95.8
+    // 4.6 / 0.048 = 95.8
     EXPECT_EQ(grid.cellsY, 96);
     EXPECT_EQ(grid.cellsZ, 67);
     EXPECT_EQ(grid.boundsMin[1], -1.6f);
     EXPECT_EQ(grid.boundsMax[1], 3.0f);
     EXPECT_EQ(grid.boundsMax[0], 1.6f);
 
-    /// @note 粒子半径は核と同じ丸め方をする。
+    // 粒子半径は核と同じ丸め方をする。
     EXPECT_NEAR(asset::MakeGpuLiquidGrid(5.0f).cellSize, 0.4f, 1.0e-7f);
 }
 
@@ -304,7 +304,7 @@ TEST(FluidGpuLiquidTest, CollidersPackUnwidenedSizesAndFrictionKeep)
 
     fluid::FluidGpuCollider colliders[fluid::kMaxFluidGpuColliders]{};
     ASSERT_EQ(asset::PackGpuLiquidColliders(recipe, 0.0f, 0.01f, colliders), 3);
-    /// @note 液体は minSize = 0 で測る (気体のようにセル幅まで広げない)。
+    // 液体は minSize = 0 で測る (気体のようにセル幅まで広げない)。
     EXPECT_EQ(colliders[0].sizeActive[0], 0.001f);
     EXPECT_EQ(colliders[0].sizeActive[1], 0.001f);
     EXPECT_EQ(colliders[0].sizeActive[2], 0.001f);

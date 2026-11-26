@@ -22,7 +22,7 @@ class Script;
 using RandomStream = util::RandomStream;
 
 struct ScriptRandomProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 乱数操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note [0, 1) の float
     [[nodiscard]] FBZZ_ENGINE_API float Value() const;
@@ -49,4 +49,4 @@ struct ScriptRandomProxy {
     [[nodiscard]] RandomStream MakeStream(uint64_t seed) const { return RandomStream(seed); }
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

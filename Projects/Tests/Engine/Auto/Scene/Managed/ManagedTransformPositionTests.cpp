@@ -36,7 +36,7 @@ protected:
         EXPECT_VEC3_NEAR(actual.scale, expected.scale, testkit::kTolerance);
         EXPECT_VEC3_NEAR(actual.worldPosition, expected.worldPosition, testkit::kTolerance);
         EXPECT_VEC3_NEAR(actual.worldScale, expected.worldScale, testkit::kTolerance);
-        /// @note Rejection preserves quaternion components, including nonunit local values, rather than only orientation.
+        // 棄却時は、正規化されていないローカル値も含めてクォータニオンの全成分を保存する。
         EXPECT_FLOAT_EQ(actual.rotation.x, expected.rotation.x);
         EXPECT_FLOAT_EQ(actual.rotation.y, expected.rotation.y);
         EXPECT_FLOAT_EQ(actual.rotation.z, expected.rotation.z);

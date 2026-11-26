@@ -34,7 +34,7 @@ const std::vector<ComponentOps>& BuildTable()
     return table;
 }
 
-} /// @note namespace
+} // namespace
 
 std::span<const ComponentOps> ComponentOpsTable()
 {
@@ -44,7 +44,9 @@ std::span<const ComponentOps> ComponentOpsTable()
 
 const ComponentOps* FindComponentOps(std::string_view typeName)
 {
-    if (typeName.empty()) return nullptr;
+    if (typeName.empty()) {
+        return nullptr;
+    }
 
     const auto& table = BuildTable();
     const auto it = std::find_if(table.begin(), table.end(),
@@ -52,4 +54,4 @@ const ComponentOps* FindComponentOps(std::string_view typeName)
     return it == table.end() ? nullptr : &*it;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

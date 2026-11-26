@@ -36,7 +36,7 @@ struct InputStamp {
     void Add(std::uint64_t word) { value = (value ^ word) * 1099511628211ull; }
     void AddFloat(float number)
     {
-        /// @note 1 mm 未満の許容差を設け、シーンの保存・復元でクリップが不用意に無効にならないようにする。
+        // 1 mm 未満の許容差を設け、シーンの保存・復元でクリップが不用意に無効にならないようにする。
         Add(std::isfinite(number) ? static_cast<std::uint64_t>(std::llround(std::clamp(number, -1.0e8f, 1.0e8f)
             * 10000.0)) : std::numeric_limits<std::uint64_t>::max());
     }
@@ -74,22 +74,30 @@ bool AddObstacle(GameObject& rock, const Vector3& origin, float half, asset::Wat
         out.sphereRadius = sphere->radius * (std::max)({scale.x, scale.y, scale.z}) / half;
         return out.sphereRadius > 0.0f;
     }
-    if (const auto* oriented = rock.GetComponent<BoxColliderComponent>(); oriented && oriented->enabled && !oriented->isTrigger)
+    if (const auto* oriented = rock.GetComponent<BoxColliderComponent>(); oriented && oriented->enabled && !oriented->isTrigger) {
         return box(oriented->size, oriented->center, pose.worldRotation);
-    if (const auto* aligned = rock.GetComponent<AabbColliderComponent>(); aligned && aligned->enabled && !aligned->isTrigger)
+    }
+    if (const auto* aligned = rock.GetComponent<AabbColliderComponent>(); aligned && aligned->enabled && !aligned->isTrigger) {
         return box(aligned->size, aligned->center, math::Quaternion::Identity());
+    }
     return false;
 }
 
 bool CaptureObstacles(Scene& scene, const WaterfallComponent& waterfall, const Vector3& origin, float half,
     std::vector<asset::WaterfallFluidObstacle>& out)
 {
-    if (waterfall.fluidRocks.size() > 16) return false;
+    if (waterfall.fluidRocks.size() > 16) {
+        return false;
+    }
     for (const auto& reference : waterfall.fluidRocks) {
-        if (!reference.IsAssigned()) continue;
+        if (!reference.IsAssigned()) {
+            continue;
+        }
         auto* rock = reference.Resolve(scene);
         asset::WaterfallFluidObstacle obstacle;
-        if (!rock || !rock->activeInHierarchy() || !AddObstacle(*rock, origin, half, obstacle)) return false;
+        if (!rock || !rock->activeInHierarchy() || !AddObstacle(*rock, origin, half, obstacle)) {
+            return false;
+        }
         out.push_back(obstacle);
     }
     return true;
@@ -193,8 +201,9 @@ bool Capture(Scene& scene, const WaterfallComponent& waterfall, const WaterfallG
                 const auto* terrain = scene.GetComponent<TerrainComponent>(id);
                 TerrainSurfaceSample sample;
                 if (tile && tile->activeInHierarchy() && terrain->enabled
-                    && TrySampleTerrainWorld(*terrain, tile->transform, worldX, worldZ, sample))
+                    && TrySampleTerrainWorld(*terrain, tile->transform, worldX, worldZ, sample)) {
                     heightSample = (std::max)(heightSample, (sample.position.y - origin.y) / half);
+                }
             }
             input.ground.push_back(heightSample);
             stamp.AddFloat(heightSample);
@@ -208,7 +217,9 @@ bool Capture(Scene& scene, const WaterfallComponent& waterfall, const WaterfallG
 GameObject* MakeFluidPart(Scene& scene, GameObject& owner, WaterfallComponent& waterfall, const Vector3& origin)
 {
     auto* part = scene.TryCreateGameObject("Waterfall 3D Fluid");
-    if (!part) return nullptr;
+    if (!part) {
+        return nullptr;
+    }
     part->SetRuntimeGenerated(true);
     part->SetParent(owner);
     part->layer = owner.layer;
@@ -219,7 +230,7 @@ GameObject* MakeFluidPart(Scene& scene, GameObject& owner, WaterfallComponent& w
     waterfall.parts[FLUID_PART] = part->GetID();
     return part;
 }
-} /// @note namespace
+} // namespace
 
 bool CaptureWaterfallFluidBake(Scene& scene, GameObject& owner, asset::WaterfallFluidBakeInput& out, std::string& error)
 {
@@ -245,8 +256,10 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
     }
     if (!requested) {
         hide();
-        /// @note 更新を延期した場合も、パッチがビュー内へ戻ったときに接続を照合する。
-        if (waterChanged) waterfall.playingFluidClip.clear();
+        // 更新を延期した場合も、パッチがビュー内へ戻ったときに接続を照合する。
+        if (waterChanged) {
+            waterfall.playingFluidClip.clear();
+        }
         return;
     }
     const float half = HalfSize(waterfall);
@@ -274,20 +287,28 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
         waterfall.fluidLoadFailed = !Capture(scene, waterfall, waterfall.geometry, input, waterfall.fluidStatus)
             || waterfall.resolvedFluidPath.empty();
         if (waterfall.fluidLoadFailed) {
-            if (waterfall.fluidStatus.empty()) waterfall.fluidStatus = "3D fluid clip is missing.";
+            if (waterfall.fluidStatus.empty()) {
+                waterfall.fluidStatus = "3D fluid clip is missing.";
+            }
             return;
         }
         waterfall.fluidStamp = input.stamp;
         waterfall.fluidStatus = "Loading 3D fluid clip...";
     }
-    if (waterfall.fluidLoadFailed) return;
-    if (part && waterfall.fluidFrame >= 0) part->SetActive(true);
+    if (waterfall.fluidLoadFailed) {
+        return;
+    }
+    if (part && waterfall.fluidFrame >= 0) {
+        part->SetActive(true);
+    }
     if (waterfall.fluidFrameCount > 0 && std::isfinite(dt) && dt > 0.0f) {
         waterfall.fluidTime = std::fmod(waterfall.fluidTime + dt,
             static_cast<float>(waterfall.fluidFrameCount) / waterfall.fluidFps);
     }
     if (waterfall.fluidFrameJob.valid()) {
-        if (waterfall.fluidFrameJob.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        if (waterfall.fluidFrameJob.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return;
+        }
         const auto frame = waterfall.fluidFrameJob.get();
         if (frame.frame < 0) {
             hide();
@@ -295,7 +316,9 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
             waterfall.fluidStatus = "3D fluid clip is missing, invalid, or out of date. Bake it again.";
             return;
         }
-        if (!part) part = MakeFluidPart(scene, owner, waterfall, origin);
+        if (!part) {
+            part = MakeFluidPart(scene, owner, waterfall, origin);
+        }
         if (!part) {
             waterfall.fluidStatus = "Insufficient scene capacity for the 3D liquid surface.";
             return;
@@ -306,9 +329,10 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
         auto& mesh = *part->GetComponent<ProceduralMeshComponent>();
         mesh.builder.Clear();
         mesh.builder.Reserve(frame.vertices.size(), frame.indices.size());
-        for (const auto& v : frame.vertices)
+        for (const auto& v : frame.vertices) {
             mesh.builder.AddVertex(v.position * half, v.normal, {v.position.x * 0.5f + 0.5f, v.position.y * 0.5f + 0.5f},
                 {0.0f, 0.0f, v.coverage, 2.0f});
+        }
         mesh.builder.Indices().assign(frame.indices.begin(), frame.indices.end());
         mesh.dirty = MeshDirty::All;
         part->GetComponent<WaterfallPart>()->pendingFarIndexStart = std::numeric_limits<std::uint32_t>::max();
@@ -319,7 +343,9 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
     }
     const int request = waterfall.fluidFrameCount > 0
         ? (std::min)(static_cast<int>(waterfall.fluidTime * waterfall.fluidFps), waterfall.fluidFrameCount - 1) : 0;
-    if (request == waterfall.fluidFrame) return;
+    if (request == waterfall.fluidFrame) {
+        return;
+    }
     waterfall.fluidFrameJob = TaskSystem::Submit([path = waterfall.resolvedFluidPath, stamp = waterfall.fluidStamp, request] {
         asset::WaterfallFluidFrame frame;
         static_cast<void>(asset::LoadWaterfallFluidFrame(path, stamp, request, frame));
@@ -332,7 +358,9 @@ void RequestWaterfallFluidForView(Scene& scene, const renderer::Camera& camera, 
     const float projection = std::abs(camera.GetProjectionMatrix().m[1][1]) * static_cast<float>(height);
     for (const auto id : scene.GetEntities<WaterfallComponent>()) {
         auto& waterfall = *scene.GetComponent<WaterfallComponent>(id);
-        if (waterfall.fluidViewDemand || waterfall.fluidClip.empty() || !waterfall.prepared || !waterfall.valid) continue;
+        if (waterfall.fluidViewDemand || waterfall.fluidClip.empty() || !waterfall.prepared || !waterfall.valid) {
+            continue;
+        }
         const float half = HalfSize(waterfall);
         const float radius = half * 1.733f;
         const auto center = PatchOrigin(waterfall.geometry, half);
@@ -341,4 +369,4 @@ void RequestWaterfallFluidForView(Scene& scene, const renderer::Camera& camera, 
         waterfall.fluidViewDemand = radius * projection >= depth * 80.0f && frustum.IntersectsSphere(center, radius);
     }
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

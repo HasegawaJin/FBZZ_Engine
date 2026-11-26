@@ -53,4 +53,4 @@ enum class FlipbookDdsCompression : std::uint8_t { BC7, BC5, None };
 [[nodiscard]] FBZZ_ENGINE_API bool SaveFlipbookMeta(const std::filesystem::path& sourcePath, TextureType type,
                                     TextureCompression compression, AlphaMode alphaMode, std::string& outError);
 
-} /// @note namespace fbzz::asset::detail
+} // namespace fbzz::asset::detail

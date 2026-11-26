@@ -32,27 +32,38 @@ template<typename GeometryProbe>
     for (EntityID id : canvasEntities) {
         auto* canvas = scene.GetComponent<UICanvas>(id);
         auto* root = scene.GetGameObject(id);
-        if (!canvas || !canvas->enabled || !root || !root->activeInHierarchy())
+        if (!canvas || !canvas->enabled || !root || !root->activeInHierarchy()) {
             continue;
+        }
         bool covered = false;
         if (!provenRoots.empty()) {
             for (auto* ancestor = root; ancestor; ancestor = ancestor->GetParent()) {
                 if (provenRoots.contains(key(*ancestor))) { covered = true; break; }
             }
         }
-        if (covered) continue;
+        if (covered) {
+            continue;
+        }
         const bool skipProven = !provenRoots.empty();
         pending.push_back(root);
         while (!pending.empty()) {
             auto* object = pending.back();
             pending.pop_back();
-            /// @note 確認済みの子の根は部分木全体を確認済みとして扱えるため、登録順が親からである必要はない。
-            if (skipProven && provenRoots.contains(key(*object))) continue;
-            if (hasGeometry(*object)) return false;
+            // 確認済みの子の根は部分木全体を確認済みとして扱えるため、登録順が親からである必要はない。
+            if (skipProven && provenRoots.contains(key(*object))) {
+                continue;
+            }
+            if (hasGeometry(*object)) {
+                return false;
+            }
             for (int childIndex = 0; childIndex < object->GetChildCount(); ++childIndex)
-                if (auto* child = object->GetChild(childIndex)) pending.push_back(child);
+                if (auto* child = object->GetChild(childIndex)) {
+                    pending.push_back(child);
+                }
         }
-        if (deduplicate) provenRoots.insert(key(*root));
+        if (deduplicate) {
+            provenRoots.insert(key(*root));
+        }
     }
     return true;
 }
@@ -65,4 +76,4 @@ template<typename GeometryProbe>
     });
 }
 
-} /// @note namespace fbzz::scene::canvas_geometry_detail
+} // namespace fbzz::scene::canvas_geometry_detail

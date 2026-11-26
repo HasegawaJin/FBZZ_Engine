@@ -46,23 +46,35 @@ std::unordered_map<std::string, std::string>& AbsolutePathKeys()
 /// @note 相対パス・絶対パス・GUID 参照は同じ共有実体と Undo を使う。
 std::string NormalizeKey(const std::string& path)
 {
-    if (path.empty()) return {};
+    if (path.empty()) {
+        return {};
+    }
     const std::string resolved = AssetManager::ResolveAssetPath(path);
-    if (resolved.empty()) return {};
+    if (resolved.empty()) {
+        return {};
+    }
     auto& absoluteKeys = AbsolutePathKeys();
     std::string key;
-    if (const auto found = absoluteKeys.find(resolved); found != absoluteKeys.end()) key = found->second;
+    if (const auto found = absoluteKeys.find(resolved); found != absoluteKeys.end()) {
+        key = found->second;
+    }
     else {
         const auto native = util::FileSystem::PathFromUtf8(resolved);
         std::error_code error;
         const auto absolute = std::filesystem::absolute(native, error);
-        if (error) return {};
+        if (error) {
+            return {};
+        }
         key = util::FileSystem::PathToUtf8(absolute.lexically_normal());
-        /// @note 相対参照の表記はカレントディレクトリに依存する。失敗や相対入力はパス文字列だけを扱う有限のキャッシュに入れない。
-        if (native.is_absolute() && absoluteKeys.size() < 4096) absoluteKeys.emplace(resolved, key);
+        // 相対参照の表記はカレントディレクトリに依存する。失敗や相対入力はパス文字列だけを扱う有限のキャッシュに入れない。
+        if (native.is_absolute() && absoluteKeys.size() < 4096) {
+            absoluteKeys.emplace(resolved, key);
+        }
     }
     for (char& c : key) {
-        if (c == '\\') c = '/';
+        if (c == '\\') {
+            c = '/';
+        }
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return key;
@@ -77,8 +89,7 @@ struct CacheEntry {
     std::unique_ptr<DataAsset> asset;
     std::string typeName;
 
-    /// @note 失敗したロードの型登録世代。同世代では同じ失敗を再試行しない。
-    std::uint64_t factoryEpoch = 0;
+    std::uint64_t factoryEpoch = 0; ///< 失敗したロードの型登録世代。同世代では同じ失敗を再試行しない。
     detail::NativeDataAssetType nativeType;
 };
 
@@ -94,7 +105,9 @@ struct LoadedGuidKeys {
     std::unordered_map<std::string, std::string> keys;
     void Refresh(uint64_t current)
     {
-        if (revision == current) return;
+        if (revision == current) {
+            return;
+        }
         keys.clear(); revision = current;
     }
 };
@@ -107,7 +120,7 @@ LoadedGuidKeys& GuidKeys()
 /// @return 読取・パース・型生成・typed 検証の失敗時は nullptr のエントリ。
 CacheEntry LoadFromDisk(const std::string& path)
 {
-    /// @note 失敗にも世代を刻み、型登録変更時だけ Resolve が再試行する。
+    // 失敗にも世代を刻み、型登録変更時だけ Resolve が再試行する。
     CacheEntry failed{ nullptr, {}, DataAssetFactory::RegistrationEpoch() };
 
     const std::string absPath = AssetManager::ResolveAssetPath(path);
@@ -117,7 +130,7 @@ CacheEntry LoadFromDisk(const std::string& path)
         return failed;
     }
 
-    /// @note toml++ は例外無効ビルド (TOML_EXCEPTIONS=0) のため parse_result を真偽で判定する。
+    // toml++ は例外無効ビルド (TOML_EXCEPTIONS=0) のため parse_result を真偽で判定する。
     auto result = toml::parse(text);
     if (!result) {
         FBZZ_LOG_ERROR("DataAssetRegistry: TOML parse failed -> %s", path.c_str());
@@ -168,14 +181,14 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
     std::ostringstream oss;
     oss << table;
 
-    /// @note GUID の索引が引けない保存は空の絶対パスになるため、黙って書き損じず報告する。
+    // GUID の索引が引けない保存は空の絶対パスになるため、黙って書き損じず報告する。
     const std::string absPath = AssetManager::ResolveAssetPath(path);
     if (absPath.empty()) {
         FBZZ_LOG_ERROR("DataAssetRegistry: cannot resolve save path -> %s", path.c_str());
         return false;
     }
 
-    /// @note 自動保存中の中途半端なファイルを原本にしないよう、旧版か新版へアトミックに置き換える。
+    // 自動保存中の中途半端なファイルを原本にしないよう、旧版か新版へアトミックに置き換える。
     if (!util::FileSystem::WriteTextAtomic(absPath, oss.str())) {
         FBZZ_LOG_ERROR("DataAssetRegistry: save failed -> %s", absPath.c_str());
         return false;
@@ -185,7 +198,9 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
 
 CacheEntry* ResolveEntry(const std::string& path)
 {
-    if (path.empty()) return nullptr;
+    if (path.empty()) {
+        return nullptr;
+    }
     const bool guid = AssetDatabase::IsGuidRef(path);
     const uint64_t revision = guid ? AssetDatabase::Revision() : 0;
     auto& aliases = GuidKeys();
@@ -194,24 +209,34 @@ CacheEntry* ResolveEntry(const std::string& path)
         aliases.Refresh(revision);
         if (const auto key = aliases.keys.find(path); key != aliases.keys.end()) {
             const auto found = cache.find(key->second);
-            if (found != cache.end() && found->second.asset) return &found->second;
+            if (found != cache.end() && found->second.asset) {
+                return &found->second;
+            }
         }
     }
     const std::string key = NormalizeKey(path);
-    if (key.empty()) return nullptr;
+    if (key.empty()) {
+        return nullptr;
+    }
     const auto remember = [&](CacheEntry& entry) -> CacheEntry* {
-        /// @note 読込済みの GUID アセットは描画フレームごとにディスクを確認する必要がない。欠落や失敗時は従来の再試行・診断経路を使う。
-        if (!entry.asset) return nullptr;
-        if (guid && AssetDatabase::Revision() == revision && aliases.keys.size() < 4096)
+        // 読込済みの GUID アセットは描画フレームごとにディスクを確認する必要がない。欠落や失敗時は従来の再試行・診断経路を使う。
+        if (!entry.asset) {
+            return nullptr;
+        }
+        if (guid && AssetDatabase::Revision() == revision && aliases.keys.size() < 4096) {
             aliases.keys.insert_or_assign(path, key);
+        }
         return &entry;
     };
     if (auto it = cache.find(key); it != cache.end()) {
-        if (it->second.asset) return remember(it->second);
+        if (it->second.asset) {
+            return remember(it->second);
+        }
 
-        /// @note 失敗もキャッシュし、型登録が変わったときだけ再試行してログ連打と永久失敗を防ぐ。
-        if (it->second.factoryEpoch == DataAssetFactory::RegistrationEpoch())
+        // 失敗もキャッシュし、型登録が変わったときだけ再試行してログ連打と永久失敗を防ぐ。
+        if (it->second.factoryEpoch == DataAssetFactory::RegistrationEpoch()) {
             return nullptr;
+        }
 
         it->second = LoadFromDisk(key);
         return remember(it->second);
@@ -233,8 +258,12 @@ void* DataAssetRegistry::ResolveNative(const std::string& path, const std::type_
 {
     legacy = nullptr;
     const auto* entry = ResolveEntry(path);
-    if (!entry) return nullptr;
-    if (entry->nativeType.query) return entry->nativeType.query(entry->nativeType.instance, requestedType);
+    if (!entry) {
+        return nullptr;
+    }
+    if (entry->nativeType.query) {
+        return entry->nativeType.query(entry->nativeType.instance, requestedType);
+    }
     legacy = entry->asset.get();
     return nullptr;
 }
@@ -244,20 +273,30 @@ bool DataAssetRegistry::Save(const std::string& path)
     const std::string key = NormalizeKey(path);
     auto& cache = Cache();
     auto it = cache.find(key);
-    if (it == cache.end() || !it->second.asset) return false;
+    if (it == cache.end() || !it->second.asset) {
+        return false;
+    }
 
     if (it->second.typeName == RenderPipelineAsset::TYPE_NAME) {
-        /// @note ディスク上の版が非互換または不正なら、最後に正常に読み込んだ値でディスクを上書きしない。
+        // ディスク上の版が非互換または不正なら、最後に正常に読み込んだ値でディスクを上書きしない。
         std::string text;
-        if (!util::FileSystem::ReadText(AssetManager::ResolveAssetPath(key), text)) return false;
+        if (!util::FileSystem::ReadText(AssetManager::ResolveAssetPath(key), text)) {
+            return false;
+        }
         auto parsed = toml::parse(text);
-        if (!parsed) return false;
+        if (!parsed) {
+            return false;
+        }
         RenderPipelineAsset disk;
-        if (!RenderPipelineAssetCodec::Load(parsed.table(), disk)) return false;
+        if (!RenderPipelineAssetCodec::Load(parsed.table(), disk)) {
+            return false;
+        }
     }
 
     toml::table table;
-    if (!BuildTable(*it->second.asset, table)) return false;
+    if (!BuildTable(*it->second.asset, table)) {
+        return false;
+    }
     return WriteTableToDisk(key, table);
 }
 
@@ -276,13 +315,18 @@ bool DataAssetRegistry::Create(const std::string& path, const std::string& typeN
         return false;
     }
 
-    if (typeName == RenderPipelineAsset::TYPE_NAME && !TryAsExactDataAsset<RenderPipelineAsset>(asset.get()))
+    if (typeName == RenderPipelineAsset::TYPE_NAME && !TryAsExactDataAsset<RenderPipelineAsset>(asset.get())) {
         return false;
+    }
     toml::table table;
-    if (!BuildTable(*asset, table)) return false;
-    if (!WriteTableToDisk(key, table)) return false;
+    if (!BuildTable(*asset, table)) {
+        return false;
+    }
+    if (!WriteTableToDisk(key, table)) {
+        return false;
+    }
 
-    /// @note 生成直後の実体をそのままキャッシュへ載せる (次の Resolve でディスク再読込しない)。
+    // 生成直後の実体をそのままキャッシュへ載せる (次の Resolve でディスク再読込しない)。
     Cache().insert_or_assign(
         key, CacheEntry{ std::move(asset), typeName, DataAssetFactory::RegistrationEpoch(), nativeType });
     return true;
@@ -293,23 +337,31 @@ std::string DataAssetRegistry::Snapshot(const std::string& path)
     const std::string key = NormalizeKey(path);
     auto& cache = Cache();
     auto it = cache.find(key);
-    if (it == cache.end() || !it->second.asset) return {};
+    if (it == cache.end() || !it->second.asset) {
+        return {};
+    }
 
     std::ostringstream oss;
     toml::table table;
-    if (!BuildTable(*it->second.asset, table)) return {};
+    if (!BuildTable(*it->second.asset, table)) {
+        return {};
+    }
     oss << table;
     return oss.str();
 }
 
 bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::string& snapshot)
 {
-    if (snapshot.empty()) return false;
+    if (snapshot.empty()) {
+        return false;
+    }
 
     const std::string key = NormalizeKey(path);
     auto& cache = Cache();
     auto it = cache.find(key);
-    if (it == cache.end() || !it->second.asset) return false;
+    if (it == cache.end() || !it->second.asset) {
+        return false;
+    }
 
     auto result = toml::parse(snapshot);
     if (!result) {
@@ -317,7 +369,7 @@ bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::stri
         return false;
     }
 
-    /// @note 現在の実体のアドレスを保持して復元し、Undo で型を差し替えない。配列は保存時の長さへ戻す。
+    // 現在の実体のアドレスを保持して復元し、Undo で型を差し替えない。配列は保存時の長さへ戻す。
     if (it->second.typeName == RenderPipelineAsset::TYPE_NAME) {
         auto* pipeline = TryAsExactDataAsset<RenderPipelineAsset>(it->second.asset.get());
         return pipeline && RenderPipelineAssetCodec::Load(result.table(), *pipeline);
@@ -329,38 +381,50 @@ bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::stri
 
 int DataAssetRegistry::ReloadFile(const std::string& absPath)
 {
-    if (absPath.empty()) return 0;
+    if (absPath.empty()) {
+        return 0;
+    }
 
-    /// @note 相対/GUID キャッシュキーを解決し、監視イベントの絶対パスと区切り・大小を無視して比較する。
+    // 相対/GUID キャッシュキーを解決し、監視イベントの絶対パスと区切り・大小を無視して比較する。
     const auto samePath = [](const std::string& a, const std::string& b) {
-        if (a.size() != b.size()) return false;
+        if (a.size() != b.size()) {
+            return false;
+        }
         const auto fold = [](char c) {
-            if (c == '\\') return '/';
+            if (c == '\\') {
+                return '/';
+            }
             return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         };
         for (size_t i = 0; i < a.size(); ++i)
-            if (fold(a[i]) != fold(b[i])) return false;
+            if (fold(a[i]) != fold(b[i])) {
+                return false;
+            }
         return true;
     };
 
     int reloaded = 0;
     for (auto& [key, entry] : Cache()) {
         const std::string resolved = AssetManager::ResolveAssetPath(key);
-        if (!samePath(resolved, absPath)) continue;
+        if (!samePath(resolved, absPath)) {
+            continue;
+        }
 
         std::string text;
-        if (!util::FileSystem::ReadText(resolved, text)) continue;
+        if (!util::FileSystem::ReadText(resolved, text)) {
+            continue;
+        }
 
         auto parsed = toml::parse(text);
         if (!parsed) {
-            /// @note 書き込み途中を掴んだ可能性がある。動いている値は残す。
+            // 書き込み途中を掴んだ可能性がある。動いている値は残す。
             FBZZ_LOG_WARN("DataAssetRegistry: reload failed, keeping previous -> %s", key.c_str());
             continue;
         }
         const toml::table& table = parsed.table();
         const std::string typeName = table["type"].value_or(std::string{});
 
-        /// @note 型が同じなら実体は作り直さず、フィールドだけ上書きする。
+        // 型が同じなら実体は作り直さず、フィールドだけ上書きする。
         if (entry.asset && !typeName.empty() && entry.typeName == typeName) {
             if (typeName == RenderPipelineAsset::TYPE_NAME) {
                 auto* pipeline = TryAsExactDataAsset<RenderPipelineAsset>(entry.asset.get());
@@ -376,9 +440,11 @@ int DataAssetRegistry::ReloadFile(const std::string& absPath)
             continue;
         }
 
-        /// @note 型が変わった / 前回のロードに失敗していた場合だけ実体を差し替える。
+        // 型が変わった / 前回のロードに失敗していた場合だけ実体を差し替える。
         CacheEntry fresh = LoadFromDisk(key);
-        if (!fresh.asset) continue;
+        if (!fresh.asset) {
+            continue;
+        }
         entry = std::move(fresh);
         ++reloaded;
     }
@@ -389,8 +455,9 @@ std::string DataAssetRegistry::TypeOf(const std::string& path)
 {
     const std::string key = NormalizeKey(path);
     auto& cache = Cache();
-    if (auto it = cache.find(key); it != cache.end())
+    if (auto it = cache.find(key); it != cache.end()) {
         return it->second.typeName;
+    }
     return {};
 }
 

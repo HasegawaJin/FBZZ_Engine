@@ -72,12 +72,12 @@ TEST_F(GeometryRouteTest, TransparencyAlwaysWins)
         input.blend = blend;
         EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardTransparent);
 
-        /// @note シェーダーが GBuffer 相当でなくても、拡張ローブがあっても、判定は変わらない。
+        // シェーダーが GBuffer 相当でなくても、拡張ローブがあっても、判定は変わらない。
         input.gbufferEquivalentShader = false;
         input.advancedLobe            = true;
         EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardTransparent);
 
-        /// @note Forward パイプラインでも «半透明» であることは変わらない。深度順に描く必要がある。
+        // Forward パイプラインでも «半透明» であることは変わらない。深度順に描く必要がある。
         EXPECT_EQ(ResolveGeometryRoute(input, false), GeometryRoute::ForwardTransparent);
     }
 }
@@ -137,9 +137,9 @@ TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
     }
 
     EXPECT_EQ(gbuffer + forwardOpaque + forwardTransparent, 16);
-    /// @note GBuffer へ入るのは «不透明 × GBuffer 経路 × 相当シェーダー × ローブ無し» の 1 通りだけ。
+    // GBuffer へ入るのは «不透明 × GBuffer 経路 × 相当シェーダー × ローブ無し» の 1 通りだけ。
     EXPECT_EQ(gbuffer, 1);
-    /// @note 半透明は blend の 1 通り × 残り 8 通り。
+    // 半透明は blend の 1 通り × 残り 8 通り。
     EXPECT_EQ(forwardTransparent, 8);
     EXPECT_EQ(forwardOpaque, 7);
 }

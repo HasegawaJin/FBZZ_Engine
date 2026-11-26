@@ -18,11 +18,9 @@ namespace fbzz::scene {
 /// @note 帯 1 本ぶんの折れ線。
 struct VFXLineStrand {
     std::vector<math::Vector3> points;
-    /// @note 幅の倍率 (本流 = 1)。
-    float width = 1.0f;
+    float width = 1.0f; ///< 幅の倍率 (本流 = 1)。
     float brightness = 1.0f;
-    /// @note 始点側・終点側の幅 (width に掛ける)。枝は先端で 0 まで細る。
-    float startTaper = 1.0f;
+    float startTaper = 1.0f; ///< 始点側・終点側の幅 (width に掛ける)。枝は先端で 0 まで細る。
     float endTaper = 1.0f;
 };
 
@@ -46,4 +44,4 @@ FBZZ_ENGINE_API void GenerateBeam(const VFXLineComponent& line, const math::Vect
 FBZZ_ENGINE_API void ApplyVFXLinePreset(VFXLineComponent& line, VFXLinePreset preset);
 [[nodiscard]] FBZZ_ENGINE_API const char* VFXLinePresetName(VFXLinePreset preset);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

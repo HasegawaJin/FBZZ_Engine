@@ -25,18 +25,14 @@ namespace fbzz::asset {
 /// @note Inspector プレビューを作ると 3 本目になるところだった。型と評価関数を 1 つにして
 /// @note 3 者に同じ答えを出させる。
 struct ParticleFlipbookSettings {
-    /// @note アトラスの分割数。1x1 なら 1 枚絵として扱う。
-    int spriteColumns = 1;
+    int spriteColumns = 1; ///< アトラスの分割数。1x1 なら 1 枚絵として扱う。
     int spriteRows    = 1;
     int spriteStartFrame = 0;
-    /// @note 0 は「最終フレームまで」を意味する (途中で止めたいときだけ指定する)。
-    int spriteEndFrame   = 0;
+    int spriteEndFrame   = 0; ///< 0 は「最終フレームまで」を意味する (途中で止めたいときだけ指定する)。
     scene::ParticleFlipbookMode flipbookMode = scene::ParticleFlipbookMode::Lifetime;
     float flipbookFramesPerSecond = 24.0f;
-    /// @note 隣接コマを線形補間する。低フレームレートのアトラスを滑らかに見せる。
-    bool flipbookFrameBlending = false;
-    /// @note 粒子ごとに再生位相をずらす。同時に湧いた煙が全部同じコマで回るのを防ぐ。
-    bool spriteRandomStartFrame = false;
+    bool flipbookFrameBlending = false; ///< 隣接コマを線形補間する。低フレームレートのアトラスを滑らかに見せる。
+    bool spriteRandomStartFrame = false; ///< 粒子ごとに再生位相をずらす。同時に湧いた煙が全部同じコマで回るのを防ぐ。
     /// @note アトラスの各行を「見た目の異なるバリエーション」として扱い、粒子ごとに 1 行を選ぶ。
     /// @note 選ばれた行の中だけでアニメーションする (spriteStartFrame/EndFrame より優先)。
     bool spriteRandomRow = false;
@@ -75,9 +71,9 @@ struct FlipbookFrameSample {
 [[nodiscard]] FBZZ_ENGINE_API FlipbookFrameRange ResolveFlipbookRange(const ParticleFlipbookSettings& flipbook);
 
 /// @note 1 粒子ぶんのコマを決める。CPU シミュレーションと Inspector プレビューの正本。
-/// @param normalizedAge 寿命に対する経過 [0,1] (Lifetime が使う)
-/// @param ageSeconds    生まれてからの秒数 (FPS / Ping Pong が使う)
-/// @param spriteSeed    粒子固有の乱数 [0,1] (Random Row / Random Start / Random が使う)
+/// @param[in] normalizedAge 寿命に対する経過 [0,1] (Lifetime が使う)
+/// @param[in] ageSeconds    生まれてからの秒数 (FPS / Ping Pong が使う)
+/// @param[in] spriteSeed    粒子固有の乱数 [0,1] (Random Row / Random Start / Random が使う)
 /// @note GPU 経路 (ParticleGpuSim.cs.hlsl) は同じ規則を HLSL で持つ。変えるなら両方直すこと。
 [[nodiscard]] FBZZ_ENGINE_API FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbook,
                                                         float normalizedAge,
@@ -125,8 +121,7 @@ struct ParticleMaterialSettings {
     /// @note 背景を屈折させる。有効にするとパスがシーン色を退避し、合成はアルファへ倒れる。
     bool distortion = false;
     float distortionStrength = 0.015f;
-    /// @note 色収差量 [画面 UV]。RGB を歪み方向へずらして屈折の分散を出す。0 で無効。
-    float distortionChromatic = 0.0f;
+    float distortionChromatic = 0.0f; ///< 色収差量 [画面 UV]。RGB を歪み方向へずらして屈折の分散を出す。0 で無効。
     /// @note 歪み専用ノーマルマップは [textures] の normal に置く。未設定なら albedo の RG を使う。
     /// @}
 
@@ -135,19 +130,15 @@ struct ParticleMaterialSettings {
     /// @note ビルボードの疑似法線で照明応答させる。volumetric とは役割が重複するため排他。
     bool sixWayLighting = false;
     float lightingStrength = 1.0f;
-    /// @note 巻き込み拡散。光を透かす媒質では明暗の境界が N·L=0 で切れない。
-    float smokeWrap = 0.5f;
-    /// @note 逆光透過 (前方散乱)。煙が「向こう側の光で縁から光る」効果。
-    float smokeTransmission = 0.0f;
+    float smokeWrap = 0.5f; ///< 巻き込み拡散。光を透かす媒質では明暗の境界が N·L=0 で切れない。
+    float smokeTransmission = 0.0f; ///< 逆光透過 (前方散乱)。煙が「向こう側の光で縁から光る」効果。
     float smokeBackScatterPower = 4.0f;
     /// @note 6 方向ライトマップ (Volume Flipbook Baker の _6wayP / _6wayN) で陰影を付ける。
     /// @note albedo が Positive (右, 上, 奥, α)、emissive スロットが Negative (左, 下, 手前, 発光マスク)。
     /// @note sixWayLighting (疑似法線) より優先する。規約は SixWayLighting.hpp。
     bool sixWayMaps = false;
-    /// @note Negative の A (発光マスク) に掛ける色 (リニア HDR)。炎の芯を影の中でも光らせる。
-    math::Vector3 sixWayEmissionColor = { 0.0f, 0.0f, 0.0f };
-    /// @brief 6-way emission color atlas に掛ける露出補正。
-    float sixWayEmissionScale = 1.0f;
+    math::Vector3 sixWayEmissionColor = { 0.0f, 0.0f, 0.0f }; ///< Negative の A (発光マスク) に掛ける色 (リニア HDR)。炎の芯を影の中でも光らせる。
+    float sixWayEmissionScale = 1.0f; ///< 6-way emission color atlas に掛ける露出補正。
     /// @}
 
     /// @name ボリュメトリック煙
@@ -165,8 +156,7 @@ struct ParticleMaterialSettings {
     /// @note 他の物体が落とす影を受ける。
     bool receiveShadows = false;
     float shadowStrength = 1.0f;
-    /// @note 自分自身の密度で減光する。0 で無効 (専用 RT を回さない)。
-    float selfShadowStrength = 0.0f;
+    float selfShadowStrength = 0.0f; ///< 自分自身の密度で減光する。0 で無効 (専用 RT を回さない)。
     /// @}
 
     /// @name 点光源
@@ -201,4 +191,4 @@ struct ParticleMaterialSettings {
 [[nodiscard]] FBZZ_ENGINE_API std::string ParticleMaterialPathForTexture(std::string_view texturePath,
                                                          scene::ParticleBlendMode blend);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

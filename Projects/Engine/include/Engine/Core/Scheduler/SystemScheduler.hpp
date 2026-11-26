@@ -58,13 +58,13 @@ public:
 private:
     FBZZ_ENGINE_API void RunPhase(Phase p, SystemContext& ctx);
 
-    std::vector<std::unique_ptr<ISystem>> m_systems;
-    std::array<std::vector<std::vector<ISystem*>>, static_cast<size_t>(Phase::Count)> m_batches;
-    std::array<PhaseConfig, static_cast<size_t>(Phase::Count)>                        m_phaseConfigs{};
-    float m_accumulator  = 0.0f;
-    bool  m_singleStep   = false;
-    bool  m_built        = false;
-    int   m_frameCounter = 0;
+    std::vector<std::unique_ptr<ISystem>> m_systems; ///< スケジューラーが所有するシステムの登録順一覧。
+    std::array<std::vector<std::vector<ISystem*>>, static_cast<size_t>(Phase::Count)> m_batches; ///< フェーズ別の実行順。各バッチが m_systems の非所有参照を持つ。
+    std::array<PhaseConfig, static_cast<size_t>(Phase::Count)> m_phaseConfigs{}; ///< Phase の列挙値で引く固定刻み・追いつき上限の設定。
+    float m_accumulator = 0.0f; ///< 固定ステップへまだ渡していない経過時間 [s]。
+    bool m_singleStep = false; ///< 次の固定フェーズを蓄積時間から独立して一度だけ進める要求。
+    bool m_built = false; ///< 依存関係の検証と全システムの初期化が完了しているか。
+    int m_frameCounter = 0; ///< 更新間隔の判定に使う外側のフレーム番号。
 };
 
-} /// @note namespace fbzz
+} // namespace fbzz

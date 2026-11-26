@@ -23,10 +23,12 @@ void TerrainGridComponent::SyncInstanceIds(const Scene& scene)
     for (size_t i = 0; i < total; ++i) {
         const EntityID id = (i < cells.size()) ? cells[i] : EntityID::INVALID;
         if (id.IsValid()) {
-            if (const GameObject* go = scene.GetGameObject(id))
+            if (const GameObject* go = scene.GetGameObject(id)) {
                 cellInstanceIds[i] = go->instanceId;
-            else
+            }
+            else {
                 cellInstanceIds[i] = {};
+            }
         } else {
             cellInstanceIds[i] = {};
         }

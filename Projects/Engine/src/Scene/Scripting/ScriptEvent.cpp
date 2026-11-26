@@ -18,8 +18,7 @@ namespace {
 struct Subscription {
     uint64_t                    id      = 0;
     Script*                     owner   = nullptr;
-    /// @note 購読と進行中の配信が同じ callback を所有し、再確保や解除で状態を複製・破棄しない。
-    std::shared_ptr<ScriptEventBus::RawHandler> handler;
+    std::shared_ptr<ScriptEventBus::RawHandler> handler; ///< 購読と進行中の配信が同じ callback を所有し、再確保や解除で状態を複製・破棄しない。
     bool                        canceled = false;
 };
 
@@ -39,7 +38,9 @@ int g_publishDepth = 0;
 /// @note canceled になった購読を実際に取り除く。配信の入れ子が完全に抜けたときだけ行う。
 void CompactIfIdle()
 {
-    if (g_publishDepth > 0) return;
+    if (g_publishDepth > 0) {
+        return;
+    }
     for (auto it = Channels().begin(); it != Channels().end();) {
         auto& subs = it->second;
         subs.erase(std::remove_if(subs.begin(), subs.end(),
@@ -49,13 +50,15 @@ void CompactIfIdle()
     }
 }
 
-} /// @note namespace
+} // namespace
 
 ScriptEventToken ScriptEventBus::SubscribeRaw(Script* owner,
                                               std::string_view channel,
                                               RawHandler handler)
 {
-    if (channel.empty() || !handler || g_nextId == 0) return {};
+    if (channel.empty() || !handler || g_nextId == 0) {
+        return {};
+    }
 
     Subscription subscription{};
     subscription.id      = g_nextId++;
@@ -65,16 +68,20 @@ ScriptEventToken ScriptEventBus::SubscribeRaw(Script* owner,
     const ScriptEventToken token{ subscription.id };
     Channels()[std::string(channel)].push_back(std::move(subscription));
 
-    /// @note Script の破棄は UnsubscribeOwner(this) で一括解除し、購読ごとの解除関数を重複登録しない。
+    // Script の破棄は UnsubscribeOwner(this) で一括解除し、購読ごとの解除関数を重複登録しない。
     return token;
 }
 
 void ScriptEventBus::Unsubscribe(ScriptEventToken token)
 {
-    if (!token.IsValid()) return;
+    if (!token.IsValid()) {
+        return;
+    }
     for (auto& [channel, subs] : Channels()) {
         for (auto& subscription : subs) {
-            if (subscription.id != token.id) continue;
+            if (subscription.id != token.id) {
+                continue;
+            }
             subscription.canceled = true;
             CompactIfIdle();
             return;
@@ -84,38 +91,51 @@ void ScriptEventBus::Unsubscribe(ScriptEventToken token)
 
 void ScriptEventBus::UnsubscribeOwner(Script* owner)
 {
-    if (!owner) return;
+    if (!owner) {
+        return;
+    }
     for (auto& [channel, subs] : Channels())
         for (auto& subscription : subs)
-            if (subscription.owner == owner)
+            if (subscription.owner == owner) {
                 subscription.canceled = true;
+            }
     CompactIfIdle();
 }
 
 void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
 {
     const auto it = Channels().find(std::string(channel));
-    if (it == Channels().end()) return;
-    /// @note callback 内の別 channel 登録による rehash 後も、node の文字列参照は有効。
+    if (it == Channels().end()) {
+        return;
+    }
+    // callback 内の別 channel 登録による rehash 後も、node の文字列参照は有効。
     /// @see https://eel.is/c++draft/unord.req.general#9 rehash による iterator 失効と要素参照の契約。
     const std::string& channelName = it->first;
 
     ++g_publishDepth;
-    /// @note 開始時点の件数までを走査し、配信中に増えた購読は次回の Publish から届ける。
+    // 開始時点の件数までを走査し、配信中に増えた購読は次回の Publish から届ける。
     const size_t initialCount = it->second.size();
     for (size_t i = 0; i < initialCount; ++i) {
-        /// @note 呼出し側の文字列は callback が変更し得るため、登録表が所有する鍵で取り直す。
+        // 呼出し側の文字列は callback が変更し得るため、登録表が所有する鍵で取り直す。
         auto& subs = Channels()[channelName];
-        if (i >= subs.size()) break;
-        if (subs[i].canceled) continue;
-        /// @note 持ち主のスクリプトが無効 (自身が無効・親ごと無効化) なら配らない。購読は残すので、有効に戻せば何もせずまた届く。
-        /// @note Update と同じ規則にしないと、止めたはずのオブジェクトがイベントにだけ反応し続ける。
-        if (const Script* owner = subs[i].owner; owner && !owner->scene.IsActiveAndEnabled()) continue;
+        if (i >= subs.size()) {
+            break;
+        }
+        if (subs[i].canceled) {
+            continue;
+        }
+        // 持ち主のスクリプトが無効 (自身が無効・親ごと無効化) なら配らない。購読は残すので、有効に戻せば何もせずまた届く。
+        // Update と同じ規則にしないと、止めたはずのオブジェクトがイベントにだけ反応し続ける。
+        if (const Script* owner = subs[i].owner; owner && !owner->scene.IsActiveAndEnabled()) {
+            continue;
+        }
         const auto handler = subs[i].handler;
         if (handler && *handler) {
             if (auto* owner = subs[i].owner) {
                 owner->ExecuteProfiledCallback([&] { (*handler)(payload); }, ScriptCallbackKind::EVENT_HANDLER, channelName.c_str());
-            } else (*handler)(payload);
+            } else {
+                (*handler)(payload);
+            }
         }
     }
     --g_publishDepth;
@@ -125,20 +145,22 @@ void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
 
 void ScriptEventBus::Clear()
 {
-    /// @note Clear も個別解除と同じ安全点で破棄し、進行中の鍵参照・件数・再入深さを保持する。
+    // Clear も個別解除と同じ安全点で破棄し、進行中の鍵参照・件数・再入深さを保持する。
     for (auto& [channel, subs] : Channels())
-        for (auto& subscription : subs)
+        for (auto& subscription : subs) {
             subscription.canceled = true;
+        }
     CompactIfIdle();
 }
 
 size_t ScriptEventBus::SubscriptionCount()
 {
     size_t count = 0;
-    for (const auto& [channel, subs] : Channels())
+    for (const auto& [channel, subs] : Channels()) {
         count += std::count_if(subs.begin(), subs.end(),
                                [](const Subscription& s) { return !s.canceled; });
+    }
     return count;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

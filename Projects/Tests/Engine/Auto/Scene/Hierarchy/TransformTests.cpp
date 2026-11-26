@@ -50,8 +50,8 @@ TEST_F(TransformTest, StartsAtTheOriginWithUnitScale)
 /// @brief Checks basis vectors come from the world rotation.
 TEST_F(TransformTest, BasisVectorsComeFromTheWorldRotation)
 {
-    /// @note ローカル回転ではなくワールド回転から作る。親の回転を無視すると、
-    ///       子の «前» が親の回転を無視した向きになる。
+    // ローカル回転ではなくワールド回転から作る。親の回転を無視すると、
+    // 子の «前» が親の回転を無視した向きになる。
     transform.rotation      = math::Quaternion::Identity();
     transform.worldRotation = QuarterTurnAboutUp();
 
@@ -87,7 +87,7 @@ TEST_F(TransformTest, TranslateMovesAlongTheLocalAxesByDefault)
 /// @brief World-space translate ignores the own rotation.
 TEST_F(TransformTest, WorldSpaceTranslateIgnoresTheOwnRotation)
 {
-    /// @note 親を持たないなら world 移動は «そのままの向き»。自分の回転で曲がってはいけない。
+    // 親を持たないなら world 移動は «そのままの向き»。自分の回転で曲がってはいけない。
     transform.rotation      = QuarterTurnAboutUp();
     transform.worldRotation = QuarterTurnAboutUp();
 
@@ -99,9 +99,9 @@ TEST_F(TransformTest, WorldSpaceTranslateIgnoresTheOwnRotation)
 /// @brief Checks world-space translate goes through the parent rotation.
 TEST_F(TransformTest, WorldSpaceTranslateGoesThroughTheParentRotation)
 {
-    /// @note 親が 90 度回っている子。world で +Z へ動かすと、ローカルでは親の逆回転が掛かる。
+    // 親が 90 度回っている子。world で +Z へ動かすと、ローカルでは親の逆回転が掛かる。
     transform.rotation      = math::Quaternion::Identity();
-    /// @note world = 親 × local = 親
+    // world = 親 × local = 親
     transform.worldRotation = QuarterTurnAboutUp();
 
     transform.Translate(math::Vector3::FORWARD, true);
@@ -140,7 +140,7 @@ TEST_F(TransformTest, RotateAccumulatesAndStaysNormalised)
 /// @brief Local rotate composes on the right hand side.
 TEST_F(TransformTest, LocalRotateComposesOnTheRightHandSide)
 {
-    /// @note ローカル回転は «自分の軸で» 回る。yaw した後に pitch すると、傾いた軸で持ち上がる。
+    // ローカル回転は «自分の軸で» 回る。yaw した後に pitch すると、傾いた軸で持ち上がる。
     transform.rotation = QuarterTurnAboutUp();
     transform.Rotate({ 90.0f, 0.0f, 0.0f });
 
@@ -157,7 +157,7 @@ TEST_F(TransformTest, LocalRotateComposesOnTheRightHandSide)
 TEST_F(TransformTest, LookAtPointsForwardAtTheTarget)
 {
     transform.LookAt({ 10.0f, 0.0f, 0.0f });
-    /// @note 親が居ないので local == world
+    // 親が居ないので local == world
     transform.worldRotation = transform.rotation;
 
     EXPECT_VEC3_NEAR(transform.Forward(), math::Vector3::RIGHT, testkit::kLooseTolerance);
@@ -177,7 +177,7 @@ TEST_F(TransformTest, LookAtMeasuresFromTheWorldPosition)
 /// @brief Checks look at ignores a target on top of itself.
 TEST_F(TransformTest, LookAtIgnoresATargetOnTopOfItself)
 {
-    /// @note 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
+    // 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
     transform.rotation = QuarterTurnAboutUp();
 
     transform.LookAt(transform.worldPosition);
@@ -190,8 +190,8 @@ TEST_F(TransformTest, LookAtIgnoresATargetOnTopOfItself)
 /// @brief World matrix is built from the world values.
 TEST_F(TransformTest, WorldMatrixIsBuiltFromTheWorldValues)
 {
-    /// @note 行列はローカル値ではなくワールド値から作る。ここを間違えると
-    ///       親の下に置いた瞬間だけ描画位置がずれる。
+    // 行列はローカル値ではなくワールド値から作る。ここを間違えると
+    // 親の下に置いた瞬間だけ描画位置がずれる。
     transform.position      = { 100.0f, 0.0f, 0.0f };
     transform.worldPosition = { 1.0f, 2.0f, 3.0f };
     transform.worldScale    = { 2.0f, 2.0f, 2.0f };
@@ -214,7 +214,7 @@ TEST_F(TransformTest, WorldMatrixMovesAPointIntoWorldSpace)
     const math::Vector4 moved =
         transform.GetWorldMatrix() * math::Vector4(math::Vector3::FORWARD, 1.0f);
 
-    /// @note +Z が +X へ回り、そこから平行移動する。
+    // +Z が +X へ回り、そこから平行移動する。
     EXPECT_VEC3_NEAR(moved.XYZ(), math::Vector3(2.0f, 2.0f, 3.0f), testkit::kLooseTolerance);
 }
 

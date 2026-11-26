@@ -15,7 +15,9 @@ struct TransientGpuState : State {
     TransientGpuState(const TransientGpuState&) : State{} { InvalidateDependentState(); }
     TransientGpuState& operator=(const TransientGpuState& other)
     {
-        if (this != &other) ResetGpuRuntime();
+        if (this != &other) {
+            ResetGpuRuntime();
+        }
         return *this;
     }
     TransientGpuState(TransientGpuState&& other) noexcept : State(std::move(other))
@@ -37,8 +39,9 @@ private:
     /// @note 空の新規設定と、既存データを再転送するコピー・無効化を区別する。
     void InvalidateDependentState()
     {
-        if constexpr (requires(State& state) { state.OnResetGpuRuntime(); })
+        if constexpr (requires(State& state) { state.OnResetGpuRuntime(); }) {
             static_cast<State&>(*this).OnResetGpuRuntime();
+        }
     }
 };
 }

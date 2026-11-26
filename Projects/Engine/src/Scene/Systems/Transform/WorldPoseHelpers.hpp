@@ -44,14 +44,18 @@ FBZZ_ENGINE_API void PrepareAiWorldMath();
 /// @note 入力のビット列をキーにして符号付きゼロと計算結果を保持し、古いワールド値は常に上書きする。
 inline bool TryReuseAiWorldMath(uint32_t slot, Transform& value, const Transform* parent)
 {
-    if (slot >= g_aiWorldMath.count) return false;
+    if (slot >= g_aiWorldMath.count) {
+        return false;
+    }
     const auto& cached = g_aiWorldMath.rows[slot];
     const auto same = [](const auto& a, const auto& b) { return std::memcmp(&a, &b, sizeof(a)) == 0; };
     if (!cached.valid || cached.hasParent != (parent != nullptr)
         || (parent && (!same(parent->worldPosition, cached.parentPosition) || !same(parent->worldRotation, cached.parentRotation)
             || !same(parent->worldScale, cached.parentScale)))
         || !same(value.position, cached.value.position) || !same(value.rotation, cached.value.rotation)
-        || !same(value.scale, cached.value.scale)) return false;
+        || !same(value.scale, cached.value.scale)) {
+        return false;
+    }
     value.worldPosition = cached.value.worldPosition;
     value.worldRotation = cached.value.worldRotation;
     value.worldScale = cached.value.worldScale;
@@ -61,7 +65,9 @@ inline bool TryReuseAiWorldMath(uint32_t slot, Transform& value, const Transform
 /// @pre ローカル入力、親との乗算、ワールド出力が AI 姿勢サービスによる有限性・正規化可能性の検証を通過していること。
 inline void RememberAiWorldMath(uint32_t slot, const Transform& value, const Transform* parent)
 {
-    if (slot >= g_aiWorldMath.count) return;
+    if (slot >= g_aiWorldMath.count) {
+        return;
+    }
     auto& cached = g_aiWorldMath.rows[slot];
     cached.value = value; cached.hasParent = parent != nullptr;
     if (parent) {

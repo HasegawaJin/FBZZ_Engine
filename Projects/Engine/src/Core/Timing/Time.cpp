@@ -33,7 +33,7 @@ void Time::Tick()
     timelineContext.detail = static_cast<uint32_t>(targetFps > 0 ? targetFps : 0);
     const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::TIME_TICK, timelineContext,
         s_lockstepDelta > 0.0f ? 1u : 0u);
-    /// @note FPS キャップは sleep で大半を消費し、最後の 2ms はビジーウェイトで精度を確保する。ロックステップ中は待たない。
+    // FPS キャップは sleep で大半を消費し、最後の 2ms はビジーウェイトで精度を確保する。ロックステップ中は待たない。
     if (targetFps > 0 && s_frequency > 0 && s_lockstepDelta <= 0.0f) {
         const int   clamped     = std::max(targetFps, 30);
         const int64_t targetTicks = s_frequency / clamped;
@@ -42,8 +42,9 @@ void Time::Tick()
         const int64_t remaining = targetTicks - (cur.QuadPart - s_lastCount);
         if (remaining > 0) {
             const int64_t sleepTicks = remaining - s_frequency / 500LL;
-            if (sleepTicks > 0)
+            if (sleepTicks > 0) {
                 Sleep((DWORD)(sleepTicks * 1000LL / s_frequency));
+            }
             do { QueryPerformanceCounter(&cur); }
             while ((cur.QuadPart - s_lastCount) < targetTicks);
         }
@@ -63,10 +64,10 @@ void Time::Tick()
 
     const float raw = static_cast<float>(now.QuadPart - s_lastCount)
                     / static_cast<float>(s_frequency);
-    /// @note ロックステップ中も基準時刻は進める。解除した最初のフレームに «止めていた間» の実時間が載らないように。
+    // ロックステップ中も基準時刻は進める。解除した最初のフレームに «止めていた間» の実時間が載らないように。
     s_lastCount = now.QuadPart;
 
-    /// @note 50ms キャップはデバッガで止めたとき等の暴走防止。
+    // 50ms キャップはデバッガで止めたとき等の暴走防止。
     unscaledDeltaTime  = s_lockstepDelta > 0.0f ? s_lockstepDelta : std::min(raw, 0.05f);
     deltaTime          = unscaledDeltaTime * GetEffectiveTimeScale();
     time              += deltaTime;
@@ -79,7 +80,7 @@ void Time::Reset()
     time         = 0.0f;
     unscaledTime = 0.0f;
     frameCount   = 0;
-    /// @note VFX の枠だけ素へ戻す。止めたまま Play を抜けた .vfx の要求が残ると «次の Play が最初から遅い» になる。
+    // VFX の枠だけ素へ戻す。止めたまま Play を抜けた .vfx の要求が残ると «次の Play が最初から遅い» になる。
     vfxTimeScale = 1.0f;
 }
 
@@ -118,4 +119,4 @@ float Time::GetLockstepDelta()
     return s_lockstepDelta;
 }
 
-} /// @note namespace fbzz
+} // namespace fbzz

@@ -35,19 +35,19 @@ struct Model {
 
     /// @note Model が meshes / materials の唯一の所有者。
     /// @note MeshRenderer / MaterialComponent は Mesh* / Material* (非所有) を保持する。
-    std::vector<std::unique_ptr<renderer::Mesh>>     meshes;
-    std::vector<std::unique_ptr<renderer::Material>> materials;  ///< @note meshes[i] に対応する material は materials[i]
-    std::unique_ptr<Skeleton> skeleton;
-    std::vector<AnimationClip> clips;
+    std::vector<std::unique_ptr<renderer::Mesh>>     meshes; ///< モデルが所有する描画メッシュの配列。ノードが添字で参照する。
+    std::vector<std::unique_ptr<renderer::Material>> materials; ///< meshes[i] に対応する material は materials[i]
+    std::unique_ptr<Skeleton> skeleton; ///< スキニングに使う骨格の所有ポインター。骨格のないモデルでは null。
+    std::vector<AnimationClip> clips; ///< このモデルへ読み込まれ、Animator が名前・番号で引くアニメーション列。
 
     /// @note DCC のノード階層。meshes をどう GameObject へ配るかはここだけが知っている。
     /// @note 空の場合は「ノード情報なし」= 呼び出し側が meshes を平坦に扱ってよい (旧経路)。
-    std::vector<ModelNode> nodes;
-    int rootNodeIndex = -1;
+    std::vector<ModelNode> nodes; ///< 親子関係とローカル姿勢を保持するモデルノードの配列。
+    int rootNodeIndex = -1; ///< nodes 内のルートノードの添字。-1 は階層なし。
     /// @note nodes の TRS が既に頂点へ焼き込まれているか。true なら配置側は Transform へ
     /// @note 代入してはならない (二重変換)。FzModelFormat.hpp の
     /// @note FZMODEL_FLAG_NODE_TRANSFORMS_BAKED を参照。
-    bool nodeTransformsBaked = true;
+    bool nodeTransformsBaked = true; ///< ノード変換をメッシュ頂点へ焼き込み済みか。
 
     /// @note meshIndex を担当するノードを引く。見つからなければ -1。
     /// @note Renderer から「自分はモデルのどの部位か」を逆引きしたい箇所があるため、
@@ -56,7 +56,9 @@ struct Model {
     {
         for (size_t i = 0; i < nodes.size(); ++i)
             for (const uint32_t candidate : nodes[i].meshIndices)
-                if (candidate == meshIndex) return static_cast<int>(i);
+                if (candidate == meshIndex) {
+                    return static_cast<int>(i);
+                }
         return -1;
     }
 
@@ -64,7 +66,7 @@ struct Model {
     /// @note SkinnedMeshRenderer の描画で使う既定パレット。
     /// @note リファレンスポーズはスケルトン固有でインスタンス非依存のため、Model が持ち
     /// @note 同じモデルの全インスタンスで 1 本を共有する。RenderSystem が初回描画時に遅延生成する。
-    renderer::ResourceHandle<renderer::ConstantBufferTag> referencePoseCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> referencePoseCB; ///< Animator が未評価のときに使う基準姿勢の GPU 定数バッファ。
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

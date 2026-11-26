@@ -31,18 +31,21 @@ bool DeveloperEnvironmentFlag()
     return length == 1 && value[0] == L'1';
 }
 
-} /// @note namespace
+} // namespace
 
 bool detail::HasDeveloperLaunchFlag(std::wstring_view commandLine)
 {
-    /// @note パスの中の --developer を拾わないよう、Windows の引数分割規則を使う。
+    // パスの中の --developer を拾わないよう、Windows の引数分割規則を使う。
     const std::wstring terminated(commandLine);
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(terminated.c_str(), &argc);
-    if (!argv) return false;
+    if (!argv) {
+        return false;
+    }
     bool found = false;
-    for (int i = 1; i < argc && !found; ++i)
+    for (int i = 1; i < argc && !found; ++i) {
         found = std::wstring_view(argv[i]) == L"--developer";
+    }
     LocalFree(argv);
     return found;
 }
@@ -74,4 +77,4 @@ void DeveloperMode::SetPreference(bool enabled)
     g_developerPreference = enabled;
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

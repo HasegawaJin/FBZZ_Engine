@@ -15,7 +15,7 @@ namespace {
 
 constexpr double TARGET_TIME_TOLERANCE = 1.0e-7;
 
-} /// @note namespace
+} // namespace
 
 void RagdollRig::DriveTargetHistory::Clear()
 {
@@ -88,7 +88,7 @@ void RagdollRig::DriveTargetHistory::Store(const std::vector<RagdollBonePose>& b
         if (sampleDt > 0.0f) {
             const auto& previousBoneSample = m_samples.back().bones[boneIndex];
             target.velocity = (target.position - previousBoneSample.position) / sampleDt;
-            /// @note Slerpの区間角速度を一度だけ保存し、小角近似やsubstep再差分による標本間隔依存を避ける。
+            // Slerpの区間角速度を一度だけ保存し、小角近似やsubstep再差分による標本間隔依存を避ける。
             /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-2-3-exponential-coordinates-of-rotation-part-1-of-2/ Modern Robotics §3.2.3 回転ベクトルと一定角速度。
             target.angularVelocity = physics::RotationVector(
                 (target.rotation * previousBoneSample.rotation.Inverse()).Normalized()) / sampleDt;
@@ -169,7 +169,7 @@ RagdollRig::DriveTargetHistory::SampledPose RagdollRig::DriveTargetHistory::Samp
             const auto parent = static_cast<std::size_t>(parentIndex);
             const auto& parentPose = m_sampledWorldPose[parent];
             const auto worldOffset = parentPose.rotation * bone.position;
-            /// @note 親の回転が子のworld位置を運ぶ速度を加え、同じ補間曲線の姿勢と速度を使う。
+            // 親の回転が子のworld位置を運ぶ速度を加え、同じ補間曲線の姿勢と速度を使う。
             /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-3-2-twists-part-1-of-2/ Modern Robotics §3.3.2 回転による原点速度。
             linearVelocity = m_sampledLinearVelocities[parent]
                 + math::Vector3::Cross(m_sampledAngularVelocities[parent], worldOffset)
@@ -182,4 +182,4 @@ RagdollRig::DriveTargetHistory::SampledPose RagdollRig::DriveTargetHistory::Samp
     return { m_sampledWorldPose, true };
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

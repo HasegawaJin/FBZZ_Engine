@@ -25,7 +25,7 @@ struct ScriptMemoryProxy {
     ScriptMemoryProxy() = default;
     explicit ScriptMemoryProxy(Script* owner) : script(owner) {}
 
-    Script* script = nullptr;
+    Script* script = nullptr; ///< メモリ操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief Script 専用のフレーム一時領域を明示的に確保する。
     /// @note 既定容量で足りない Script が、OnAwake などで用途に合う容量へ調整できる。
@@ -118,10 +118,10 @@ struct ScriptMemoryProxy {
     FBZZ_ENGINE_API void BeginFrame() const;
 
 private:
-    static constexpr std::size_t DEFAULT_FRAME_CAPACITY = 64u * 1024u;
+    static constexpr std::size_t DEFAULT_FRAME_CAPACITY = 64u * 1024u; ///< フレーム単位の一時アロケーターの既定容量 [byte]。
 
-    mutable fbzz::core::FrameAllocator m_frameAllocator;
-    mutable fbzz::core::PoolAllocator  m_poolAllocator;
+    mutable fbzz::core::FrameAllocator m_frameAllocator; ///< フレーム単位で破棄する一時確保のアロケーター。
+    mutable fbzz::core::PoolAllocator  m_poolAllocator; ///< 定型サイズの再利用可能な領域を管理するアロケーター。
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

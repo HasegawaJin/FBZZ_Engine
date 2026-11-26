@@ -62,7 +62,9 @@ math::Vector3 InputVector(const ManagedBridgeRequest& request)
 
 ManagedBridgeStatus ReplyVector(ManagedBridgeReply& reply, const math::Vector3& value)
 {
-    if (!Finite(value)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Finite(value)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     reply.valueKind = ManagedValueKind::VECTOR3;
     reply.x = value.x; reply.y = value.y; reply.z = value.z;
     return ManagedBridgeStatus::OK;
@@ -70,7 +72,9 @@ ManagedBridgeStatus ReplyVector(ManagedBridgeReply& reply, const math::Vector3& 
 
 ManagedBridgeStatus ReplyScalar(ManagedBridgeReply& reply, float value)
 {
-    if (!std::isfinite(value)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!std::isfinite(value)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     reply.valueKind = ManagedValueKind::FLOAT; reply.x = value;
     return ManagedBridgeStatus::OK;
 }
@@ -85,39 +89,61 @@ bool ApplyWrite(physics::RigidBody& body, const ManagedBridgeRequest& request)
 {
     switch (static_cast<ManagedPhysicsBodyValue>(request.index)) {
     case ManagedPhysicsBodyValue::VELOCITY:
-        if (!Finite(Vector(request))) return false;
+        if (!Finite(Vector(request))) {
+            return false;
+        }
         body.SetVelocity(Vector(request)); return true;
     case ManagedPhysicsBodyValue::ANGULAR_VELOCITY:
-        if (!Finite(Vector(request))) return false;
+        if (!Finite(Vector(request))) {
+            return false;
+        }
         body.SetAngularVelocity(Vector(request)); return true;
     case ManagedPhysicsBodyValue::MASS:
         if (!std::isfinite(request.x) || request.x < 0.0f
-            || (request.x > 0.0f && !std::isfinite(1.0f / request.x))) return false;
+            || (request.x > 0.0f && !std::isfinite(1.0f / request.x))) {
+            return false;
+        }
         body.SetMass(request.x); return true;
     case ManagedPhysicsBodyValue::GRAVITY_SCALE:
-        if (!std::isfinite(request.x)) return false;
+        if (!std::isfinite(request.x)) {
+            return false;
+        }
         body.m_gravityScale = request.x; return true;
     case ManagedPhysicsBodyValue::IS_STATIC:
-        if (request.x != 0.0f && request.x != 1.0f) return false;
+        if (request.x != 0.0f && request.x != 1.0f) {
+            return false;
+        }
         body.m_isStatic = request.x == 1.0f; body.SetMass(body.GetMass()); return true;
     case ManagedPhysicsBodyValue::LINEAR_DRAG:
     case ManagedPhysicsBodyValue::ANGULAR_DRAG:
     case ManagedPhysicsBodyValue::CCD_RADIUS:
     case ManagedPhysicsBodyValue::FLOW_COUPLING:
-        if (!std::isfinite(request.x) || request.x < 0.0f) return false;
-        if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::LINEAR_DRAG)) body.m_linearDrag = request.x;
+        if (!std::isfinite(request.x) || request.x < 0.0f) {
+            return false;
+        }
+        if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::LINEAR_DRAG)) {
+            body.m_linearDrag = request.x;
+        }
         else if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::ANGULAR_DRAG)) body.m_angularDrag = request.x;
         else if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::CCD_RADIUS)) body.m_ccdRadius = request.x;
-        else body.SetFlowCoupling(request.x);
+        else {
+            body.SetFlowCoupling(request.x);
+        }
         return true;
     case ManagedPhysicsBodyValue::LOCAL_TIME_SCALE:
-        if (!std::isfinite(request.x) || request.x < 0.0f || request.x > 8.0f) return false;
+        if (!std::isfinite(request.x) || request.x < 0.0f || request.x > 8.0f) {
+            return false;
+        }
         body.m_timeScale = request.x; return true;
     case ManagedPhysicsBodyValue::USE_CCD:
     case ManagedPhysicsBodyValue::USE_GRAVITY:
     case ManagedPhysicsBodyValue::ALLOW_SLEEPING:
-        if (request.x != 0.0f && request.x != 1.0f) return false;
-        if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::USE_CCD)) body.m_useCCD = request.x == 1.0f;
+        if (request.x != 0.0f && request.x != 1.0f) {
+            return false;
+        }
+        if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::USE_CCD)) {
+            body.m_useCCD = request.x == 1.0f;
+        }
         else if (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::USE_GRAVITY)) body.m_useGravity = request.x == 1.0f;
         else { body.m_allowSleeping = request.x == 1.0f; if (!body.m_allowSleeping) body.WakeUp(); }
         return true;
@@ -127,7 +153,9 @@ bool ApplyWrite(physics::RigidBody& body, const ManagedBridgeRequest& request)
 
 bool ApplyCommand(physics::RigidBody& body, const ManagedBridgeRequest& request)
 {
-    if (!Finite(Vector(request))) return false;
+    if (!Finite(Vector(request))) {
+        return false;
+    }
     const physics::AxisLock axes{(request.flags & 1u) != 0, (request.flags & 2u) != 0, (request.flags & 4u) != 0};
     switch (static_cast<ManagedPhysicsBodyCommand>(request.index)) {
     case ManagedPhysicsBodyCommand::FORCE: body.ApplyForce(Vector(request)); return true;
@@ -136,12 +164,16 @@ bool ApplyCommand(physics::RigidBody& body, const ManagedBridgeRequest& request)
     case ManagedPhysicsBodyCommand::ANGULAR_IMPULSE: body.ApplyAngularImpulse(Vector(request)); return true;
     case ManagedPhysicsBodyCommand::FORCE_AT_POINT: {
         const math::Vector3 point = InputVector(request);
-        if (!Finite(point)) return false;
+        if (!Finite(point)) {
+            return false;
+        }
         body.ApplyForceAtPoint(Vector(request), point); return true;
     }
     case ManagedPhysicsBodyCommand::POINT_IMPULSE: {
         const math::Vector3 point = InputVector(request);
-        if (!Finite(point)) return false;
+        if (!Finite(point)) {
+            return false;
+        }
         body.ApplyImpulseAtPoint(Vector(request), point); return true;
     }
     case ManagedPhysicsBodyCommand::WAKE: body.WakeUp(); return true;
@@ -161,21 +193,39 @@ GameObject* FindColliderOwner(Scene& scene, const physics::Collider* source)
 {
     for (EntityID id : scene.GetEntities<T>()) {
         const T* component = scene.GetComponent<T>(id);
-        if (!component || !component->enabled || component->collider.get() != source) continue;
+        if (!component || !component->enabled || component->collider.get() != source) {
+            continue;
+        }
         GameObject* object = scene.GetGameObject(id);
-        if (object && object->activeInHierarchy()) return object;
+        if (object && object->activeInHierarchy()) {
+            return object;
+        }
     }
     return nullptr;
 }
 GameObject* FindQueryColliderOwner(Scene& scene, const physics::Collider* source)
 {
-    if (auto* object = FindColliderOwner<AabbColliderComponent>(scene,source)) return object;
-    if (auto* object = FindColliderOwner<BoxColliderComponent>(scene,source)) return object;
-    if (auto* object = FindColliderOwner<SphereColliderComponent>(scene,source)) return object;
-    if (auto* object = FindColliderOwner<CapsuleColliderComponent>(scene,source)) return object;
-    if (auto* object = FindColliderOwner<CylinderColliderComponent>(scene,source)) return object;
-    if (auto* object = FindColliderOwner<MeshColliderComponent>(scene,source)) return object;
-    if (auto* object = FindColliderOwner<ConvexHullColliderComponent>(scene,source)) return object;
+    if (auto* object = FindColliderOwner<AabbColliderComponent>(scene,source)) {
+        return object;
+    }
+    if (auto* object = FindColliderOwner<BoxColliderComponent>(scene,source)) {
+        return object;
+    }
+    if (auto* object = FindColliderOwner<SphereColliderComponent>(scene,source)) {
+        return object;
+    }
+    if (auto* object = FindColliderOwner<CapsuleColliderComponent>(scene,source)) {
+        return object;
+    }
+    if (auto* object = FindColliderOwner<CylinderColliderComponent>(scene,source)) {
+        return object;
+    }
+    if (auto* object = FindColliderOwner<MeshColliderComponent>(scene,source)) {
+        return object;
+    }
+    if (auto* object = FindColliderOwner<ConvexHullColliderComponent>(scene,source)) {
+        return object;
+    }
     return FindColliderOwner<TerrainColliderComponent>(scene,source);
 }
 template<typename T>
@@ -183,9 +233,13 @@ void CollectColliderOwners(Scene& scene, ColliderOwners& owners)
 {
     for (EntityID id : scene.GetEntities<T>()) {
         const T* component = scene.GetComponent<T>(id);
-        if (!component || !component->enabled || !component->collider) continue;
+        if (!component || !component->enabled || !component->collider) {
+            continue;
+        }
         GameObject* object = scene.GetGameObject(id);
-        if (object && object->activeInHierarchy()) owners.emplace(component->collider.get(),object);
+        if (object && object->activeInHierarchy()) {
+            owners.emplace(component->collider.get(),object);
+        }
     }
 }
 /// @note 全件・重複照会やレイ候補が極端に多い場合は、シーンの GameObject 全体を走査せず O(コンポーネント数) で収集する。
@@ -208,22 +262,30 @@ bool OwnsCollider(GameObject& object, const physics::Collider* source)
 /// @note Scene による所有確認は Engine 側で行う。比較が終わるまで借用 pointer の参照先を読まない。
 const physics::Collider* LiveInertiaSource(GameObject& target, const physics::Collider* source)
 {
-    if (!source || !target.GetScene()) return nullptr;
+    if (!source || !target.GetScene()) {
+        return nullptr;
+    }
     for (GameObject& object : target.GetScene()->GameObjects())
         if (OwnsCollider<AabbColliderComponent>(object, source) || OwnsCollider<BoxColliderComponent>(object, source)
             || OwnsCollider<SphereColliderComponent>(object, source) || OwnsCollider<CapsuleColliderComponent>(object, source)
             || OwnsCollider<CylinderColliderComponent>(object, source) || OwnsCollider<MeshColliderComponent>(object, source)
-            || OwnsCollider<ConvexHullColliderComponent>(object, source) || OwnsCollider<TerrainColliderComponent>(object, source)) return source;
+            || OwnsCollider<ConvexHullColliderComponent>(object, source) || OwnsCollider<TerrainColliderComponent>(object, source)) {
+            return source;
+        }
     return nullptr;
 }
 
 /// @note 形状を再生成する前に、同じ Scene の剛体が借用中の旧形状を手放す。次回同期で新形状が設定される。
 void ReleaseInertiaSource(GameObject& target, const physics::Collider* source)
 {
-    if (!source || !target.GetScene()) return;
+    if (!source || !target.GetScene()) {
+        return;
+    }
     for (GameObject& object : target.GetScene()->GameObjects())
         if (auto* component = object.GetComponent<RigidBodyComponent>(); component && component->rigidBody
-            && component->rigidBody->GetInertiaCollider() == source) component->rigidBody->SetInertiaFromCollider(nullptr);
+            && component->rigidBody->GetInertiaCollider() == source) {
+            component->rigidBody->SetInertiaFromCollider(nullptr);
+        }
 }
 
 ColliderComponent* SelectCollider(GameObject& target, uint32_t kind)
@@ -256,7 +318,9 @@ bool ShapeBoundsFinite(const GameObject& target, const math::Vector3& extent)
 Transform* ManagedPhysicsBridge::Shadow(GameObject& target)
 {
     const uint32_t index = target.GetID().index;
-    if (index >= m_shadow.size()) return nullptr;
+    if (index >= m_shadow.size()) {
+        return nullptr;
+    }
     if (m_epochs[index] != m_epoch) { m_shadow[index] = target.transform; m_epochs[index] = m_epoch; }
     return &m_shadow[index];
 }
@@ -267,9 +331,13 @@ bool ManagedPhysicsBridge::Update(GameObject& target)
     GameObject* parent = target.GetParent();
     const Transform* parentValue = parent ? Shadow(*parent) : nullptr;
     if (!value || (parent && !parentValue) || !Finite(value->position)
-        || !Finite(value->scale) || !Normalizable(value->rotation)) return false;
+        || !Finite(value->scale) || !Normalizable(value->rotation)) {
+        return false;
+    }
     if (parentValue && (!Finite(parentValue->worldPosition) || !Finite(parentValue->worldScale)
-        || !Normalizable(parentValue->worldRotation) || !Normalizable(parentValue->worldRotation * value->rotation))) return false;
+        || !Normalizable(parentValue->worldRotation) || !Normalizable(parentValue->worldRotation * value->rotation))) {
+        return false;
+    }
     UpdateWorldTransform(*value, parentValue);
     return Finite(*value);
 }
@@ -277,23 +345,33 @@ bool ManagedPhysicsBridge::Update(GameObject& target)
 bool ManagedPhysicsBridge::Synchronize(GameObject& target)
 {
     Scene* scene = target.GetScene();
-    if (!scene) return false;
+    if (!scene) {
+        return false;
+    }
     const size_t slots = scene->EntitySlotCount();
     m_ancestors.clear();
     for (GameObject* parent = target.GetParent(); parent; parent = parent->GetParent()) {
         if (m_ancestors.size() >= slots || parent->GetScene() != scene
-            || scene->GetGameObject(parent->GetID()) != parent) return false;
+            || scene->GetGameObject(parent->GetID()) != parent) {
+            return false;
+        }
         m_ancestors.push_back(parent);
     }
     for (auto it = m_ancestors.rbegin(); it != m_ancestors.rend(); ++it)
-        if (!Update(**it)) return false;
+        if (!Update(**it)) {
+            return false;
+        }
     m_queue.clear(); m_queue.push_back(&target);
     for (size_t index = 0; index < m_queue.size(); ++index) {
         GameObject& object = *m_queue[index];
-        if (object.GetScene() != scene || scene->GetGameObject(object.GetID()) != &object || !Update(object)) return false;
+        if (object.GetScene() != scene || scene->GetGameObject(object.GetID()) != &object || !Update(object)) {
+            return false;
+        }
         for (int child = 0; child < object.GetChildCount(); ++child)
             if (GameObject* value = object.GetChild(child)) {
-                if (m_queue.size() >= slots || value->GetParent() != &object) return false;
+                if (m_queue.size() >= slots || value->GetParent() != &object) {
+                    return false;
+                }
                 m_queue.push_back(value);
             }
     }
@@ -302,43 +380,63 @@ bool ManagedPhysicsBridge::Synchronize(GameObject& target)
 
 bool ManagedPhysicsBridge::PrepareTeleport(GameObject& target, const math::Vector3& position, const math::Quaternion* rotation)
 {
-    if (!target.GetScene()) return false;
+    if (!target.GetScene()) {
+        return false;
+    }
     const size_t slots = target.GetScene()->EntitySlotCount();
     if (m_shadow.size() != slots) {
         m_shadow.resize(slots); m_epochs.resize(slots);
     }
     if (++m_epoch == 0) { std::fill(m_epochs.begin(), m_epochs.end(), 0); m_epoch = 1; }
-    if (!Synchronize(target)) return false;
+    if (!Synchronize(target)) {
+        return false;
+    }
     Transform* value = Shadow(target);
     const math::Quaternion localRotation = value->rotation;
     const math::Vector3 localScale = value->scale;
     GameObject* parent = target.GetParent();
     const Transform* parentValue = parent ? Shadow(*parent) : nullptr;
     if (parentValue) {
-        if (!Invertible(parentValue->worldRotation)) return false;
+        if (!Invertible(parentValue->worldRotation)) {
+            return false;
+        }
         const math::Quaternion inverse = parentValue->worldRotation.Inverse();
         const math::Vector3 offset = position - parentValue->worldPosition;
         const math::Vector3 localOffset = inverse * offset;
         if (!Finite(inverse) || !Normalizable(inverse * (rotation ? *rotation : value->worldRotation))
-            || !Finite(offset) || !Finite(localOffset)) return false;
-        /// @note 零スケールの表現可否は親の原点から測る。大きな絶対座標で許容誤差を拡大しない。
+            || !Finite(offset) || !Finite(localOffset)) {
+            return false;
+        }
+        // 零スケールの表現可否は親の原点から測る。大きな絶対座標で許容誤差を拡大しない。
         if ((std::abs(parentValue->worldScale.x) <= math::EPSILON && std::abs(localOffset.x) > math::EPSILON)
             || (std::abs(parentValue->worldScale.y) <= math::EPSILON && std::abs(localOffset.y) > math::EPSILON)
-            || (std::abs(parentValue->worldScale.z) <= math::EPSILON && std::abs(localOffset.z) > math::EPSILON)) return false;
+            || (std::abs(parentValue->worldScale.z) <= math::EPSILON && std::abs(localOffset.z) > math::EPSILON)) {
+            return false;
+        }
     }
     SetWorldPose(*value, parentValue, position, rotation ? *rotation : value->worldRotation, value->worldScale);
-    if (!Finite(*value)) return false;
-    if (!rotation) value->rotation = localRotation;
+    if (!Finite(*value)) {
+        return false;
+    }
+    if (!rotation) {
+        value->rotation = localRotation;
+    }
     value->scale = localScale;
-    if (!Synchronize(target) || !Near(value->worldPosition, position)) return false;
-    /// @note 子孫の動的剛体は次の既存 PhysicsSystem 同期で外部姿勢変更として処理する。
+    if (!Synchronize(target) || !Near(value->worldPosition, position)) {
+        return false;
+    }
+    // 子孫の動的剛体は次の既存 PhysicsSystem 同期で外部姿勢変更として処理する。
     return Normalizable(value->worldRotation);
 }
 
 void ManagedPhysicsBridge::CommitTransforms()
 {
-    for (GameObject* object : m_ancestors) object->transform = *Shadow(*object);
-    for (GameObject* object : m_queue) object->transform = *Shadow(*object);
+    for (GameObject* object : m_ancestors) {
+        object->transform = *Shadow(*object);
+    }
+    for (GameObject* object : m_queue) {
+        object->transform = *Shadow(*object);
+    }
 }
 
 ManagedBridgeStatus ManagedPhysicsBridge::RunBody(GameObject& target, const ManagedBridgeRequest& request,
@@ -347,22 +445,33 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunBody(GameObject& target, const Mana
     const bool reading = request.op == ManagedBridgeOp::PHYSICS_BODY_READ;
     const bool writing = request.op == ManagedBridgeOp::PHYSICS_BODY_WRITE;
     const bool command = request.op == ManagedBridgeOp::PHYSICS_BODY_COMMAND;
-    if (!reading && !writing && !command) return ManagedBridgeStatus::UNSUPPORTED;
-    if (!target.IsValid()) return ManagedBridgeStatus::NOT_FOUND;
+    if (!reading && !writing && !command) {
+        return ManagedBridgeStatus::UNSUPPORTED;
+    }
+    if (!target.IsValid()) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     const bool atPoint = command && (request.index == static_cast<uint32_t>(ManagedPhysicsBodyCommand::FORCE_AT_POINT)
         || request.index == static_cast<uint32_t>(ManagedPhysicsBodyCommand::POINT_IMPULSE));
     const bool freeze = command && (request.index == static_cast<uint32_t>(ManagedPhysicsBodyCommand::FREEZE_POSITION)
         || request.index == static_cast<uint32_t>(ManagedPhysicsBodyCommand::FREEZE_ROTATION));
     if ((freeze ? (request.flags & ~7u) != 0 : request.flags != 0)
-        || (atPoint ? request.inputBytes != 12 || !request.input : request.inputBytes != 0))
+        || (atPoint ? request.inputBytes != 12 || !request.input : request.inputBytes != 0)) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     RigidBodyComponent* component = target.GetComponent<RigidBodyComponent>();
     physics::RigidBody* body = component ? component->rigidBody.get() : nullptr;
     if (reading) {
         const auto selector = static_cast<ManagedPhysicsBodyValue>(request.index);
-        if (selector == ManagedPhysicsBodyValue::EXISTS) return ReplyFlag(reply, body != nullptr);
-        if (selector == ManagedPhysicsBodyValue::ENABLED) return ReplyFlag(reply, body && component->enabled);
-        if (!body || !component->enabled) return ManagedBridgeStatus::NOT_FOUND;
+        if (selector == ManagedPhysicsBodyValue::EXISTS) {
+            return ReplyFlag(reply, body != nullptr);
+        }
+        if (selector == ManagedPhysicsBodyValue::ENABLED) {
+            return ReplyFlag(reply, body && component->enabled);
+        }
+        if (!body || !component->enabled) {
+            return ManagedBridgeStatus::NOT_FOUND;
+        }
         switch (selector) {
         case ManagedPhysicsBodyValue::VELOCITY: return ReplyVector(reply, body->GetVelocity());
         case ManagedPhysicsBodyValue::ANGULAR_VELOCITY: return ReplyVector(reply, body->GetAngularVelocity());
@@ -382,43 +491,65 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunBody(GameObject& target, const Mana
         default: return ManagedBridgeStatus::INVALID_ARGUMENT;
         }
     }
-    if (!fixedUpdate) return ManagedBridgeStatus::INVALID_SCOPE;
-    if (!body || !component->enabled) return ManagedBridgeStatus::NOT_FOUND;
+    if (!fixedUpdate) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
+    if (!body || !component->enabled) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     physics::RigidBody candidate = *body;
     const bool refreshInertia = writing && (request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::MASS)
         || request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::IS_STATIC));
     const physics::Collider* inertiaSource = refreshInertia ? LiveInertiaSource(target, body->GetInertiaCollider()) : nullptr;
-    if (refreshInertia) candidate.SetInertiaFromCollider(inertiaSource);
-    if (!(writing ? ApplyWrite(candidate, request) : ApplyCommand(candidate, request)) || !candidate.IsFiniteState())
+    if (refreshInertia) {
+        candidate.SetInertiaFromCollider(inertiaSource);
+    }
+    if (!(writing ? ApplyWrite(candidate, request) : ApplyCommand(candidate, request)) || !candidate.IsFiniteState()) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     if (command && request.index == static_cast<uint32_t>(ManagedPhysicsBodyCommand::TELEPORT)) {
-        if (!PrepareTeleport(target, candidate.GetPosition())) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!PrepareTeleport(target, candidate.GetPosition())) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const Transform* value = Shadow(target);
         candidate.SetRotation(value->worldRotation);
-        if (!candidate.IsFiniteState()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!candidate.IsFiniteState()) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         body->SetPosition(candidate.GetPosition()); body->SetRotation(value->worldRotation);
         CommitTransforms();
         component->ResetPhysicsSyncState(target.transform.worldPosition, body->GetRotation());
         return ManagedBridgeStatus::OK;
     }
-    /// @note 候補で検証した同一操作を現在の実体へ一度だけ実行し、World に保持された body pointer を維持する。
-    if (refreshInertia) body->SetInertiaFromCollider(inertiaSource);
-    if (writing) ApplyWrite(*body, request); else ApplyCommand(*body, request);
-    if (writing && request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::FLOW_COUPLING)) component->flowCoupling = request.x;
+    // 候補で検証した同一操作を現在の実体へ一度だけ実行し、World に保持された body pointer を維持する。
+    if (refreshInertia) {
+        body->SetInertiaFromCollider(inertiaSource);
+    }
+    if (writing) {
+        ApplyWrite(*body, request);
+    } else ApplyCommand(*body, request);
+    if (writing && request.index == static_cast<uint32_t>(ManagedPhysicsBodyValue::FLOW_COUPLING)) {
+        component->flowCoupling = request.x;
+    }
     return ManagedBridgeStatus::OK;
 }
 
 ManagedBridgeStatus ManagedPhysicsBridge::RunWorld(const physics::World& world,
     const ManagedBridgeRequest& request, ManagedBridgeReply& reply)
 {
-    if (request.op != ManagedBridgeOp::PHYSICS_WORLD_READ) return ManagedBridgeStatus::UNSUPPORTED;
-    if (request.flags || request.inputBytes) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (request.op != ManagedBridgeOp::PHYSICS_WORLD_READ) {
+        return ManagedBridgeStatus::UNSUPPORTED;
+    }
+    if (request.flags || request.inputBytes) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     switch (static_cast<ManagedPhysicsWorldValue>(request.index)) {
     case ManagedPhysicsWorldValue::GRAVITY: return ReplyVector(reply, world.GetGravity());
     case ManagedPhysicsWorldValue::LAYERS_COLLIDE:
         if (!std::isfinite(request.x) || !std::isfinite(request.y) || request.x < 0 || request.x > 31
-            || request.y < 0 || request.y > 31 || std::floor(request.x) != request.x || std::floor(request.y) != request.y)
+            || request.y < 0 || request.y > 31 || std::floor(request.x) != request.x || std::floor(request.y) != request.y) {
             return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return ReplyFlag(reply, world.LayersCollide(static_cast<int>(request.x), static_cast<int>(request.y)));
     default: return ManagedBridgeStatus::INVALID_ARGUMENT;
     }
@@ -428,26 +559,41 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunRotation(GameObject& target, bool w
     ManagedServiceResult& result, bool fixedUpdate)
 {
     RigidBodyComponent* component = target.GetComponent<RigidBodyComponent>();
-    if (!component || !component->rigidBody || !component->enabled) return ManagedBridgeStatus::NOT_FOUND;
+    if (!component || !component->rigidBody || !component->enabled) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     physics::RigidBody& body = *component->rigidBody;
     if (!writing) {
-        if (!values.empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!values.empty()) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const math::Quaternion rotation = body.GetRotation();
-        if (!Finite(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!Finite(rotation)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         result.values = {rotation.x, rotation.y, rotation.z, rotation.w}; return ManagedBridgeStatus::OK;
     }
-    if (!fixedUpdate) return ManagedBridgeStatus::INVALID_SCOPE;
-    if (values.size() != 4) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!fixedUpdate) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
+    if (values.size() != 4) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const math::Quaternion rotation{values[0], values[1], values[2], values[3]};
-    if (!Normalizable(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Normalizable(rotation)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     physics::RigidBody candidate = body;
     candidate.SetRotation(rotation);
     const math::Quaternion candidateRotation = candidate.GetRotation();
-    if (!candidate.IsFiniteState() || !PrepareTeleport(target, candidate.GetPosition(), &candidateRotation))
+    if (!candidate.IsFiniteState() || !PrepareTeleport(target, candidate.GetPosition(), &candidateRotation)) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const math::Quaternion confirmedRotation = Shadow(target)->worldRotation;
     candidate.SetRotation(confirmedRotation);
-    if (!candidate.IsFiniteState()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!candidate.IsFiniteState()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     body.SetRotation(confirmedRotation);
     CommitTransforms();
     component->ResetPhysicsSyncState(target.transform.worldPosition, body.GetRotation());
@@ -457,11 +603,17 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunRotation(GameObject& target, bool w
 ManagedBridgeStatus ManagedPhysicsBridge::RunCollider(GameObject& target, uint32_t kind, uint32_t property, bool writing,
     std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result, bool fixedUpdate)
 {
-    if (!target.IsValid() || !target.GetScene()) return ManagedBridgeStatus::NOT_FOUND;
+    if (!target.IsValid() || !target.GetScene()) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     ColliderComponent* component = SelectCollider(target, kind);
-    if (!component) return ManagedBridgeStatus::NOT_FOUND;
+    if (!component) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     if (!writing) {
-        if (!values.empty() || !text.empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!values.empty() || !text.empty()) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         switch (property) {
         case 0: result.integer = component->enabled ? 1 : 0; break;
         case 1: result.integer = component->isTrigger ? 1 : 0; break;
@@ -473,7 +625,9 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunCollider(GameObject& target, uint32
             } else if (kind == 3) result.values = {target.GetComponent<SphereColliderComponent>()->radius};
             else if (kind == 4) { const auto& shape = *target.GetComponent<CapsuleColliderComponent>(); result.values = {shape.radius, shape.halfHeight}; }
             else if (kind == 15) { const auto& shape = *target.GetComponent<CylinderColliderComponent>(); result.values = {shape.radius, shape.halfHeight}; }
-            else return ManagedBridgeStatus::UNSUPPORTED;
+            else {
+                return ManagedBridgeStatus::UNSUPPORTED;
+            }
             break;
         case 4: result.values = {component->material.staticFriction}; break;
         case 5: result.values = {component->material.dynamicFriction}; break;
@@ -484,115 +638,199 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunCollider(GameObject& target, uint32
         case 10: {
             math::Vector3 min, max;
             result.integer = ScriptColliderProxy::TryGetPrimitiveWorldBounds(&target, min, max) ? 1 : 0;
-            if (result.integer) result.values = {min.x, min.y, min.z, max.x, max.y, max.z};
+            if (result.integer) {
+                result.values = {min.x, min.y, min.z, max.x, max.y, max.z};
+            }
             break;
         }
         case 11: result.integer = static_cast<int64_t>(component->material.restitutionCombine); break;
         case 12: result.integer = static_cast<int64_t>(component->material.frictionCombine); break;
         case 13: case 14: case 15: {
-            if (kind != 17 && kind != 18) return ManagedBridgeStatus::UNSUPPORTED;
+            if (kind != 17 && kind != 18) {
+                return ManagedBridgeStatus::UNSUPPORTED;
+            }
             const auto* mesh = kind == 17 ? target.GetComponent<MeshColliderComponent>() : nullptr;
             const auto* hull = kind == 18 ? target.GetComponent<ConvexHullColliderComponent>() : nullptr;
-            if (property == 13) result.text = {mesh ? mesh->meshPath : hull->meshPath};
+            if (property == 13) {
+                result.text = {mesh ? mesh->meshPath : hull->meshPath};
+            }
             else if (property == 14) result.integer = mesh ? mesh->meshIndex : hull->meshIndex;
-            else result.integer = (mesh ? mesh->useTransformScale : hull->useTransformScale) ? 1 : 0;
+            else {
+                result.integer = (mesh ? mesh->useTransformScale : hull->useTransformScale) ? 1 : 0;
+            }
             break;
         }
         default: return ManagedBridgeStatus::UNSUPPORTED;
         }
         return ManagedBridgeStatus::OK;
     }
-    if (!fixedUpdate) return ManagedBridgeStatus::INVALID_SCOPE;
+    if (!fixedUpdate) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
     for (float value : values) if (!std::isfinite(value)) return ManagedBridgeStatus::INVALID_ARGUMENT;
     if (property == 8) {
-        if (!values.empty() || text.size() != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!values.empty() || text.size() != 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         component->SetPhysicsMaterialPath(text[0]); return ManagedBridgeStatus::OK;
     }
-    if (!text.empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!text.empty()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     if (property == 3) {
         if (kind == 2 || kind == 16) {
-            if (values.size() != 3 || values[0] <= 0 || values[1] <= 0 || values[2] <= 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (values.size() != 3 || values[0] <= 0 || values[1] <= 0 || values[2] <= 0) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             const math::Vector3 size{values[0], values[1], values[2]};
-            if (!ShapeBoundsFinite(target, size * 0.5f) || !std::isfinite(size.x * size.y * size.z)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!ShapeBoundsFinite(target, size * 0.5f) || !std::isfinite(size.x * size.y * size.z)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             ReleaseInertiaSource(target, component->collider.get());
-            if (kind == 2) target.GetComponent<BoxColliderComponent>()->SetSize(size); else target.GetComponent<AabbColliderComponent>()->SetSize(size);
+            if (kind == 2) {
+                target.GetComponent<BoxColliderComponent>()->SetSize(size);
+            } else target.GetComponent<AabbColliderComponent>()->SetSize(size);
         } else if (kind == 3) {
-            if (values.size() != 1 || values[0] < 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (values.size() != 1 || values[0] < 0) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             const float radius = values[0];
-            if (!ShapeBoundsFinite(target, {radius, radius, radius}) || !std::isfinite(radius * radius * radius)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!ShapeBoundsFinite(target, {radius, radius, radius}) || !std::isfinite(radius * radius * radius)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             ReleaseInertiaSource(target, component->collider.get());
             target.GetComponent<SphereColliderComponent>()->SetRadius(values[0]);
         } else if (kind == 4 || kind == 15) {
-            if (values.size() != 2 || values[0] < 0 || values[1] < 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (values.size() != 2 || values[0] < 0 || values[1] < 0) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             if (!ShapeBoundsFinite(target, {values[0], values[0] + values[1], values[0]})
-                || !std::isfinite(values[0] * values[0] * (values[0] + values[1]))) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                || !std::isfinite(values[0] * values[0] * (values[0] + values[1]))) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             ReleaseInertiaSource(target, component->collider.get());
-            if (kind == 4) target.GetComponent<CapsuleColliderComponent>()->SetCapsule(values[0], values[1]);
-            else target.GetComponent<CylinderColliderComponent>()->SetCylinder(values[0], values[1]);
-        } else return ManagedBridgeStatus::UNSUPPORTED;
+            if (kind == 4) {
+                target.GetComponent<CapsuleColliderComponent>()->SetCapsule(values[0], values[1]);
+            }
+            else {
+                target.GetComponent<CylinderColliderComponent>()->SetCylinder(values[0], values[1]);
+            }
+        } else {
+            return ManagedBridgeStatus::UNSUPPORTED;
+        }
         return ManagedBridgeStatus::OK;
     }
     if (property == 2) {
-        if (values.size() != 3) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (values.size() != 3) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const math::Vector3 center{values[0], values[1], values[2]};
         const math::Vector3& scale = target.transform.worldScale;
         const math::Vector3 scaledCenter{center.x * scale.x, center.y * scale.y, center.z * scale.z};
         if (!Finite(scaledCenter) || !Finite(target.transform.worldPosition
-            + target.transform.worldRotation * scaledCenter)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            + target.transform.worldRotation * scaledCenter)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         component->SetCenter({values[0], values[1], values[2]}); return ManagedBridgeStatus::OK;
     }
-    if (values.size() != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (values.size() != 1) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const float value = values[0];
     if (property == 11 || property == 12) {
-        if (value < 0 || value > 4 || std::floor(value) != value) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (value < 0 || value > 4 || std::floor(value) != value) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         auto material = component->material;
-        if (property == 11) material.restitutionCombine = static_cast<physics::PhysicsMaterialCombine>(static_cast<uint32_t>(value));
-        else material.frictionCombine = static_cast<physics::PhysicsMaterialCombine>(static_cast<uint32_t>(value));
+        if (property == 11) {
+            material.restitutionCombine = static_cast<physics::PhysicsMaterialCombine>(static_cast<uint32_t>(value));
+        }
+        else {
+            material.frictionCombine = static_cast<physics::PhysicsMaterialCombine>(static_cast<uint32_t>(value));
+        }
         component->SetMaterial(material); return ManagedBridgeStatus::OK;
     }
     if (property == 15) {
-        if ((kind != 17 && kind != 18) || (value != 0 && value != 1)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        if (kind == 17) target.GetComponent<MeshColliderComponent>()->useTransformScale = value == 1;
-        else target.GetComponent<ConvexHullColliderComponent>()->useTransformScale = value == 1;
+        if ((kind != 17 && kind != 18) || (value != 0 && value != 1)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        if (kind == 17) {
+            target.GetComponent<MeshColliderComponent>()->useTransformScale = value == 1;
+        }
+        else {
+            target.GetComponent<ConvexHullColliderComponent>()->useTransformScale = value == 1;
+        }
         return ManagedBridgeStatus::OK;
     }
     if (property == 0 || property == 1 || property == 9) {
-        if (value != 0 && value != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        if (property == 0) component->SetEnabled(value == 1);
+        if (value != 0 && value != 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        if (property == 0) {
+            component->SetEnabled(value == 1);
+        }
         else if (property == 1) component->SetTrigger(value == 1);
-        else component->attachToParentBody = value == 1;
+        else {
+            component->attachToParentBody = value == 1;
+        }
         return ManagedBridgeStatus::OK;
     }
-    if (property < 4 || property > 7 || value < 0 || (property == 6 && value > 1)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (property < 4 || property > 7 || value < 0 || (property == 6 && value > 1)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     auto material = component->material;
-    if (property == 4) material.staticFriction = value;
-    if (property == 5) material.dynamicFriction = value;
-    if (property == 6) material.restitution = value;
-    if (property == 7) material.density = value;
+    if (property == 4) {
+        material.staticFriction = value;
+    }
+    if (property == 5) {
+        material.dynamicFriction = value;
+    }
+    if (property == 6) {
+        material.restitution = value;
+    }
+    if (property == 7) {
+        material.density = value;
+    }
     component->SetMaterial(material); return ManagedBridgeStatus::OK;
 }
 
 ManagedBridgeStatus ManagedPhysicsBridge::RunColliderCommand(GameObject& target, uint32_t kind, uint32_t command,
     std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result, bool fixedUpdate)
 {
-    if (!fixedUpdate) return ManagedBridgeStatus::INVALID_SCOPE;
+    if (!fixedUpdate) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
     ColliderComponent* component = SelectCollider(target, kind);
-    if (!component) return ManagedBridgeStatus::NOT_FOUND;
+    if (!component) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     if (command == 0) {
-        if (!values.empty() || text.size() != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!values.empty() || text.size() != 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         const auto* material = physics::PhysicsMaterial::FindPreset(text[0].c_str());
         result.integer = material ? 1 : 0;
-        if (material) component->SetMaterial(*material);
+        if (material) {
+            component->SetMaterial(*material);
+        }
         return ManagedBridgeStatus::OK;
     }
     if (command == 1) {
-        if ((kind != 17 && kind != 18) || !values.empty() || text.size() != 2) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if ((kind != 17 && kind != 18) || !values.empty() || text.size() != 2) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         int index = 0;
         const auto parsed = std::from_chars(text[1].data(), text[1].data() + text[1].size(), index);
-        if (parsed.ec != std::errc{} || parsed.ptr != text[1].data() + text[1].size() || index < 0) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (parsed.ec != std::errc{} || parsed.ptr != text[1].data() + text[1].size() || index < 0) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         ReleaseInertiaSource(target, component->collider.get());
-        if (kind == 17) target.GetComponent<MeshColliderComponent>()->SetMesh(text[0], index);
-        else target.GetComponent<ConvexHullColliderComponent>()->SetMesh(text[0], index);
+        if (kind == 17) {
+            target.GetComponent<MeshColliderComponent>()->SetMesh(text[0], index);
+        }
+        else {
+            target.GetComponent<ConvexHullColliderComponent>()->SetMesh(text[0], index);
+        }
         return ManagedBridgeStatus::OK;
     }
     return ManagedBridgeStatus::UNSUPPORTED;
@@ -600,14 +838,18 @@ ManagedBridgeStatus ManagedPhysicsBridge::RunColliderCommand(GameObject& target,
 
 ManagedBridgeStatus ManagedPhysicsBridge::MoveWorld(GameObject& target, const math::Vector3& position, bool fixedUpdate)
 {
-    if (!Finite(position)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Finite(position)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     if (auto* component = target.GetComponent<RigidBodyComponent>(); component && component->enabled && component->rigidBody) {
         ManagedBridgeRequest request{}; ManagedBridgeReply reply{};
         request.op = ManagedBridgeOp::PHYSICS_BODY_COMMAND; request.index = static_cast<uint32_t>(ManagedPhysicsBodyCommand::TELEPORT);
         request.x = position.x; request.y = position.y; request.z = position.z;
         return RunBody(target, request, reply, fixedUpdate);
     }
-    if (!PrepareTeleport(target, position)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!PrepareTeleport(target, position)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     CommitTransforms(); return ManagedBridgeStatus::OK;
 }
 
@@ -619,39 +861,53 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
     const bool all = request.op == ManagedBridgeOp::PHYSICS_RAYCAST_ALL || request.op == ManagedBridgeOp::PHYSICS_RAYCAST_ALL_FILTERED;
     const bool sphere = request.op == ManagedBridgeOp::PHYSICS_SPHERE_CAST || request.op == ManagedBridgeOp::PHYSICS_SPHERE_CAST_FILTERED;
     const bool overlap = request.op == ManagedBridgeOp::PHYSICS_OVERLAP_SPHERE || request.op == ManagedBridgeOp::PHYSICS_OVERLAP_SPHERE_FILTERED;
-    if (!ray && !all && !sphere && !overlap) return ManagedBridgeStatus::UNSUPPORTED;
+    if (!ray && !all && !sphere && !overlap) {
+        return ManagedBridgeStatus::UNSUPPORTED;
+    }
     const uint32_t baseBytes = overlap ? 0u : sphere ? 16u : 12u;
     const uint32_t inputBytes = baseBytes + (filtered ? 16u : 0u);
     if (request.flags || request.index || request.inputBytes != inputBytes || (inputBytes && !request.input)
-        || !Finite(Vector(request)) || !std::isfinite(request.w) || request.w < 0)
+        || !Finite(Vector(request)) || !std::isfinite(request.w) || request.w < 0) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const math::Vector3 direction = overlap ? math::Vector3::ZERO : InputVector(request);
     float radius = overlap ? request.w : 0.0f;
-    if (sphere) std::memcpy(&radius, request.input + 12, sizeof(radius));
-    if (!Finite(direction) || !std::isfinite(direction.LengthSq()) || !std::isfinite(radius) || radius < 0)
+    if (sphere) {
+        std::memcpy(&radius, request.input + 12, sizeof(radius));
+    }
+    if (!Finite(direction) || !std::isfinite(direction.LengthSq()) || !std::isfinite(radius) || radius < 0) {
         return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     uint32_t mask = UINT32_MAX;
     uint32_t triggers = 0;
     if (filtered) {
         std::memcpy(&mask, request.input + baseBytes, 4);
         std::memcpy(&triggers, request.input + baseBytes + 4, 4);
-        if (triggers > 2) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (triggers > 2) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
     }
-    /// @note 所有者の結果は、この読み取り専用照会の間だけ有効。削除、Play/Stop、シーンの置換を越えて生ポインターを保持しない。
-    /// @note マーカー名とカテゴリは基準計測に揃える。有効な照会スコープ数は実際の呼び出し回数を示す。
+    // 所有者の結果は、この読み取り専用照会の間だけ有効。削除、Play/Stop、シーンの置換を越えて生ポインターを保持しない。
+    // マーカー名とカテゴリは基準計測に揃える。有効な照会スコープ数は実際の呼び出し回数を示す。
     const char* queryName = overlap ? "ManagedPhysicsBridge::Query.OverlapSphere"
         : all ? "ManagedPhysicsBridge::Query.RaycastAll" : sphere ? "ManagedPhysicsBridge::Query.SphereCast"
         : "ManagedPhysicsBridge::Query.Raycast";
     const profiler::ProfileScope queryScope(profiler::ProfilerMarker{queryName,"PhysicsQuery"});
     ColliderOwners owners;
     bool completeOwners = all || overlap;
-    if (completeOwners) CollectQueryColliderOwners(scene,owners);
+    if (completeOwners) {
+        CollectQueryColliderOwners(scene,owners);
+    }
     constexpr size_t DIRECT_OWNER_LIMIT = 8;
     size_t directOwners = 0;
     const auto resolveOwner = [&](const physics::Collider* source) -> GameObject* {
     const profiler::ProfileScope ownerResolveScope(profiler::ProfilerMarker{"ManagedPhysicsBridge::Query.OwnerResolve", "PhysicsQuery"});
-        if (!source) return nullptr;
-        if (const auto found = owners.find(source); found != owners.end()) return found->second;
+        if (!source) {
+            return nullptr;
+        }
+        if (const auto found = owners.find(source); found != owners.end()) {
+            return found->second;
+        }
         if (!completeOwners && ++directOwners >= DIRECT_OWNER_LIMIT) {
             CollectQueryColliderOwners(scene,owners); completeOwners = true;
         }
@@ -663,7 +919,7 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
         owners.emplace(source,owner);
         return owner;
     };
-    /// @note World の非所有ポインターは削除・Scene 切替後も残り得る。現 Scene の所有 pointer と一致するまで参照先を読まない。
+    // World の非所有ポインターは削除・Scene 切替後も残り得る。現 Scene の所有 pointer と一致するまで参照先を読まない。
     const auto filter = [&](const physics::ColliderInstance& instance) {
         GameObject* owner = resolveOwner(instance.collider);
         return owner && owner != ignored && owner->layer >= 0 && owner->layer < 32
@@ -673,8 +929,9 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
     std::vector<ManagedPhysicsHit> result;
     const auto append = [&](const physics::World::RaycastHit& hit) {
         GameObject* owner = resolveOwner(hit.collider);
-        if (!owner || !Finite(hit.point) || !Finite(hit.normal) || !std::isfinite(hit.distance) || hit.distance < 0)
+        if (!owner || !Finite(hit.point) || !Finite(hit.normal) || !std::isfinite(hit.distance) || hit.distance < 0) {
             return false;
+        }
         result.push_back({owner, hit.point, hit.normal, hit.distance});
         return true;
     };
@@ -687,7 +944,9 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
         std::unordered_set<GameObject*> seen;
         for (const physics::ColliderInstance* hit : worldHits) {
             GameObject* owner = resolveOwner(hit->collider);
-            if (owner && seen.insert(owner).second) result.push_back({owner});
+            if (owner && seen.insert(owner).second) {
+                result.push_back({owner});
+            }
         }
     } else if (all) {
         std::vector<physics::World::RaycastHit> worldHits;
@@ -696,7 +955,9 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
             worldHits = world.RaycastAll(Vector(request),direction,request.w,filter);
         }
         for (const physics::World::RaycastHit& hit : worldHits)
-            if (!append(hit)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!append(hit)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
     } else {
         physics::World::RaycastHit hit;
         bool found = false;
@@ -705,7 +966,9 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
             found = sphere ? world.SphereCast(Vector(request),radius,direction,request.w,hit,filter)
                 : world.Raycast(Vector(request),direction,request.w,hit,filter);
         }
-        if (found && !append(hit)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (found && !append(hit)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
     }
     hits.swap(result);
     return ManagedBridgeStatus::OK;

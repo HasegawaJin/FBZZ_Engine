@@ -21,4 +21,4 @@ void BindCustomDecalMaterial(renderer::ResourceManager& resources, DecalMaterial
 void BindBuiltInDecalMaterial(renderer::ResourceManager& resources, const renderer::RenderPassHandles& handles,
     const DecalComponent& decal, renderer::RenderDecalInput& input);
 
-} /// @note namespace fbzz::scene::decal_extraction_detail
+} // namespace fbzz::scene::decal_extraction_detail

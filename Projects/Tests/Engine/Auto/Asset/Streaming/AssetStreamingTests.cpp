@@ -73,7 +73,9 @@ public:
 
     [[nodiscard]] bool Evict(asset::RawAssetHandle handle, const std::string& key) override
     {
-        if (refuseEviction) return false;
+        if (refuseEviction) {
+            return false;
+        }
         const bool evicted = asset::AssetStreamChannel<StreamTestAsset>::Evict(handle, key);
         if (evicted) ++evictions;
         return evicted;

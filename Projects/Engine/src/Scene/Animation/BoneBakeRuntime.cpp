@@ -36,7 +36,9 @@ int s_boneBakeGeneration = -1;
 std::string BoneBakeCachePath(const BoneBakeContentKey& key)
 {
     const auto directory = asset::AssetManager::StreamCacheDir();
-    if (directory.empty()) return {};
+    if (directory.empty()) {
+        return {};
+    }
     return directory + "/BoneBakes/v" + std::to_string(asset::BakedBoneAnimation::FORMAT_VERSION) + "_"
         + std::to_string(std::get<0>(key)) + "_" + std::to_string(std::get<1>(key)) + "_"
         + std::to_string(std::get<2>(key)) + "_" + std::to_string(std::get<3>(key)) + ".bba";
@@ -46,27 +48,39 @@ bool LoadBoneBakeCache(const std::string& path, const asset::Skeleton& skeleton,
                        const asset::AnimationClip& clip, float rate, float radius,
                        asset::BakedBoneAnimation& output)
 {
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
     const auto file = util::FileSystem::PathFromUtf8(path);
     std::error_code error;
     const auto size = std::filesystem::file_size(file, error);
-    /// @note FileSystem が配列を確保する前に上限を確認し、不正なキャッシュは元アセットから作り直す。
-    if (error || size > 257ull * 1024ull * 1024ull) return false;
+    // FileSystem が配列を確保する前に上限を確認し、不正なキャッシュは元アセットから作り直す。
+    if (error || size > 257ull * 1024ull * 1024ull) {
+        return false;
+    }
     std::vector<uint8_t> bytes;
     if (!util::FileSystem::ReadBinary(file, bytes)
-        || asset::DecodeBoneBake(std::as_bytes(std::span(bytes)), output) != asset::BoneBakeStatus::OK) return false;
+        || asset::DecodeBoneBake(std::as_bytes(std::span(bytes)), output) != asset::BoneBakeStatus::OK) {
+        return false;
+    }
     return std::bit_cast<uint32_t>(output.sampleRate) == std::bit_cast<uint32_t>(rate)
         && asset::ValidateBoneBakeSource(output, skeleton, clip, radius) == asset::BoneBakeStatus::OK;
 }
 
 void SaveBoneBakeCache(const std::string& path, const asset::BakedBoneAnimation& bake)
 {
-    if (path.empty()) return;
+    if (path.empty()) {
+        return;
+    }
     std::vector<std::byte> bytes;
-    if (asset::EncodeBoneBake(bake, bytes) != asset::BoneBakeStatus::OK) return;
+    if (asset::EncodeBoneBake(bake, bytes) != asset::BoneBakeStatus::OK) {
+        return;
+    }
     std::string payload(bytes.size(), '\0');
-    for (size_t i = 0; i < bytes.size(); ++i) payload[i] = std::bit_cast<char>(bytes[i]);
-    /// @note 既存の原子的な書き込みは NUL を含むバイト列を保持し、自身の一時ファイルを片付ける。
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        payload[i] = std::bit_cast<char>(bytes[i]);
+    }
+    // 既存の原子的な書き込みは NUL を含むバイト列を保持し、自身の一時ファイルを片付ける。
     if (!util::FileSystem::WriteTextAtomic(path, payload))
         FBZZ_LOG_WARN("BoneBake: unable to save derived cache '%s'; using in-memory bake", path.c_str());
 }
@@ -75,37 +89,53 @@ BoneBakeCachedValue GetCachedBoneBake(const asset::Model& model, const asset::An
 {
     if (s_boneBakeGeneration != generation) { s_boneBakeBlendRadii.clear(); s_boneBakeLookup.clear(); s_boneBakeContent.clear(); s_boneBakeGeneration = generation; }
     const BoneBakeLookupKey lookup{&model, &clip, std::bit_cast<uint32_t>(rate)};
-    if (const auto it = s_boneBakeLookup.find(lookup); it != s_boneBakeLookup.end()) return it->second;
-    /// @note 同じインポート世代のモデルは不変なので、成功したベイクと対象外のメッシュの両方を記憶する。
+    if (const auto it = s_boneBakeLookup.find(lookup); it != s_boneBakeLookup.end()) {
+        return it->second;
+    }
+    // 同じインポート世代のモデルは不変なので、成功したベイクと対象外のメッシュの両方を記憶する。
     const auto reject = [&]() { const BoneBakeCachedValue invalid; s_boneBakeLookup.emplace(lookup, invalid); return invalid; };
     float radius = 0.0f;
     for (const auto& mesh : model.meshes) {
-        if (!mesh || mesh->cpuSkinnedVertices.empty()) return reject();
+        if (!mesh || mesh->cpuSkinnedVertices.empty()) {
+            return reject();
+        }
         for (const auto& v : mesh->cpuSkinnedVertices) {
             const float length = v.position.Length();
-            if (!std::isfinite(length)) return reject();
+            if (!std::isfinite(length)) {
+                return reject();
+            }
             radius = (std::max)(radius, length);
             for (uint32_t bone : v.boneIndices)
-                if (bone >= model.skeleton->bones.size()) return reject();
+                if (bone >= model.skeleton->bones.size()) {
+                    return reject();
+                }
             float sum = 0.0f;
             for (float weight : v.boneWeights) {
-                if (!std::isfinite(weight) || weight < 0.0f) return reject();
+                if (!std::isfinite(weight) || weight < 0.0f) {
+                    return reject();
+                }
                 sum += weight;
             }
-            if (std::abs(sum - 1.0f) > 0.00001f) return reject();
+            if (std::abs(sum - 1.0f) > 0.00001f) {
+                return reject();
+            }
         }
     }
     const BoneBakeContentKey key{asset::BoneBakeSkeletonFingerprint(*model.skeleton), asset::BoneBakeClipFingerprint(clip),
         std::bit_cast<uint32_t>(rate), std::bit_cast<uint32_t>(radius)};
     BoneBakeCachedValue result;
-    if (const auto it = s_boneBakeContent.find(key); it != s_boneBakeContent.end()) result = it->second;
+    if (const auto it = s_boneBakeContent.find(key); it != s_boneBakeContent.end()) {
+        result = it->second;
+    }
     else {
         asset::BakedBoneAnimation bake;
         const auto cache = BoneBakeCachePath(key);
         const bool loaded = LoadBoneBakeCache(cache, *model.skeleton, clip, rate, radius, bake);
         result.status = loaded ? asset::BoneBakeStatus::OK : asset::BakeBoneAnimation(*model.skeleton, clip, {rate, radius}, bake);
         if (result.status == asset::BoneBakeStatus::OK) {
-            if (!loaded) SaveBoneBakeCache(cache, bake);
+            if (!loaded) {
+                SaveBoneBakeCache(cache, bake);
+            }
             result.bake = std::make_shared<const asset::BakedBoneAnimation>(std::move(bake));
         }
         else FBZZ_LOG_WARN("BoneBake: clip '%s' rejected, status=%d; continuing ordinary Animator", clip.name.c_str(), static_cast<int>(result.status));
@@ -140,23 +170,35 @@ const char* BoneBakeFallbackName(BoneBakeFallback reason)
 bool AreBoneBakeAssetsPrepared(const AnimatorComponent& animator, const asset::Model& model)
 {
     if (!model.skeleton || model.meshes.empty() || !animator.clips.empty() || animator.sharedClips.empty()
-        || s_boneBakeGeneration != asset::AssetManager::GetAssetGeneration()) return false;
+        || s_boneBakeGeneration != asset::AssetManager::GetAssetGeneration()) {
+        return false;
+    }
     for (const auto& clip : animator.Clips()) {
         const BoneBakeLookupKey key{&model, &clip, std::bit_cast<uint32_t>(animator.boneBakeSampleRate)};
-        if (s_boneBakeLookup.find(key) == s_boneBakeLookup.end()) return false;
+        if (s_boneBakeLookup.find(key) == s_boneBakeLookup.end()) {
+            return false;
+        }
     }
     return true;
 }
 
 void PrepareBoneBakeAssets(AnimatorComponent& animator, const asset::Model& model)
 {
-    if (!model.skeleton || animator.sharedClips.empty() || model.meshes.empty()
-        || (animator.boneBakeMode != static_cast<int>(BoneBakeMode::CPU_BAKED)
-            && animator.boneBakeMode != static_cast<int>(BoneBakeMode::GPU_SHARED)
-            && animator.boneBakeMode != static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)) || animator.boneBakeRequireCpuBones) return;
+    // クリップをベイクするために必要なモデルとアニメーションの参照を確認する。
+    if (!model.skeleton || animator.sharedClips.empty() || model.meshes.empty()) {
+        return;
+    }
+    const bool usesBakedPose = animator.boneBakeMode == static_cast<int>(BoneBakeMode::CPU_BAKED)
+        || animator.boneBakeMode == static_cast<int>(BoneBakeMode::GPU_SHARED)
+        || animator.boneBakeMode == static_cast<int>(BoneBakeMode::GPU_POSE_SHARED);
+    if (!usesBakedPose || animator.boneBakeRequireCpuBones) {
+        return;
+    }
+
     const int generation = asset::AssetManager::GetAssetGeneration();
-    for (const auto& clip : animator.Clips())
+    for (const auto& clip : animator.Clips()) {
         GetCachedBoneBake(model, clip, animator.boneBakeSampleRate, generation);
+    }
 }
 
 bool CanHoldBoneBake(const AnimatorComponent& animator, const asset::Model& model,
@@ -164,26 +206,48 @@ bool CanHoldBoneBake(const AnimatorComponent& animator, const asset::Model& mode
 {
     const auto& runtime = animator.boneBake;
     const int generation = asset::AssetManager::GetAssetGeneration();
+    // ベイクが現在使われており、リロードでキャッシュが失効していないことを確認する。
     if (!runtime.active || runtime.fallback != BoneBakeFallback::NONE || !runtime.source
-        || runtime.bakeStatus != asset::BoneBakeStatus::OK || runtime.generation != generation
-        || s_boneBakeGeneration != generation || !model.skeleton || model.meshes.empty()
-        || animator.sharedClips.empty() || clips.empty() || clips.size() > 2
-        || std::bit_cast<uint32_t>(runtime.sampleRate) != std::bit_cast<uint32_t>(animator.boneBakeSampleRate)) return false;
+        || runtime.bakeStatus != asset::BoneBakeStatus::OK) {
+        return false;
+    }
+    if (runtime.generation != generation || s_boneBakeGeneration != generation) {
+        return false;
+    }
+
+    // 今回のモデルとブレンドが同じベイク条件を満たす場合にだけ、姿勢を再利用する。
+    if (!model.skeleton || model.meshes.empty() || animator.sharedClips.empty() || clips.empty() || clips.size() > 2) {
+        return false;
+    }
+    if (std::bit_cast<uint32_t>(runtime.sampleRate) != std::bit_cast<uint32_t>(animator.boneBakeSampleRate)) {
+        return false;
+    }
+
     float sum = 0.0f;
     for (size_t index = 0; index < clips.size(); ++index) {
         const auto& input = clips[index];
-        if (!input.clip || !std::isfinite(input.weight) || input.weight <= 0.0f) return false;
+        if (!input.clip || !std::isfinite(input.weight) || input.weight <= 0.0f) {
+            return false;
+        }
         sum += input.weight;
         bool shared = false;
-        for (const auto& clip : animator.Clips()) shared |= &clip == input.clip;
-        if (!shared) return false;
+        for (const auto& clip : animator.Clips()) {
+            shared |= &clip == input.clip;
+        }
+        if (!shared) {
+            return false;
+        }
         const BoneBakeLookupKey key{&model, input.clip, std::bit_cast<uint32_t>(animator.boneBakeSampleRate)};
         const auto cached = s_boneBakeLookup.find(key);
         const auto& published = index == 0 ? runtime.source : runtime.target;
-        if (cached == s_boneBakeLookup.end() || !published || cached->second.bake != published) return false;
+        if (cached == s_boneBakeLookup.end() || !published || cached->second.bake != published) {
+            return false;
+        }
         asset::BakedBoneFrame frame;
         if (asset::ResolveBakedBoneFrame(*published, input.ticks / input.clip->ticksPerSecond,
-                1.0, 0.0, false, frame) != asset::BoneBakeStatus::OK) return false;
+                1.0, 0.0, false, frame) != asset::BoneBakeStatus::OK) {
+            return false;
+        }
     }
     return std::isfinite(sum) && std::abs(sum - 1.0f) <= 0.0001f
         && (clips.size() == 2 || !runtime.target);
@@ -213,12 +277,20 @@ bool MaterializeBoneBakeCpu(AnimatorComponent& animator, renderer::ResourceManag
         if (evaluated) { animator.boneMatrices = currentMatrices; animator.nodeGlobalTransforms = globals; publishCurrent = true; }
     }
     runtime.previousCpuDeferred = false;
-    if (current) runtime.cpuDeferred = false;
-    if (!valid) animator.prevBoneMatricesValid = false;
+    if (current) {
+        runtime.cpuDeferred = false;
+    }
+    if (!valid) {
+        animator.prevBoneMatricesValid = false;
+    }
     const auto currentBuffer = animator.skinningBuffer.Get(), previousBuffer = animator.prevSkinningBuffer.Get();
-    /// @note コンポーネントへの公開を資源操作より先に済ませ、操作中にシーン編集が走ってもローカルパケットを有効に保つ。
-    if (publishCurrent) BoneCbBatch::UpdatePalette(resources, currentBuffer, currentMatrices);
-    if (publishPrevious) BoneCbBatch::UpdatePalette(resources, previousBuffer, previousMatrices);
+    // コンポーネントへの公開を資源操作より先に済ませ、操作中にシーン編集が走ってもローカルパケットを有効に保つ。
+    if (publishCurrent) {
+        BoneCbBatch::UpdatePalette(resources, currentBuffer, currentMatrices);
+    }
+    if (publishPrevious) {
+        BoneCbBatch::UpdatePalette(resources, previousBuffer, previousMatrices);
+    }
     return valid;
 }
 
@@ -228,7 +300,9 @@ bool TryEvaluateBoneBake(AnimatorComponent& animator, const asset::Model& model,
     auto& runtime = animator.boneBake;
     runtime.active = false;
     runtime.fallback = BoneBakeFallback::INVALID_SOURCE;
-    if (!model.skeleton || model.meshes.empty()) return false;
+    if (!model.skeleton || model.meshes.empty()) {
+        return false;
+    }
     if (animator.sharedClips.empty()) { runtime.fallback = BoneBakeFallback::MUTABLE_CLIP; return false; }
     if (clips.empty() || clips.size() > 2) { runtime.fallback = BoneBakeFallback::CLIP_COUNT; return false; }
     float sum = 0.0f;
@@ -236,29 +310,37 @@ bool TryEvaluateBoneBake(AnimatorComponent& animator, const asset::Model& model,
         if (!input.clip || !std::isfinite(input.weight) || input.weight <= 0.0f) { runtime.fallback = BoneBakeFallback::CLIP_COUNT; return false; }
         sum += input.weight;
         bool shared = false;
-        for (const auto& clip : animator.Clips()) shared |= &clip == input.clip;
+        for (const auto& clip : animator.Clips()) {
+            shared |= &clip == input.clip;
+        }
         if (!shared) { runtime.fallback = BoneBakeFallback::MUTABLE_CLIP; return false; }
     }
     if (!std::isfinite(sum) || std::abs(sum - 1.0f) > 0.0001f) { runtime.fallback = BoneBakeFallback::CLIP_COUNT; return false; }
     const int generation = asset::AssetManager::GetAssetGeneration();
     const auto source = GetCachedBoneBake(model, *clips[0].clip, animator.boneBakeSampleRate, generation);
     runtime.bakeStatus = source.status;
-    if (!source.bake) return false;
+    if (!source.bake) {
+        return false;
+    }
     BoneBakeCachedValue target;
     if (clips.size() == 2) {
         target = GetCachedBoneBake(model, *clips[1].clip, animator.boneBakeSampleRate, generation);
         runtime.bakeStatus = target.status;
-        if (!target.bake) return false;
+        if (!target.bake) {
+            return false;
+        }
     }
     asset::BakedBoneFrame frame, targetFrame;
-    /// @note ループ・クランプ・速度は状態機械が適用済みのため、clip.loop や animator.speed を重ねて適用しない。
+    // ループ・クランプ・速度は状態機械が適用済みのため、clip.loop や animator.speed を重ねて適用しない。
     if (asset::ResolveBakedBoneFrame(*source.bake, clips[0].ticks / clips[0].clip->ticksPerSecond, 1.0, 0.0, false, frame) != asset::BoneBakeStatus::OK
         || (target.bake && asset::ResolveBakedBoneFrame(*target.bake, clips[1].ticks / clips[1].clip->ticksPerSecond, 1.0, 0.0, false, targetFrame) != asset::BoneBakeStatus::OK)) {
         runtime.fallback = BoneBakeFallback::INVALID_CLOCK; return false;
     }
     const float weight = target.bake ? clips[1].weight / sum : 0.0f;
     if (runtime.source && (runtime.generation != generation
-        || runtime.source->skeletonFingerprint != source.bake->skeletonFingerprint)) animator.prevBoneMatricesValid = false;
+        || runtime.source->skeletonFingerprint != source.bake->skeletonFingerprint)) {
+        animator.prevBoneMatricesValid = false;
+    }
     const bool deferCpu = animator.boneBakeMode == static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)
         && !animator.boneBakeRequireCpuBones && runtime.gpuReady && runtime.previousPoseValid
         && runtime.previous.source && runtime.generation == generation
@@ -272,17 +354,25 @@ bool TryEvaluateBoneBake(AnimatorComponent& animator, const asset::Model& model,
     status = sharing.Evaluate(Time::frameCount,generation,AnimationPoseShareRate(),source.bake,frame,target.bake,targetFrame,
                               weight,animator.boneMatrices,animator.nodeGlobalTransforms,runtime.workspace,cacheHit);
     if (auto* row = CurrentAnimationWorkRow()) {
-        if (cacheHit) ++row->poseCacheHits; else ++row->poseCacheMisses;
+        if (cacheHit) {
+            ++row->poseCacheHits;
+        } else ++row->poseCacheMisses;
     }
     }
     runtime.bakeStatus = status;
-    if (status != asset::BoneBakeStatus::OK) return false;
+    if (status != asset::BoneBakeStatus::OK) {
+        return false;
+    }
     float radius = source.bake->conservativeRadius;
     if (target.bake) {
         const auto key = std::pair{source.bake.get(), target.bake.get()};
-        if (const auto it = s_boneBakeBlendRadii.find(key); it != s_boneBakeBlendRadii.end()) radius = it->second;
+        if (const auto it = s_boneBakeBlendRadii.find(key); it != s_boneBakeBlendRadii.end()) {
+            radius = it->second;
+        }
         else {
-            if (asset::BoneBakeBlendRadius(*source.bake, *target.bake, radius) != asset::BoneBakeStatus::OK) return false;
+            if (asset::BoneBakeBlendRadius(*source.bake, *target.bake, radius) != asset::BoneBakeStatus::OK) {
+                return false;
+            }
             s_boneBakeBlendRadii.emplace(key, radius);
         }
     }

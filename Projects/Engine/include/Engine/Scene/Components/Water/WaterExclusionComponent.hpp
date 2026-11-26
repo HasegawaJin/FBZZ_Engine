@@ -17,12 +17,11 @@ namespace fbzz::scene {
 /// @brief 対象水面と水中領域の照会から三次元ボックスの内部を除外する。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine#waterbodyexclusionvolume UE Water Body Exclusion Volume.
 struct WaterExclusionComponent {
-    bool enabled = true;
-    bool excludeAll = true;
-    math::Vector3 size{4.0f, 4.0f, 4.0f};
-    std::vector<EntityRef> waters;
-    /// @brief 直近のスナップショット準備結果の実行時診断。
-    std::string diagnostic;
+    bool enabled = true; ///< この除外ボックスを水域のスナップショットに含める。
+    bool excludeAll = true; ///< ボックスに重なるすべての水面を対象とする。false では waters を使う。
+    math::Vector3 size{4.0f, 4.0f, 4.0f}; ///< ボックスの各辺の全長（オブジェクトローカル m）。
+    std::vector<EntityRef> waters; ///< excludeAll が false のときだけ使う対象水面の参照列。
+    std::string diagnostic; ///< 直近のスナップショット準備結果の実行時診断。
 
     /// @brief 設定済みの範囲と型付き水面参照を Inspector と保存処理に公開する。
     void Reflect(IReflector& reflector)

@@ -36,20 +36,26 @@ struct Rect { math::Vector2 pos; math::Vector2 size; };
 /// @note Scroll View も切るのは、切らないと枠の外へはみ出したぶんが見えてしまうため。
 inline bool ElementClipsChildren(GameObject& go)
 {
-    if (const auto* mask = go.GetComponent<UIMask>(); mask && mask->enabled && mask->affectChildren)
+    if (const auto* mask = go.GetComponent<UIMask>(); mask && mask->enabled && mask->affectChildren) {
         return true;
-    if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
+    }
+    if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled) {
         return true;
+    }
     return false;
 }
 
 inline int GetUISortOrder(GameObject& go)
 {
-    /// @note UIImage と UIText を同じ GO に持つ Button は一つの描画単位として扱う。
-    /// @note 両方に値がある場合は手前側を採用し、どちらの Inspector からでも調整できるようにする。
+    // UIImage と UIText を同じ GO に持つ Button は一つの描画単位として扱う。
+    // 両方に値がある場合は手前側を採用し、どちらの Inspector からでも調整できるようにする。
     int order = 0;
-    if (const auto* image = go.GetComponent<UIImage>()) order = image->sortOrder;
-    if (const auto* text = go.GetComponent<UIText>()) order = (std::max)(order, text->sortOrder);
+    if (const auto* image = go.GetComponent<UIImage>()) {
+        order = image->sortOrder;
+    }
+    if (const auto* text = go.GetComponent<UIText>()) {
+        order = (std::max)(order, text->sortOrder);
+    }
     return order;
 }
 
@@ -63,9 +69,11 @@ inline void SortUIChildren(GameObject& go, std::vector<GameObject*>& out)
     out.clear();
     out.reserve(static_cast<size_t>(go.GetChildCount()));
     for (int i = 0; i < go.GetChildCount(); ++i) {
-        if (GameObject* child = go.GetChild(i)) out.push_back(child);
+        if (GameObject* child = go.GetChild(i)) {
+            out.push_back(child);
+        }
     }
-    /// @note 同値時は Hierarchy 順を維持し、既存シーンの見た目を変えない。
+    // 同値時は Hierarchy 順を維持し、既存シーンの見た目を変えない。
     std::stable_sort(out.begin(), out.end(),
         [](GameObject* a, GameObject* b) {
             return GetUISortOrder(*a) < GetUISortOrder(*b);
@@ -78,8 +86,9 @@ inline void SortUIChildren(GameObject& go, std::vector<GameObject*>& out)
 /// @note (UIInteractionContext::childScratch が deque である理由)。
 inline std::vector<GameObject*>& AcquireChildScratch(UIInteractionContext& ctx, std::size_t depth)
 {
-    if (ctx.childScratch.size() <= depth)
+    if (ctx.childScratch.size() <= depth) {
         ctx.childScratch.resize(depth + 1);
+    }
     return ctx.childScratch[depth];
 }
 
@@ -91,19 +100,19 @@ struct UITransform2D {
     math::Vector2 parentSize = math::Vector2::ZERO;
 };
 
-/// @param parentSize 子から見た親の矩形サイズ。アンカーの基準になる。
+/// @param[in] parentSize 子から見た親の矩形サイズ。アンカーの基準になる。
 inline UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Transform& local,
                                  const math::Vector2& parentSize)
 {
-    /// @note 親の位置と回転だけ継承し、サイズは各要素の localScale.xy から読む。
-    /// @note UI の localScale.xy は倍率ではなく幅・高さなので、TransformSystem のように
-    /// @note 親 scale を子 position へ掛けると親のサイズ変更だけで子が飛ぶ。
+    // 親の位置と回転だけ継承し、サイズは各要素の localScale.xy から読む。
+    // UI の localScale.xy は倍率ではなく幅・高さなので、TransformSystem のように
+    // 親 scale を子 position へ掛けると親のサイズ変更だけで子が飛ぶ。
     const math::Vector2 localPos = { local.position.x, local.position.y };
     UITransform2D result{};
     result.position = parent.position + RotateUIVector(localPos, parent.rotationZ);
     result.rotationZ = parent.rotationZ + ExtractUIZRotation(local.rotation);
-    /// @note アンカー / ピボットの解釈は ResolveUIRect に閉じる。
-    /// @note ここが運ぶのは「子から見た親のサイズ」だけ。
+    // アンカー / ピボットの解釈は ResolveUIRect に閉じる。
+    // ここが運ぶのは「子から見た親のサイズ」だけ。
     result.parentSize = parentSize;
     return result;
 }
@@ -125,18 +134,25 @@ inline Rect ResolveElementRect(const UITransform2D& resolved,
 inline math::Vector2 UIElementSize(scene::GameObject& go)
 {
     const math::Vector2 scaleSize = { go.transform.scale.x, go.transform.scale.y };
-    if (go.GetComponent<UIImage>()) return scaleSize;
+    if (go.GetComponent<UIImage>()) {
+        return scaleSize;
+    }
     if (const auto* text = go.GetComponent<UIText>()) {
-        if (text->resolvedSize.x > 0.0f || text->resolvedSize.y > 0.0f)
+        if (text->resolvedSize.x > 0.0f || text->resolvedSize.y > 0.0f) {
             return text->resolvedSize;
+        }
     }
     return scaleSize;
 }
 
 inline UIAnchor UIElementAnchoring(scene::GameObject& go)
 {
-    if (const auto* image = go.GetComponent<UIImage>()) return image->anchoring;
-    if (const auto* text = go.GetComponent<UIText>())   return text->anchoring;
+    if (const auto* image = go.GetComponent<UIImage>()) {
+        return image->anchoring;
+    }
+    if (const auto* text = go.GetComponent<UIText>()) {
+        return text->anchoring;
+    }
     return {};
 }
 
@@ -165,7 +181,9 @@ inline void CollectCanvases(Scene& scene, std::vector<CanvasEntry>& canvases)
     for (const auto id : ui_detail::CollectCanvasEntities(scene)) {
         CanvasEntry entry{ scene.GetGameObject(id), scene.GetComponent<UICanvas>(id), {} };
         asset::UIThemeStyle style;
-        if (asset::ResolveUIThemeStyle(entry.canvas->theme.path, style)) entry.theme = std::move(style);
+        if (asset::ResolveUIThemeStyle(entry.canvas->theme.path, style)) {
+            entry.theme = std::move(style);
+        }
         canvases.push_back(std::move(entry));
     }
     std::sort(canvases.begin(), canvases.end(),
@@ -179,14 +197,17 @@ inline bool IsScreenSpaceRenderMode(UIRenderMode mode);
 inline bool ShouldRenderCanvas(const UICanvas& canvas, UIRenderTargetView targetView, bool sceneDepthAvailable = true)
 {
     if (!sceneDepthAvailable && canvas.renderMode != UIRenderMode::ScreenSpaceOverlay
-        && canvas.depthMode == UICanvasDepthMode::SCENE_DEPTH)
+        && canvas.depthMode == UICanvasDepthMode::SCENE_DEPTH) {
         return false;
-    /// @note GameViewport は最終出力として全 Canvas、SceneViewport は WorldSpace、
-    /// @note CanvasEditor は ScreenSpace だけ描く。
-    if (targetView == UIRenderTargetView::SceneViewport)
+    }
+    // GameViewport は最終出力として全 Canvas、SceneViewport は WorldSpace、
+    // CanvasEditor は ScreenSpace だけ描く。
+    if (targetView == UIRenderTargetView::SceneViewport) {
         return canvas.renderMode == UIRenderMode::WorldSpace;
-    if (targetView == UIRenderTargetView::CanvasEditor)
+    }
+    if (targetView == UIRenderTargetView::CanvasEditor) {
         return IsScreenSpaceRenderMode(canvas.renderMode);
+    }
     return true;
 }
 
@@ -198,10 +219,11 @@ inline bool IsScreenSpaceRenderMode(UIRenderMode mode)
 
 inline float ResolveCanvasScale(const UICanvas& canvas, float viewportWidth, float viewportHeight)
 {
-    /// @note Unity の Canvas Scaler と同じ考え方。基準解像度と現在 Viewport の差を
-    /// @note UI 座標変換に集約する。
-    if (canvas.scaleMode != UICanvasScaleMode::ScaleWithScreenSize)
+    // Unity の Canvas Scaler と同じ考え方。基準解像度と現在 Viewport の差を
+    // UI 座標変換に集約する。
+    if (canvas.scaleMode != UICanvasScaleMode::ScaleWithScreenSize) {
         return 1.0f;
+    }
 
     const float refW = (std::max)(1.0f, canvas.referenceWidth);
     const float refH = (std::max)(1.0f, canvas.referenceHeight);
@@ -268,7 +290,9 @@ inline UITransform2D BuildCanvasRootTransform(const UICanvas& canvas,
 /// @note グリフを焼き直し続けるため。
 inline float ResolveCanvasPixelScale(const UICanvas& canvas, float viewportWidth, float viewportHeight)
 {
-    if (canvas.renderMode == UIRenderMode::WorldSpace) return 1.0f;
+    if (canvas.renderMode == UIRenderMode::WorldSpace) {
+        return 1.0f;
+    }
 
     float visibleW = 1.0f, visibleH = 1.0f;
     ResolveScreenSpaceCanvasArea(canvas, viewportWidth, viewportHeight, visibleW, visibleH);

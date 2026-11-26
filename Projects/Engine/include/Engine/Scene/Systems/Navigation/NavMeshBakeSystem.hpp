@@ -32,8 +32,8 @@ struct NavMeshBakeOffMeshLinkInput {
 };
 
 /// @brief 現在のサーフェス、地形、モディファイアー、Off-Mesh Link 入力をハッシュする。
-/// @param scene ワールド変換を同期済みの Scene。
-/// @param surfaceId サーフェスコンポーネントを持つ Entity。
+/// @param[in] scene ワールド変換を同期済みの Scene。
+/// @param[in] surfaceId サーフェスコンポーネントを持つ Entity。
 /// @return 非ゼロの署名。サーフェスまたは GameObject がなければ 0。
 /// @note 地形の高さデータを走査するため、毎フレームの呼び出しは避ける。
 [[nodiscard]] FBZZ_ENGINE_API std::uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId);

@@ -32,4 +32,4 @@ struct JointComponent;
 /// @note 申告せず、既に張ってあれば解除する (RigidBodyComponent と同じ有効条件)。
 FBZZ_ENGINE_API void SyncJointComponents(Scene& scene, physics::World& world);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

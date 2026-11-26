@@ -37,7 +37,7 @@ TEST(VFXLineGeometryTest, LightningStartsAndEndsOnTheEndpoints)
     scene::VFXLineComponent line;
     std::vector<scene::VFXLineStrand> strands;
     const math::Vector3 from{ 0.0f, 0.0f, 0.0f };
-    /// @note 真上へ伸びる落雷でも基底が縮退しないこと
+    // 真上へ伸びる落雷でも基底が縮退しないこと
     const math::Vector3 to{ 0.0f, 10.0f, 0.0f };
     scene::GenerateLightning(line, from, to, 7, 0.3f, strands);
     ASSERT_FALSE(strands.empty());
@@ -83,7 +83,7 @@ TEST(VFXLineGeometryTest, BoltStaysWithinTheChaosBand)
     scene::GenerateLightning(line, from, to, 3, 0.0f, strands);
     ASSERT_EQ(strands.size(), 1u);
     ASSERT_GE(strands.front().points.size(), 3u);
-    /// @note ずらす量は段ごとに半分なので、合計は初段の 2 倍を超えない。
+    // ずらす量は段ごとに半分なので、合計は初段の 2 倍を超えない。
     const float limit = 2.0f * line.chaos * 10.0f + 1.0e-3f;
     for (const auto& point : strands.front().points) EXPECT_LE(DistanceToSegment(point, from, to), limit);
 }

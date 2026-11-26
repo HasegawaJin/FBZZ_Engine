@@ -99,7 +99,7 @@ protected:
         ASSERT_TRUE(m_skinTemp.IsValid());
         m_skinModel.skeleton = std::make_unique<asset::Skeleton>();
         auto& skeleton = *m_skinModel.skeleton;
-        /// @note ソースと異なるパレット順で、添字ではなく名前で解決することを検証する。
+        // ソースと異なるパレット順で、添字ではなく名前で解決することを検証する。
         skeleton.bones = {{"Right", 1, math::Matrix4::Translate({-1,0,0})}, {"Left", 0, math::Matrix4::Identity()}};
         owner = m_scene.CreateGameObject("SkinOwner").GetID();
         left = m_scene.CreateGameObject("LeftBone").GetID();

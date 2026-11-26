@@ -18,15 +18,15 @@ class Script;
 /// @brief physics::World のヒット情報を扱う軽量 DTO。GameObject を優先しつつ、必要なら
 /// @note 低レベル Collider も参照できる。
 struct RaycastHit {
-    GameObject* gameObject = nullptr;
-    const physics::Collider* collider = nullptr;
-    math::Vector3 point = math::Vector3::ZERO;
-    math::Vector3 normal = math::Vector3::UP;
-    float distance = 0.0f;
+    GameObject* gameObject = nullptr; ///< ヒットしたコライダーを所有する GameObject の非所有参照。
+    const physics::Collider* collider = nullptr; ///< クエリーで交差したコライダーの非所有参照。
+    math::Vector3 point = math::Vector3::ZERO; ///< ヒットした位置のワールド座標 [m]。
+    math::Vector3 normal = math::Vector3::UP; ///< ヒット面のワールド法線。
+    float distance = 0.0f; ///< クエリーの原点からヒット位置までの距離 [m]。
 };
 
 struct ScriptPhysicsProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 物理操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void AddForce(const math::Vector3& v) const;
     FBZZ_ENGINE_API void AddImpulse(const math::Vector3& v) const;
@@ -77,4 +77,4 @@ struct ScriptPhysicsProxy {
     FBZZ_ENGINE_API std::vector<GameObject*> OverlapSphere(const math::Vector3& center, float radius) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

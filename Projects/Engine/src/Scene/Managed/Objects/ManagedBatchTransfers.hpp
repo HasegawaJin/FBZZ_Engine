@@ -27,4 +27,4 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

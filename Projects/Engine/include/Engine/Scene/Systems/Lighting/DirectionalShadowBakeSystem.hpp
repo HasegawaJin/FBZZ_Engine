@@ -24,4 +24,4 @@ FBZZ_ENGINE_API void CancelDirectionalShadowBake(const Scene& scene);
 FBZZ_ENGINE_API void ProcessDirectionalShadowBake(Scene& scene, renderer::IRenderer& renderer,
     renderer::ResourceManager& resources, const renderer::RenderSettings& settings);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

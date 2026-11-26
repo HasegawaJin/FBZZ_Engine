@@ -23,11 +23,13 @@ AmbientWind ResolveAmbientWind(const SceneEnvironment& environment)
 {
     AmbientWind wind;
     wind.active = environment.enabled;
-    if (!wind.active) return wind;
+    if (!wind.active) {
+        return wind;
+    }
 
     const float length = environment.direction.Length();
-    /// @note @note 長さ 0 の指定は «向きが無い» ではなく «書き忘れ»。読む側 (雲・水面) は
-    ///       正規化済みの向きを前提にしているので、ここで既知の値へ倒しきる。
+    // @note 長さ 0 の指定は «向きが無い» ではなく «書き忘れ»。読む側 (雲・水面) は
+    //       正規化済みの向きを前提にしているので、ここで既知の値へ倒しきる。
     wind.direction = length > 1.0e-4f ? environment.direction * (1.0f / length)
                                       : math::Vector3{ 0.0f, 1.0f, 0.0f };
     wind.speed          = environment.speed;
@@ -38,11 +40,13 @@ AmbientWind ResolveAmbientWind(const SceneEnvironment& environment)
 
 void AppendEnvironmentFlow(const AmbientWind& wind, std::vector<ActiveFlowField>& out)
 {
-    if (!wind.active) return;
+    if (!wind.active) {
+        return;
+    }
 
     ActiveFlowField uniform{};
     uniform.position       = math::Vector3::ZERO;
-    /// @note 減衰なしでシーン全体へ
+    // 減衰なしでシーン全体へ
     uniform.radius         = 0.0f;
     uniform.direction      = wind.direction;
     uniform.strength       = wind.speed;
@@ -53,7 +57,9 @@ void AppendEnvironmentFlow(const AmbientWind& wind, std::vector<ActiveFlowField>
     uniform.channels       = 0xFFFFFFFFu;
     out.push_back(uniform);
 
-    if (wind.turbulence <= 0.0f) return;
+    if (wind.turbulence <= 0.0f) {
+        return;
+    }
     ActiveFlowField curl = uniform;
     curl.type     = FlowFieldType::Curl;
     curl.strength = wind.turbulence;

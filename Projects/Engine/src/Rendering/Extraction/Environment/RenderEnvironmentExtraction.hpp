@@ -14,4 +14,4 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
 renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& context);
 void ExtractCloud(RenderPassContext& context, renderer::RenderEnvironmentInput& environment);
 
-} /// @note namespace fbzz::scene::environment_extraction_detail
+} // namespace fbzz::scene::environment_extraction_detail

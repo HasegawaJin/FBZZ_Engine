@@ -38,21 +38,15 @@ class RagdollControls;
 
 /// @note 接触の作り方。どれを切っても «関節だけの関節体» まで素直に縮退する。
 struct RagdollContactSettings {
-    /// @note 世界のコライダーと当たる。地形・壁・階段。
-    bool  world    = true;
-    /// @note World の剛体とも当たり、姿勢を再積分せず、反作用を substep 境界で速度へ返す。
-    bool  dynamic  = true;
-    /// @note 自分の骨どうしが当たる。腕や脚が胴を貫通しなくなる。
-    bool  self     = true;
+    bool  world    = true; ///< 世界のコライダーと当たる。地形・壁・階段。
+    bool  dynamic  = true; ///< World の剛体とも当たり、姿勢を再積分せず、反作用を substep 境界で速度へ返す。
+    bool  self     = true; ///< 自分の骨どうしが当たる。腕や脚が胴を貫通しなくなる。
     /// @note 関節グラフ上でこの段数以内の先祖・子孫とは当てない。
     /// @note 関節で繋がった剛体は必ず重なるため。除外しないと、関節が寄せた端から接触が押し返してその場で震え続ける。1 で親子、2 で祖父–孫まで。
     int   selfSkip = 2;
-    /// @note 探索半径の余裕 [m]。速く動く骨がすり抜けないよう少し広めに拾う。
-    float margin   = 0.08f;
-    /// @note 骨の表面。世界側のマテリアルと PhysicsMaterial の規則で合成される。
-    physics::PhysicsMaterial surface;
-    /// @note 支持された低速の関節体を休止させる。摩擦検証や常時応答が必要な場合は false。
-    bool allowRest = true;
+    float margin   = 0.08f; ///< 探索半径の余裕 [m]。速く動く骨がすり抜けないよう少し広めに拾う。
+    physics::PhysicsMaterial surface; ///< 骨の表面。世界側のマテリアルと PhysicsMaterial の規則で合成される。
+    bool allowRest = true; ///< 支持された低速の関節体を休止させる。摩擦検証や常時応答が必要な場合は false。
 };
 
 /// @brief デバッグ表示用のワイヤー 1 本。色は描き手が kind から決める。
@@ -72,8 +66,7 @@ struct RagdollDebugLine {
 
 /// @note 骨 1 本のワールド姿勢。**親は必ず子より前に並んでいること。**
 struct RagdollBonePose {
-    /// @note 同じ配列内の親の添字。-1 なら根。
-    int              parent = -1;
+    int              parent = -1; ///< 同じ配列内の親の添字。-1 なら根。
     std::string      name;
     math::Vector3    position = math::Vector3::ZERO;
     math::Quaternion rotation = math::Quaternion::Identity();
@@ -134,23 +127,23 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API bool SetBodyDrive(std::string_view bone, const RagdollBodyDrive& settings);
     [[nodiscard]] FBZZ_ENGINE_API bool ClearBodyDrive(std::string_view bone);
     /// @note 選択中のプロファイル全体を更新する。未指定の骨・項目は通常駆動へ戻り、個別上書きを優先する。
-    /// @param transitionSeconds 固定物理時間 [s]。0 は即時。再指示はその時点のプロファイル値から開始する。
+    /// @param[in] transitionSeconds 固定物理時間 [s]。0 は即時。再指示はその時点のプロファイル値から開始する。
     /// @return 不正な骨・重複・値が含まれる場合は false。駆動と進行中の補間は未変更。
     [[nodiscard]] FBZZ_ENGINE_API bool ApplyDriveProfile(
         std::span<const RagdollBodyDriveEntry> entries, float transitionSeconds);
 
     /// @brief サーボの効き方をまとめて決める。プロファイルの値へ倍率として掛かるので、骨格ごとの «どこが強いか» を保ったまま全体の力み具合だけを動かせる。
-    /// @param enabled false で完全に脱力する (Passive)。
-    /// @param scale トルク上限に掛かる倍率。下げるほど早く力負けする。compliance は逆数側へ掛かるので同時に柔らかくなる。
-    /// @param falloff 根から 1 関節ごとに scale へ掛かる倍率。1 で一律、下げると体幹が支えて末端だけが流れる。
-    /// @param damping 減衰に掛かる倍率。下げるほど押された後に揺れ戻る。
+    /// @param[in] enabled false で完全に脱力する (Passive)。
+    /// @param[in] scale トルク上限に掛かる倍率。下げるほど早く力負けする。compliance は逆数側へ掛かるので同時に柔らかくなる。
+    /// @param[in] falloff 根から 1 関節ごとに scale へ掛かる倍率。1 で一律、下げると体幹が支えて末端だけが流れる。
+    /// @param[in] damping 減衰に掛かる倍率。下げるほど押された後に揺れ戻る。
     FBZZ_ENGINE_API void SetDrive(bool enabled, float scale, float falloff, float damping);
 
     /// @brief 根の剛体をアニメーションへ繋ぎ止める強さ。**Active では必須**。
     /// @note 関節は隣の骨との相対しか拘束せず、根は何にも繋がっていない。切ったまま立たせると、サーボが形を保ったまま全体が重力で落ちていく。
-    /// @param scale 自重を支えるのに要る力への倍率。1.0 でぎりぎり、下げると胴が沈む。
-    /// @param sag 上限の力を出し切るまでに沈む距離 [m]。押されたときの «遊び»。
-    /// @param tilt 上限のトルクを出し切るまでに傾く角 [rad]。
+    /// @param[in] scale 自重を支えるのに要る力への倍率。1.0 でぎりぎり、下げると胴が沈む。
+    /// @param[in] sag 上限の力を出し切るまでに沈む距離 [m]。押されたときの «遊び»。
+    /// @param[in] tilt 上限のトルクを出し切るまでに傾く角 [rad]。
     FBZZ_ENGINE_API void SetRootAnchor(float scale, float sag, float tilt);
 
     void SetContactSettings(const RagdollContactSettings& settings)
@@ -167,7 +160,7 @@ public:
     /// @note 形状判定は既存の `PhysicsSolver::NarrowPhase` へ丸投げする ─ カプセル vs
     /// @note 三角メッシュも地形も、こちらで書き直す理由が無い。
 
-    /// @param world null で «世界と当たらない» (自己衝突と接地面だけになる)。
+    /// @param[in] world null で «世界と当たらない» (自己衝突と接地面だけになる)。
     /// @note world は次の Step が返るまで生存すること。Step 中も各 substep の接触更新に参照する。
     FBZZ_ENGINE_API void RefreshContacts(physics::World* world);
     /// @note World の相手へ未反映の力積を返す。内部の substep 境界と、最終 substep を処理する Step 後に呼ぶ。
@@ -204,7 +197,9 @@ public:
     /// @note 決めているので、重力が 2 倍になれば必要トルクも 2 倍になる。
     void SetGravity(const math::Vector3& gravity)
     {
-        if ((m_solver.GetGravity() - gravity).LengthSq() > 0.0f) ResetRest();
+        if ((m_solver.GetGravity() - gravity).LengthSq() > 0.0f) {
+            ResetRest();
+        }
         m_solver.SetGravity(gravity);
         ApplyDrive();
     }
@@ -234,7 +229,7 @@ public:
 
     /// @brief クリップが要求する関節角を測り、可動域をそこまで広げる。広げるだけで狭めない («クリップが使う範囲は必ず可動域の内側» を保証する)。
     /// @note 可動域の基準はバインドポーズで、クリップがそこからどれだけ動かすかは骨格とモーション次第。プロファイルの «狭い可動域» がクリップの動きより狭いと、サーボが目標へ行けず絵が崩れる (物理ではなく «物理が許していない» だけ)。実際に使う範囲を測れば可動域の符号も自動で決まる。
-    /// @param margin 測った範囲へ足す余裕 [rad]。押されて少し越える分を吸収する。
+    /// @param[in] margin 測った範囲へ足す余裕 [rad]。押されて少し越える分を吸収する。
     FBZZ_ENGINE_API void SetLimitLearning(bool enabled, float margin);
 
     /// @brief どの規則にも当たらず fallback になった骨の名前。Build() が埋める。
@@ -281,10 +276,8 @@ private:
         /// @brief カプセル両端の球。
         /// @note NarrowPhase が返す接触点は形状の組ごとに 1 個で、寝かせた胴が «1 点で床に触れている» 状態になりそこを軸にくるくる回るため、両端でも取って 3 点で押さえる。球はカプセルの内側にあるので、カプセルより深い接触を報告することはない。
         std::unique_ptr<physics::SphereCollider> caps[2];
-        /// @note 親の剛体。自己衝突の «関節グラフ上の距離» を測るのに使う。-1 で根。
-        int                                      parentBody = -1;
-        /// @note 骨 = 剛体 × これ。捕獲と書き戻しはこの 2 つで往復する。
-        math::Vector3    boneOffset = math::Vector3::ZERO;
+        int                                      parentBody = -1; ///< 親の剛体。自己衝突の «関節グラフ上の距離» を測るのに使う。-1 で根。
+        math::Vector3    boneOffset = math::Vector3::ZERO; ///< 骨 = 剛体 × これ。捕獲と書き戻しはこの 2 つで往復する。
         math::Quaternion boneRotation = math::Quaternion::Identity();
         math::Vector3    previousPosition = math::Vector3::ZERO;
         math::Quaternion previousRotation = math::Quaternion::Identity();
@@ -317,8 +310,7 @@ private:
         physics::XPBDJoint* joint      = nullptr;
         int                 parentBody = -1;
         int                 childBody  = -1;
-        /// @note 根から何関節目か。ドライブの落とし方に使う。
-        int                 depth      = 0;
+        int                 depth      = 0; ///< 根から何関節目か。ドライブの落とし方に使う。
         /// @note プロファイルが与えた素の設定。倍率はここへ掛ける ─ 現在値へ掛け続けると
         /// @note 毎フレーム縮んでいき、力み具合が «時間とともに» 変わってしまう。
         RagdollServo        baseServo;
@@ -387,8 +379,7 @@ private:
         void Store(const std::vector<RagdollBonePose>& bones);
         void ComposeWorldPose(const TimedPose& sample, std::vector<RagdollBonePose>& worldPose) const;
 
-        /// @note 未消費の描画サンプルを保持し、固定刻みの backlog で将来の姿勢へ飛ばさない。
-        std::vector<TimedPose> m_samples;
+        std::vector<TimedPose> m_samples; ///< 未消費の描画サンプルを保持し、固定刻みの backlog で将来の姿勢へ飛ばさない。
         std::size_t m_firstPendingSample = 0;
         std::vector<std::vector<BoneSample>> m_recycledBoneSamples;
         double m_latestSampleTime = 0.0;
@@ -448,8 +439,7 @@ private:
 
     std::vector<BodyLink>  m_bodies;
     std::vector<JointLink> m_joints;
-    /// @note 接地拘束。剛体 1 個につきカプセルの両端の 2 個。所有は m_solver 側。
-    std::vector<physics::XPBDPlaneContact*> m_ground;
+    std::vector<physics::XPBDPlaneContact*> m_ground; ///< 接地拘束。剛体 1 個につきカプセルの両端の 2 個。所有は m_solver 側。
     /// @note 親の関節を持たない剛体を、アニメーションへ繋ぎ止める。所有は m_solver 側。
     /// @note 添字は m_anchorBody と対。
     std::vector<physics::XPBDPoseAnchor*>   m_anchors;
@@ -464,17 +454,14 @@ private:
     float m_anchorScale = 3.0f;
     float m_anchorSag   = 0.04f;
     float m_anchorTilt  = 0.05f;
-    /// @note 骨の添字 → m_bodies の添字。-1 で剛体なし。
-    std::vector<int>                 m_boneToBody;
+    std::vector<int>                 m_boneToBody; ///< 骨の添字 → m_bodies の添字。-1 で剛体なし。
     physics::XPBDSolver              m_solver;
 
     /// @note 自分のカプセルと両端球を ColliderInstance にしたもの。NarrowPhase の入力。
     /// @note **CollisionPair が中身を指すので、Build 以外で再確保しないこと。**
 
-    /// @note 各 BodyLink の instanceIndex が本体を指し、カプセルだけ両端の補助球を後続させる。
-    std::vector<physics::ColliderInstance> m_instances;
-    /// @note このフレームの接触。実体はここが持ち、ソルバへは非所有ポインタで渡す。
-    std::vector<physics::XPBDContact>      m_contacts;
+    std::vector<physics::ColliderInstance> m_instances; ///< 各 BodyLink の instanceIndex が本体を指し、カプセルだけ両端の補助球を後続させる。
+    std::vector<physics::XPBDContact>      m_contacts; ///< このフレームの接触。実体はここが持ち、ソルバへは非所有ポインタで渡す。
     struct CachedContact {
         const physics::Collider* a=nullptr;
         const physics::Collider* b=nullptr;
@@ -490,12 +477,10 @@ private:
     std::vector<physics::AABB>             m_selfContactBounds;
     std::vector<physics::ContactPoint>     m_contactPoints;
     std::vector<ContactReaction>           m_contactReactions;
-    /// @note RefreshContacts から次の Step 終了までの非所有参照。
-    physics::World*                        m_contactWorld = nullptr;
+    physics::World*                        m_contactWorld = nullptr; ///< RefreshContacts から次の Step 終了までの非所有参照。
     bool                                  m_resting = false;
     float                                 m_restTime = 0.0f;
-    /// @note プロファイルのどの規則にも当たらなかった骨。Build() が集める。
-    std::vector<std::string>               m_unmatchedBones;
+    std::vector<std::string>               m_unmatchedBones; ///< プロファイルのどの規則にも当たらなかった骨。Build() が集める。
     /// @note 組んだ時点で既に重なっている剛体の組。自己衝突から永久に外す。
     /// @note 添字は a * 剛体数 + b (a < b)。
     std::vector<bool>                      m_selfOverlapAtBuild;
@@ -504,13 +489,11 @@ private:
     std::vector<const physics::Collider*>  m_ignoredColliders;
     physics::RigidBody*                    m_ignoredBody = nullptr;
 
-    /// @note プロファイルが有効にした関節を «全体として» 切るための master スイッチ。
-    bool  m_driveEnabled  = true;
+    bool  m_driveEnabled  = true; ///< プロファイルが有効にした関節を «全体として» 切るための master スイッチ。
     float m_driveScale    = 1.0f;
     float m_driveFalloff  = 1.0f;
     float m_driveDamping  = 1.0f;
-    /// @note SetGround を呼ぶまでは «届かない所» に置く。詳細は RagdollRig.cpp の kNoGround。
-    float m_groundHeight  = -1.0e9f;
+    float m_groundHeight  = -1.0e9f; ///< SetGround を呼ぶまでは «届かない所» に置く。詳細は RagdollRig.cpp の kNoGround。
     float m_groundFriction = 0.9f;
 };
 

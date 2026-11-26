@@ -33,8 +33,8 @@ enum class SaveStoreKind : uint8_t {
 
 /// @note save / config が共有する実体。仮想関数を持たないので DLL 境界を跨いでも安全。
 struct ScriptStoreProxyBase {
-    Script*       script = nullptr;
-    SaveStoreKind kind   = SaveStoreKind::Slot;
+    Script*       script = nullptr; ///< 保存ストア操作で実行スコープを照合する、非所有の Script 参照。
+    SaveStoreKind kind   = SaveStoreKind::Slot; ///< この操作が読み書きする保存ストアの種類。
 
     /// @name 保存先
     /// @{
@@ -108,4 +108,4 @@ struct ScriptConfigProxy : ScriptStoreProxyBase {
     }
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

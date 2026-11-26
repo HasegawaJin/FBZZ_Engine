@@ -75,7 +75,9 @@ protected:
     bool CreateExisting(size_t count)
     {
         for (size_t index = 0; index < count; ++index)
-            if (!m_scene.TryCreateGameObject("Existing")) return false;
+            if (!m_scene.TryCreateGameObject("Existing")) {
+                return false;
+            }
         return true;
     }
 
@@ -593,7 +595,9 @@ protected:
         if (!component) component = &object.AddComponent<scene::ScriptComponent>();
         auto& entry = component->scripts.emplace_back();
     entry.script = scene::ScriptFactory::Create(type, entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&destination, &object);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;
@@ -730,7 +734,9 @@ TEST_F(ManagedObjectLifecycleRuntimeTest, ActualManagedCreationAndQueryReturnFiv
     EXPECT_EQ(m_scene.GameObjectCount(), 5002u);
     size_t observed = 0;
     for (scene::GameObject& object : m_scene.GameObjects()) {
-        if (&object == m_owner) continue;
+        if (&object == m_owner) {
+            continue;
+        }
         EXPECT_EQ(object.name, "BulkManaged");
         EXPECT_EQ(object.transform.worldPosition.x, static_cast<float>(observed));
         ++observed;

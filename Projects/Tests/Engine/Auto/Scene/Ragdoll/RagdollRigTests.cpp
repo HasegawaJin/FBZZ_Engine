@@ -59,7 +59,7 @@ std::vector<scene::RagdollBonePose> HorizontalChain(int boneCount = 4)
 scene::RagdollProfile SoftProfile()
 {
     scene::RagdollProfile profile;
-    /// @note 節の長さ 1m の鎖に対して半径 0.1m になる比。
+    // 節の長さ 1m の鎖に対して半径 0.1m になる比。
     profile.fallback.radiusRatio = 0.1f;
     profile.fallback.radiusMin   = 0.1f;
     profile.fallback.density     = 1000.0f;
@@ -128,9 +128,9 @@ TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
     scene::RagdollRig rig;
     rig.Build(bones, SoftProfile());
 
-    /// @note 葉は剛体を持たない
+    // 葉は剛体を持たない
     EXPECT_EQ(rig.GetBodyCount(), 3);
-    /// @note 根の剛体はワールドへ繋がない
+    // 根の剛体はワールドへ繋がない
     EXPECT_EQ(rig.GetJointCount(), 2);
     EXPECT_GE(rig.BodyIndexOfBone(0), 0);
     EXPECT_EQ(rig.BodyIndexOfBone(3), -1);
@@ -245,7 +245,7 @@ TEST_F(RagdollRigTest, CaptureReproducesAPoseDifferentFromTheBuildPose)
     scene::RagdollRig rig;
     rig.Build(bones, SoftProfile());
 
-    /// @note 途中で折れ曲がった姿勢を作る。親の回転を子の位置へ積んで «関節が曲がった» 形にする。
+    // 途中で折れ曲がった姿勢を作る。親の回転を子の位置へ積んで «関節が曲がった» 形にする。
     auto bent = bones;
     const math::Quaternion bend = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 0.6f);
     for (std::size_t i = 2; i < bent.size(); ++i) {
@@ -279,9 +279,9 @@ TEST_F(RagdollRigTest, LeafBoneFollowsItsParentBody)
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
 
-    /// @note 落ちたので葉も元の位置には居ない。
+    // 落ちたので葉も元の位置には居ない。
     EXPECT_GT((positions[3] - bones[3].position).Length(), 0.05f);
-    /// @note それでも親との距離は保たれている (骨は伸びない)。
+    // それでも親との距離は保たれている (骨は伸びない)。
     EXPECT_NEAR((positions[3] - positions[2]).Length(),
                 (bones[3].position - bones[2].position).Length(), 0.05f);
 }
@@ -331,7 +331,7 @@ TEST_F(RagdollRigTest, DriveHoldsTheAnimationPoseUnderGravity)
         rig.Step(1.0f / 60.0f);
     }
 
-    /// @note 根は自由落下するため、根の移動を除いた姿勢のずれで関節の垂れを検証する。
+    // 根は自由落下するため、根の移動を除いた姿勢のずれで関節の垂れを検証する。
     std::vector<math::Vector3>    positions;
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
@@ -360,7 +360,7 @@ TEST_F(RagdollRigTest, GroundPlaneStopsTheFallingChain)
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
 
-    /// @note カプセルの端 ＋ 半径がちょうど骨の位置なので、骨が床より下へ出たら抜けている。
+    // カプセルの端 ＋ 半径がちょうど骨の位置なので、骨が床より下へ出たら抜けている。
     for (std::size_t i = 0; i < positions.size(); ++i)
         EXPECT_GT(positions[i].y, -2.15f) << "bone " << i << " fell through the ground";
 }
@@ -398,12 +398,12 @@ TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
 
     scene::RagdollProfile profile = SoftProfile();
     profile.fallback.servo.enabled     = true;
-    /// @note 自重の 3 倍まで支えられるサーボ。倍率なので、鎖の重さが変わっても意味が変わらない。
+    // 自重の 3 倍まで支えられるサーボ。倍率なので、鎖の重さが変わっても意味が変わらない。
     profile.fallback.servo.torqueScale = 3.0f;
     profile.fallback.servo.holdSag     = 0.02f;
     profile.fallback.servo.damping     = 20.0f;
 
-    /// @note 一様な自由落下では関節に荷重が掛からないため、根を固定してトルク上限を検証する。
+    // 一様な自由落下では関節に荷重が掛からないため、根を固定してトルク上限を検証する。
     const auto sagWith = [&](float driveScale, int& outSaturated) {
         scene::RagdollRig rig;
         rig.Build(bones, profile);
@@ -412,7 +412,7 @@ TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
         rig.SetDrive(true, driveScale, 1.0f, 1.0f);
         rig.SetGravity({ 0.0f, -9.81f, 0.0f });
 
-        /// @note 垂れ切るとトルク不要になるため、最終フレームではなく飽和履歴を検証する。
+        // 垂れ切るとトルク不要になるため、最終フレームではなく飽和履歴を検証する。
         outSaturated = 0;
         for (int i = 0; i < 120; ++i) {
             rig.UpdateDriveTargets(bones);
@@ -435,12 +435,12 @@ TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
     const float strongSag = sagWith(1.0f,  strongSaturated);
     const float weakSag   = sagWith(0.01f, weakSaturated);
 
-    /// @note 出力が足りていれば形は保たれる
+    // 出力が足りていれば形は保たれる
     EXPECT_LT(strongSag, 0.10f);
-    /// @note 足りなければ垂れる
+    // 足りなければ垂れる
     EXPECT_GT(weakSag, strongSag * 3.0f);
     EXPECT_EQ(strongSaturated, 0);
-    /// @note 上限に張り付いた関節が居る ＝ 力負け
+    // 上限に張り付いた関節が居る ＝ 力負け
     EXPECT_GT(weakSaturated, 0);
 }
 
@@ -460,7 +460,7 @@ TEST_F(RagdollRigTest, ImpulsePushesEveryBody)
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
 
-    /// @note 5 m/s で 1/60 秒 ＝ 8cm 強。全身が一律に動くので鎖は伸びない。
+    // 5 m/s で 1/60 秒 ＝ 8cm 強。全身が一律に動くので鎖は伸びない。
     for (std::size_t i = 0; i < positions.size(); ++i)
         EXPECT_NEAR(positions[i].x - bones[i].position.x, 5.0f / 60.0f, 0.02f)
             << "bone " << i;
@@ -472,7 +472,7 @@ TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
 {
     const auto bones = StraightChain(4);
 
-    /// @note 剛体のない静的コライダーは World が更新しないため、天板 y = 0 の姿勢を明示する。
+    // 剛体のない静的コライダーは World が更新しないため、天板 y = 0 の姿勢を明示する。
     physics::OBBCollider floor{ { 20.0f, 1.0f, 20.0f } };
     floor.Update({ 0.0f, -1.0f, 0.0f }, math::Quaternion::Identity());
     const physics::PhysicsMaterial material;
@@ -487,7 +487,7 @@ TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
     rig.Build(bones, SoftProfile());
     rig.Capture(bones);
     rig.SetGravity({ 0.0f, -9.81f, 0.0f });
-    /// @note 抜け止めの平面を無効化し、世界の接触だけで受け止める
+    // 抜け止めの平面を無効化し、世界の接触だけで受け止める
     rig.DisableGround();
 
     for (int i = 0; i < 240; ++i) {
@@ -679,7 +679,7 @@ TEST_F(RagdollRigTest, FallingRagdollKicksADynamicBody)
     physics::RigidBody debris;
     debris.SetPosition({ 0.0f, -0.6f, 0.0f });
     debris.SetMass(5.0f);
-    /// @note World::Step を回さないので自分では落ちない
+    // World::Step を回さないので自分では落ちない
     debris.m_useGravity = false;
 
     physics::OBBCollider box{ { 1.0f, 0.5f, 1.0f } };
@@ -705,7 +705,7 @@ TEST_F(RagdollRigTest, FallingRagdollKicksADynamicBody)
         rig.ApplyContactReactions();
     }
 
-    /// @note 上から乗られたので下向きに押されている。逆にラグドール側は乗り越えていない。
+    // 上から乗られたので下向きに押されている。逆にラグドール側は乗り越えていない。
     EXPECT_LT(debris.GetVelocity().y, 0.0f) << "the dynamic body was never pushed";
 }
 
@@ -746,7 +746,7 @@ TEST_F(RagdollRigTest, TorqueFollowsTheSkeletonScale)
         scene::RagdollRig rig;
         rig.Build(bones, profile);
         rig.Capture(bones);
-        /// @note 片持ち梁 (自由落下する鎖は垂れない)
+        // 片持ち梁 (自由落下する鎖は垂れない)
         rig.GetBody(0)->m_isStatic = true;
         rig.SetGravity({ 0.0f, -9.81f, 0.0f });
 
@@ -762,7 +762,7 @@ TEST_F(RagdollRigTest, TorqueFollowsTheSkeletonScale)
         float worst = 0.0f;
         for (std::size_t i = 1; i < bones.size(); ++i)
             worst = std::max(worst, (positions[i] - bones[i].position).Length());
-        /// @note 大きさで割れば «形の崩れ» そのものになる
+        // 大きさで割れば «形の崩れ» そのものになる
         return worst / scale;
     };
 
@@ -787,7 +787,7 @@ TEST_F(RagdollRigTest, RootAnchorHoldsTheWholeBodyUpUnderGravity)
     rig.Build(bones, profile);
     rig.Capture(bones);
     rig.SetGravity({ 0.0f, -9.81f, 0.0f });
-    /// @note Active。繋ぎ止めもここで入る
+    // Active。繋ぎ止めもここで入る
     rig.SetDrive(true, 1.0f, 1.0f, 1.0f);
     rig.SetRootAnchor(5.0f, 0.02f, 0.02f);
 
@@ -800,7 +800,7 @@ TEST_F(RagdollRigTest, RootAnchorHoldsTheWholeBodyUpUnderGravity)
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
 
-    /// @note 3 秒経っても «クリップそのもの» から離れないこと。
+    // 3 秒経っても «クリップそのもの» から離れないこと。
     for (std::size_t i = 0; i < bones.size(); ++i)
         EXPECT_LT((positions[i] - bones[i].position).Length(), 0.10f)
             << "bone " << i << " drifted from the animation pose";
@@ -820,7 +820,7 @@ TEST_F(RagdollRigTest, PassiveReleasesTheRootAnchor)
     rig.Capture(bones);
     rig.SetGravity({ 0.0f, -9.81f, 0.0f });
     rig.SetRootAnchor(5.0f, 0.02f, 0.02f);
-    /// @note Passive
+    // Passive
     rig.SetDrive(false, 1.0f, 1.0f, 1.0f);
 
     for (int i = 0; i < 60; ++i) rig.Step(1.0f / 60.0f);
@@ -829,7 +829,7 @@ TEST_F(RagdollRigTest, PassiveReleasesTheRootAnchor)
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
 
-    /// @note 1 秒の自由落下は約 4.9m。繋ぎ止めが残っていればここまで落ちない。
+    // 1 秒の自由落下は約 4.9m。繋ぎ止めが残っていればここまで落ちない。
     EXPECT_LT(positions[0].y, bones[0].position.y - 1.0f);
 }
 
@@ -839,7 +839,7 @@ TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
 {
     const auto bones = StraightChain(4);
 
-    /// @note わざと «ほとんど曲がらない» 可動域にしておく。
+    // わざと «ほとんど曲がらない» 可動域にしておく。
     scene::RagdollProfile profile = SoftProfile();
     profile.fallback.limits.enabled   = true;
     profile.fallback.limits.twistMin  = -0.01f;
@@ -850,7 +850,7 @@ TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
     profile.fallback.limits.swingMaxZ = 0.01f;
     profile.fallback.servo.enabled    = true;
 
-    /// @note 子の位置と骨の回転を共に曲げ、捕獲時にソケット拘束が戻す不正な姿勢を作らない。
+    // 子の位置と骨の回転を共に曲げ、捕獲時にソケット拘束が戻す不正な姿勢を作らない。
     auto bent = bones;
     const math::Quaternion bend = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 0.6f);
     for (std::size_t i = 1; i < bent.size(); ++i) {
@@ -859,18 +859,18 @@ TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
     }
 
     scene::RagdollRig rig;
-    /// @note 可動域の基準はバインドポーズ (まっすぐ)
+    // 可動域の基準はバインドポーズ (まっすぐ)
     rig.Build(bones, profile);
     rig.Capture(bent);
     rig.SetDrive(true, 1.0f, 1.0f, 1.0f);
     rig.SetLimitLearning(true, 0.09f);
-    /// @note ここで «クリップが要求する角» を測る
+    // ここで «クリップが要求する角» を測る
     rig.UpdateDriveTargets(bent);
 
     rig.SetGravity(math::Vector3::ZERO);
     rig.Step(1.0f / 60.0f);
 
-    /// @note 0.6 rad 曲げた関節が、0.01 rad の可動域に閉じ込められていないこと。
+    // 0.6 rad 曲げた関節が、0.01 rad の可動域に閉じ込められていないこと。
     EXPECT_EQ(rig.CountLimitedJoints(), 0);
 }
 
@@ -886,9 +886,9 @@ TEST_F(RagdollRigTest, ProfileResolvesByBoneNameSubstring)
     profile.rules.push_back(knee);
 
     EXPECT_FLOAT_EQ(profile.Resolve("Leg_Knee_L").radiusRatio, 0.1f);
-    /// @note 大文字小文字を無視
+    // 大文字小文字を無視
     EXPECT_FLOAT_EQ(profile.Resolve("LEG_KNEE_R").radiusRatio, 0.1f);
-    /// @note 当たらなければ fallback
+    // 当たらなければ fallback
     EXPECT_FLOAT_EQ(profile.Resolve("Spine_01").radiusRatio, 0.5f);
 }
 
@@ -906,23 +906,23 @@ TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
         EXPECT_TRUE(matched) << bone << " falls through to the profile fallback";
     }
 
-    /// @note 原点の «入れ物» は枝だけ辿る。剛体を作ると胴から原点へ 4.5m の棒ができる。
+    // 原点の «入れ物» は枝だけ辿る。剛体を作ると胴から原点へ 4.5m の棒ができる。
     EXPECT_TRUE(profile.IsBodyless("Root"));
     EXPECT_TRUE(profile.IsBodyless("Boss_Armature"));
     EXPECT_FALSE(profile.IsBodyless("Body"));
 
-    /// @note 足指と踵は枝ごと落とす。拾うと脚 1 本あたり剛体が 8 個増える。
+    // 足指と踵は枝ごと落とす。拾うと脚 1 本あたり剛体が 8 個増える。
     EXPECT_TRUE(profile.IsExcluded("Toe1A_FR"));
     EXPECT_TRUE(profile.IsExcluded("HeelB_BL"));
     EXPECT_FALSE(profile.IsExcluded("Foot_FR"));
 
-    /// @note 胴は «塊»。脚より太く、桁違いに粘る。
+    // 胴は «塊»。脚より太く、桁違いに粘る。
     const scene::RagdollBoneSettings& torso = profile.Resolve("Body");
     const scene::RagdollBoneSettings& thigh = profile.Resolve("Thigh_FR");
     EXPECT_GT(torso.radiusRatio, thigh.radiusRatio);
     EXPECT_GT(torso.servo.torqueScale, thigh.servo.torqueScale);
 
-    /// @note 飛節は膝と同じ蝶番で、**逆向き**に曲がる。
+    // 飛節は膝と同じ蝶番で、**逆向き**に曲がる。
     const scene::RagdollBoneSettings& knee = profile.Resolve("Shin_FR");
     const scene::RagdollBoneSettings& hock = profile.Resolve("Hock_FR");
     EXPECT_TRUE(hock.limits.enabled);
@@ -937,17 +937,17 @@ TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
 TEST_F(RagdollRigTest, UnmatchedBonesAreNamed)
 {
     auto bones = StraightChain(4);
-    /// @note 当たる
+    // 当たる
     bones[0].name = "Thigh_FR";
-    /// @note 当たらない
+    // 当たらない
     bones[1].name = "Tentacle";
-    /// @note 当たる
+    // 当たる
     bones[2].name = "Shin_FR";
 
     scene::RagdollRig rig;
     rig.Build(bones, scene::RagdollProfile::Mech());
 
-    /// @note 葉 (bones[3]) は剛体を持たないので設定を引かれず、数にも入らない。
+    // 葉 (bones[3]) は剛体を持たないので設定を引かれず、数にも入らない。
     ASSERT_EQ(rig.UnmatchedBones().size(), 1u);
     EXPECT_EQ(rig.UnmatchedBones()[0], "Tentacle");
 }
@@ -959,10 +959,10 @@ TEST_F(RagdollRigTest, MechProfileGivesTheKneeAOneWayHinge)
     const scene::RagdollBoneSettings& knee = profile.Resolve("Leg_Knee_FR");
 
     EXPECT_TRUE(knee.limits.enabled);
-    /// @note 片方向にしか曲がらない ＝ 下限が 0 で上限が正。
+    // 片方向にしか曲がらない ＝ 下限が 0 で上限が正。
     EXPECT_FLOAT_EQ(knee.limits.swingMinZ, 0.0f);
     EXPECT_GT(knee.limits.swingMaxZ, 1.0f);
-    /// @note サーボなのでトルクに上限がある (実値は骨格の質量から Build が埋める)。
+    // サーボなのでトルクに上限がある (実値は骨格の質量から Build が埋める)。
     EXPECT_TRUE(knee.servo.enabled);
     EXPECT_GT(knee.servo.torqueScale, 0.0f);
 }

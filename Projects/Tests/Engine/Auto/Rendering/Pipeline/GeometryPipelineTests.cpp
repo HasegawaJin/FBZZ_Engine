@@ -144,7 +144,7 @@ TEST_F(GeometryPipelineTest, WireframeUsesForwardColorWithoutAnOpaquePrepass)
 /// @brief Registration preserves the existing pass order for every path.
 TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPath)
 {
-    /// @note 媒体 atlas は照明前、界面は体積光前、SSR の解決は透明描画前に登録する。
+    // 媒体 atlas は照明前、界面は体積光前、SSR の解決は透明描画前に登録する。
     /// @see Docs/design/water-gameplay-visuals.md
     /// @see Docs/design/graphics-quality.md
     /// @see Docs/design/waterfall-authoring.md 受水面を描画してから WaterfallSurfaces を描画する。

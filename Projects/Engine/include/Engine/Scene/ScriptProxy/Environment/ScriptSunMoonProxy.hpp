@@ -12,7 +12,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptSunMoonProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 太陽・月操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetSun(bool enabled, float intensity) const;
@@ -20,4 +20,4 @@ struct ScriptSunMoonProxy {
                  const math::Vector3& color) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

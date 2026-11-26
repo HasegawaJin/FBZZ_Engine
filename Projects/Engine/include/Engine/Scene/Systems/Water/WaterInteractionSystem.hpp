@@ -20,4 +20,4 @@ public:
 private:
     std::shared_ptr<WaterInteractionSceneStore> m_store;
 };
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

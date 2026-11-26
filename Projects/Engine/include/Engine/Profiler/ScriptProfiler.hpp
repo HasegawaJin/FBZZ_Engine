@@ -80,4 +80,4 @@ public:
     FBZZ_ENGINE_API static Script* ResolveTarget(Scene& scene, const ScriptProfileDescriptor& descriptor, const ScriptProfileContext& context);
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

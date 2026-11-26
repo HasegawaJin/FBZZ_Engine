@@ -25,8 +25,7 @@ struct WorldHlodSource {
     bool castShadows = true;
     bool includeHlod = true;
     bool hasLocalBounds = false;
-    /// @note メッシュのローカル境界は、選択した最も粗い LOD の全パーツと材質の頂点変位を含むこと。
-    WorldCellBounds localBounds;
+    WorldCellBounds localBounds; ///< メッシュのローカル境界は、選択した最も粗い LOD の全パーツと材質の頂点変位を含むこと。
 };
 
 struct WorldHlodBuildSettings {
@@ -45,12 +44,10 @@ struct WorldHlodGroup {
     math::Vector3 origin;
     uint32_t layer = 0;
     bool castShadows = true;
-    /// @note 寄与する境界が一つでも欠ける場合は hasWorldBounds=false とし、この AABB でグループを棄却しない。
-    WorldCellBounds worldBounds;
+    WorldCellBounds worldBounds; ///< 寄与する境界が一つでも欠ける場合は hasWorldBounds=false とし、この AABB でグループを棄却しない。
     bool hasWorldBounds = false;
     asset::MeshInstancesAsset proxy;
-    /// @note sources[i] は i 番目のプロキシ配置を識別する。生成 ID は正かつ一意で、走査順に依存しない。
-    std::vector<WorldHlodPlacementSource> sources;
+    std::vector<WorldHlodPlacementSource> sources; ///< sources[i] は i 番目のプロキシ配置を識別する。生成 ID は正かつ一意で、走査順に依存しない。
 };
 
 /// @note セルごとに互換性のある所有者を最も粗い LOD の独立したインスタンスアセットへ集約し、LOD の全パーツを保持する。

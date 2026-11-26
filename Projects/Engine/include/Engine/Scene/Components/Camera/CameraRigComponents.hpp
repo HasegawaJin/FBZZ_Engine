@@ -89,8 +89,7 @@ struct CameraShakeComponent {
     int seed = 1;
     bool playOnAwake = false;
     bool playing = false;
-    /// @note ランタイムで前フレームの揺れを除去してから次の揺れを加えるための非永続状態。
-    math::Vector3 appliedPositionOffset = math::Vector3::ZERO;
+    math::Vector3 appliedPositionOffset = math::Vector3::ZERO; ///< ランタイムで前フレームの揺れを除去してから次の揺れを加えるための非永続状態。
     math::Quaternion appliedRotationOffset = math::Quaternion::Identity();
     bool runtimeInitialized = false;
 

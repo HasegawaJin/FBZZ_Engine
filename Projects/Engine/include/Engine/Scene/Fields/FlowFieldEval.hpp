@@ -31,24 +31,22 @@ struct FlowFieldFrame;
 struct ActiveFlowField {
     math::Vector3 position;
     float         radius;
-    math::Vector3 direction;  ///< @brief Uniform: 流向 / Vortex: 回転軸 (正規化済み)
-    float         strength;   ///< @brief 流速 [m/s] (Baked のみ無次元の倍率)
+    math::Vector3 direction; ///< Uniform: 流向 / Vortex: 回転軸 (正規化済み)
+    float         strength; ///< 流速 [m/s] (Baked のみ無次元の倍率)
     FlowFieldType type;
     float         falloffPower;
     float         noiseFrequency;
     float         noiseSpeed;
-    uint32_t      channels;   ///< @brief ParticleEmitter::flowFieldChannels と AND を取る
+    uint32_t      channels; ///< ParticleEmitter::flowFieldChannels と AND を取る
 
     /// @name Baked 型のときだけ使う
     /// @{
     const fluid::VectorFieldAsset* vectorField = nullptr;
-    /// @brief ワールド → 場のローカルへ戻す逆回転。場を回して置けるようにするため。
-    math::Quaternion inverseRotation{};
+    math::Quaternion inverseRotation{}; ///< ワールド → 場のローカルへ戻す逆回転。場を回して置けるようにするため。
     math::Vector3    extents = { 1.0f, 1.0f, 1.0f };
     /// @}
 
-    /// @note 水面専用の振幅と波長 [m]。媒質速度の評価には使わない。
-    float waterSwellAmplitude = 0.0f;
+    float waterSwellAmplitude = 0.0f; ///< 水面専用の振幅と波長 [m]。媒質速度の評価には使わない。
     float waterSwellWavelength = 32.0f;
 };
 
@@ -80,7 +78,7 @@ struct FlowReceiver {
 [[nodiscard]] FBZZ_ENGINE_API float FlowSpeedBound(const ActiveFlowField& field);
 
 /// @brief 設定 1 本をワールド空間の ActiveFlowField へ解決する。
-/// @param origin,rotation «この流れをどの座標系で置くか» を呼び出し側が決めて渡す。
+/// @param[in] origin,rotation «この流れをどの座標系で置くか» を呼び出し側が決めて渡す。
 [[nodiscard]] FBZZ_ENGINE_API ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
                                                const math::Vector3&    origin,
                                                const math::Quaternion& rotation);
@@ -92,7 +90,7 @@ FBZZ_ENGINE_API void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>
 
 /// @brief 1 点の媒質速度 [m/s] を返す純関数。**この式が場の定義そのもの**。
 
-/// @param covered 非 null なら «この点を覆う場が 1 本でもあったか» を返す。
+/// @param[out] covered 非 null なら «この点を覆う場が 1 本でもあったか» を返す。
 /// @note 各原始要素の «速度» を足し合わせるだけ。力にするのは消費者の仕事。
 /// @note LegacyDrag は流れではないので何も足さない (読み込み時に flowCoupling へ写る)。
 /// @note 式は ParticleGpuSim.cs.hlsl の SampleFlow と一致させること。
@@ -111,7 +109,7 @@ FBZZ_ENGINE_API void ResolveEmitterForces(const ParticleEmitter& emitter, const 
                           std::vector<ActiveFlowField>& outFields, bool useGpuBounds = false);
 
 /// @brief 流れへ粒子速度を緩和させる。**v += (v_flow − v) · coupling · dt**。
-/// @param coupling 結合係数 [1/s]。ParticleEmitter::flowCoupling に Drag over Lifetime カーブの現在値を掛けたもの。
+/// @param[in] coupling 結合係数 [1/s]。ParticleEmitter::flowCoupling に Drag over Lifetime カーブの現在値を掛けたもの。
 /// @note 式は ParticleGpuSim.cs.hlsl の ApplyFlowFields と一致させること (Baked を除く。あちらはアトラス常駐分だけが GPU で効く)。
 /// @note 重力はここに含めない。媒質の運動ではなく加速度なので ParticleEmitter::gravity が別に積分する (flow-field.md §3)。
 /// @warning **場に覆われていない点では何もしない。** «場が無い» は «流速 0 の静止した空気» ではなく «媒質について何も言っていない» と読む。0 へ緩和させると場を 1 つ置いただけで半径の外の粒子も一斉に減速する。空気抵抗が欲しければ «半径 0・strength 0 の Uniform» を置く (flow-field.md §3)。

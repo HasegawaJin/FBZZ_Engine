@@ -25,7 +25,9 @@ protected:
         m_lifetimes.reserve(GROWTH_COUNT);
         for (uint32_t index = 0; index < GROWTH_COUNT; ++index) {
             auto* object = m_scene.TryCreateGameObject("Existing");
-            if (!object) return false;
+            if (!object) {
+                return false;
+            }
             object->AddComponent<scene::LightComponent>().intensity = static_cast<float>(index);
             m_ids.push_back(object->GetID());
             m_objects.push_back(object);

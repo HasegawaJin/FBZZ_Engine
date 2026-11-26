@@ -25,7 +25,9 @@ public:
 
     void Begin(const char* name)
     {
-        if (!m_enabled) return;
+        if (!m_enabled) {
+            return;
+        }
         m_scope.reset();
         m_scope.emplace(profiler::ProfilerMarker(name, "General"));
     }
@@ -59,7 +61,9 @@ public:
     void Finish() noexcept
     {
         if constexpr (DIAGNOSTICS_ENABLED) {
-            if (!m_elapsedNs) return;
+            if (!m_elapsedNs) {
+                return;
+            }
             *m_elapsedNs += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - m_start).count();
             m_elapsedNs = nullptr;

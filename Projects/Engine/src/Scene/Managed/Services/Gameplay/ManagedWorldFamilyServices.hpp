@@ -15,4 +15,4 @@ struct ManagedServiceResult;
 FBZZ_ENGINE_API ManagedBridgeStatus RunWorldFamilyServices(Scene& scene, Script& view, GameObject& target, GameObject* related,
     const ManagedBridgeRequest& request, int64_t integer, std::span<const float> values,
     std::span<const std::string> text, ManagedServiceResult& result, bool fixedUpdate);
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

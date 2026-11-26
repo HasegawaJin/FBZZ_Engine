@@ -26,4 +26,4 @@ void UpdateMeshTrailSamples(GameObject& owner, MeshTrailComponent& trail, float 
 void ClearMeshTrailSamples(MeshTrailComponent& trail);
 MeshTrailSample& ReadMeshTrailSample(MeshTrailComponent& trail, int logicalIndex);
 
-} /// @note namespace fbzz::scene::mesh_trail_extraction_detail
+} // namespace fbzz::scene::mesh_trail_extraction_detail

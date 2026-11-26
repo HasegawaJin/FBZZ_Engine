@@ -21,8 +21,9 @@ std::string LowerCopy(std::string_view s)
 {
     std::string out;
     out.reserve(s.size());
-    for (const char c : s)
+    for (const char c : s) {
         out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
     return out;
 }
 
@@ -40,16 +41,20 @@ bool MatchEntry(const AvatarMaskEntry& entry,
                 std::string_view boneName,
                 int& outDepth)
 {
-    if (entry.bonePath.empty()) return false;
+    if (entry.bonePath.empty()) {
+        return false;
+    }
 
-    /// @note 完全一致 (パス指定・名前指定のどちらでも受ける)。
+    // 完全一致 (パス指定・名前指定のどちらでも受ける)。
     if (entry.bonePath == bonePath || entry.bonePath == boneName) {
         outDepth = 0;
         return true;
     }
-    if (!entry.includeChildren) return false;
+    if (!entry.includeChildren) {
+        return false;
+    }
 
-    /// @note パス指定の祖先一致: "Hips/Spine" は "Hips/Spine/Spine1" にヒットする。
+    // パス指定の祖先一致: "Hips/Spine" は "Hips/Spine/Spine1" にヒットする。
     if (bonePath.size() > entry.bonePath.size() &&
         bonePath.compare(0, entry.bonePath.size(), entry.bonePath) == 0 &&
         bonePath[entry.bonePath.size()] == '/') {
@@ -57,8 +62,8 @@ bool MatchEntry(const AvatarMaskEntry& entry,
         return true;
     }
 
-    /// @note 名前指定の祖先一致: "Spine" は ".../Spine/Spine1" にヒットする。
-    /// @note ボーン名だけで配下を指定できると、スケルトンが違っても同じマスクを使い回せる。
+    // 名前指定の祖先一致: "Spine" は ".../Spine/Spine1" にヒットする。
+    // ボーン名だけで配下を指定できると、スケルトンが違っても同じマスクを使い回せる。
     if (entry.bonePath.find('/') == std::string::npos && !bonePath.empty()) {
         const std::string needle = "/" + entry.bonePath + "/";
         const size_t pos = bonePath.find(needle);
@@ -68,7 +73,7 @@ bool MatchEntry(const AvatarMaskEntry& entry,
             outDepth = PathDepth(bonePath) - entryDepth;
             return true;
         }
-        /// @note 先頭がそのボーンの場合 ("Spine/Spine1")。
+        // 先頭がそのボーンの場合 ("Spine/Spine1")。
         if (bonePath.size() > entry.bonePath.size() &&
             bonePath.compare(0, entry.bonePath.size(), entry.bonePath) == 0 &&
             bonePath[entry.bonePath.size()] == '/') {
@@ -113,18 +118,21 @@ HumanoidPatternTable()
     return table;
 }
 
-} /// @note namespace
+} // namespace
 
 std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
         return {};
+    }
 
     std::vector<std::string_view> reverseNames;
     std::vector<bool> visited(skeleton.nodes.size(), false);
     int current = nodeIndex;
     while (current >= 0 && current < static_cast<int>(skeleton.nodes.size())) {
-        if (visited[static_cast<size_t>(current)]) return {};
+        if (visited[static_cast<size_t>(current)]) {
+            return {};
+        }
         visited[static_cast<size_t>(current)] = true;
         reverseNames.push_back(skeleton.nodes[static_cast<size_t>(current)].name);
         current = skeleton.nodes[static_cast<size_t>(current)].parentIndex;
@@ -132,7 +140,9 @@ std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex)
 
     std::string path;
     for (auto it = reverseNames.rbegin(); it != reverseNames.rend(); ++it) {
-        if (!path.empty()) path += '/';
+        if (!path.empty()) {
+            path += '/';
+        }
         path += *it;
     }
     return path;
@@ -147,7 +157,7 @@ bool IsDescendantPath(std::string_view ancestor, std::string_view candidate)
         && candidate[ancestor.size()] == '/';
 }
 
-} /// @note namespace
+} // namespace
 
 void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
 {
@@ -155,7 +165,9 @@ void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
     compressed.reserve(mask.entries.size());
 
     for (const AvatarMaskEntry& entry : mask.entries) {
-        if (entry.bonePath.empty()) continue;
+        if (entry.bonePath.empty()) {
+            continue;
+        }
 
         bool replaced = false;
         for (AvatarMaskEntry& existing : compressed) {
@@ -165,7 +177,9 @@ void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
                 break;
             }
         }
-        if (!replaced) compressed.push_back(entry);
+        if (!replaced) {
+            compressed.push_back(entry);
+        }
     }
 
     const std::vector<AvatarMaskEntry> original = compressed;
@@ -192,7 +206,9 @@ void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
 
 float AvatarMaskRampedWeight(const AvatarMaskEntry& entry, int depth)
 {
-    if (entry.blendDepth <= 0) return entry.weight;
+    if (entry.blendDepth <= 0) {
+        return entry.weight;
+    }
     const float t = static_cast<float>(std::min(depth + 1, entry.blendDepth + 1)) /
                     static_cast<float>(entry.blendDepth + 1);
     return entry.weight * t;
@@ -202,17 +218,21 @@ float EvaluateAvatarMaskWeight(
     const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName)
 {
     const float fallback = mask.defaultInclude ? 1.0f : 0.0f;
-    if (mask.entries.empty()) return fallback;
+    if (mask.entries.empty()) {
+        return fallback;
+    }
 
-    /// @note より具体的な (bonePath が深い) エントリを優先する。「腕全体を 0 → 手だけ 1」の
-    /// @note ような上書きを記述順に依存させないため。毎フレーム×ボーン数で呼ばれるので、
-    /// @note MatchAvatarMaskEntries と規則は共有しつつ配列は作らず最良の 1 件だけを選ぶ。
+    // より具体的な (bonePath が深い) エントリを優先する。「腕全体を 0 → 手だけ 1」の
+    // ような上書きを記述順に依存させないため。毎フレーム×ボーン数で呼ばれるので、
+    // MatchAvatarMaskEntries と規則は共有しつつ配列は作らず最良の 1 件だけを選ぶ。
     const AvatarMaskEntry* best = nullptr;
     int bestSpecificity = -1;
     int bestDepth = 0;
     for (const auto& entry : mask.entries) {
         int depth = 0;
-        if (!MatchEntry(entry, bonePath, boneName, depth)) continue;
+        if (!MatchEntry(entry, bonePath, boneName, depth)) {
+            continue;
+        }
         const int specificity = EntrySpecificity(entry, depth);
         if (specificity > bestSpecificity) {
             bestSpecificity = specificity;
@@ -220,7 +240,9 @@ float EvaluateAvatarMaskWeight(
             bestDepth = depth;
         }
     }
-    if (!best) return fallback;
+    if (!best) {
+        return fallback;
+    }
     return std::clamp(AvatarMaskRampedWeight(*best, bestDepth), 0.0f, 1.0f);
 }
 
@@ -231,14 +253,16 @@ std::vector<AvatarMaskMatch> MatchAvatarMaskEntries(
     for (int i = 0; i < static_cast<int>(mask.entries.size()); ++i) {
         const AvatarMaskEntry& entry = mask.entries[static_cast<size_t>(i)];
         int depth = 0;
-        if (!MatchEntry(entry, bonePath, boneName, depth)) continue;
+        if (!MatchEntry(entry, bonePath, boneName, depth)) {
+            continue;
+        }
         matches.push_back(AvatarMaskMatch{
             i, depth,
             std::clamp(AvatarMaskRampedWeight(entry, depth), 0.0f, 1.0f),
             EntrySpecificity(entry, depth) });
     }
-    /// @note 同点は先に書かれた方を勝ちにする。Evaluate 側が「より大きいときだけ差し替える」
-    /// @note 走査になっているため、安定ソートでないと勝者の表示がずれる。
+    // 同点は先に書かれた方を勝ちにする。Evaluate 側が「より大きいときだけ差し替える」
+    // 走査になっているため、安定ソートでないと勝者の表示がずれる。
     std::stable_sort(matches.begin(), matches.end(),
         [](const AvatarMaskMatch& a, const AvatarMaskMatch& b) {
             return a.specificity > b.specificity;
@@ -267,25 +291,29 @@ const std::vector<std::string>& HumanoidBonePatterns(HumanoidBodyPart part)
 {
     static const std::vector<std::string> empty;
     const auto index = static_cast<size_t>(part);
-    if (index >= static_cast<size_t>(HumanoidBodyPart::Count)) return empty;
+    if (index >= static_cast<size_t>(HumanoidBodyPart::Count)) {
+        return empty;
+    }
     return HumanoidPatternTable()[index];
 }
 
 bool BoneNameMatchesBodyPart(std::string_view boneName, HumanoidBodyPart part)
 {
-    /// @note `mixamorig:LeftArm` のような接頭辞と区切り記号を落として比較する。
+    // `mixamorig:LeftArm` のような接頭辞と区切り記号を落として比較する。
     std::string normalized;
     const std::string lower = LowerCopy(boneName);
     const size_t colon = lower.find_last_of(':');
     const std::string body = colon == std::string::npos ? lower : lower.substr(colon + 1);
     normalized.reserve(body.size());
     for (const char c : body) {
-        if (c == ' ' || c == '.' || c == '-') continue;
+        if (c == ' ' || c == '.' || c == '-') {
+            continue;
+        }
         normalized.push_back(c);
     }
 
     for (const auto& pattern : HumanoidBonePatterns(part)) {
-        /// @note パターン側も区切りを持つ ("l_arm") ため、両方から '_' を除いた形でも比較する。
+        // パターン側も区切りを持つ ("l_arm") ため、両方から '_' を除いた形でも比較する。
         std::string flatPattern;
         flatPattern.reserve(pattern.size());
         for (const char c : pattern) if (c != '_') flatPattern.push_back(c);
@@ -293,16 +321,20 @@ bool BoneNameMatchesBodyPart(std::string_view boneName, HumanoidBodyPart part)
         flatName.reserve(normalized.size());
         for (const char c : normalized) if (c != '_') flatName.push_back(c);
 
-        if (normalized.find(pattern) != std::string::npos) return true;
-        if (!flatPattern.empty() && flatName.find(flatPattern) != std::string::npos) return true;
+        if (normalized.find(pattern) != std::string::npos) {
+            return true;
+        }
+        if (!flatPattern.empty() && flatName.find(flatPattern) != std::string::npos) {
+            return true;
+        }
     }
     return false;
 }
 
 HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName)
 {
-    /// @note 手 / 足先などのより具体的なパーツを先に判定する。`LeftHandIndex1` のような名前は
-    /// @note Hand を優先しないと LeftArm のパターン (`leftarm`) には当たらず Arm に吸われる。
+    // 手 / 足先などのより具体的なパーツを先に判定する。`LeftHandIndex1` のような名前は
+    // Hand を優先しないと LeftArm のパターン (`leftarm`) には当たらず Arm に吸われる。
     static constexpr HumanoidBodyPart kOrder[] = {
         HumanoidBodyPart::LeftHand,  HumanoidBodyPart::RightHand,
         HumanoidBodyPart::LeftArm,   HumanoidBodyPart::RightArm,
@@ -311,7 +343,9 @@ HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName)
         HumanoidBodyPart::Root,
     };
     for (const HumanoidBodyPart part : kOrder)
-        if (BoneNameMatchesBodyPart(boneName, part)) return part;
+        if (BoneNameMatchesBodyPart(boneName, part)) {
+            return part;
+        }
     return HumanoidBodyPart::Count;
 }
 
@@ -319,8 +353,8 @@ bool SaveAvatarMaskAsset(const std::string& path, const AvatarMaskAsset& asset)
 {
     AvatarMaskAsset normalized = asset;
     for (auto& entry : normalized.entries) {
-        /// @note 外部編集や旧形式から NaN / 範囲外が入っても、保存値を必ずランタイムの
-        /// @note 評価範囲へ戻す。std::clamp は NaN を検出しないため有限値を先に確認する。
+        // 外部編集や旧形式から NaN / 範囲外が入っても、保存値を必ずランタイムの
+        // 評価範囲へ戻す。std::clamp は NaN を検出しないため有限値を先に確認する。
         entry.weight = std::isfinite(entry.weight)
             ? std::clamp(entry.weight, 0.0f, 1.0f)
             : 0.0f;
@@ -360,7 +394,9 @@ bool SaveAvatarMaskAsset(const std::string& path, const AvatarMaskAsset& asset)
 bool LoadAvatarMaskAsset(const std::string& path, AvatarMaskAsset& outAsset)
 {
     std::string text;
-    if (!util::FileSystem::ReadText(path, text)) return false;
+    if (!util::FileSystem::ReadText(path, text)) {
+        return false;
+    }
 
     std::istringstream iss(text);
     const auto parsed = toml::parse(iss);
@@ -378,16 +414,21 @@ bool LoadAvatarMaskAsset(const std::string& path, AvatarMaskAsset& outAsset)
         outAsset.skeletonSourceSignature =
             (*header)["skeleton_source_signature"].value_or(std::string{});
     }
-    if (outAsset.name.empty())
+    if (outAsset.name.empty()) {
         outAsset.name = util::FileSystem::GetFilename(path);
+    }
 
     if (const auto* entries = table["entries"].as_array()) {
         for (const auto& element : *entries) {
             const auto* t = element.as_table();
-            if (!t) continue;
+            if (!t) {
+                continue;
+            }
             AvatarMaskEntry entry;
             entry.bonePath = (*t)["bone"].value_or(std::string{});
-            if (entry.bonePath.empty()) continue;
+            if (entry.bonePath.empty()) {
+                continue;
+            }
             entry.weight = static_cast<float>((*t)["weight"].value_or(1.0));
             entry.includeChildren = (*t)["include_children"].value_or(true);
             entry.blendDepth = static_cast<int>((*t)["blend_depth"].value_or(int64_t{ 0 }));
@@ -399,4 +440,4 @@ bool LoadAvatarMaskAsset(const std::string& path, AvatarMaskAsset& outAsset)
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

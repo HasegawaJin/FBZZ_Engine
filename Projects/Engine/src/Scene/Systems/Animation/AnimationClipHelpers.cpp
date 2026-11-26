@@ -12,14 +12,21 @@ const asset::AnimationClip* FindClipBySource(const AnimatorComponent& animator,
                                              const std::string& sourcePath,
                                              const std::string& clipName)
 {
-    if (sourcePath.empty()) return nullptr;
+    if (sourcePath.empty()) {
+        return nullptr;
+    }
     const asset::AnimationClip* firstFromSource = nullptr;
     for (size_t i = 0; i < animator.ClipCount(); ++i) {
         if (i >= animator.clipSourcePaths.size() ||
-            animator.clipSourcePaths[i] != sourcePath) continue;
-        if (!firstFromSource) firstFromSource = &animator.ClipAt(i);
-        if (!clipName.empty() && animator.ClipAt(i).name == clipName)
+            animator.clipSourcePaths[i] != sourcePath) {
+            continue;
+        }
+        if (!firstFromSource) {
+            firstFromSource = &animator.ClipAt(i);
+        }
+        if (!clipName.empty() && animator.ClipAt(i).name == clipName) {
             return &animator.ClipAt(i);
+        }
     }
     return firstFromSource;
 }

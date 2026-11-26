@@ -39,7 +39,7 @@ bool HeightMapEnsureCom()
     return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
 }
 
-} /// @note namespace
+} // namespace
 
 bool LoadHeightMapFromFile(
     const std::string& path,
@@ -47,46 +47,64 @@ bool LoadHeightMapFromFile(
     bool               unipolar)
 {
     if (path.empty() || terrain.columns < 2 || terrain.rows < 2
-        || terrain.columns > 4097 || terrain.rows > 4097) return false;
-    /// @note ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
+        || terrain.columns > 4097 || terrain.rows > 4097) {
+        return false;
+    }
+    // ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
     std::string sourcePath;
-    if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
+    if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) {
+        return false;
+    }
     const std::wstring wpath = util::StringUtils::ToWide(sourcePath);
 
-    if (!HeightMapEnsureCom()) return false;
+    if (!HeightMapEnsureCom()) {
+        return false;
+    }
 
     DirectX::ScratchImage image;
     HRESULT hr;
-    if (sourcePath.ends_with(".dds") || sourcePath.ends_with(".DDS"))
+    if (sourcePath.ends_with(".dds") || sourcePath.ends_with(".DDS")) {
         hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
+    }
     else if (sourcePath.ends_with(".tga") || sourcePath.ends_with(".TGA"))
         hr = DirectX::LoadFromTGAFile(wpath.c_str(), nullptr, image);
-    else
+    else {
         hr = DirectX::LoadFromWICFile(wpath.c_str(), DirectX::WIC_FLAGS_IGNORE_SRGB, nullptr, image);
+    }
 
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        return false;
+    }
 
-    /// @note グレースケール (R8/R16) もカラー (R8G8B8A8) も R チャンネルだけを高さとして使う。
+    // グレースケール (R8/R16) もカラー (R8G8B8A8) も R チャンネルだけを高さとして使う。
     DirectX::ScratchImage converted;
-    if (!image.GetImage(0, 0, 0)) return false;
+    if (!image.GetImage(0, 0, 0)) {
+        return false;
+    }
     DirectX::Image linear = *image.GetImage(0, 0, 0);
-    /// @note 高さは色ではないため PNG/TGA/DDS の sRGB 指定によるガンマ変換を行わない。
+    // 高さは色ではないため PNG/TGA/DDS の sRGB 指定によるガンマ変換を行わない。
     /// @see https://github.com/microsoft/DirectXTex/wiki/Convert Convert の sRGB 入出力契約。
     linear.format = DirectX::MakeLinear(linear.format);
     const DirectX::Image* src = &linear;
     if (linear.format != DXGI_FORMAT_R32_FLOAT) {
         hr = DirectX::Convert(linear, DXGI_FORMAT_R32_FLOAT, DirectX::TEX_FILTER_DEFAULT,
             DirectX::TEX_THRESHOLD_DEFAULT, converted);
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            return false;
+        }
         src = converted.GetImage(0, 0, 0);
     }
-    if (!src) return false;
+    if (!src) {
+        return false;
+    }
     DirectX::ScratchImage resized;
     const size_t targetW = static_cast<size_t>(terrain.columns);
     const size_t targetH = static_cast<size_t>(terrain.rows);
     if (src->width != targetW || src->height != targetH) {
         hr = DirectX::Resize(*src, targetW, targetH, DirectX::TEX_FILTER_CUBIC, resized);
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            return false;
+        }
         src = resized.GetImage(0, 0, 0);
     }
 
@@ -97,7 +115,9 @@ bool LoadHeightMapFromFile(
         for (size_t x = 0; x < targetW; ++x) {
             float value = 0.0f;
             std::memcpy(&value, row + x * sizeof(float), sizeof(float));
-            if (!std::isfinite(value)) return false;
+            if (!std::isfinite(value)) {
+                return false;
+            }
             const float p = std::clamp(value, 0.0f, 1.0f);
             heights[z * targetW + x] = unipolar ? p : (p * 2.0f - 1.0f);
         }
@@ -114,24 +134,31 @@ bool SaveHeightMapToFile(
     bool                    unipolar)
 {
     if (path.empty() || terrain.columns <= 0 || terrain.rows <= 0
-        || terrain.heightData.size() != terrain.VertexCount())
+        || terrain.heightData.size() != terrain.VertexCount()) {
         return false;
+    }
     for (float height : terrain.heightData)
-        if (!std::isfinite(height)) return false;
+        if (!std::isfinite(height)) {
+            return false;
+        }
 
     const size_t width  = static_cast<size_t>(terrain.columns);
     const size_t height = static_cast<size_t>(terrain.rows);
 
     DirectX::ScratchImage image;
-    if (FAILED(image.Initialize2D(DXGI_FORMAT_R16_UNORM, width, height, 1, 1))) return false;
+    if (FAILED(image.Initialize2D(DXGI_FORMAT_R16_UNORM, width, height, 1, 1))) {
+        return false;
+    }
     const DirectX::Image* dst = image.GetImage(0, 0, 0);
-    if (!dst) return false;
+    if (!dst) {
+        return false;
+    }
 
     for (size_t z = 0; z < height; ++z) {
         std::uint8_t* row = dst->pixels + z * dst->rowPitch;
         for (size_t x = 0; x < width; ++x) {
             const float h = terrain.heightData[z * width + x];
-            /// @note LoadHeightMapFromFile の逆写像: unipolar は p = h、bipolar は p = h * 0.5 + 0.5。
+            // LoadHeightMapFromFile の逆写像: unipolar は p = h、bipolar は p = h * 0.5 + 0.5。
             const float p = std::clamp(unipolar ? h : h * 0.5f + 0.5f, 0.0f, 1.0f);
             const std::uint16_t value = static_cast<std::uint16_t>(std::lround(p * 65535.0f));
             std::memcpy(row + x * sizeof(std::uint16_t), &value, sizeof(std::uint16_t));
@@ -139,9 +166,11 @@ bool SaveHeightMapToFile(
     }
 
     const std::filesystem::path fsPath(util::StringUtils::ToWide(path));
-    if (!HeightMapEnsureCom()) return false;
+    if (!HeightMapEnsureCom()) {
+        return false;
+    }
 
-    /// @note R16_UNORM は WIC の 16bppGray へ写り、PNG エンコーダーはそのまま 16 bit グレースケールで保存する。
+    // R16_UNORM は WIC の 16bppGray へ写り、PNG エンコーダーはそのまま 16 bit グレースケールで保存する。
     DirectX::Blob png;
     const HRESULT hr = DirectX::SaveToWICMemory(
         *dst, DirectX::WIC_FLAGS_NONE,
@@ -150,4 +179,4 @@ bool SaveHeightMapToFile(
     return SUCCEEDED(hr) && util::FileSystem::WriteBinaryAtomic(fsPath, png.GetBufferPointer(), png.GetBufferSize());
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

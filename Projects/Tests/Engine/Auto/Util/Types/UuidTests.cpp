@@ -36,7 +36,9 @@ TEST_F(UuidTest, UsesOnlyLowerCaseHexOutsideTheSeparators)
     const std::string id = util::GenerateUUID();
 
     for (std::size_t i = 0; i < id.size(); ++i) {
-        if (i == 8 || i == 13 || i == 18 || i == 23) continue;
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            continue;
+        }
 
         const char c = id[i];
         const bool digit = c >= '0' && c <= '9';
@@ -48,7 +50,7 @@ TEST_F(UuidTest, UsesOnlyLowerCaseHexOutsideTheSeparators)
 /// @brief Marks version four and the rfc variant.
 TEST_F(UuidTest, MarksVersionFourAndTheRfcVariant)
 {
-    /// @note 版とバリアントが立っていないと、外部ツールから «UUID ではない» と扱われる。
+    // 版とバリアントが立っていないと、外部ツールから «UUID ではない» と扱われる。
     const std::string id = util::GenerateUUID();
 
     EXPECT_EQ(id[14], '4');
@@ -60,8 +62,8 @@ TEST_F(UuidTest, MarksVersionFourAndTheRfcVariant)
 /// @brief Generates a different value every time.
 TEST_F(UuidTest, GeneratesADifferentValueEveryTime)
 {
-    /// @note 同じフレームで何十個も作る (プレファブの一括生成)。そこで衝突すると
-    ///       «参照が別のオブジェクトを指す» という形で出る。
+    // 同じフレームで何十個も作る (プレファブの一括生成)。そこで衝突すると
+    //       «参照が別のオブジェクトを指す» という形で出る。
     std::set<std::string> seen;
     for (int i = 0; i < 1000; ++i) seen.insert(util::GenerateUUID());
 

@@ -26,4 +26,4 @@ struct WaterOpticalSettings {
 [[nodiscard]] FBZZ_ENGINE_API WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAsset* material);
 /// @note 資源のコールバックをまたいで値を渡す間、呼び出し側が不変のスナップショットを所有する。
 [[nodiscard]] FBZZ_ENGINE_API WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAssetAuthoring& values);
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

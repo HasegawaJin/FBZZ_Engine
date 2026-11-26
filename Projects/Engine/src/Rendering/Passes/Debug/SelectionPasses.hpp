@@ -22,17 +22,27 @@ class RenderSelectionLookup {
 public:
     explicit RenderSelectionLookup(std::span<const renderer::RenderSelectionID> selected) : m_selected(selected)
     {
-        if (selected.size() <= 8) return;
+        if (selected.size() <= 8) {
+            return;
+        }
         m_keys.reserve(selected.size());
-        for (const auto& id : selected) m_keys.insert(Key(id.index, id.generation));
+        for (const auto& id : selected) {
+            m_keys.insert(Key(id.index, id.generation));
+        }
     }
 
     [[nodiscard]] bool Contains(EntityID id) const
     {
-        if (!id.IsValid()) return false;
-        if (!m_keys.empty()) return m_keys.contains(Key(id.index, id.generation));
+        if (!id.IsValid()) {
+            return false;
+        }
+        if (!m_keys.empty()) {
+            return m_keys.contains(Key(id.index, id.generation));
+        }
         for (const auto& selected : m_selected)
-            if (selected.index == id.index && selected.generation == id.generation) return true;
+            if (selected.index == id.index && selected.generation == id.generation) {
+                return true;
+            }
         return false;
     }
 
@@ -50,4 +60,4 @@ FBZZ_ENGINE_API void ExecuteSelectionOutlinePass(renderer::PassResources& res, R
 [[nodiscard]] FBZZ_ENGINE_API bool IsSelectedForOutline(const GameObject& go,
                                         const renderer::RenderSettings& settings);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -13,8 +13,7 @@ namespace fbzz::scene {
 /// @note Camera と分けるのは、リプレイカメラや観戦カメラでも音の基準を明示的に選べるようにするため。
 struct AudioListenerComponent {
     bool enabled = true;
-    /// @note 有効な Listener が複数あるとき、最大の 1 つが受聴点になる。同値なら登録順。
-    int priority = 0;
+    int priority = 0; ///< 有効な Listener が複数あるとき、最大の 1 つが受聴点になる。同値なら登録順。
     float volume = 1.0f;
 
     /// @note 前フレームのワールド座標と、それが有効かどうか。Doppler の相対速度に使う。

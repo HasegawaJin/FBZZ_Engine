@@ -17,7 +17,7 @@ struct MaterialSlotAuthoring;
 /// @note 既存の Scene 描画パス向け互換名。Renderer からこのヘッダーを参照しない。
 using renderer::GeometryRoute;
 
-/// @param shaderPath アセット参照またはパス。未宣言・未知・空欄は非対応。
+/// @param[in] shaderPath アセット参照またはパス。未宣言・未知・空欄は非対応。
 /// @note .meta の能力契約と変種セットを要求する。GUID の解決は Engine 側で完結させる。
 [[nodiscard]] FBZZ_ENGINE_API bool IsGBufferEquivalentShader(std::string_view shaderPath);
 
@@ -42,4 +42,4 @@ using renderer::GeometryRoute;
 /// @note フレーム入力へ移行中の描画パス用。抽出後は Renderer の規則に委ねる。
 [[nodiscard]] FBZZ_ENGINE_API GeometryRoute ResolveGeometryRoute(const MaterialSlot& slot, bool gbufferPipeline);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

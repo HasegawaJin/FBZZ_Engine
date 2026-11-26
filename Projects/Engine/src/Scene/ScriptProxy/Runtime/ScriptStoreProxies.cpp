@@ -33,7 +33,7 @@ util::SaveStore& StoreOf(SaveStoreKind kind)
 }
 
 
-} /// @note namespace
+} // namespace
 void ScriptStoreProxyBase::SetPath(std::string_view path) const
 {
     StoreOf(kind).SetPath(std::string(path));
@@ -180,4 +180,4 @@ bool ScriptStoreProxyBase::IsDirty() const
 /// @name ScriptDisplayProxy
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

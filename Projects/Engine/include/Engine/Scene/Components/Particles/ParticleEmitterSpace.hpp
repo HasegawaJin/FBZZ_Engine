@@ -16,8 +16,8 @@ namespace fbzz::scene {
 
 inline math::Vector3 TransformEmitterPoint(const Transform& transform, const math::Vector3& localPoint)
 {
-    /// @note Transform::position は親基準のローカル座標なので、子 GO に置くと親の移動が乗らない。
-    ///       Particle はワールド空間で保持するので world* から発生点を解決する。
+    // Transform::position は親基準のローカル座標なので、子 GO に置くと親の移動が乗らない。
+    //       Particle はワールド空間で保持するので world* から発生点を解決する。
     const math::Vector3 scaledLocal = {
         localPoint.x * transform.worldScale.x,
         localPoint.y * transform.worldScale.y,
@@ -28,7 +28,7 @@ inline math::Vector3 TransformEmitterPoint(const Transform& transform, const mat
 
 inline math::Vector3 TransformEmitterVector(const Transform& transform, const math::Vector3& localVector)
 {
-    /// @note 速度は位置ではないため平行移動を含めず、Emitter のワールド回転だけを適用する。
+    // 速度は位置ではないため平行移動を含めず、Emitter のワールド回転だけを適用する。
     return transform.worldRotation * localVector;
 }
 

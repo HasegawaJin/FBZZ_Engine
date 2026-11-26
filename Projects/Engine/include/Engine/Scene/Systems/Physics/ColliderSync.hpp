@@ -76,7 +76,9 @@ bool PrepareCollider(Scene& scene, GameObject& go, T& col)
         SyncColliderShape(col, ColliderTransformScale(go));
     }
 
-    if (!col.collider) return false;
+    if (!col.collider) {
+        return false;
+    }
 
     bool useTransformScale = true;
     if constexpr (std::is_same_v<T, MeshColliderComponent> ||
@@ -87,4 +89,4 @@ bool PrepareCollider(Scene& scene, GameObject& go, T& col)
     return true;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

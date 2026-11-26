@@ -14,12 +14,18 @@ namespace fbzz::asset {
 
 bool SaveParticleCurveAsset(const std::string& absPath, const ParticleCurveAsset& asset)
 {
-    if (!asset.hasCurve && !asset.hasGradient) return false;
+    if (!asset.hasCurve && !asset.hasGradient) {
+        return false;
+    }
 
     toml::table root;
     root.insert("version", 1);
-    if (asset.hasCurve)    root.insert("curve", SerializeParticleCurve(asset.curve));
-    if (asset.hasGradient) root.insert("gradient", SerializeParticleGradient(asset.gradient));
+    if (asset.hasCurve) {
+        root.insert("curve", SerializeParticleCurve(asset.curve));
+    }
+    if (asset.hasGradient) {
+        root.insert("gradient", SerializeParticleGradient(asset.gradient));
+    }
 
     std::ofstream out(absPath, std::ios::trunc);
     if (!out) {
@@ -33,7 +39,9 @@ bool SaveParticleCurveAsset(const std::string& absPath, const ParticleCurveAsset
 bool LoadParticleCurveAssetFile(const std::string& absPath, ParticleCurveAsset& outAsset)
 {
     std::ifstream in(absPath);
-    if (!in) return false;
+    if (!in) {
+        return false;
+    }
     std::stringstream buffer;
     buffer << in.rdbuf();
 
@@ -55,8 +63,8 @@ bool LoadParticleCurveAssetFile(const std::string& absPath, ParticleCurveAsset& 
         asset.hasGradient = true;
     }
     if (!asset.hasCurve && !asset.hasGradient) {
-        /// @note 中身が無いファイルを «読めた» にすると、貼っても何も起きない曲線が
-        ///       静かに配られる。読めなかったものとして扱う。
+        // 中身が無いファイルを «読めた» にすると、貼っても何も起きない曲線が
+        //       静かに配られる。読めなかったものとして扱う。
         FBZZ_LOG_ERROR("ParticleCurveAsset: curve も gradient もありません: %s", absPath.c_str());
         return false;
     }

@@ -33,8 +33,8 @@ namespace fbzz::scene {
         || go.GetComponent<UINavigation>()
         || go.GetComponent<UIDragSource>()
         || go.GetComponent<UIDropTarget>();
-    /// @note UICanvasGroup は入れない。あれは配下の見え方と入力可否を変えるだけで
-    ///       自分の矩形を持たない (掴んでも動かす対象が無い)。
+    // UICanvasGroup は入れない。あれは配下の見え方と入力可否を変えるだけで
+    //       自分の矩形を持たない (掴んでも動かす対象が無い)。
 }
 
 /// サイズが実測でしか決まらない要素。掴んで広げることはできない。

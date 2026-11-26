@@ -54,8 +54,8 @@ public:
     FBZZ_ENGINE_API void LoadScene(const std::filesystem::path& sceneFile);
 
     /// @note 共通のSimulation設定を適用してSystemSchedulerを更新する。
-    /// @param simulating このフレームでシミュレーションを進めるか (Pause 中は false)。
-    /// @param playing    Play セッションが続いているか。Pause 中も true。
+    /// @param[in] simulating このフレームでシミュレーションを進めるか (Pause 中は false)。
+    /// @param[in] playing    Play セッションが続いているか。Pause 中も true。
     /// @note 既定の true は Standalone (常に Play セッション) を指す。
     /// @note Editor は Pause を simulating=false / playing=true で表す。
     FBZZ_ENGINE_API void Update(float dt,

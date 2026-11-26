@@ -23,4 +23,4 @@ namespace fbzz::asset {
 /// @note 任意依存なので、テクスチャが欠けても .mat 自体は完成する (描画側はテクスチャ無しで描く)。
 [[nodiscard]] FBZZ_ENGINE_API std::shared_ptr<IAssetStreamChannel> CreateMaterialStreamChannel();
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

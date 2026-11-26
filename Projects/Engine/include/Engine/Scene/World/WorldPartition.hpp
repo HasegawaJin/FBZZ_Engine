@@ -28,8 +28,7 @@ struct WorldPartitionSettings {
     uint32_t maxResidentCells = 256;
     uint64_t maxCellBytes = 16ull * 1024ull * 1024ull;
     uint64_t maxResidentBytes = 512ull * 1024ull * 1024ull;
-    /// @note 分離された Play シーンだけで有効。制作シーンが既存のベイク元を暗黙に破棄することはない。
-    bool retireSourceObjects = false;
+    bool retireSourceObjects = false; ///< 分離された Play シーンだけで有効。制作シーンが既存のベイク元を暗黙に破棄することはない。
     bool operator==(const WorldPartitionSettings&) const = default;
 };
 

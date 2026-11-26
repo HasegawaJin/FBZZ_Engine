@@ -15,7 +15,7 @@ class Script;
 enum class LightType { Directional, Point, Spot, Area, Sphere, Tube };
 
 struct ScriptLightProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 光源操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetColor(const math::Vector3& color) const;
     FBZZ_ENGINE_API void SetType(LightType type) const;
@@ -40,4 +40,4 @@ struct ScriptLightProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

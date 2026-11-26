@@ -88,7 +88,7 @@ TEST_F(EventBusTest, DeliversInSubscriptionOrder)
 /// @brief Does not deliver to subscribers of another type.
 TEST_F(EventBusTest, DoesNotDeliverToSubscribersOfAnotherType)
 {
-    /// @note 型が違えば別の箱。ここが混ざると、無関係な購読者が壊れたデータを読む。
+    // 型が違えば別の箱。ここが混ざると、無関係な購読者が壊れたデータを読む。
     int damage = 0;
     util::EventBus::Subscribe<DamageTaken>([&damage](const DamageTaken& e) {
         damage = e.amount;
@@ -152,7 +152,7 @@ TEST_F(EventBusTest, UnsubscribeRemovesOnlyTheGivenSubscriber)
 /// @brief Subscriber IDs are unique across types.
 TEST_F(EventBusTest, SubscriberIdsAreUniqueAcrossTypes)
 {
-    /// @note ID が型をまたいで衝突すると、解除が別の型の購読者を巻き込む。
+    // ID が型をまたいで衝突すると、解除が別の型の購読者を巻き込む。
     int survivor = 0;
     const auto damageId = util::EventBus::Subscribe<DamageTaken>([](const DamageTaken&) {});
     util::EventBus::Subscribe<StageCleared>([&survivor](const StageCleared&) { ++survivor; });
@@ -178,7 +178,7 @@ TEST_F(EventBusTest, UnsubscribingAnUnknownIdIsHarmless)
 /// @brief Unsubscribing during delivery still finishes the current publish.
 TEST_F(EventBusTest, UnsubscribingDuringDeliveryStillFinishesTheCurrentPublish)
 {
-    /// @note 配信中の解除で購読者リストが再確保されると、走査中の参照が壊れる。
+    // 配信中の解除で購読者リストが再確保されると、走査中の参照が壊れる。
     int calls = 0;
     util::EventBus::SubscriberID self = 0;
     self = util::EventBus::Subscribe<DamageTaken>([&](const DamageTaken&) {
@@ -195,7 +195,7 @@ TEST_F(EventBusTest, UnsubscribingDuringDeliveryStillFinishesTheCurrentPublish)
 /// @brief Subscribing during delivery does not receive the same event.
 TEST_F(EventBusTest, SubscribingDuringDeliveryDoesNotReceiveTheSameEvent)
 {
-    /// @note 配信中に増えた購読者へその場で配ると、同じイベントで無限に増えうる。
+    // 配信中に増えた購読者へその場で配ると、同じイベントで無限に増えうる。
     int lateCalls = 0;
     util::EventBus::Subscribe<DamageTaken>([&lateCalls](const DamageTaken&) {
         util::EventBus::Subscribe<DamageTaken>([&lateCalls](const DamageTaken&) {
@@ -213,7 +213,7 @@ TEST_F(EventBusTest, SubscribingDuringDeliveryDoesNotReceiveTheSameEvent)
 /// @brief Clear removes subscribers of every type.
 TEST_F(EventBusTest, ClearRemovesSubscribersOfEveryType)
 {
-    /// @note Play モードの開始 / 終了で必ず呼ぶ。残ると破棄済みのシーンへ配信される。
+    // Play モードの開始 / 終了で必ず呼ぶ。残ると破棄済みのシーンへ配信される。
     int damage = 0;
     int stages = 0;
     util::EventBus::Subscribe<DamageTaken>([&damage](const DamageTaken&) { ++damage; });

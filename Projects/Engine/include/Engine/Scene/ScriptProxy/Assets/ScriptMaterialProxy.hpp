@@ -27,8 +27,8 @@ struct UserRenderPassDesc;
 /// @brief Shader property 名を constexpr hash へ変換する軽量 ID。
 /// @note name も保持し、Shader reflection 検証と衝突時の照合に使う。
 struct MaterialPropertyId {
-    uint64_t hash = 0;
-    std::string_view name;
+    uint64_t hash = 0; ///< 名前で指定した材質プロパティを検索する際に使うハッシュ。
+    std::string_view name; ///< 元のプロパティ名への非所有ビュー。
 
     constexpr MaterialPropertyId() = default;
     constexpr explicit MaterialPropertyId(std::string_view propertyName)
@@ -116,13 +116,13 @@ private:
     [[nodiscard]] FBZZ_ENGINE_API bool ValidateProperty(MaterialPropertyId property, PropertyKind kind) const;
     [[nodiscard]] FBZZ_ENGINE_API const std::string& ResolvePropertyName(void* component,
                                                         MaterialPropertyId property) const;
-    Script* m_script = nullptr;
-    EntityRef m_target;
-    uint32_t m_slot = 0;
+    Script* m_script = nullptr; ///< 材質操作で実行スコープを照合する、非所有の Script 参照。
+    EntityRef m_target; ///< 材質を変更する対象オブジェクトの参照。
+    uint32_t m_slot = 0; ///< 対象オブジェクトで操作する材質スロットの番号。
 };
 
 struct ScriptMaterialProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 材質操作で実行スコープを照合する、非所有の Script 参照。
 
     [[nodiscard]] FBZZ_ENGINE_API MaterialInstance Instance(uint32_t slot = 0) const;
     [[nodiscard]] FBZZ_ENGINE_API MaterialInstance Instance(EntityRef target, uint32_t slot = 0) const;

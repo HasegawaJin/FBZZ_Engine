@@ -40,10 +40,14 @@ bool ValidOptions(const PixCaptureOptions& options, std::string& reason)
 std::filesystem::path ProgramFilesDirectory()
 {
     const DWORD capacity = GetEnvironmentVariableW(L"ProgramFiles", nullptr, 0);
-    if (capacity == 0) return {};
+    if (capacity == 0) {
+        return {};
+    }
     std::vector<wchar_t> value(capacity);
     const DWORD length = GetEnvironmentVariableW(L"ProgramFiles", value.data(), capacity);
-    if (length == 0 || length >= capacity) return {};
+    if (length == 0 || length >= capacity) {
+        return {};
+    }
     return std::filesystem::path(std::wstring(value.data(), length));
 }
 
@@ -62,11 +66,17 @@ bool CanonicalModulePath(HMODULE module, std::filesystem::path& out)
     for (size_t capacity = 256; capacity <= MAX_MODULE_PATH_CHARACTERS; capacity *= 2) {
         std::vector<wchar_t> value(capacity);
         const DWORD length = GetModuleFileNameW(module, value.data(), static_cast<DWORD>(capacity));
-        if (length == 0) return false;
-        if (length >= capacity) continue;
+        if (length == 0) {
+            return false;
+        }
+        if (length >= capacity) {
+            continue;
+        }
         std::error_code error;
         auto path = std::filesystem::canonical(std::filesystem::path(std::wstring(value.data(), length)), error);
-        if (error || !path.is_absolute()) return false;
+        if (error || !path.is_absolute()) {
+            return false;
+        }
         out = path.make_preferred();
         return true;
     }
@@ -78,7 +88,7 @@ bool SameModulePath(const std::filesystem::path& left, const std::filesystem::pa
     return CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, TRUE) == CSTR_EQUAL;
 }
 
-} /// @note namespace
+} // namespace
 
 bool ParsePixCaptureOptions(std::span<const std::wstring_view> arguments,
                             PixCaptureOptions& out, std::string& reason)
@@ -95,7 +105,9 @@ bool ParsePixCaptureOptions(std::span<const std::wstring_view> arguments,
             reason = "--pix-capture does not accept a value.";
             return false;
         }
-        if (argument != L"--pix-path" && !argument.starts_with(L"--pix-path=")) continue;
+        if (argument != L"--pix-path" && !argument.starts_with(L"--pix-path=")) {
+            continue;
+        }
         if (directorySpecified) {
             reason = "--pix-path may only be specified once.";
             return false;
@@ -117,7 +129,9 @@ bool ParsePixCaptureOptions(std::span<const std::wstring_view> arguments,
         }
         parsed.installedDirectory = std::filesystem::path(value);
     }
-    if (!ValidOptions(parsed, reason)) return false;
+    if (!ValidOptions(parsed, reason)) {
+        return false;
+    }
     out = std::move(parsed);
     return true;
 }
@@ -126,7 +140,9 @@ bool ResolvePixCaptureDirectory(const PixCaptureOptions& options,
                                 const std::filesystem::path& programFilesDirectory,
                                 std::filesystem::path& out, std::string& reason)
 {
-    if (!ValidOptions(options, reason)) return false;
+    if (!ValidOptions(options, reason)) {
+        return false;
+    }
     std::filesystem::path resolved;
     if (options.requested) {
         if (!options.installedDirectory.empty()) {
@@ -149,8 +165,9 @@ bool ResolvePixCaptureDirectory(const PixCaptureOptions& options,
 bool InitializePixCapture(const PixCaptureOptions& options)
 {
     if (g_initialized) {
-        if (options.requested == g_options.requested && options.installedDirectory == g_options.installedDirectory)
+        if (options.requested == g_options.requested && options.installedDirectory == g_options.installedDirectory) {
             return g_initializationSucceeded;
+        }
         FBZZ_LOG_ERROR("PIX capture startup: startup options cannot change after initialization.");
         return false;
     }
@@ -160,42 +177,50 @@ bool InitializePixCapture(const PixCaptureOptions& options)
     std::string reason;
     if (!ResolvePixCaptureDirectory(options, options.requested && options.installedDirectory.empty()
                                                 ? ProgramFilesDirectory() : std::filesystem::path{},
-                                   g_status.installedDirectory, reason))
+                                   g_status.installedDirectory, reason)) {
         return FailInitialization(std::move(reason));
+    }
     if (!options.requested) {
         g_initializationSucceeded = true;
         return true;
     }
 
     std::error_code error;
-    if (!std::filesystem::is_directory(g_status.installedDirectory, error) || error)
+    if (!std::filesystem::is_directory(g_status.installedDirectory, error) || error) {
         return FailInitialization("The selected PIX directory does not exist or is inaccessible.");
+    }
     const auto requestedPath = g_status.installedDirectory / CAPTURER_FILENAME;
-    if (!std::filesystem::is_regular_file(requestedPath, error) || error)
+    if (!std::filesystem::is_regular_file(requestedPath, error) || error) {
         return FailInitialization("The selected directory does not contain WinPixGpuCapturer.dll.");
+    }
     auto capturerPath = std::filesystem::canonical(requestedPath, error);
-    if (error || !capturerPath.is_absolute())
+    if (error || !capturerPath.is_absolute()) {
         return FailInitialization("Cannot resolve the selected capturer to an absolute path.");
+    }
     capturerPath.make_preferred();
     g_status.installedDirectory = capturerPath.parent_path();
 
     if (const HMODULE existing = GetModuleHandleW(CAPTURER_FILENAME)) {
         std::filesystem::path existingPath;
-        if (!CanonicalModulePath(existing, existingPath))
+        if (!CanonicalModulePath(existing, existingPath)) {
             return FailInitialization("Cannot verify the already-loaded PIX capturer path.");
-        if (!SameModulePath(existingPath, capturerPath))
+        }
+        if (!SameModulePath(existingPath, capturerPath)) {
             return FailInitialization("A different PIX capturer is already loaded; it will not be replaced.");
+        }
     }
 
-    /// @note 同一のロード済みモジュールも含め、LoadLibrary の参照はプロセスの寿命まで保持する。D3D12 の終了中にアンロードされない。
+    // 同一のロード済みモジュールも含め、LoadLibrary の参照はプロセスの寿命まで保持する。D3D12 の終了中にアンロードされない。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw DLL_LOAD_DIR と SYSTEM32 を使い、依存 DLL の探索から CWD、PATH、アプリケーションディレクトリを外す。
     const HMODULE module = LoadLibraryExW(capturerPath.c_str(), nullptr,
                                          LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (!module)
+    if (!module) {
         return FailInitialization("LoadLibraryExW failed (Win32 error " + std::to_string(GetLastError()) + ").");
+    }
     std::filesystem::path actualPath;
-    if (!CanonicalModulePath(module, actualPath) || !SameModulePath(actualPath, capturerPath))
+    if (!CanonicalModulePath(module, actualPath) || !SameModulePath(actualPath, capturerPath)) {
         return FailInitialization("The loaded PIX capturer path does not match the selected directory.");
+    }
 
     g_status.ready = true;
     g_initializationSucceeded = true;
@@ -209,4 +234,4 @@ const PixCaptureStatus& GetPixCaptureStatus()
     return g_status;
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

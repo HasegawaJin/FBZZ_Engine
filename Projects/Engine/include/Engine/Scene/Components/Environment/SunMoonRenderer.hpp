@@ -9,17 +9,14 @@
 namespace fbzz::scene {
 
 struct SunMoonRenderer {
-    /// @note 大気散乱 (SkyRenderer) と発光ディスクを分ける設計。空色・IBL・雲と太陽/月の責務を独立させる。
-    bool          enabled      = true;
+    bool          enabled      = true; ///< 大気散乱 (SkyRenderer) と発光ディスクを分ける設計。空色・IBL・雲と太陽/月の責務を独立させる。
     bool          sunEnabled   = true;
-    /// @brief 太陽ディスクの明るさ。空の大気散乱の明るさは SkyRenderer::skyScatterIntensity が別に持つ。
-    float         sunDiskIntensity = 20.0f;
+    float         sunDiskIntensity = 20.0f; ///< 太陽ディスクの明るさ。空の大気散乱の明るさは SkyRenderer::skyScatterIntensity が別に持つ。
     bool          moonEnabled  = false;
     float         moonSize     = 1.0f;
     float         moonBrightness = 0.6f;
     math::Vector3 moonColor    = { 0.85f, 0.9f, 1.0f };
-    /// @brief 夜空の星の輝度倍率。0 は星を描かない。
-    float         starBrightness = 0.0f;
+    float         starBrightness = 0.0f; ///< 夜空の星の輝度倍率。0 は星を描かない。
 
     const char* GetTypeName() const { return "Sun Moon Renderer"; }
     void Reflect(IReflector& r)

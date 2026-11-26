@@ -38,4 +38,4 @@ public:
     FBZZ_ENGINE_API static void UnregisterManaged();
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

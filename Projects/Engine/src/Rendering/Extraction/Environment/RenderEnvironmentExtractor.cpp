@@ -26,12 +26,16 @@ namespace {
 void ExtractRayEnvironment(RenderPassContext& context, renderer::RenderEnvironmentInput& output)
 {
     static renderer::RayEnvironmentCache rayEnvironmentCache;
-    if (!context.experimentalRayTracingEnabled) rayEnvironmentCache.Reset();
-    /// @note Global IBL と同じ component order/active 条件で同じ owner を選ぶ。
+    if (!context.experimentalRayTracingEnabled) {
+        rayEnvironmentCache.Reset();
+    }
+    // Global IBL と同じ component order/active 条件で同じ owner を選ぶ。
     if (context.experimentalRayTracingEnabled) for (const EntityID entity : context.scene.GetEntities<EnvironmentLightComponent>()) {
         const auto* ownerObject = context.scene.GetGameObject(entity);
         const auto* light = context.scene.GetComponent<EnvironmentLightComponent>(entity);
-        if (!ownerObject || !ownerObject->activeInHierarchy() || !light || !light->enabled) continue;
+        if (!ownerObject || !ownerObject->activeInHierarchy() || !light || !light->enabled) {
+            continue;
+        }
         auto& environment = output.rayEnvironment;
         environment.requested = light->source != IblSource::StaticDDS || !light->rawEnvironmentPath.empty();
         environment.intensity = light->intensity;
@@ -59,12 +63,14 @@ void ExtractSkyAndSunMoon(const RenderPassContext& context, renderer::RenderEnvi
         const auto suns = context.scene.GetEntities<SunMoonRenderer>();
         candidates.assign(skies.begin(), skies.end());
         candidates.insert(candidates.end(), suns.begin(), suns.end());
-        /// @note 後から追加されたコンポーネントにも GameObject の走査順を適用し、無関係な骨ノードの走査を省く。
+        // 後から追加されたコンポーネントにも GameObject の走査順を適用し、無関係な骨ノードの走査を省く。
         context.scene.SortEntitiesBySceneOrder(candidates);
         candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
         for (const EntityID entity : candidates) {
             const auto* ownerObject = context.scene.GetGameObject(entity);
-            if (!ownerObject || !ShouldRenderGameObject(*ownerObject, context.cullingMask)) continue;
+            if (!ownerObject || !ShouldRenderGameObject(*ownerObject, context.cullingMask)) {
+                continue;
+            }
             if (!output.sky) if (const auto* sky = context.scene.GetComponent<SkyRenderer>(entity); sky && sky->enabled)
                 output.sky = renderer::RenderSkyInput{sky->rayleighScattering, sky->mieScattering,
                     sky->planetRadius, sky->atmosphereRadius, sky->skyScatterIntensity, sky->mieG};

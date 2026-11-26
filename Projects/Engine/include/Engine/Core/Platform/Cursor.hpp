@@ -56,7 +56,7 @@ inline constexpr int Camera   = 0;    ///< @note 視点操作。ゲームの地�
 inline constexpr int Gameplay = 100;  ///< @note 照準・ドラッグなど遊びの都合
 inline constexpr int UI       = 200;  ///< @note ゲーム内カーソル・メニュー
 inline constexpr int Modal    = 300;  ///< @note ポーズ・ダイアログ。何より優先する
-} /// @note namespace CursorPriority
+} // namespace CursorPriority
 
 using CursorRequestId = std::uint32_t;
 inline constexpr CursorRequestId kInvalidCursorRequest = 0;
@@ -67,9 +67,9 @@ struct CursorRequestInfo {
     CursorRequestId id       = kInvalidCursorRequest;
     int             priority = 0;
     CursorPolicy    policy{};
-    std::uint32_t   owner    = 0;      ///< @note 要求元の EntityID の生値 (0 = 無所属)
-    char            label[32]{};       ///< @note 要求元の名前 (スクリプトの型名など)
-    bool            active   = false;  ///< @note 今この要求が実効値を決めているか
+    std::uint32_t   owner    = 0; ///< 要求元の EntityID の生値 (0 = 無所属)
+    char            label[32]{}; ///< 要求元の名前 (スクリプトの型名など)
+    bool            active   = false; ///< 今この要求が実効値を決めているか
 };
 
 /// @brief 入力の所有権はカーソルの表示状態や移動制限とは独立する。
@@ -126,8 +126,8 @@ struct Cursor {
     /// @note ポーズメニューが閉じるとき «元が何だったか» を覚えているのはメニュー側になり、画面が増えるほど復元の組み合わせが増えて 1 つ忘れると戻らない。積んで畳む形にすると、戻す先は常に «残っている要求のうち最も強いもの» で済む。
     /// @{
 
-    /// @param owner EntityID の生値 (省略可)。
-    /// @param label 要求元の名前 (省略可)。Editor の Game View オーバーレイが表示する。
+    /// @param[in] owner EntityID の生値 (省略可)。
+    /// @param[in] label 要求元の名前 (省略可)。Editor の Game View オーバーレイが表示する。
     [[nodiscard]] FBZZ_ENGINE_API static CursorRequestId Push(const CursorPolicy& policy,
                                               int                 priority = CursorPriority::Gameplay,
                                               std::uint32_t       owner    = 0,
@@ -156,9 +156,9 @@ struct Cursor {
 
     /// @name 見た目
     /// @{
-    /// @param path 絶対パス。
-    /// @param hotspotX 画像左上からの画素。
-    /// @param hotspotY 画像左上からの画素。
+    /// @param[in] path 絶対パス。
+    /// @param[in] hotspotX 画像左上からの画素。
+    /// @param[in] hotspotY 画像左上からの画素。
     /// @note 失敗しても既定の矢印が残るだけで、拘束や表示には影響しない。
     FBZZ_ENGINE_API static bool SetShapeImage(CursorShape shape, const char* path,
                               float hotspotX, float hotspotY);
@@ -199,7 +199,7 @@ private:
     /// @brief 実効値が変わったかもしれないときに呼ぶ。表示・拘束・絵をまとめて追従させる。
     FBZZ_ENGINE_API static void Refresh();
 
-    /// @param force 追跡している OS 状態を信用せず、必ず ShowCursor のカウンタを補正し直す。
+    /// @param[in] force 追跡している OS 状態を信用せず、必ず ShowCursor のカウンタを補正し直す。
     FBZZ_ENGINE_API static void ApplyVisibility(bool force = false);
 
     /// @brief 現在の CursorShape に対応する HCURSOR をウィンドウへ適用する。
@@ -221,4 +221,4 @@ private:
     FBZZ_ENGINE_API static CursorShape s_shape;
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

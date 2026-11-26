@@ -41,25 +41,31 @@ WaterComponent* SelfWater(const Script* script)
 }
 
 /// @brief 有効な共有水面を解決し、共有水面がなければ要求元のコンポーネントを使う。
-/// @param script 呼び出し元。所属する GameObject が WaterComponent を所有する。
-/// @param sceneContext 非所有のScript実行Scene。nullptrなら自水面を使う。
-/// @param water 単独の水面またはゾーンを所有するコンポーネントを受け取る。
-/// @param object 解決した水面の GameObject を受け取る。
+/// @param[in] script 呼び出し元。所属する GameObject が WaterComponent を所有する。
+/// @param[in,out] sceneContext スクリプト実行中の Scene。共有水面の照会用データを準備する。null なら自水面を使う。
+/// @param[out] water 単独の水面またはゾーンを所有するコンポーネントを受け取る。
+/// @param[out] object 解決した水面の GameObject を受け取る。
 /// @return 要求元のコンポーネントまたは解決先の水面が存在しなければ false。
 
 bool ResolveScriptWaterSurface(Script* script, Scene* sceneContext, WaterComponent*& water, GameObject*& object)
 {
     water = SelfWater(script);
     object = script ? script->scene.Self() : nullptr;
-    if (!water || !object) return false;
-    if (!sceneContext) return true;
+    if (!water || !object) {
+        return false;
+    }
+    if (!sceneContext) {
+        return true;
+    }
 
     Scene& scene = *sceneContext;
     const EntityID requestedId = object->GetID();
     PrepareWaterSceneSurfaces(scene);
     const WaterComponent* requestedWater = scene.GetComponent<WaterComponent>(requestedId);
     water = ResolveWaterZoneOwner(scene, requestedId);
-    if (!water) return false;
+    if (!water) {
+        return false;
+    }
     const EntityID surfaceId = requestedWater && requestedWater->zoneOwner.IsValid()
         ? requestedWater->zoneOwner : requestedId;
     object = scene.GetGameObject(surfaceId);
@@ -75,7 +81,9 @@ TerrainComponent* SelfTerrain(const Script* script)
 
 math::Vector3 WorldToTerrainLocal(const GameObject* gameObject, const math::Vector3& worldPos)
 {
-    if (!gameObject) return worldPos;
+    if (!gameObject) {
+        return worldPos;
+    }
     const auto& t = gameObject->transform;
     const math::Vector3 delta = worldPos - t.worldPosition;
     const math::Vector3 local = t.worldRotation.Inverse() * delta;
@@ -96,9 +104,13 @@ math::Vector3 WorldToTerrainLocal(const GameObject* gameObject, const math::Vect
 template<typename T>
 T* FindFirstInScene(Scene* scene)
 {
-    if (!scene) return nullptr;
+    if (!scene) {
+        return nullptr;
+    }
     for (EntityID eid : scene->GetEntities<T>()) {
-        if (auto* c = scene->GetComponent<T>(eid)) return c;
+        if (auto* c = scene->GetComponent<T>(eid)) {
+            return c;
+        }
     }
     return nullptr;
 }
@@ -108,7 +120,9 @@ T* FindFirstInScene(Scene* scene)
 FlowFieldSettings* SelfPrimaryForce(const Script* script)
 {
     auto* field = SelfComponent<FlowField>(script);
-    if (field == nullptr || field->forces.empty()) return nullptr;
+    if (field == nullptr || field->forces.empty()) {
+        return nullptr;
+    }
     return &field->forces.front();
 }
 
@@ -116,25 +130,35 @@ FlowFieldSettings* SelfPrimaryForce(const Script* script)
 }
 float ScriptWaterProxy::GetSurfaceHeightWorld(float worldX, float worldZ, float time) const
 {
-    if (!script || !script->m_scene) return 0.0f;
+    if (!script || !script->m_scene) {
+        return 0.0f;
+    }
     WaterComponent* surfaceWater = nullptr;
     GameObject* surfaceObject = nullptr;
-    if (!ResolveScriptWaterSurface(script, script->m_scene, surfaceWater, surfaceObject)) return 0.0f;
+    if (!ResolveScriptWaterSurface(script, script->m_scene, surfaceWater, surfaceObject)) {
+        return 0.0f;
+    }
     const auto& transform = surfaceObject->transform;
     WaterSurfaceHeightSample sample;
     if (!TrySampleWaterSurfaceHeightWorld(*surfaceWater, transform,
-            {worldX, transform.worldPosition.y, worldZ}, time, sample)) return 0.0f;
+            {worldX, transform.worldPosition.y, worldZ}, time, sample)) {
+        return 0.0f;
+    }
     return sample.position.y;
 }
 
 
 float ScriptWaterProxy::GetSurfaceHeightLocal(float localX, float localZ, float time) const
 {
-    if (!script || !script->m_scene) return 0.0f;
-    /// @note ローカル XZ は呼び出し元 GameObject でワールド化し、高さの基準も呼び出し元のワールド Y とする。波の位相はワールド XZ で評価する。
+    if (!script || !script->m_scene) {
+        return 0.0f;
+    }
+    // ローカル XZ は呼び出し元 GameObject でワールド化し、高さの基準も呼び出し元のワールド Y とする。波の位相はワールド XZ で評価する。
     WaterComponent* surfaceWater = nullptr;
     GameObject* surfaceObject = nullptr;
-    if (!ResolveScriptWaterSurface(script, script->m_scene, surfaceWater, surfaceObject)) return 0.0f;
+    if (!ResolveScriptWaterSurface(script, script->m_scene, surfaceWater, surfaceObject)) {
+        return 0.0f;
+    }
     const auto& requestedTransform = script->m_gameObject->transform;
     const auto& surfaceTransform = surfaceObject->transform;
     const math::Vector3 world = requestedTransform.worldPosition
@@ -143,7 +167,9 @@ float ScriptWaterProxy::GetSurfaceHeightLocal(float localX, float localZ, float 
             localZ * requestedTransform.worldScale.z };
     WaterSurfaceHeightSample sample;
     if (!TrySampleWaterSurfaceHeightWorld(*surfaceWater, surfaceTransform,
-            {world.x, surfaceTransform.worldPosition.y, world.z}, time, sample)) return 0.0f;
+            {world.x, surfaceTransform.worldPosition.y, world.z}, time, sample)) {
+        return 0.0f;
+    }
     return static_cast<float>(static_cast<double>(surfaceTransform.worldPosition.y)
         - static_cast<double>(requestedTransform.worldPosition.y) + sample.displacement);
 }
@@ -151,7 +177,9 @@ float ScriptWaterProxy::GetSurfaceHeightLocal(float localX, float localZ, float 
 
 void ScriptWaterProxy::SetWaveAmplitudeScale(float scale) const
 {
-    if (auto* wc = SelfWater(script)) wc->waveAmplitudeScale = scale < 0.0f ? 0.0f : scale;
+    if (auto* wc = SelfWater(script)) {
+        wc->waveAmplitudeScale = scale < 0.0f ? 0.0f : scale;
+    }
 }
 
 
@@ -164,7 +192,9 @@ float ScriptWaterProxy::GetWaveAmplitudeScale() const
 
 void ScriptWaterProxy::SetGerstnerEnabled(bool enabled) const
 {
-    if (auto* wc = SelfWater(script)) wc->enableGerstnerWaves = enabled;
+    if (auto* wc = SelfWater(script)) {
+        wc->enableGerstnerWaves = enabled;
+    }
 }
 
 
@@ -179,7 +209,9 @@ void ScriptWaterProxy::AddRipple(const math::Vector3& worldPos, float strength) 
 {
     WaterComponent* surfaceWater = nullptr;
     GameObject* surfaceObject = nullptr;
-    if (!ResolveScriptWaterSurface(script, script ? script->m_scene : nullptr, surfaceWater, surfaceObject)) return;
+    if (!ResolveScriptWaterSurface(script, script ? script->m_scene : nullptr, surfaceWater, surfaceObject)) {
+        return;
+    }
     EmitWaterRipple(*surfaceWater, surfaceObject->transform, worldPos, strength);
 }
 
@@ -189,7 +221,9 @@ void ScriptWaterProxy::Splash(const math::Vector3& worldPos, float intensity) co
     const float clamped = intensity < 0.0f ? 0.0f : (intensity > 1.0f ? 1.0f : intensity);
     WaterComponent* surfaceWater = nullptr;
     GameObject* surfaceObject = nullptr;
-    if (!ResolveScriptWaterSurface(script, script ? script->m_scene : nullptr, surfaceWater, surfaceObject)) return;
+    if (!ResolveScriptWaterSurface(script, script ? script->m_scene : nullptr, surfaceWater, surfaceObject)) {
+        return;
+    }
     EmitWaterRipple(*surfaceWater, surfaceObject->transform, worldPos, 0.3f + 0.7f * clamped);
     QueueWaterSplash(*script->m_scene, surfaceObject->GetID(), worldPos, clamped);
 }
@@ -197,13 +231,17 @@ void ScriptWaterProxy::Splash(const math::Vector3& worldPos, float intensity) co
 
 void ScriptWaterProxy::SetBuoyancyEnabled(bool enabled) const
 {
-    if (auto* wc = SelfWater(script)) wc->buoyancyEnabled = enabled;
+    if (auto* wc = SelfWater(script)) {
+        wc->buoyancyEnabled = enabled;
+    }
 }
 
 
 void ScriptWaterProxy::SetEnabled(bool enabled) const
 {
-    if (auto* wc = SelfWater(script)) wc->enabled = enabled;
+    if (auto* wc = SelfWater(script)) {
+        wc->enabled = enabled;
+    }
 }
 
 
@@ -238,9 +276,13 @@ float ScriptTerrainProxy::GetHeightWorld(const math::Vector3& worldPos) const
 bool ScriptTerrainProxy::TryGetSurfaceWorld(float worldX, float worldZ, math::Vector3& position, math::Vector3& normal) const
 {
     const auto* terrain = SelfTerrain(script);
-    if (!terrain || !script || !script->m_gameObject) return false;
+    if (!terrain || !script || !script->m_gameObject) {
+        return false;
+    }
     TerrainSurfaceSample sample;
-    if (!TrySampleTerrainWorld(*terrain, script->m_gameObject->transform, worldX, worldZ, sample)) return false;
+    if (!TrySampleTerrainWorld(*terrain, script->m_gameObject->transform, worldX, worldZ, sample)) {
+        return false;
+    }
     position = sample.position;
     normal = sample.normal;
     return true;
@@ -252,9 +294,13 @@ bool ScriptTerrainProxy::TryGetFloorWorld(const math::Vector3& reference, float 
     math::Vector3& position, math::Vector3& normal) const
 {
     const auto* terrain = SelfTerrain(script);
-    if (!terrain || !script || !script->m_gameObject) return false;
+    if (!terrain || !script || !script->m_gameObject) {
+        return false;
+    }
     TerrainSurfaceSample sample;
-    if (!TrySampleTerrainFloorWorld(*terrain, script->m_gameObject->transform, reference, maxDistance, sample)) return false;
+    if (!TrySampleTerrainFloorWorld(*terrain, script->m_gameObject->transform, reference, maxDistance, sample)) {
+        return false;
+    }
     position = sample.position; normal = sample.normal;
     return true;
 }
@@ -263,9 +309,13 @@ bool ScriptTerrainProxy::TryGetCeilingWorld(const math::Vector3& reference, floa
     math::Vector3& position, math::Vector3& normal) const
 {
     const auto* terrain = SelfTerrain(script);
-    if (!terrain || !script || !script->m_gameObject) return false;
+    if (!terrain || !script || !script->m_gameObject) {
+        return false;
+    }
     TerrainSurfaceSample sample;
-    if (!TrySampleTerrainCeilingWorld(*terrain, script->m_gameObject->transform, reference, maxDistance, sample)) return false;
+    if (!TrySampleTerrainCeilingWorld(*terrain, script->m_gameObject->transform, reference, maxDistance, sample)) {
+        return false;
+    }
     position = sample.position; normal = sample.normal;
     return true;
 }
@@ -274,7 +324,9 @@ bool ScriptTerrainProxy::TryGetCeilingWorld(const math::Vector3& reference, floa
 math::Vector3 ScriptTerrainProxy::GetNormalWorld(const math::Vector3& worldPos) const
 {
     auto* terrain = SelfTerrain(script);
-    if (!terrain || !script || !script->m_gameObject) return math::Vector3::UP;
+    if (!terrain || !script || !script->m_gameObject) {
+        return math::Vector3::UP;
+    }
     const auto finite = [](const math::Vector3& value) {
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     };
@@ -282,13 +334,22 @@ math::Vector3 ScriptTerrainProxy::GetNormalWorld(const math::Vector3& worldPos) 
     const auto scale = transform.worldScale;
     const double rotationLength = transform.worldRotation.Length();
     if (!finite(worldPos) || !finite(scale) || scale.x == 0.0f || scale.y == 0.0f || scale.z == 0.0f
-        || !std::isfinite(rotationLength) || std::abs(rotationLength - 1) > 0.001)
+        || !std::isfinite(rotationLength) || std::abs(rotationLength - 1) > 0.001) {
         return math::Vector3::UP;
-    if (terrain->columns < 2 || terrain->rows < 2 || !std::isfinite(terrain->cellSize) || terrain->cellSize <= 0
-        || !std::isfinite(terrain->maxHeight) || (!terrain->heightData.empty() && terrain->heightData.size() != terrain->VertexCount()))
+    }
+    // XZ の照会範囲を計算できる格子と、頂点の高さを復元できる設定を確認する。
+    if (terrain->columns < 2 || terrain->rows < 2 || !std::isfinite(terrain->cellSize) || terrain->cellSize <= 0) {
         return math::Vector3::UP;
+    }
+    if (!std::isfinite(terrain->maxHeight)
+        || (!terrain->heightData.empty() && terrain->heightData.size() != terrain->VertexCount())) {
+        return math::Vector3::UP;
+    }
+
     const math::Vector3 local = WorldToTerrainLocal(script->m_gameObject, worldPos);
-    if (!finite(local)) return math::Vector3::UP;
+    if (!finite(local)) {
+        return math::Vector3::UP;
+    }
     const auto normal = terrain->GetNormalAt((std::clamp)(local.x, 0.0f, (terrain->columns - 1) * terrain->cellSize),
         (std::clamp)(local.z, 0.0f, (terrain->rows - 1) * terrain->cellSize));
     math::Vector3 worldNormal;
@@ -334,11 +395,17 @@ float ScriptTerrainProxy::GetLayerWeightAtGrid(int x, int z, int layer) const
 bool ScriptTerrainProxy::SetHoleAtGrid(int cellX, int cellZ, bool hole) const
 {
     auto* terrain = SelfTerrain(script);
-    if (!terrain) return false;
+    if (!terrain) {
+        return false;
+    }
     const bool wasHole = terrain->IsHoleCell(cellX, cellZ);
-    if (!terrain->SetHoleCell(cellX, cellZ, hole)) return false;
-    /// @note 変化の無い書き込みでメッシュとコライダーを作り直さない (毎フレーム呼ぶスクリプトを想定)。
-    if (wasHole != hole) terrain->RequestHoleRebuild();
+    if (!terrain->SetHoleCell(cellX, cellZ, hole)) {
+        return false;
+    }
+    // 変化の無い書き込みでメッシュとコライダーを作り直さない (毎フレーム呼ぶスクリプトを想定)。
+    if (wasHole != hole) {
+        terrain->RequestHoleRebuild();
+    }
     return true;
 }
 
@@ -356,39 +423,53 @@ void ScriptTerrainProxy::RequestRebuild() const
 
 void ScriptEnvironmentProxy::SetIBLEnabled(bool enabled) const
 {
-    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->enabled = enabled;
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) {
+        c->enabled = enabled;
+    }
 }
 
 void ScriptEnvironmentProxy::SetIBLIntensity(float intensity) const
 {
-    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->intensity = intensity;
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) {
+        c->intensity = intensity;
+    }
 }
 
 void ScriptEnvironmentProxy::SetIBLDiffuseScale(float scale) const
 {
-    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->diffuseScale = scale;
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) {
+        c->diffuseScale = scale;
+    }
 }
 
 void ScriptEnvironmentProxy::SetIBLSpecularScale(float scale) const
 {
-    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->specularScale = scale;
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) {
+        c->specularScale = scale;
+    }
 }
 
 
 void ScriptEnvironmentProxy::SetSunIntensity(float intensity) const
 {
-    /// @note 対象は大気散乱の明るさ。太陽ディスクは ScriptSunMoonProxy::SetSun が持つ。
-    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->skyScatterIntensity = intensity;
+    // 対象は大気散乱の明るさ。太陽ディスクは ScriptSunMoonProxy::SetSun が持つ。
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) {
+        c->skyScatterIntensity = intensity;
+    }
 }
 
 void ScriptEnvironmentProxy::SetMieScattering(float mie) const
 {
-    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->mieScattering = mie;
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) {
+        c->mieScattering = mie;
+    }
 }
 
 void ScriptEnvironmentProxy::SetMieG(float g) const
 {
-    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->mieG = g;
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) {
+        c->mieG = g;
+    }
 }
 
 float ScriptEnvironmentProxy::GetSunIntensity() const
@@ -439,14 +520,16 @@ float ScriptEnvironmentProxy::GetIBLSpecularScale() const
 
 void ScriptFlowFieldProxy::SetEnabled(bool enabled) const
 {
-    if (auto* force = SelfPrimaryForce(script)) force->enabled = enabled;
+    if (auto* force = SelfPrimaryForce(script)) {
+        force->enabled = enabled;
+    }
 }
 
 void ScriptFlowFieldProxy::SetType(ScriptFlowFieldType type) const
 {
     if (auto* force = SelfPrimaryForce(script)) {
-        /// @note LEGACY_DRAG (5) と Baked (6) はスクリプトからは選べない。前者は読み込み専用、
-        /// @note 後者は 速度場 PNG のパスが要るのでコンポーネント側で組む。
+        // LEGACY_DRAG (5) と Baked (6) はスクリプトからは選べない。前者は読み込み専用、
+        // 後者は 速度場 PNG のパスが要るのでコンポーネント側で組む。
         const int value = std::clamp(static_cast<int>(type), 0,
                                      static_cast<int>(FlowFieldType::Curl));
         force->fieldType = static_cast<FlowFieldType>(value);
@@ -455,7 +538,9 @@ void ScriptFlowFieldProxy::SetType(ScriptFlowFieldType type) const
 
 void ScriptFlowFieldProxy::SetSpeed(float speed) const
 {
-    if (auto* force = SelfPrimaryForce(script)) force->strength = speed;
+    if (auto* force = SelfPrimaryForce(script)) {
+        force->strength = speed;
+    }
 }
 
 void ScriptFlowFieldProxy::SetRadius(float radius, float falloffPower) const
@@ -468,7 +553,9 @@ void ScriptFlowFieldProxy::SetRadius(float radius, float falloffPower) const
 
 void ScriptFlowFieldProxy::SetDirection(const math::Vector3& direction) const
 {
-    if (auto* force = SelfPrimaryForce(script)) force->direction = direction;
+    if (auto* force = SelfPrimaryForce(script)) {
+        force->direction = direction;
+    }
 }
 
 void ScriptFlowFieldProxy::SetTurbulence(float frequency, float speed) const
@@ -481,9 +568,11 @@ void ScriptFlowFieldProxy::SetTurbulence(float frequency, float speed) const
 
 void ScriptFlowFieldProxy::SetChannels(uint32_t channels) const
 {
-    /// @note チャンネルは «この場が誰に効くか» で、束ねた流れで分ける意味が無いので全部へ配る。
+    // チャンネルは «この場が誰に効くか» で、束ねた流れで分ける意味が無いので全部へ配る。
     if (auto* field = SelfComponent<FlowField>(script))
-        for (auto& force : field->forces) force.channels = channels;
+        for (auto& force : field->forces) {
+            force.channels = channels;
+        }
 }
 
 bool ScriptFlowFieldProxy::IsEnabled() const
@@ -507,8 +596,9 @@ float ScriptFlowFieldProxy::GetRadius() const
 ScriptFlowFieldType ScriptFlowFieldProxy::GetType() const
 {
     const auto* force = SelfPrimaryForce(script);
-    if (force == nullptr || force->fieldType > FlowFieldType::Curl)
+    if (force == nullptr || force->fieldType > FlowFieldType::Curl) {
         return ScriptFlowFieldType::UNIFORM;
+    }
     return static_cast<ScriptFlowFieldType>(static_cast<int>(force->fieldType));
 }
 
@@ -522,7 +612,9 @@ uint32_t ScriptFlowFieldProxy::GetChannels() const
 
 void ScriptCloudProxy::SetEnabled(bool enabled) const
 {
-    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) cloud->enabled = enabled;
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) {
+        cloud->enabled = enabled;
+    }
 }
 
 void ScriptCloudProxy::SetLayer(float bottomHeight, float thickness) const
@@ -572,7 +664,9 @@ void ScriptCloudProxy::SetQuality(int stepCount, float maxDistance) const
 
 void ScriptSunMoonProxy::SetEnabled(bool enabled) const
 {
-    if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) sunMoon->enabled = enabled;
+    if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) {
+        sunMoon->enabled = enabled;
+    }
 }
 
 void ScriptSunMoonProxy::SetSun(bool enabled, float intensity) const
@@ -598,32 +692,40 @@ void ScriptSunMoonProxy::SetMoon(bool enabled, float size, float brightness,
 
 void ScriptWindProxy::SetEnabled(bool enabled) const
 {
-    /// @note 風という概念全体の on/off。乱れも一緒に切る。
-    if (script && script->m_scene) script->m_scene->Environment().enabled = enabled;
+    // 風という概念全体の on/off。乱れも一緒に切る。
+    if (script && script->m_scene) {
+        script->m_scene->Environment().enabled = enabled;
+    }
 }
 
 void ScriptWindProxy::SetDirection(const math::Vector3& direction) const
 {
-    if (script && script->m_scene) script->m_scene->Environment().direction = direction;
+    if (script && script->m_scene) {
+        script->m_scene->Environment().direction = direction;
+    }
 }
 
 void ScriptWindProxy::SetStrength(float strength) const
 {
-    /// @note 旧 API 名のまま。中身は流速 [m/s]。
-    if (script && script->m_scene) script->m_scene->Environment().speed = strength;
+    // 旧 API 名のまま。中身は流速 [m/s]。
+    if (script && script->m_scene) {
+        script->m_scene->Environment().speed = strength;
+    }
 }
 
 void ScriptWindProxy::SetTurbulence(float turbulence) const
 {
-    if (script && script->m_scene)
+    if (script && script->m_scene) {
         script->m_scene->Environment().turbulence = (std::max)(turbulence, 0.0f);
+    }
 }
 
 void ScriptWindProxy::SetPulseFrequency(float frequency) const
 {
-    /// @note 脈動の速さ = 乱流のノイズ時間スクロール速度 (旧 WindZone と同じ対応)。
-    if (script && script->m_scene)
+    // 脈動の速さ = 乱流のノイズ時間スクロール速度 (旧 WindZone と同じ対応)。
+    if (script && script->m_scene) {
         script->m_scene->Environment().pulseFrequency = (std::max)(frequency, 0.0f);
+    }
 }
 
 

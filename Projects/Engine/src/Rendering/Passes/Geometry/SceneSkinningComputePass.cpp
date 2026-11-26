@@ -89,8 +89,9 @@ public:
     explicit RendererWorklistLease(Scene& scene)
     {
         auto& pool = WorklistPool();
-        if (pool.depth == pool.entries.size())
+        if (pool.depth == pool.entries.size()) {
             pool.entries.push_back(std::make_unique<RendererWorklistStorage>());
+        }
         m_storage = pool.entries[pool.depth++].get();
         scene.CopyRendererEntities(m_storage->entities, Scene::RendererEntitySet::SKINNED);
     }
@@ -119,7 +120,9 @@ public:
     explicit SignatureScratchPassGauge(AnimationSkinningCpuRow* trace):m_trace(trace){}
     ~SignatureScratchPassGauge()
     {
-        if(!m_trace)return;
+        if(!m_trace) {
+            return;
+        }
         const auto metrics=skinning_signature_detail::CurrentSignatureScratchMetrics();
         m_trace->signatureScratchRetainedPayloadBytes=metrics.payloadBytes;
         m_trace->signatureScratchRetainedStorageBytes=metrics.storageBytes;
@@ -146,7 +149,9 @@ public:
         const size_t poseWords = fixedWords + matrixCount * MATRIX_WORDS;
         assert(slotCount <= (m_content.max_size() - poseWords) / SLOT_WORDS);
         const size_t required = poseWords + slotCount * SLOT_WORDS;
-        if (required <= m_content.capacity()) return;
+        if (required <= m_content.capacity()) {
+            return;
+        }
         [[maybe_unused]] const size_t sizeBefore = m_content.size();
         [[maybe_unused]] const uint64_t start = TRACE_ENABLED ? m_clock.Mark() : 0;
         m_content.reserve(required);
@@ -166,7 +171,9 @@ public:
         static_assert(offsetof(math::Matrix4, m) == 0);
         static_assert(sizeof(float) == sizeof(uint32_t));
         static_assert(sizeof(math::Matrix4) == 16 * sizeof(uint32_t));
-        if (matrices.empty()) return;
+        if (matrices.empty()) {
+            return;
+        }
         const size_t offset = m_content.size();
         assert(matrices.size() <= (m_content.max_size() - offset) / 16);
         m_content.resize(offset + matrices.size() * 16);
@@ -174,7 +181,9 @@ public:
     }
     void Append(uint32_t word)
     {
-        if constexpr(!TRACE_ENABLED){m_content.push_back(word);}
+        if constexpr(!TRACE_ENABLED){
+            m_content.push_back(word);
+        }
         else{
             const size_t capacityBefore=m_content.capacity(),sizeBefore=m_content.size();
             const bool grows=sizeBefore==capacityBefore;
@@ -205,34 +214,47 @@ DirectSignatureResult CompareCurrentSignature(const SkinnedMeshRenderer& skin,
     std::span<const math::Matrix4> matrices, std::span<const renderer::BufferResourceState> states, bool allowPending = false)
 {
     const auto& published = skin.gpuSkinningContent;
-    if ((!skin.gpuSkinnedThisFrame && !allowPending) || states.size() != skin.SubmeshCount() * 2) return DirectSignatureResult::UNAVAILABLE;
+    if ((!skin.gpuSkinnedThisFrame && !allowPending) || states.size() != skin.SubmeshCount() * 2) {
+        return DirectSignatureResult::UNAVAILABLE;
+    }
     size_t offset = 0;
     const auto word = [&](uint32_t value) {
-        if (offset >= published.size() || published[offset] != value) return false;
+        if (offset >= published.size() || published[offset] != value) {
+            return false;
+        }
         ++offset; return true;
     };
-    if (!word(static_cast<uint32_t>(matrices.size()))) return DirectSignatureResult::DIFFERENT;
+    if (!word(static_cast<uint32_t>(matrices.size()))) {
+        return DirectSignatureResult::DIFFERENT;
+    }
     static_assert(sizeof(math::Matrix4) == 16 * sizeof(uint32_t));
     static_assert(std::is_trivially_copyable_v<math::Matrix4>);
     if (matrices.size() > (published.size() - offset) / 16
-        || (!matrices.empty() && std::memcmp(published.data() + offset, matrices.data(), matrices.size_bytes()) != 0))
+        || (!matrices.empty() && std::memcmp(published.data() + offset, matrices.data(), matrices.size_bytes()) != 0)) {
         return DirectSignatureResult::DIFFERENT;
+    }
     offset += matrices.size() * 16;
     bool ready = skin.gpuSkinnedThisFrame;
     for (size_t slot = 0; slot < skin.SubmeshCount(); ++slot) {
         const auto* mesh = skin.SubmeshMesh(slot);
-        if (!mesh) return DirectSignatureResult::UNAVAILABLE;
+        if (!mesh) {
+            return DirectSignatureResult::UNAVAILABLE;
+        }
         const auto source = skin.ResolveSlotVertexBuffer(slot, mesh->vertexBuffer);
         const auto version = states[slot * 2].contentVersion;
         if (!word(skin.SubmeshAt(slot)) || !word(source.id) || !word(source.gen)
             || !word(static_cast<uint32_t>(version)) || !word(static_cast<uint32_t>(version >> 32))
-            || !word(static_cast<uint32_t>(mesh->cpuSkinnedVertices.size()))) return DirectSignatureResult::DIFFERENT;
+            || !word(static_cast<uint32_t>(mesh->cpuSkinnedVertices.size()))) {
+            return DirectSignatureResult::DIFFERENT;
+        }
         const auto& output = states[slot * 2 + 1];
         ready &= output.live && output.stride == sizeof(renderer::Vertex)
             && output.sizeBytes >= mesh->cpuSkinnedVertices.size() * sizeof(renderer::Vertex)
             && output.contentVersion != 0 && output.bindlessUavIndex != renderer::INVALID_BINDLESS_INDEX;
     }
-    if (offset != published.size()) return DirectSignatureResult::DIFFERENT;
+    if (offset != published.size()) {
+        return DirectSignatureResult::DIFFERENT;
+    }
     return ready ? DirectSignatureResult::EQUAL_READY : DirectSignatureResult::EQUAL_UNREADY;
 }
 
@@ -245,7 +267,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     auto* trace=skinCpu.TraceRow();
     skinning_demand_detail::SceneDemandSnapshot demand;
     if(trace) {
-        /// @note 開始時のスナップショットは診断専用であり、省略・公開・資源寿命の判定には使わない。
+        // 開始時のスナップショットは診断専用であり、省略・公開・資源寿命の判定には使わない。
         demand=skinning_demand_detail::ObserveSceneDemand(ctx);
         trace->demandScopeActive=demand.scopeActive;
         trace->sceneObjectCount=demand.sceneObjects;
@@ -265,7 +287,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         const uint64_t probe=skinCpu.Mark();
         trace->signatureClockProbeNs=skinCpu.Elapsed(probe);
     }
-    if (AnimationGpuTraceRequested()) CaptureAnimationGpuWork(ctx.renderer.GpuProfGetSnapshot());
+    if (AnimationGpuTraceRequested()) {
+        CaptureAnimationGpuWork(ctx.renderer.GpuProfGetSnapshot());
+    }
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
     renderer::buffer_state_detail::BufferStateReadScope bufferReads(resources, ctx.renderer);
@@ -294,21 +318,29 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     std::vector<EntityID> restoreCpuActors;
     for (EntityID id : ctx.scene.GetEntities<AnimatorComponent>()) {
         auto* animator = ctx.scene.GetComponent<AnimatorComponent>(id);
-        if (!animator || animator->boneBakeMode != static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)) continue;
-        /// @note 画面外の個体は CPU パレットを省き、再生に失敗した直後に可視になった個体は描画前に復旧する。
+        if (!animator || animator->boneBakeMode != static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)) {
+            continue;
+        }
+        // 画面外の個体は CPU パレットを省き、再生に失敗した直後に可視になった個体は描画前に復旧する。
         animator->boneBake.gpuReady = replayAvailable;
         animator->boneBake.gpuOwner = resources.GetInstanceId(); animator->boneBake.gpuEpoch = resources.GetResetVersion();
-        if (!replayAvailable && animator->boneBake.cpuDeferred) restoreCpuActors.push_back(id);
+        if (!replayAvailable && animator->boneBake.cpuDeferred) {
+            restoreCpuActors.push_back(id);
+        }
     }
-    /// @note 復元で描画実行器へ入る場合に備え、コンポーネント配列の参照をまたがせず ID を保持する。
+    // 復元で描画実行器へ入る場合に備え、コンポーネント配列の参照をまたがせず ID を保持する。
     for (EntityID id : restoreCpuActors)
-        if (auto* animator = ctx.scene.GetComponent<AnimatorComponent>(id)) MaterializeBoneBakeCpu(*animator, resources, true);
+        if (auto* animator = ctx.scene.GetComponent<AnimatorComponent>(id)) {
+            MaterializeBoneBakeCpu(*animator, resources, true);
+        }
     if (!skinningProgramReady) {
-        /// @note 型付きハンドルが非 null でも失効し得る。プログラムや CB がなければ、古い姿勢を現在の変形として公開しない。
+        // 型付きハンドルが非 null でも失効し得る。プログラムや CB がなければ、古い姿勢を現在の変形として公開しない。
         RendererWorklistLease worklist(ctx.scene);
         for (EntityID entity : worklist.Entities())
             if (auto* smr = ctx.scene.GetComponent<SkinnedMeshRenderer>(entity)) {
-                if(trace)++trace->renderersVisited;
+                if(trace) {
+                    ++trace->renderersVisited;
+                }
                 invalidatePublication(*smr);
             }
         return;
@@ -351,37 +383,54 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     std::vector<BoneBakeSkinRequest> bakeRequests;
 
     skinning_cache_detail::BeginSkinningCacheFrame(resources, Time::frameCount, trace);
-    /// @note EntityID は Scene 内だけで一意。別 Scene の同番号の Animator とパレットを共有しない。
-    /// @note 計算済み Renderer は gpuSkinningFrame で再利用するため、既存出力を再 Dispatch しない。
+    // EntityID は Scene 内だけで一意。別 Scene の同番号の Animator とパレットを共有しない。
+    // 計算済み Renderer は gpuSkinningFrame で再利用するため、既存出力を再 Dispatch しない。
     skinning_cache_detail::ResetSkinningPalettes();
-    /// @note 各 submesh の Dispatch は別出力へ書き、相互依存しない。DX12 は UAV バリアを
-    /// @note Dispatch ごとに発行せず、このバッチを閉じる時点の 1 回へ集約する。
+    // 各 submesh の Dispatch は別出力へ書き、相互依存しない。DX12 は UAV バリアを
+    // Dispatch ごとに発行せず、このバッチを閉じる時点の 1 回へ集約する。
 
     RendererWorklistLease worklist(ctx.scene);
     for (EntityID entity : worklist.Entities()) {
         auto* object = ctx.scene.GetGameObject(entity);
-        if (!object) continue;
+        if (!object) {
+            continue;
+        }
         auto& go = *object;
-        if (!go.activeInHierarchy()) continue;
+        if (!go.activeInHierarchy()) {
+            continue;
+        }
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
-        if(trace && smr)++trace->renderersVisited;
+        if(trace && smr) {
+            ++trace->renderersVisited;
+        }
         const bool rayDemand = ctx.experimentalRayTracingEnabled
             && (ctx.settings.modeRequest.mode != renderer::RenderMode::RASTER
                 || renderer::IsRayDebugView(ctx.settings.viewMode));
-        if (!smr || !smr->enabled || (!smr->lodVisible && !rayDemand) || !smr->model) continue;
+        if (!smr || !smr->enabled || (!smr->lodVisible && !rayDemand) || !smr->model) {
+            continue;
+        }
 
         if(trace) {
             ++trace->renderersEligible;++trace->legacyEnteredRenderers;
             const auto observation=skinning_demand_detail::ObserveRendererDemand(ctx,go,*smr,demand);
             ++trace->demandObservedRenderers;
-            if(observation.provisionalColorExcluded)++trace->provisionalColorExcludedRenderers;
-            if(observation.conservativeNonColorRequired)++trace->conservativeNonColorRequiredRenderers;
-            if(observation.provisionalColorExcluded && !observation.conservativeNonColorRequired)
+            if(observation.provisionalColorExcluded) {
+                ++trace->provisionalColorExcludedRenderers;
+            }
+            if(observation.conservativeNonColorRequired) {
+                ++trace->conservativeNonColorRequiredRenderers;
+            }
+            if(observation.provisionalColorExcluded && !observation.conservativeNonColorRequired) {
                 ++trace->provisionalNoKnownConsumerRenderers;
+            }
             for(uint32_t reason=0;reason<skinning_demand_detail::REASON_COUNT;++reason)
-                if((observation.reasons&(uint32_t{1}<<reason))!=0)++trace->outputDemandReasonRenderers[reason];
+                if((observation.reasons&(uint32_t{1}<<reason))!=0) {
+                    ++trace->outputDemandReasonRenderers[reason];
+                }
             for(uint32_t flag=0;flag<skinning_demand_detail::INPUT_FLAG_COUNT;++flag)
-                if((observation.inputFlags&(uint32_t{1}<<flag))!=0)++trace->inputObservedRenderers[flag];
+                if((observation.inputFlags&(uint32_t{1}<<flag))!=0) {
+                    ++trace->inputObservedRenderers[flag];
+                }
         }
 
         AnimatorComponent* anim = nullptr;
@@ -397,7 +446,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             : smr->model->skeleton && !smr->model->skeleton->referencePose.empty()
                 ? &smr->model->skeleton->referencePose : nullptr;
         if (!matrices) {
-            /// @note ポーズ未解決時に、レイ用として単位行列や未変形頂点を公開しない。
+            // ポーズ未解決時に、レイ用として単位行列や未変形頂点を公開しない。
             smr->gpuSkinnedThisFrame = false;
             smr->gpuSkinningFrame = (std::numeric_limits<uint64_t>::max)();
             smr->gpuSkinningVertexCount = 0;
@@ -409,11 +458,13 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             continue;
         }
 
-        /// @note モデルが差し替わったら、旧モデルの頂点数で確保したバッファを捨てる。
+        // モデルが差し替わったら、旧モデルの頂点数で確保したバッファを捨てる。
         if (smr->skinnedBufferModel != smr->model) {
             for (auto& handle : smr->skinnedVertexBuffers)
                 if (handle.IsValid()) {
-                    if(trace)++trace->outputReleaseCalls;
+                    if(trace) {
+                        ++trace->outputReleaseCalls;
+                    }
                     resources.Release(handle);
                 }
             smr->skinnedVertexBuffers.clear();
@@ -425,9 +476,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             smr->gpuSkinningContent.clear();
         }
 
-        /// @note 出力バッファ配列は model->meshes と同じ添字で確保する。ローカルスロット数まで
-        /// @note 詰めないのは、ShadowPass / ForwardPass も同じ添字で引くため。多少の空きスロット
-        /// @note より、添字が 1 つに定まっていることを優先する。
+        // 出力バッファ配列は model->meshes と同じ添字で確保する。ローカルスロット数まで
+        // 詰めないのは、ShadowPass / ForwardPass も同じ添字で引くため。多少の空きスロット
+        // より、添字が 1 つに定まっていることを優先する。
         const size_t meshCount = smr->model->meshes.size();
         smr->skinnedVertexBuffers.resize(meshCount);
 
@@ -449,22 +500,38 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         }
         bufferStates.resize(bufferHandles.size());
         bufferReads.Read(bufferHandles, bufferStates);
-        /// @note 待機中にシーン編集が発生し得るため、コンポーネント配列を再取得して待機前の識別情報を検証する。
+        // 待機中にシーン編集が発生し得るため、コンポーネント配列を再取得して待機前の識別情報を検証する。
         auto* resumedObject = ctx.scene.GetGameObject(entity);
         auto* resumedRenderer = ctx.scene.GetComponent<SkinnedMeshRenderer>(entity);
-        if (ctx.scene.GetRenderSceneGeneration() != readSceneGeneration || resumedObject != object || !resumedRenderer
-            || ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(entity) != readComponentLifetime
-            || resources.GetInstanceId() != readResourceOwner || resources.GetResetVersion() != readResourceEpoch
-            || resources.FrameStamp() != readResourceFrame) continue;
-        smr = resumedRenderer;
-        if (smr->model != readModel) {
-            if (smr->skinnedBufferModel != smr->model) invalidatePublication(*smr);
+        const bool sameComponent = ctx.scene.GetRenderSceneGeneration() == readSceneGeneration
+            && resumedObject == object && resumedRenderer
+            && ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(entity) == readComponentLifetime;
+        if (!sameComponent) {
             continue;
         }
-        if (!go.activeInHierarchy() || !smr->enabled || (!smr->lodVisible && !rayDemand) || !smr->model) continue;
+
+        // 同じコンポーネントでも、資源管理元・世代・フレームが変われば待機前の読み取り結果を使わない。
+        const bool sameResourceFrame = resources.GetInstanceId() == readResourceOwner
+            && resources.GetResetVersion() == readResourceEpoch && resources.FrameStamp() == readResourceFrame;
+        if (!sameResourceFrame) {
+            continue;
+        }
+
+        smr = resumedRenderer;
+        if (smr->model != readModel) {
+            if (smr->skinnedBufferModel != smr->model) {
+                invalidatePublication(*smr);
+            }
+            continue;
+        }
+        if (!go.activeInHierarchy() || !smr->enabled || (!smr->lodVisible && !rayDemand) || !smr->model) {
+            continue;
+        }
         if (smr->model->meshes.size() != meshCount) { invalidatePublication(*smr); continue; }
-        /// @note コンポーネントやモデルの寿命が変わらなくても、待機中に出力スロットが削除される場合がある。
-        if (smr->skinnedVertexBuffers.size() < meshCount) smr->skinnedVertexBuffers.resize(meshCount);
+        // コンポーネントやモデルの寿命が変わらなくても、待機中に出力スロットが削除される場合がある。
+        if (smr->skinnedVertexBuffers.size() < meshCount) {
+            smr->skinnedVertexBuffers.resize(meshCount);
+        }
         bool useBufferStates = smr->model == readModel && smr->SubmeshCount() == readSlotCount;
         for (size_t slot = 0; useBufferStates && slot < readSlotCount; ++slot) {
             const auto* mesh = smr->SubmeshMesh(slot);
@@ -473,7 +540,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 && (mesh ? smr->ResolveSlotSkinnedVertexBuffer(slot)
                          : renderer::ResourceHandle<renderer::BufferTag>{}) == bufferHandles[slot * 2 + 1];
         }
-        /// @note 待機でポーズ配列の位置が変わり得るため、GPU 資源の取得後に現在の所有者を解決する。
+        // 待機でポーズ配列の位置が変わり得るため、GPU 資源の取得後に現在の所有者を解決する。
         anim = nullptr;
         animatorEntity = EntityID::INVALID;
         for (GameObject* current = &go; current; current = current->GetParent()) {
@@ -483,8 +550,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 break;
             }
         }
-        if (packed && anim && anim->boneBake.active && anim->boneBakeMode >= static_cast<int>(BoneBakeMode::GPU_SHARED))
+        if (packed && anim && anim->boneBake.active && anim->boneBakeMode >= static_cast<int>(BoneBakeMode::GPU_SHARED)) {
             bakeRequests.push_back({UINT32_MAX, &anim->boneBake, smr->model, animatorEntity, ctx.scene.GetComponentLifetime<AnimatorComponent>(animatorEntity)});
+        }
         matrices = anim && !anim->boneMatrices.empty() ? &anim->boneMatrices
             : smr->model->skeleton && !smr->model->skeleton->referencePose.empty()
                 ? &smr->model->skeleton->referencePose : nullptr;
@@ -494,8 +562,12 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         const bool demandRequired = !gpuDemand || gpuDemand->cancelled
             || skinning_demand_detail::NeedsCurrentOutput(ctx, go, *smr, anim);
         if (ctx.statsSkinningDemandMode != 0) {
-            if (demandRequired) ++ctx.statsSkinningDemandRequired;
-            else ++ctx.statsSkinningDemandCandidates;
+            if (demandRequired) {
+                ++ctx.statsSkinningDemandRequired;
+            }
+            else {
+                ++ctx.statsSkinningDemandCandidates;
+            }
         }
         if ((!gpuDemand || gpuDemand->cancelled) && smr->preparedSkinning) {
             const bool recorded = smr->preparedSkinning->ResourceInstance() == resources.GetInstanceId()
@@ -505,17 +577,27 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             smr->gpuSkinningFrame = recorded ? frameStamp : (std::numeric_limits<uint64_t>::max)();
         }
         const auto reuseCurrentOutput = [&] {
-            if (smr->preparedSkinning) smr->preparedSkinningFrame = frameStamp;
-            if (trace) ++trace->alreadyCurrentReuse;
+            if (smr->preparedSkinning) {
+                smr->preparedSkinningFrame = frameStamp;
+            }
+            if (trace) {
+                ++trace->alreadyCurrentReuse;
+            }
             const size_t reusedSlotCount = smr->SubmeshCount();
             for (size_t slot = 0; slot < reusedSlotCount; ++slot) {
                 const uint32_t submeshIndex = smr->SubmeshAt(slot);
-                if (submeshIndex == UINT32_MAX || submeshIndex >= meshCount) continue;
+                if (submeshIndex == UINT32_MAX || submeshIndex >= meshCount) {
+                    continue;
+                }
                 const auto& meshPtr = smr->model->meshes[submeshIndex];
-                if (!meshPtr) continue;
+                if (!meshPtr) {
+                    continue;
+                }
                 const auto source = smr->ResolveSlotVertexBuffer(slot, meshPtr->vertexBuffer);
                 uint64_t version = 0;
-                if (useBufferStates) version = bufferStates[slot * 2].contentVersion;
+                if (useBufferStates) {
+                    version = bufferStates[slot * 2].contentVersion;
+                }
                 else if (const auto* buffer = resources.Get(source)) version = buffer->GetContentVersion();
                 skinning_cache_detail::RetainSkinningSource(*meshPtr, source, version);
             }
@@ -535,8 +617,11 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 ++trace->signatureClockPairCount;
             }
         }
-        if (gpuDemand && !gpuDemand->cancelled && smr->preparedSkinning && bufferReads.HasCurrentReadBoundary()
-            && (directSignature == DirectSignatureResult::EQUAL_READY || directSignature == DirectSignatureResult::EQUAL_UNREADY)
+        const bool canAccessPreparedWrite = gpuDemand && !gpuDemand->cancelled && smr->preparedSkinning
+            && bufferReads.HasCurrentReadBoundary();
+        const bool sameSkinningInputs = directSignature == DirectSignatureResult::EQUAL_READY
+            || directSignature == DirectSignatureResult::EQUAL_UNREADY;
+        if (canAccessPreparedWrite && sameSkinningInputs
             && smr->preparedSkinning->ResourceInstance() == resources.GetInstanceId()
             && smr->preparedSkinning->ResourceEpoch() == resources.GetResetVersion()) {
             auto ticket = smr->preparedSkinning;
@@ -551,21 +636,29 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 ctx.statsSkinningDemandSkipped += dispatches;
             }
             if (demandRequired) {
-                /// @note 元 ticket は旧 snapshot と同じ入力を所有し、可視な別 view でも再準備しない。
+                // 元 ticket は旧 snapshot と同じ入力を所有し、可視な別 view でも再準備しない。
                 bool recorded = true, needsSubmit = false;
                 const auto writes = ticket->Writes();
                 for (size_t slot = 0; slot < smr->SubmeshCount(); ++slot) {
                     const uint32_t submesh = smr->SubmeshAt(slot);
                     const uint32_t row = submesh < smr->preparedSkinningRows.size() ? smr->preparedSkinningRows[submesh] : UINT32_MAX;
                     if (row >= writes.size()) { recorded = false; break; }
-                    if (!writes[row].recorded) needsSubmit = true;
-                    else recorded = ticket->IsWriteCurrent(row) && recorded;
+                    if (!writes[row].recorded) {
+                        needsSubmit = true;
+                    }
+                    else {
+                        recorded = ticket->IsWriteCurrent(row) && recorded;
+                    }
                 }
-                if (recorded && needsSubmit) recorded = gpuDemand->SubmitTicket(ticket);
+                if (recorded && needsSubmit) {
+                    recorded = gpuDemand->SubmitTicket(ticket);
+                }
                 smr->gpuSkinnedThisFrame = recorded;
                 smr->gpuSkinningFrame = recorded ? frameStamp : (std::numeric_limits<uint64_t>::max)();
             }
-            if (smr->gpuSkinnedThisFrame) reuseCurrentOutput();
+            if (smr->gpuSkinnedThisFrame) {
+                reuseCurrentOutput();
+            }
             continue;
         }
         if (directSignature == DirectSignatureResult::EQUAL_READY && bufferReads.HasCurrentReadBoundary()) {
@@ -593,7 +686,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             [[maybe_unused]] const uint64_t signatureBuildStart=TRACE_ENABLED?skinCpu.Mark():0;
             [[maybe_unused]] const uint64_t payloadAllocationsBefore=TRACE_ENABLED?trace->signaturePayloadAllocationCalls:0;
             SignatureWordWriter<TRACE_ENABLED> signatureWords(content,trace,skinCpu);
-            if constexpr(TRACE_ENABLED)++trace->signatureVectors;
+            if constexpr(TRACE_ENABLED) {
+                ++trace->signatureVectors;
+            }
             signatureWords.ReserveForPose(matrices->size(), smr->SubmeshCount(), anim && anim->boneBake.active && anim->boneBake.source);
             signatureWords.Append(static_cast<uint32_t>(matrices->size()));
             signatureWords.AppendMatrices(*matrices);
@@ -617,13 +712,15 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 const auto source = smr->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer);
                 [[maybe_unused]] bool observedMorphPath=false,observedDifferentSource=false;
                 if constexpr(TRACE_ENABLED) {
-                    /// @note GPU 資源の取得が待機に入る場合に備え、取得前の選択は値で保持し、以前のシーン・モデル参照を再利用しない。
+                    // GPU 資源の取得が待機に入る場合に備え、取得前の選択は値で保持し、以前のシーン・モデル参照を再利用しない。
                     const uint32_t index=smr->SubmeshAt(slot);
                     observedMorphPath=index<smr->morphVertexBuffers.size() && smr->morphVertexBuffers[index].IsValid();
                     observedDifferentSource=source!=mesh->vertexBuffer;
                 }
                 renderer::BufferResourceState sourceState;
-                if (useBufferStates) sourceState = bufferStates[slot * 2];
+                if (useBufferStates) {
+                    sourceState = bufferStates[slot * 2];
+                }
                 else if (const auto* buffer = resources.Get(source)) {
                     sourceState.contentVersion = buffer->GetContentVersion();
                     sourceState.live = true;
@@ -631,19 +728,31 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 const uint64_t version = sourceState.contentVersion;
                 if constexpr(TRACE_ENABLED) {
                     ++trace->sourceObservedSlots;
-                    if(observedMorphPath)++trace->sourceMorphPathSlots;else ++trace->sourceBasePathSlots;
-                    if(observedDifferentSource)++trace->sourceDiffersFromBaseSlots;
-                    if(!sourceState.live)++trace->sourceLookupNullSlots;
+                    if(observedMorphPath) {
+                        ++trace->sourceMorphPathSlots;
+                    } else ++trace->sourceBasePathSlots;
+                    if(observedDifferentSource) {
+                        ++trace->sourceDiffersFromBaseSlots;
+                    }
+                    if(!sourceState.live) {
+                        ++trace->sourceLookupNullSlots;
+                    }
                     else if(observedMorphPath)++trace->sourceLookupNonNullMorphPathSlots;
-                    else ++trace->sourceLookupNonNullBasePathSlots;
-                    if(version==0)++trace->sourceNativeVersionZeroSlots;
+                    else {
+                        ++trace->sourceLookupNonNullBasePathSlots;
+                    }
+                    if(version==0) {
+                        ++trace->sourceNativeVersionZeroSlots;
+                    }
                 }
                 signatureWords.Append(smr->SubmeshAt(slot));
                 signatureWords.Append(source.id); signatureWords.Append(source.gen);
                 signatureWords.Append(static_cast<uint32_t>(version)); signatureWords.Append(static_cast<uint32_t>(version >> 32));
                 signatureWords.Append(static_cast<uint32_t>(mesh->cpuSkinnedVertices.size()));
                 renderer::BufferResourceState outputState;
-                if (useBufferStates) outputState = bufferStates[slot * 2 + 1];
+                if (useBufferStates) {
+                    outputState = bufferStates[slot * 2 + 1];
+                }
                 else if (const auto* output = resources.Get(smr->ResolveSlotSkinnedVertexBuffer(slot)))
                     outputState = {output->GetSize(), output->GetStride(), output->GetContentVersion(), output->GetBindlessUavIndex(), true};
                 outputsReady &= outputState.live && outputState.stride == sizeof(renderer::Vertex)
@@ -657,13 +766,21 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 ++trace->signatureClockPairCount;
                 trace->signatureBytes+=content.size()*sizeof(uint32_t);
                 trace->signatureCapacityBytes+=content.capacity()*sizeof(uint32_t);
-                if(!content.empty() && trace->signaturePayloadAllocationCalls>payloadAllocationsBefore)++trace->signatureAllocationLowerBound;
+                if(!content.empty() && trace->signaturePayloadAllocationCalls>payloadAllocationsBefore) {
+                    ++trace->signatureAllocationLowerBound;
+                }
             }
         };
-        if(trace)buildSignature.template operator()<true>();
-        else buildSignature.template operator()<false>();
+        if(trace) {
+            buildSignature.template operator()<true>();
+        }
+        else {
+            buildSignature.template operator()<false>();
+        }
         const auto signatureMatches=[&]{
-            if(!trace)return smr->gpuSkinningContent==content;
+            if(!trace) {
+                return smr->gpuSkinningContent==content;
+            }
             const uint64_t start=skinCpu.Mark();
             const bool matches=smr->gpuSkinningContent==content;
             trace->signatureCompareNs+=skinCpu.Elapsed(start);
@@ -687,7 +804,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             const auto [it, inserted] = packedOffsets.try_emplace(paletteEntity,
                 static_cast<uint32_t>(ctx.skinningMatrices.size()));
             boneOffset = it->second;
-            if (inserted) ctx.skinningMatrices.insert(ctx.skinningMatrices.end(), matrices->begin(), matrices->end());
+            if (inserted) {
+                ctx.skinningMatrices.insert(ctx.skinningMatrices.end(), matrices->begin(), matrices->end());
+            }
         } else {
             const bool needsUpload = !skinning_cache_detail::HasSkinningPalette(paletteEntity);
             bonePalette = skinning_cache_detail::AcquireBonePalette(resources, paletteEntity, *matrices, trace);
@@ -713,7 +832,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         publication.frame = frameStamp; publication.model = smr->model;
         publication.demandCandidate = gpuDemand && !gpuDemand->cancelled && !ownedBatchRequested && packed
             && !demandRequired;
-        /// @note 次の dirty 姿勢は旧 ticket 出力へ書かない。旧 snapshot がその lease を引き続き保持する。
+        // 次の dirty 姿勢は旧 ticket 出力へ書かない。旧 snapshot がその lease を引き続き保持する。
         smr->preparedSkinning.reset();
         smr->preparedSkinningRows.clear();
         smr->preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)();
@@ -732,14 +851,14 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         }
         uint64_t skinnedVertexCount = 0;
         uint32_t skinningDispatchCount = 0;
-        /// @note この Renderer が実際に描く submesh だけをスキニングする。ノードごとに子 GameObject
-        /// @note へ分けた構成では同じモデルを参照する Renderer が複数並ぶため、全員がモデル全体を
-        /// @note 変形すると子の数だけ同じ計算を繰り返し、負荷が submesh 数倍になる。
+        // この Renderer が実際に描く submesh だけをスキニングする。ノードごとに子 GameObject
+        // へ分けた構成では同じモデルを参照する Renderer が複数並ぶため、全員がモデル全体を
+        // 変形すると子の数だけ同じ計算を繰り返し、負荷が submesh 数倍になる。
         const size_t slotCount = smr->SubmeshCount();
         for (size_t slot = 0; slot < slotCount; ++slot) {
             const uint32_t submeshIndex = smr->SubmeshAt(slot);
             if (submeshIndex == UINT32_MAX || submeshIndex >= meshCount) { allSkinned = false; continue; }
-            /// @note 以降の mi は model->meshes / 各バッファ配列と同じ添字。
+            // 以降の mi は model->meshes / 各バッファ配列と同じ添字。
             const size_t mi = static_cast<size_t>(submeshIndex);
             const auto& meshPtr = smr->model->meshes[mi];
             if (!meshPtr) { allSkinned = false; continue; }
@@ -756,11 +875,11 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 continue;
             }
 
-            /// @note ポーズが異なるため出力は renderer 別に所有し、現在の頂点数を収める容量だけを再利用する。
+            // ポーズが異なるため出力は renderer 別に所有し、現在の頂点数を収める容量だけを再利用する。
             auto& outBuffer = smr->skinnedVertexBuffers[mi];
             const size_t outputBytes = static_cast<size_t>(vertexCount) * sizeof(renderer::Vertex);
             const auto* output = useBufferStates ? bufferReads.Get(outBuffer) : resources.Get(outBuffer);
-            /// @note 同じ model/source handle の topology growth でも旧容量へ書かない。解放は ResourceManager の GPU fence へ委ねる。
+            // 同じ model/source handle の topology growth でも旧容量へ書かない。解放は ResourceManager の GPU fence へ委ねる。
             if (output && (output->GetStride() != sizeof(renderer::Vertex) || output->GetSize() < outputBytes
                 || output->GetBindlessUavIndex() == renderer::INVALID_BINDLESS_INDEX)) {
                 if(trace){++trace->outputReleaseCalls;if(output->GetSize()<outputBytes)++trace->outputCapacityRejects;}
@@ -768,13 +887,17 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 outBuffer = {};
             } else if (!output) outBuffer = {};
             if (!outBuffer.IsValid()) {
-                if(trace)++trace->outputCreateAttempts;
+                if(trace) {
+                    ++trace->outputCreateAttempts;
+                }
                 outBuffer = resources.CreateGpuWritableVertexBuffer(
                     outputBytes,
                     static_cast<uint32_t>(sizeof(renderer::Vertex)));
-                /// @note バックエンド未対応ならここで無効ハンドルが返る。VS 経路へ落とす。
+                // バックエンド未対応ならここで無効ハンドルが返る。VS 経路へ落とす。
                 if (!outBuffer.IsValid()) { allSkinned = false; break; }
-                if(trace)++trace->outputCreateSuccesses;
+                if(trace) {
+                    ++trace->outputCreateSuccesses;
+                }
             }
             output = useBufferStates ? bufferReads.Get(outBuffer) : resources.Get(outBuffer);
             if (!output || output->GetStride() != sizeof(renderer::Vertex)
@@ -801,7 +924,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             if(trace){++trace->requestedDispatches;trace->requestedVertexCount+=vertexCount;}
             if (packed && anim && anim->boneBake.active && anim->boneBakeMode >= static_cast<int>(BoneBakeMode::GPU_SHARED)) {
                 bakeRequests.push_back({static_cast<uint32_t>(ctx.skinningRequests.size() - 1u), &anim->boneBake, smr->model, animatorEntity, ctx.scene.GetComponentLifetime<AnimatorComponent>(animatorEntity)});
-                if(trace)++trace->boneBakeQueuedReplayRows;
+                if(trace) {
+                    ++trace->boneBakeQueuedReplayRows;
+                }
             }
             publication.outputs.emplace_back(outBuffer, output->GetContentVersion());
 
@@ -809,11 +934,15 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             ++skinningDispatchCount;
         }
 
-        if(trace && skinningDispatchCount!=0)++trace->renderersWithOutputRequests;
-        /// @note GPU 書き込みと現在の所有者の一致を確認してから、所有済みの作業結果を公開する。
+        if(trace && skinningDispatchCount!=0) {
+            ++trace->renderersWithOutputRequests;
+        }
+        // GPU 書き込みと現在の所有者の一致を確認してから、所有済みの作業結果を公開する。
         smr->gpuSkinnedThisFrame = !ownedBatchRequested && allSkinned;
         if(allSkinned){
-            if(!trace)smr->gpuSkinningContent.assign(content.begin(),content.end());
+            if(!trace) {
+                smr->gpuSkinningContent.assign(content.begin(),content.end());
+            }
             else{
                 const size_t capacityBefore=smr->gpuSkinningContent.capacity();
                 const uint64_t start=skinCpu.Mark();
@@ -839,7 +968,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         if (ownedBatchRequested || publication.demandCandidate) {
             publication.vertices = skinnedVertexCount; publication.dispatches = skinningDispatchCount;
         }
-        if (allSkinned) pendingPublications.push_back(std::move(publication));
+        if (allSkinned) {
+            pendingPublications.push_back(std::move(publication));
+        }
         smr->gpuSkinningFrame = ownedBatchRequested ? (std::numeric_limits<uint64_t>::max)() : frameStamp;
         smr->gpuSkinningVertexCount = ownedBatchRequested ? 0 : skinnedVertexCount;
         smr->gpuSkinningDispatchCount = ownedBatchRequested ? 0 : skinningDispatchCount;
@@ -847,7 +978,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
 
     }
 
-    /// @note Prepare は元 dispatch 線形化点より前。途中の外部 callback は全省略を取り消す。
+    // Prepare は元 dispatch 線形化点より前。途中の外部 callback は全省略を取り消す。
     if (gpuDemand && !gpuDemand->cancelled) {
         std::vector<renderer::CapturedSkinningRequest> captured;
         std::vector<math::Matrix4> capturedMatrices;
@@ -869,7 +1000,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             auto ticket = renderer::PrepareCapturedSkinning(ctx.renderer, resources, h.skinningComputeCS, captured, capturedMatrices);
             bool current = ticket && ticket->Writes().size() == captured.size() && !gpuDemand->cancelled;
             for (const auto& publication : pendingPublications) {
-                if (!publication.demandCandidate) continue;
+                if (!publication.demandCandidate) {
+                    continue;
+                }
                 const auto* component = ctx.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
                 current = current && component && ctx.scene.GetRenderSceneGeneration() == publication.sceneGeneration
                     && ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) == publication.componentLifetime
@@ -882,7 +1015,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 std::vector<bool> deferredRequests(ctx.skinningRequests.size(), false);
                 uint32_t row = 0;
                 for (auto& publication : pendingPublications) {
-                    if (!publication.demandCandidate) continue;
+                    if (!publication.demandCandidate) {
+                        continue;
+                    }
                     auto* component = ctx.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
                     component->preparedSkinning = ticket;
                     component->preparedSkinningFrame = publication.frame;
@@ -900,9 +1035,13 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 }
                 size_t destination = 0;
                 for (size_t index = 0; index < ctx.skinningRequests.size(); ++index) {
-                    if (deferredRequests[index]) continue;
+                    if (deferredRequests[index]) {
+                        continue;
+                    }
                     for (auto& bake : bakeRequests)
-                        if (bake.requestIndex == index) bake.requestIndex = static_cast<uint32_t>(destination);
+                        if (bake.requestIndex == index) {
+                            bake.requestIndex = static_cast<uint32_t>(destination);
+                        }
                     ctx.skinningRequests[destination++] = ctx.skinningRequests[index];
                 }
                 ctx.skinningRequests.resize(destination);
@@ -913,7 +1052,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
 
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::SkinningDispatch");
-        /// @note グラフに先行するスキニングには独立した計測ビューを使い、発行した GPU 命令の時間だけを記録する。
+        // グラフに先行するスキニングには独立した計測ビューを使い、発行した GPU 命令の時間だけを記録する。
         renderer::GpuProfilerViewMetadata skinView;
         skinView.applicationFrameSerial = resources.FrameStamp();
         skinView.sceneGeneration = ctx.scene.GetRenderSceneGeneration();
@@ -923,35 +1062,53 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         const bool skinProfile = ctx.renderer.GpuProfRecordView(skinView);
         skinCpu.row.profilerSyncNs += skinCpu.Elapsed(profilerSyncStart);
         const bool splitTrace = skinProfile && AnimationGpuTraceRequested();
-        if (skinProfile && !splitTrace) ctx.renderer.GpuProfBeginPass("AnimationSkinningCompute");
-        if (splitTrace && !bakeRequests.empty()) ctx.renderer.GpuProfBeginPass("BakedBoneReplay");
+        if (skinProfile && !splitTrace) {
+            ctx.renderer.GpuProfBeginPass("AnimationSkinningCompute");
+        }
+        if (splitTrace && !bakeRequests.empty()) {
+            ctx.renderer.GpuProfBeginPass("BakedBoneReplay");
+        }
         const uint64_t replayCpuStart = skinCpu.Mark();
         PrepareBakedSkinningRequests(ctx, bakeRequests);
         skinCpu.row.replaySubmitNs += skinCpu.Elapsed(replayCpuStart);
-        if (splitTrace && !bakeRequests.empty()) ctx.renderer.GpuProfEndPass("BakedBoneReplay");
-        if (splitTrace) ctx.renderer.GpuProfBeginPass("VertexSkinningCompute");
+        if (splitTrace && !bakeRequests.empty()) {
+            ctx.renderer.GpuProfEndPass("BakedBoneReplay");
+        }
+        if (splitTrace) {
+            ctx.renderer.GpuProfBeginPass("VertexSkinningCompute");
+        }
         const uint64_t vertexCpuStart = skinCpu.Mark();
         renderer::ExecuteSkinningRequests(ctx);
         skinCpu.row.vertexSubmitNs += skinCpu.Elapsed(vertexCpuStart);
-        if (splitTrace) ctx.renderer.GpuProfEndPass("VertexSkinningCompute");
+        if (splitTrace) {
+            ctx.renderer.GpuProfEndPass("VertexSkinningCompute");
+        }
         if (skinProfile) {
-            if (!splitTrace) ctx.renderer.GpuProfEndPass("AnimationSkinningCompute");
+            if (!splitTrace) {
+                ctx.renderer.GpuProfEndPass("AnimationSkinningCompute");
+            }
             ctx.renderer.GpuProfEndRecordedView();
         }
     }
     skinning_cache_detail::AccumulateSkinningFrameStats(ctx);
-    /// @note 戻り値のない Dispatch では成否を判断せず、バックエンドが DIRECT キューの書き込みを公開したときだけ版を進める。
+    // 戻り値のない Dispatch では成否を判断せず、バックエンドが DIRECT キューの書き込みを公開したときだけ版を進める。
     if (ownedBatchRequested) {
-        /// @note 同期パス中もシーンと資源管理者は呼び出し側が所有する。Win32 メッセージによる再入後にコンポーネントを解決し直す。
+        // 同期パス中もシーンと資源管理者は呼び出し側が所有する。Win32 メッセージによる再入後にコンポーネントを解決し直す。
         for (const auto& publication : pendingPublications) {
             if (publication.sceneGeneration != ctx.scene.GetRenderSceneGeneration() || publication.frame != Time::frameCount
                 || publication.resourceOwner != resources.GetInstanceId() || publication.resourceEpoch != resources.GetResetVersion()
-                || publication.resourceFrame != resources.FrameStamp()) continue;
+                || publication.resourceFrame != resources.FrameStamp()) {
+                continue;
+            }
             auto* component = ctx.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
             auto* object = ctx.scene.GetGameObject(publication.owner);
-            if (!component || !object || ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.componentLifetime) continue;
-            /// @note 入れ子のパスが新しいポーズを公開していたら、外側のパスはその公開状態を失効させない。
-            if (component->gpuSkinningContent != publication.content) continue;
+            if (!component || !object || ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.componentLifetime) {
+                continue;
+            }
+            // 入れ子のパスが新しいポーズを公開していたら、外側のパスはその公開状態を失効させない。
+            if (component->gpuSkinningContent != publication.content) {
+                continue;
+            }
             bool current = component->enabled && object->activeInHierarchy() && component->model == publication.model
                 && component->model && component->model->meshes.size() == publication.modelMeshCount
                 && component->SubmeshCount() == publication.slotCount;
@@ -965,7 +1122,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 : component->model && component->model->skeleton && !component->model->skeleton->referencePose.empty()
                     ? &component->model->skeleton->referencePose : nullptr;
             current &= currentPose && currentPose->size() == publication.pose.size();
-            if (current) current = std::memcmp(currentPose->data(), publication.pose.data(), publication.pose.size() * sizeof(math::Matrix4)) == 0;
+            if (current) {
+                current = std::memcmp(currentPose->data(), publication.pose.data(), publication.pose.size() * sizeof(math::Matrix4)) == 0;
+            }
             if (animator) {
                 const auto& bake = animator->boneBake;
                 const auto& witness = publication.bake;
@@ -981,10 +1140,12 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             current &= receipt.ownedPath && receipt.resourceInstance == publication.resourceOwner && receipt.resourceEpoch == publication.resourceEpoch
                 && receipt.resourceFrame == publication.resourceFrame;
             for (const auto& slot : publication.slots) {
-                if (!current) break;
+                if (!current) {
+                    break;
+                }
                 const auto* mesh = component->SubmeshMesh(slot.slot);
                 renderer::BufferResourceMetadata metadata;
-                /// @note 受理した CPU メタデータは変化の手掛かりに限り、GPU 書き込みの成功は実行側の受領記録で確認する。
+                // 受理した CPU メタデータは変化の手掛かりに限り、GPU 書き込みの成功は実行側の受領記録で確認する。
                 current = component->SubmeshAt(slot.slot) == slot.submesh && mesh == slot.mesh && mesh
                     && mesh->cpuSkinnedVertices.size() == slot.vertices
                     && component->ResolveSlotVertexBuffer(slot.slot, mesh->vertexBuffer) == slot.source
@@ -999,20 +1160,28 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                         && outputMetadata.stride == sizeof(renderer::Vertex) && outputMetadata.sizeBytes / sizeof(renderer::Vertex) >= slot.vertices;
                 }
             }
-            if (!current) invalidatePublication(*component);
+            if (!current) {
+                invalidatePublication(*component);
+            }
             else {
                 component->gpuSkinnedThisFrame = true;
                 component->gpuSkinningFrame = publication.frame;
                 component->gpuSkinningVertexCount = publication.vertices;
                 component->gpuSkinningDispatchCount = publication.dispatches;
-                if (trace) ++trace->nativePublishedRenderers;
+                if (trace) {
+                    ++trace->nativePublishedRenderers;
+                }
             }
         }
     }
 
     for (const auto& publication : pendingPublications) {
-        if (ownedBatchRequested) continue;
-        if (publication.deferred) continue;
+        if (ownedBatchRequested) {
+            continue;
+        }
+        if (publication.deferred) {
+            continue;
+        }
         bool allWritten = true;
         for (const auto& [handle, previousVersion] : publication.outputs) {
             const auto* output = resources.Get(handle);
@@ -1021,15 +1190,21 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 break;
             }
         }
-        /// @note 他のアクターの準備中の編集がバッファ待機で実行され得るため、以前のコンポーネントのアドレスを使わない。
+        // 他のアクターの準備中の編集がバッファ待機で実行され得るため、以前のコンポーネントのアドレスを使わない。
         auto* component = ctx.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
         if (!component || ctx.scene.GetRenderSceneGeneration() != publication.sceneGeneration
             || ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.componentLifetime
-            || component->model != publication.model) continue;
+            || component->model != publication.model) {
+            continue;
+        }
         allWritten &= publication.resourceOwner == resources.GetInstanceId() && publication.resourceEpoch == resources.GetResetVersion()
             && publication.resourceFrame == resources.FrameStamp() && publication.frame == Time::frameCount;
-        if (!allWritten) invalidatePublication(*component);
-        if(trace && component->gpuSkinnedThisFrame)++trace->nativePublishedRenderers;
+        if (!allWritten) {
+            invalidatePublication(*component);
+        }
+        if(trace && component->gpuSkinnedThisFrame) {
+            ++trace->nativePublishedRenderers;
+        }
     }
 }
 

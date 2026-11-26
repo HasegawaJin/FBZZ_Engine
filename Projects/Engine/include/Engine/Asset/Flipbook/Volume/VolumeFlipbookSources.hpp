@@ -31,68 +31,55 @@ inline constexpr const char* kVolumeEmitterSourceName = "Emitter";
 
 /// @note 汎用ソース "Emitter" の設定。C++ を書かずに puff の出方を決める。単位は秒と bake 空間。
 struct VolumeEmitterSettings {
-    /// @note true = 0 コマ目で全部出す一発もの / false = 一定間隔で湧き続ける (Loop できる)。
-    bool burst = true;
-    /// @note burst なら総数、連続なら 1 秒あたりの数。
-    int count = 24;
-    math::Vector3 origin{ 0.0f, -0.5f, 0.0f };
-    /// @note origin から散らす球の半径。
-    float originRadius = 0.05f;
-    math::Vector3 direction{ 0.0f, 1.0f, 0.0f };
-    float coneAngleDegrees = 20.0f;
-    float speed = 1.0f;
-    /// @note speed に掛かる乱数の幅 [0,1]。
-    float speedRandom = 0.3f;
-    math::Vector3 gravity{ 0.0f, -1.2f, 0.0f };
-    /// @note 速度に比例する減速 [1/s]。
-    float drag = 0.0f;
-    float lifetime = 1.0f;
-    float lifetimeRandom = 0.2f;
-    float fadeIn = 0.05f;
-    float fadeOut = 0.3f;
-    float radius = 0.1f;
-    float radiusRandom = 0.3f;
-    /// @note 寿命の間に半径が何倍になるか。
-    float growth = 1.5f;
-    /// @note 回転の速さ [rad/s]。軸は puff ごとに乱数。
-    float spin = 2.0f;
-    float density = 1.5f;
-    float temperature = 0.0f;
-    float coolingTime = 0.5f;
-    float liquid = 0.0f;
-    float noiseScale = 1.0f;
-    float stretch = 1.0f;
-    float stretchPerSpeed = 0.0f;
-    float colorKeyMin = 0.0f;
-    float colorKeyMax = 1.0f;
+    bool burst = true; ///< true = 0 コマ目で全部出す一発もの / false = 一定間隔で湧き続ける (Loop できる)。
+    int count = 24; ///< burst なら総数、連続なら 1 秒あたりの数。
+    math::Vector3 origin{ 0.0f, -0.5f, 0.0f }; ///< パフを発生させるシミュレーション空間上の位置。
+    float originRadius = 0.05f; ///< origin から散らす球の半径。
+    math::Vector3 direction{ 0.0f, 1.0f, 0.0f }; ///< 放出方向を選ぶ円錐の中心軸。
+    float coneAngleDegrees = 20.0f; ///< 放出方向が中心軸から外れる円錐の角度 [deg]。
+    float speed = 1.0f; ///< パフの初速の大きさ。
+    float speedRandom = 0.3f; ///< speed に掛かる乱数の幅 [0,1]。
+    math::Vector3 gravity{ 0.0f, -1.2f, 0.0f }; ///< 発生後のパフに積分するシミュレーション空間の加速度。
+    float drag = 0.0f; ///< 速度に比例する減速 [1/s]。
+    float lifetime = 1.0f; ///< パフが発生してから消えるまでの基準時間 [s]。
+    float lifetimeRandom = 0.2f; ///< パフの寿命に個体差を与える乱数の振れ幅。
+    float fadeIn = 0.05f; ///< 発生後にパフの密度が立ち上がる時間 [s]。
+    float fadeOut = 0.3f; ///< 寿命の最後にパフの密度を減らす時間 [s]。
+    float radius = 0.1f; ///< 放出パフの基準半径。
+    float radiusRandom = 0.3f; ///< 放出パフの半径に個体差を与える乱数の振れ幅。
+    float growth = 1.5f; ///< 寿命の間に半径が何倍になるか。
+    float spin = 2.0f; ///< 回転の速さ [rad/s]。軸は puff ごとに乱数。
+    float density = 1.5f; ///< 放出するパフが媒質へ加える基準密度。
+    float temperature = 0.0f; ///< 放出時のパフの温度チャンネルの初期値。
+    float coolingTime = 0.5f; ///< パフの温度が発生後に低下する時間尺度 [s]。
+    float liquid = 0.0f; ///< 放出するパフが媒質へ加える液体成分の強さ。
+    float noiseScale = 1.0f; ///< 放出パフの輪郭に適用するノイズの倍率。
+    float stretch = 1.0f; ///< 速度方向へのパフ形状の基準伸長倍率。
+    float stretchPerSpeed = 0.0f; ///< パフの速度に応じて加える伸長量の係数。
+    float colorKeyMin = 0.0f; ///< 放出パフが色ランプを引く乱数範囲の下限。
+    float colorKeyMax = 1.0f; ///< 放出パフが色ランプを引く乱数範囲の上限。
 };
 
 struct VolumeSourceSettings {
-    /// @note 登録名 (RegisterVolumeSource)。見つからなければ puff は 0 個。
-    std::string preset = "RisingPlume";
-    std::uint32_t seed = 1;
-    /// @note ループできるソース (VolumeSourceCanLoop) だけが見る。frameCount·frameDt 後に場が完全に元へ戻る。
-    bool loop = false;
-    /// @note 負ならソースの既定 (DefaultVolumeStartTime)。
-    float startTime = -1.0f;
-    float frameDt = 1.0f / 24.0f;
-    int frameCount = 64;
-    /// @note ソース "Emitter" だけが見る。
-    VolumeEmitterSettings emitter;
+    std::string preset = "RisingPlume"; ///< 登録名 (RegisterVolumeSource)。見つからなければ puff は 0 個。
+    std::uint32_t seed = 1; ///< 放出パフの乱数列を再現するシード。
+    bool loop = false; ///< ループできるソース (VolumeSourceCanLoop) だけが見る。frameCount·frameDt 後に場が完全に元へ戻る。
+    float startTime = -1.0f; ///< 負ならソースの既定 (DefaultVolumeStartTime)。
+    float frameDt = 1.0f / 24.0f; ///< 隣接する出力コマ間の時刻差 [s]。
+    int frameCount = 64; ///< この設定で撮影する出力コマ数。
+    VolumeEmitterSettings emitter; ///< ソース "Emitter" だけが見る。
 };
 
 /// @note ソースへ渡す、焼く時間範囲。
 struct VolumeSourceRange {
-    /// @note 0 コマ目の時刻。
-    float start = 0.0f;
+    float start = 0.0f; ///< 0 コマ目の時刻。
     /// @note frameCount·frameDt。
-    float duration = 1.0f;
+    float duration = 1.0f; ///< ソースを撮影する時間範囲の長さ [s]。
 };
 
 struct VolumeSourceDesc {
-    std::string name;
-    /// @note パネルに出す 1 行の説明。
-    std::string description;
+    std::string name; ///< ツールでソースのプリセットを表示・選択するための名前。
+    std::string description; ///< パネルに出す 1 行の説明。
     std::function<std::vector<VolumePuff>(const VolumeSourceSettings&, const VolumeSourceRange&)> build;
     /// @note 省略時は 0。湧き続けるソースは寿命ぶん先を返し、定常状態を 0 コマ目にする。
     std::function<float(const VolumeSourceSettings&)> defaultStartTime;
@@ -144,4 +131,4 @@ FBZZ_ENGINE_API void AppendPeriodicVolumePuffs(const VolumeSourceSettings& setti
                                std::vector<VolumePuff>& out);
 /// @}
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -60,18 +60,25 @@ constexpr float kWakeInterval = 0.25f; ///< @brief [s]
 
 float GetF(const asset::MaterialAssetAuthoring* m, const char* key, float def)
 {
-    if (!m) return def;
+    if (!m) {
+        return def;
+    }
     const auto it = m->params.find(key);
-    if (it != m->params.end() && !it->second.empty()) return it->second[0];
+    if (it != m->params.end() && !it->second.empty()) {
+        return it->second[0];
+    }
     return def;
 }
 
 math::Vector2 GetF2(const asset::MaterialAssetAuthoring* m, const char* key, math::Vector2 def)
 {
-    if (!m) return def;
+    if (!m) {
+        return def;
+    }
     const auto it = m->params.find(key);
-    if (it != m->params.end() && it->second.size() >= 2)
+    if (it != m->params.end() && it->second.size() >= 2) {
         return { it->second[0], it->second[1] };
+    }
     return def;
 }
 
@@ -126,7 +133,9 @@ WaterMaterialPreparation PrepareWaterMaterial(const asset::MaterialAsset::Author
         return defaults;
     }
     for (const auto& entry : cache.entries)
-        if (entry.publication == publication) return entry.values;
+        if (entry.publication == publication) {
+            return entry.values;
+        }
     const auto values = BuildWaterMaterialPreparation(&publication->Data());
     cache.entries[cache.next] = {publication, values};
     cache.next = (cache.next + 1) % cache.entries.size();
@@ -140,14 +149,17 @@ std::uint64_t HashByte(std::uint64_t hash, std::uint8_t value)
 
 std::uint64_t HashU32(std::uint64_t hash, std::uint32_t value)
 {
-    for (unsigned shift = 0; shift < 32; shift += 8)
+    for (unsigned shift = 0; shift < 32; shift += 8) {
         hash = HashByte(hash, static_cast<std::uint8_t>(value >> shift));
+    }
     return hash;
 }
 
 std::uint64_t HashString(std::uint64_t hash, std::string_view value)
 {
-    for (const char byte : value) hash = HashByte(hash, static_cast<std::uint8_t>(static_cast<unsigned char>(byte)));
+    for (const char byte : value) {
+        hash = HashByte(hash, static_cast<std::uint8_t>(static_cast<unsigned char>(byte)));
+    }
     return HashByte(hash, static_cast<std::uint8_t>(0xffu));
 }
 
@@ -228,20 +240,29 @@ bool GenerateWaveBands(const asset::WaterWavesAsset& source, const WaterWaveAuth
     std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& waves, std::uint32_t& count,
     math::Vector2& directionDisplay)
 {
-    if (!source.GenerateWaves(waves)) return false;
+    if (!source.GenerateWaves(waves)) {
+        return false;
+    }
     auto settings = source.GenerationSettings();
     count = settings.waveCount;
     const bool overrideSpread = std::isfinite(authoring.spreadDegrees) && authoring.spreadDegrees >= 0.0f;
-    if (authoring.overrideHeading) settings.directionCenterRadians = WaveHeadingRadians(authoring.headingDegrees);
-    if (overrideSpread)
+    if (authoring.overrideHeading) {
+        settings.directionCenterRadians = WaveHeadingRadians(authoring.headingDegrees);
+    }
+    if (overrideSpread) {
         settings.directionSpreadRadians = (std::min)(authoring.spreadDegrees * (math::PI / 180.0f), math::TWO_PI);
-    if ((authoring.overrideHeading || overrideSpread) && !fluid::GenerateGerstnerWaves(settings, waves)) return false;
+    }
+    if ((authoring.overrideHeading || overrideSpread) && !fluid::GenerateGerstnerWaves(settings, waves)) {
+        return false;
+    }
     directionDisplay = {
         std::remainder(settings.directionCenterRadians, math::TWO_PI) * (180.0f / math::PI),
         settings.directionSpreadRadians * (180.0f / math::PI)
     };
 
-    if (count == 0 || !std::isfinite(authoring.secondaryStrength) || authoring.secondaryStrength <= 0.0f) return true;
+    if (count == 0 || !std::isfinite(authoring.secondaryStrength) || authoring.secondaryStrength <= 0.0f) {
+        return true;
+    }
     constexpr std::uint32_t SECONDARY_COUNT = 3;
     const float strength = math::Clamp01(authoring.secondaryStrength);
     settings.seed ^= 0x9E3779B9u;
@@ -253,7 +274,9 @@ bool GenerateWaveBands(const asset::WaterWavesAsset& source, const WaterWaveAuth
     settings.minimumAmplitude *= strength;
     settings.maximumAmplitude *= strength;
     std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> secondary{};
-    if (!fluid::GenerateGerstnerWaves(settings, secondary)) return false;
+    if (!fluid::GenerateGerstnerWaves(settings, secondary)) {
+        return false;
+    }
     count = (std::min)(count, static_cast<std::uint32_t>(waves.size()) - SECONDARY_COUNT);
     std::copy_n(secondary.begin(), SECONDARY_COUNT, waves.begin() + count);
     count += SECONDARY_COUNT;
@@ -297,7 +320,9 @@ bool IsStrongerSurfaceFlow(const WaterSurfaceFlow& a, const WaterSurfaceFlow& b)
 {
     const float heightA = std::abs(a.height);
     const float heightB = std::abs(b.height);
-    if (heightA != heightB) return heightA > heightB;
+    if (heightA != heightB) {
+        return heightA > heightB;
+    }
     return std::abs(a.speed) > std::abs(b.speed);
 }
 
@@ -305,11 +330,15 @@ const SplashTarget* FindSplashTarget(const std::vector<SplashTarget>& targets, c
     float time, WaterSurfaceReadView view, WaterSurfaceHeightSample& sample)
 {
     for (const SplashTarget& target : targets) {
-        if (!WaterSurfaceContainsXZ(*target.water, *target.transform, p.x, p.z, time, view)) continue;
+        if (!WaterSurfaceContainsXZ(*target.water, *target.transform, p.x, p.z, time, view)) {
+            continue;
+        }
         const float bound = target.water->SurfaceHeightBound(view);
         WaterSurfaceHeightSample candidate;
         if (!TrySampleWaterSurfaceHeightWorld(*target.water, *target.transform, p, time, candidate, view)
-            || candidate.excluded || candidate.depth > candidate.waterDepthLimit || candidate.depth < -bound) continue;
+            || candidate.excluded || candidate.depth > candidate.waterDepthLimit || candidate.depth < -bound) {
+            continue;
+        }
         sample = candidate;
         return &target;
     }
@@ -330,13 +359,17 @@ GerstnerWave DefaultWaterWave(int index)
 
 const asset::MaterialAsset* LoadWaterMaterial(const WaterComponent& water)
 {
-    if (water.materialPath.empty()) return nullptr;
+    if (water.materialPath.empty()) {
+        return nullptr;
+    }
     return asset::AssetManager::Get<asset::MaterialAsset>(asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath));
 }
 
 static asset::MaterialAsset::AuthoringSnapshotPtr LoadWaterMaterialSnapshot(const WaterComponent& water)
 {
-    if (water.materialPath.empty()) return nullptr;
+    if (water.materialPath.empty()) {
+        return nullptr;
+    }
     return asset::ReadMaterialAuthoring(asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath));
 }
 
@@ -362,8 +395,9 @@ bool PrepareWaterSplineSnapshotFromPoints(WaterComponent& water,
     const std::uint64_t effectiveSignature = HashU32(
         HashU32(signature, static_cast<std::uint32_t>(sourceSignature)),
         static_cast<std::uint32_t>(sourceSignature >> 32));
-    if (water.splineSnapshotAttempted && water.splineSnapshotAttemptSignature == effectiveSignature)
+    if (water.splineSnapshotAttempted && water.splineSnapshotAttemptSignature == effectiveSignature) {
         return water.splineSnapshot && water.splineSnapshot->signature == effectiveSignature;
+    }
     water.splineSnapshotAttempted = true;
     water.splineSnapshotAttemptSignature = effectiveSignature;
     WaterSplineSnapshot snapshot;
@@ -406,7 +440,7 @@ bool PrepareWaterSplineSnapshotFromPoints(WaterComponent& water,
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool PrepareWaterSplineSnapshot(WaterComponent& water, const Transform& transform)
 {
@@ -475,7 +509,9 @@ void PrepareWaterSplineSnapshots(Scene& scene)
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         auto* water = scene.GetComponent<WaterComponent>(id);
         GameObject* go = scene.GetGameObject(id);
-        if (water && go) static_cast<void>(PrepareWaterSplineSnapshot(scene, id, *water, go->transform));
+        if (water && go) {
+            static_cast<void>(PrepareWaterSplineSnapshot(scene, id, *water, go->transform));
+        }
     }
 }
 
@@ -553,8 +589,9 @@ std::uint64_t WaterZoneInputSignature(const WaterZoneComponent& zone, EntityID o
             | member.water.id.index);
         hash = HashZoneU32(hash, static_cast<std::uint32_t>(member.priority));
         if (GameObject* go = member.water.Resolve(scene)) {
-            if (WaterComponent* water = scene.GetComponent<WaterComponent>(go->GetID()))
+            if (WaterComponent* water = scene.GetComponent<WaterComponent>(go->GetID())) {
                 hash = HashZoneWater(hash, *water, go->transform);
+            }
         }
     }
     hash = HashZoneU64(hash, zone.riverMouths.size());
@@ -590,10 +627,23 @@ bool SupportedZoneSourceTransform(const Transform& transform)
 bool BuildRectangleZoneSource(const WaterComponent& water, const Transform& transform,
     std::shared_ptr<const WaterSplineSnapshot>& out)
 {
-    if (!SupportedZoneSourceTransform(transform) || !std::isfinite(water.extentX)
-        || !std::isfinite(water.extentZ) || water.extentX <= 0.0f || water.extentZ <= 0.0f
-        || !std::isfinite(water.buoyancyDepth) || water.buoyancyDepth < 0.0f
-        || !std::isfinite(water.current.x) || !std::isfinite(water.current.y)) return false;
+    // 矩形水域を水平面に配置できる姿勢と、正の広がりを確認する。
+    if (!SupportedZoneSourceTransform(transform)) {
+        return false;
+    }
+    if (!std::isfinite(water.extentX) || !std::isfinite(water.extentZ)
+        || water.extentX <= 0.0f || water.extentZ <= 0.0f) {
+        return false;
+    }
+
+    // スナップショットにコピーする水深と流速が有効か確認する。
+    if (!std::isfinite(water.buoyancyDepth) || water.buoyancyDepth < 0.0f) {
+        return false;
+    }
+    if (!std::isfinite(water.current.x) || !std::isfinite(water.current.y)) {
+        return false;
+    }
+
     WaterSplineSnapshot snapshot;
     snapshot.shape = WaterSurfaceShape::RECTANGLE;
     snapshot.worldBaseY = transform.worldPosition.y;
@@ -619,7 +669,9 @@ bool BuildRectangleZoneSource(const WaterComponent& water, const Transform& tran
     const float worldZ = water.extentZ * std::abs(transform.worldScale.z);
     const float maximumEdge = std::max(std::hypot(worldX, worldZ), 0.05f);
     if (!FinalizeWaterSplineSnapshot(snapshot, maximumEdge)
-        || !HasValidWaterSplineExtents(snapshot, transform)) return false;
+        || !HasValidWaterSplineExtents(snapshot, transform)) {
+        return false;
+    }
     out = std::make_shared<const WaterSplineSnapshot>(std::move(snapshot));
     return true;
 }
@@ -631,7 +683,7 @@ math::Vector3 ZoneSourceWorldPoint(const WaterSplinePoint& point, const Transfor
     return transform.worldPosition + transform.worldRotation * scaled;
 }
 
-} /// @note namespace
+} // namespace
 
 void PrepareWaterZoneSnapshots(Scene& scene)
 {
@@ -648,10 +700,13 @@ void PrepareWaterZoneSnapshots(Scene& scene)
         WaterZoneComponent* zone = scene.GetComponent<WaterZoneComponent>(zoneID);
         WaterComponent* owner = scene.GetComponent<WaterComponent>(zoneID);
         GameObject* ownerGO = scene.GetGameObject(zoneID);
-        if (!zone) continue;
+        if (!zone) {
+            continue;
+        }
         if (zone->enabled && owner && ownerGO && ownerGO->activeInHierarchy()
-            && !zone->members.empty())
+            && !zone->members.empty()) {
             owner->zoneSurfaceSelected = true;
+        }
         if (!zone->enabled || !owner || !ownerGO || !ownerGO->activeInHierarchy()
             || zone->members.empty()) {
             zone->snapshot.reset();
@@ -667,15 +722,18 @@ void PrepareWaterZoneSnapshots(Scene& scene)
         memberIDs.reserve((std::min)(zone->members.size(), WATER_ZONE_MAX_BODIES));
         std::unordered_set<std::uint64_t> localMembers;
         std::string invalid;
-        if (zone->members.size() + 1 > WATER_ZONE_MAX_BODIES)
+        if (zone->members.size() + 1 > WATER_ZONE_MAX_BODIES) {
             invalid = "member count exceeds the Zone limit";
+        }
         else if (zone->riverMouths.size() > WATER_ZONE_MAX_MOUTHS)
             invalid = "river mouth count exceeds the Zone limit";
         else if (claimed.contains(keyFor(zoneID)))
             invalid = "Zone owner is already a member of another Zone";
 
         for (const auto& member : zone->members) {
-            if (!invalid.empty()) break;
+            if (!invalid.empty()) {
+                break;
+            }
             GameObject* memberGO = member.water.Resolve(scene);
             if (!memberGO || memberGO->GetID() == zoneID
                 || scene.HasComponent<WaterZoneComponent>(memberGO->GetID())
@@ -707,7 +765,9 @@ void PrepareWaterZoneSnapshots(Scene& scene)
         }
 
         if (zone->attempted && zone->attemptSignature == signature) {
-            if (!zone->snapshot) continue;
+            if (!zone->snapshot) {
+                continue;
+            }
             owner->zoneSnapshot = zone->snapshot;
             for (const EntityID memberID : memberIDs) {
                 claimed.emplace(keyFor(memberID), zoneID);
@@ -733,27 +793,39 @@ void PrepareWaterZoneSnapshots(Scene& scene)
             const auto appendSource = [&](EntityID sourceID, int priority) {
                 WaterComponent* water = scene.GetComponent<WaterComponent>(sourceID);
                 GameObject* go = scene.GetGameObject(sourceID);
-                if (!water || !go || !water->enabled || !go->activeInHierarchy()) return false;
+                if (!water || !go || !water->enabled || !go->activeInHierarchy()) {
+                    return false;
+                }
                 std::shared_ptr<const WaterSplineSnapshot> geometry;
                 const WaterSurfaceShape shape = WaterSurfaceEffectiveShape(*water);
                 if (shape == WaterSurfaceShape::RECTANGLE) {
-                    if (!BuildRectangleZoneSource(*water, go->transform, geometry)) return false;
+                    if (!BuildRectangleZoneSource(*water, go->transform, geometry)) {
+                        return false;
+                    }
                 } else {
                     if (!water->splineSnapshot || water->splineSnapshot->shape != shape
-                        || !HasValidWaterSplineExtents(*water->splineSnapshot, go->transform)) return false;
+                        || !HasValidWaterSplineExtents(*water->splineSnapshot, go->transform)) {
+                        return false;
+                    }
                     geometry = water->splineSnapshot;
                 }
                 sources.push_back({std::move(geometry), priority});
                 sourceIDs.push_back(sourceID);
                 return true;
             };
-            if (!appendSource(zoneID, zone->ownerPriority)) invalid = "Zone owner geometry is invalid";
+            if (!appendSource(zoneID, zone->ownerPriority)) {
+                invalid = "Zone owner geometry is invalid";
+            }
             for (std::size_t i = 0; invalid.empty() && i < memberIDs.size(); ++i)
-                if (!appendSource(memberIDs[i], zone->members[i].priority)) invalid = "a member geometry is invalid";
+                if (!appendSource(memberIDs[i], zone->members[i].priority)) {
+                    invalid = "a member geometry is invalid";
+                }
 
             std::vector<WaterZoneMouthInput> mouthInputs;
             for (const auto& authoredMouth : zone->riverMouths) {
-                if (!invalid.empty()) break;
+                if (!invalid.empty()) {
+                    break;
+                }
                 GameObject* riverGO = authoredMouth.river.Resolve(scene);
                 if (!riverGO || riverGO->GetID() == zoneID) {
                     invalid = "a river mouth reference is missing or is not a member";
@@ -815,7 +887,9 @@ void PrepareWaterZoneSnapshots(Scene& scene)
                 WaterZoneSnapshot built;
                 if (!BuildWaterZoneSnapshot(sources, mouthInputs, ownerGO->transform,
                         owner->buoyancyDepth, zone->meshCellSize, built, invalid, zone->blendMaterials)) {
-                    if (invalid.empty()) invalid = "Zone numeric snapshot build failed";
+                    if (invalid.empty()) {
+                        invalid = "Zone numeric snapshot build failed";
+                    }
                 } else {
                     built.geometry.signature = signature;
                     zone->snapshot = std::make_shared<const WaterZoneSnapshot>(std::move(built));
@@ -850,26 +924,37 @@ void PrepareWaterSceneSurfaces(Scene& scene)
     PrepareWaterSplineSnapshots(scene);
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(id);
-        if (!water || water->surfaceShape != WaterSurfaceShape::RECTANGLE) continue;
+        if (!water || water->surfaceShape != WaterSurfaceShape::RECTANGLE) {
+            continue;
+        }
         const auto materialSnapshot = LoadWaterMaterialSnapshot(*water);
         water->current = PrepareWaterMaterial(materialSnapshot).sceneCurrent;
     }
     PrepareWaterZoneSnapshots(scene);
     PrepareWaterExclusionSnapshots(scene);
     PrepareWaterfallSeams(scene);
-    for (const EntityID id : scene.GetEntities<WaterComponent>())
+    for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         scene.GetComponent<WaterComponent>(id)->horizonWaveSeams = {};
+    }
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         auto* river = scene.GetComponent<WaterComponent>(id);
-        if (!river->enabled || river->zoneOwner.IsValid() || !scene.GetGameObject(id)->activeInHierarchy()) continue;
+        if (!river->enabled || river->zoneOwner.IsValid() || !scene.GetGameObject(id)->activeInHierarchy()) {
+            continue;
+        }
         const auto* geometry = WaterSurfaceGeometry(*river, WaterSurfaceReadView::LIVE_QUERY);
-        if (!geometry || geometry->horizonMouth.w <= 0.0f) continue;
+        if (!geometry || geometry->horizonMouth.w <= 0.0f) {
+            continue;
+        }
         const auto* receiver = river->horizonMaterialReceiver.Resolve(scene);
         auto* ocean = receiver ? scene.GetComponent<WaterComponent>(receiver->GetID()) : nullptr;
-        if (!ocean || !WaterSurfaceUsesHorizon(*ocean, WaterSurfaceReadView::LIVE_QUERY)) continue;
+        if (!ocean || !WaterSurfaceUsesHorizon(*ocean, WaterSurfaceReadView::LIVE_QUERY)) {
+            continue;
+        }
         auto& seams = ocean->horizonWaveSeams;
         const auto slot = std::find_if(seams.begin(), seams.end(), [](auto seam) { return seam.w == 0.0f; });
-        if (slot == seams.end()) continue;
+        if (slot == seams.end()) {
+            continue;
+        }
         *slot = geometry->horizonMouth;
         river->horizonWaveSeams[0] = *slot;
     }
@@ -882,9 +967,13 @@ void CaptureWaterSimulationSurfaces(Scene& scene, bool unpublishedOnly = false)
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(id);
         const GameObject* go = scene.GetGameObject(id);
-        if (!water || !go) continue;
+        if (!water || !go) {
+            continue;
+        }
         water->simulationReadEnabled = true;
-        if (unpublishedOnly && water->simulationSurfacePublished) continue;
+        if (unpublishedOnly && water->simulationSurfacePublished) {
+            continue;
+        }
         water->simulationSplineSnapshot = water->splineSnapshot;
         water->simulationZoneSnapshot = water->zoneSnapshot;
         water->simulationExclusionSnapshot = water->exclusionSnapshot;
@@ -901,23 +990,29 @@ void CaptureWaterSimulationSurfaces(Scene& scene, bool unpublishedOnly = false)
     for (const EntityID id : scene.GetEntities<WaterZoneComponent>()) {
         WaterZoneComponent* zone = scene.GetComponent<WaterZoneComponent>(id);
         const GameObject* go = scene.GetGameObject(id);
-        if (!zone || !go) continue;
-        if (unpublishedOnly && zone->simulationPublished) continue;
-        if (zone->simulationSnapshot != zone->snapshot)
+        if (!zone || !go) {
+            continue;
+        }
+        if (unpublishedOnly && zone->simulationPublished) {
+            continue;
+        }
+        if (zone->simulationSnapshot != zone->snapshot) {
             zone->simulationMaterialSources = zone->snapshot ? zone->materialSources : std::vector<EntityID>{};
+        }
         zone->simulationSnapshot = zone->snapshot;
         zone->simulationOwnerTransform = go->transform;
         zone->simulationPublished = true;
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void PrepareWaterSimulationSurfaces(Scene& scene)
 {
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
-        if (WaterComponent* water = scene.GetComponent<WaterComponent>(id))
+        if (WaterComponent* water = scene.GetComponent<WaterComponent>(id)) {
             water->simulationReadEnabled = true;
+        }
     }
     PrepareWaterSceneSurfaces(scene);
     PrepareWaterDepthFields(scene, WaterSurfaceReadView::LIVE_QUERY);
@@ -934,10 +1029,13 @@ void EnsureWaterSimulationSurfaces(Scene& scene)
             break;
         }
     }
-    if (!needsInitialPublication) return;
+    if (!needsInitialPublication) {
+        return;
+    }
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
-        if (WaterComponent* water = scene.GetComponent<WaterComponent>(id))
+        if (WaterComponent* water = scene.GetComponent<WaterComponent>(id)) {
             water->simulationReadEnabled = true;
+        }
     }
     PrepareWaterSceneSurfaces(scene);
     PrepareWaterDepthFields(scene, WaterSurfaceReadView::LIVE_QUERY);
@@ -947,10 +1045,13 @@ void EnsureWaterSimulationSurfaces(Scene& scene)
 WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity)
 {
     WaterComponent* water = scene.GetComponent<WaterComponent>(entity);
-    if (!water) return nullptr;
+    if (!water) {
+        return nullptr;
+    }
     if (water->zoneOwner.IsValid()) {
-        if (WaterComponent* owner = scene.GetComponent<WaterComponent>(water->zoneOwner))
+        if (WaterComponent* owner = scene.GetComponent<WaterComponent>(water->zoneOwner)) {
             return owner;
+        }
     }
     return water;
 }
@@ -961,16 +1062,29 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
                            std::span<const GerstnerWave> bases,
                            float grouping, float spread, bool constrainContraction)
 {
-    if (bases.size() > fluid::MAX_BASE_GERSTNER_WAVES) return false;
+    if (bases.size() > fluid::MAX_BASE_GERSTNER_WAVES) {
+        return false;
+    }
     if (constrainContraction) {
         if (!std::isfinite(grouping) || grouping < 0.0f || grouping > 1.0f
-            || !std::isfinite(spread) || spread < 0.0f || spread > 1.0f) return false;
+            || !std::isfinite(spread) || spread < 0.0f || spread > 1.0f) {
+            return false;
+        }
         for (const GerstnerWave& wave : bases) {
-            if (!std::isfinite(wave.direction.x) || !std::isfinite(wave.direction.y)
-                || !std::isfinite(wave.amplitude) || wave.amplitude < 0.0f
-                || !std::isfinite(wave.wavelength) || wave.wavelength <= 0.0f
-                || !std::isfinite(wave.steepness) || wave.steepness < 0.0f || wave.steepness > 1.0f
-                || !std::isfinite(wave.phaseOffsetRadians)) return false;
+            // 波の伝播方向と寸法を検証してから、形状を調整する急峻度と位相を確認する。
+            if (!std::isfinite(wave.direction.x) || !std::isfinite(wave.direction.y)) {
+                return false;
+            }
+            if (!std::isfinite(wave.amplitude) || wave.amplitude < 0.0f
+                || !std::isfinite(wave.wavelength) || wave.wavelength <= 0.0f) {
+                return false;
+            }
+            if (!std::isfinite(wave.steepness) || wave.steepness < 0.0f || wave.steepness > 1.0f) {
+                return false;
+            }
+            if (!std::isfinite(wave.phaseOffsetRadians)) {
+                return false;
+            }
         }
     }
 
@@ -1020,7 +1134,7 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 static bool ResolveWaterWavesFromValues(WaterComponent& water, const WaterMaterialPreparation& material,
                                 const asset::WaterWavesAsset& wavesAsset)
@@ -1030,7 +1144,9 @@ static bool ResolveWaterWavesFromValues(WaterComponent& water, const WaterMateri
     math::Vector2 display;
     if (!GenerateWaveBands(wavesAsset, water.waveAuthoring, generated, count, display)
         || !ResolveWaterWaveBases(water, material, std::span(generated.data(), count),
-            wavesAsset.waveGrouping, wavesAsset.waveSpread, true)) return false;
+            wavesAsset.waveGrouping, wavesAsset.waveSpread, true)) {
+        return false;
+    }
     water.waveDirectionDisplay = display;
     return true;
 }
@@ -1044,7 +1160,9 @@ static void ResolveMaterialWaveBases(WaterComponent& water, const WaterMaterialP
 static void ResolveWaterWavesValues(WaterComponent& water, const WaterMaterialPreparation& material)
 {
     const auto* preset = BuiltInSeaPreset(water.waveAuthoring.preset);
-    if (preset && ResolveWaterWavesFromValues(water, material, *preset)) return;
+    if (preset && ResolveWaterWavesFromValues(water, material, *preset)) {
+        return;
+    }
     ResolveMaterialWaveBases(water, material);
 }
 
@@ -1081,7 +1199,7 @@ math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform&
         water.extentZ * std::abs(transform.worldScale.z) / static_cast<float>((std::max)(water.resolutionZ, 1u)),
     };
     if (water.cameraFocusedGrid) {
-        /// @note 物理の波は最密区間のスペクトルを使い、SceneView と GameView のカメラ変更では動かさない。
+        // 物理の波は最密区間のスペクトルを使い、SceneView と GameView のカメラ変更では動かさない。
         const float nearCell = (std::clamp)(water.nearCellSize, 0.25f, 10.0f);
         cell.x = (std::min)(cell.x, nearCell);
         cell.y = (std::min)(cell.y, nearCell);
@@ -1094,17 +1212,19 @@ void EmitWaterRipple(WaterComponent& water, const Transform& transform,
 {
     const math::Vector2 size = WaterWorldSize(water, transform);
 
-    /// @note 波紋テクスチャは水面全体で 1 枚。テクセルより細い輪は焼いても «輪» にならないので、 テクセルのワールド実寸を太さの下限にする。
+    // 波紋テクスチャは水面全体で 1 枚。テクセルより細い輪は焼いても «輪» にならないので、 テクセルのワールド実寸を太さの下限にする。
     const float mean   = (size.x + size.y) * 0.5f;
     const float texel  = mean / static_cast<float>(kWaterRippleTextureSize);
     const float s      = math::Clamp01(strength);
     const float width  = (std::max)(0.25f + 0.35f * s, texel * 1.5f);
     const float speed  = (std::max)(1.2f + 1.2f * s, texel * 3.0f);
 
-    /// @note テクセルで止めた «実際に出る輪の太さ» [m]。海サイズの水面では 1 テクセルが数十 m あり、 小石 1 個の着水が直径 100 m の輪として出てしまう。太くなったぶんだけ薄くし、 «輪として読めない» ところで置くのをやめる。しぶきのパーティクルはそのまま残る。
+    // テクセルで止めた «実際に出る輪の太さ» [m]。海サイズの水面では 1 テクセルが数十 m あり、 小石 1 個の着水が直径 100 m の輪として出てしまう。太くなったぶんだけ薄くし、 «輪として読めない» ところで置くのをやめる。しぶきのパーティクルはそのまま残る。
     const float t = math::Clamp01((width - 3.0f) / 5.0f);
     const float scaleFade = 1.0f - t * t * (3.0f - 2.0f * t);
-    if (scaleFade <= 0.01f) return;
+    if (scaleFade <= 0.01f) {
+        return;
+    }
 
     WaterRipple ripple;
     ripple.center    = { worldPos.x, worldPos.z };
@@ -1113,27 +1233,30 @@ void EmitWaterRipple(WaterComponent& water, const Transform& transform,
     ripple.amplitude = s * scaleFade;
     ripple.speed     = speed;
     ripple.decayRate = 1.3f;
-    /// @note 断面 sin(ring/w·PI) の周期は 2·width。«波長 / セル» で測る WaveMeshFade へは その周期を渡す (帯の原則は Gerstner 波と同じ尺で決める)。
+    // 断面 sin(ring/w·PI) の周期は 2·width。«波長 / セル» で測る WaveMeshFade へは その周期を渡す (帯の原則は Gerstner 波と同じ尺で決める)。
     ripple.meshFade  = WaterComponent::WaveMeshFade(width * 2.0f, water.cellSize);
-    /// @note 輪は «水面を横切り切ったら» 用済み。UV 時代の 2.8 (= 幅の 2.8 倍) を実寸へ写した値。
+    // 輪は «水面を横切り切ったら» 用済み。UV 時代の 2.8 (= 幅の 2.8 倍) を実寸へ写した値。
     ripple.maxRadius = mean * 2.8f;
 
-    /// @note 波紋テクスチャは «テクセル数 × 波紋数» を毎フレーム CPU で焼き直す。物体を大量に 水へ落とすと波紋の数だけフレームが重くなるので、上限を置いて古いものから捨てる。
-    if (water.ripples.size() >= kMaxWaterRipples)
+    // 波紋テクスチャは «テクセル数 × 波紋数» を毎フレーム CPU で焼き直す。物体を大量に 水へ落とすと波紋の数だけフレームが重くなるので、上限を置いて古いものから捨てる。
+    if (water.ripples.size() >= kMaxWaterRipples) {
         water.ripples.erase(water.ripples.begin());
+    }
     water.ripples.push_back(ripple);
 }
 
 void UpdateWaterRipples(WaterComponent& water, const Transform& transform, float dt)
 {
-    if (water.ripples.empty()) return;
+    if (water.ripples.empty()) {
+        return;
+    }
     const math::Vector2 size = WaterWorldSize(water, transform);
     const float mean = (size.x + size.y) * 0.5f;
 
     for (WaterRipple& ripple : water.ripples) {
         ripple.radius += ripple.speed * dt;
         ripple.amplitude *= std::exp(-ripple.decayRate * dt);
-        /// @note セルの実寸は resolution / extent / 親スケールで動く。寝かせ方も毎フレーム測り直す。
+        // セルの実寸は resolution / extent / 親スケールで動く。寝かせ方も毎フレーム測り直す。
         ripple.meshFade = WaterComponent::WaveMeshFade(ripple.width * 2.0f, water.cellSize);
         ripple.maxRadius = mean * 2.8f;
     }
@@ -1153,9 +1276,13 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
     const float halfZ = size.y * 0.5f;
 
     for (const ActiveFlowField& field : fields) {
-        if (!FlowReceiver{}.Accepts(field)) continue;
-        /// @note 流れではない。読み込み時に flowCoupling へ写るので、ここまで届くのは移行漏れ。
-        if (field.type == FlowFieldType::LegacyDrag) continue;
+        if (!FlowReceiver{}.Accepts(field)) {
+            continue;
+        }
+        // 流れではない。読み込み時に flowCoupling へ写るので、ここまで届くのは移行漏れ。
+        if (field.type == FlowFieldType::LegacyDrag) {
+            continue;
+        }
 
         WaterSurfaceFlow flow;
         flow.kind         = field.type;
@@ -1166,37 +1293,45 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
         float reach = field.radius;
 
         if (field.type == FlowFieldType::Baked) {
-            if (field.vectorField == nullptr || field.vectorField->Empty()) continue;
+            if (field.vectorField == nullptr || field.vectorField->Empty()) {
+                continue;
+            }
             flow.vectorField     = field.vectorField;
             flow.inverseRotation = field.inverseRotation;
             flow.extents         = field.extents;
-            /// @note Baked の strength は «焼いた値 [m/s] に掛ける無次元の倍率» で符号を持つ。
+            // Baked の strength は «焼いた値 [m/s] に掛ける無次元の倍率» で符号を持つ。
             flow.speed           = field.strength;
             flow.planeOffsetY    = transform.worldPosition.y - field.position.y;
-            /// @note 回した箱を軸並行で包む代わりに対角長で見る。枠に入るかの粗いふるいなので、 安全側に大きく取って構わない。
+            // 回した箱を軸並行で包む代わりに対角長で見る。枠に入るかの粗いふるいなので、 安全側に大きく取って構わない。
             reach = field.extents.Length();
-            if (std::abs(flow.planeOffsetY) > reach) continue;
-            /// @note 特徴の大きさは «狭い辺の半分»。extents は箱の半径で、場の中の起伏は箱より 細かい。全幅で測ると、刻めない場が縞として残る。
+            if (std::abs(flow.planeOffsetY) > reach) {
+                continue;
+            }
+            // 特徴の大きさは «狭い辺の半分»。extents は箱の半径で、場の中の起伏は箱より 細かい。全幅で測ると、刻めない場が縞として残る。
             const float feature = (std::min)(field.extents.x, field.extents.z);
             flow.height = -kMaxWaterSurfaceDisplacement
                         * WaterComponent::WaveMeshFade(feature, water.cellSize);
         } else {
-            /// @note 半径の無い («シーン全体») 要素は中心からの距離で減衰しないので、水面のどこまで 効くのか決まらない。流速としては効いたままで、形と質感にだけ出さない。
-            if (field.radius <= 0.0001f) continue;
-            /// @note 波による変位を含めると形が自身の高さへ依存するため、水面の基準面と球の断面で解決する。
+            // 半径の無い («シーン全体») 要素は中心からの距離で減衰しないので、水面のどこまで 効くのか決まらない。流速としては効いたままで、形と質感にだけ出さない。
+            if (field.radius <= 0.0001f) {
+                continue;
+            }
+            // 波による変位を含めると形が自身の高さへ依存するため、水面の基準面と球の断面で解決する。
             /// @see Docs/design/water-waves.md 「水面と場の高低差」
             const float distanceY = std::abs(transform.worldPosition.y - field.position.y);
-            if (distanceY >= field.radius) continue;
+            if (distanceY >= field.radius) {
+                continue;
+            }
             const float heightRatio = distanceY / field.radius;
             const float planeInfluence = std::pow(1.0f - heightRatio, field.falloffPower);
             flow.radius = field.radius * std::sqrt((1.0f - heightRatio) * (1.0f + heightRatio));
             reach = flow.radius;
-            /// @note Bernoulli。strength は流速 [m/s] なので v^2/2g がそのまま長さになる。
+            // Bernoulli。strength は流速 [m/s] なので v^2/2g がそのまま長さになる。
             const float bernoulli =
                 (std::min)(flow.speed * flow.speed / 19.6f, kMaxWaterSurfaceDisplacement)
-                /// @note 上限を掛けた後で減衰させ、強い場も Y 移動で直ちに浅くなるようにする。
+                // 上限を掛けた後で減衰させ、強い場も Y 移動で直ちに浅くなるようにする。
                 * planeInfluence * planeInfluence
-                /// @note 頂点で刻めない形は消す。波長にあたるのは形の差し渡し = 2·radius。
+                // 頂点で刻めない形は消す。波長にあたるのは形の差し渡し = 2·radius。
                 * WaterComponent::WaveMeshFade(flow.radius * 2.0f, water.cellSize);
             flow.speed *= planeInfluence;
             const bool wantsSwell = field.waterSwellAmplitude > 0.0f
@@ -1214,16 +1349,17 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
             };
             switch (field.type) {
             case FlowFieldType::Uniform: {
-                /// @note 真上・真下を向いた流れは水面を撫でない。水平成分だけを «風» として読む。
+                // 真上・真下を向いた流れは水面を撫でない。水平成分だけを «風» として読む。
                 const float dirLen = std::sqrt(field.direction.x * field.direction.x
                                              + field.direction.z * field.direction.z);
-                if (dirLen > 1.0e-4f)
+                if (dirLen > 1.0e-4f) {
                     flow.direction = { field.direction.x / dirLen, field.direction.z / dirLen };
+                }
                 flow.speed *= dirLen;
                 flow.chop = math::Clamp01(flow.speed / kWaterSurfaceFlowReference);
                 if (dirLen > 1.0e-4f && wantsSwell) {
                     setSwellBand();
-                    /// @note 波長に対する振幅を制限し、短波を急峻にしすぎない。
+                    // 波長に対する振幅を制限し、短波を急峻にしすぎない。
                     flow.height = (std::min)({field.waterSwellAmplitude, kMaxWaterSurfaceDisplacement,
                                               0.07f * flow.swellWavelength})
                                 * planeInfluence * flow.swellNearFade;
@@ -1240,13 +1376,15 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
                 flow.height = bernoulli;
                 break;
             case FlowFieldType::Vortex:
-                /// @note 横倒しの渦は水面を «掘る» のではなく撫でる。解析項として書けない。
-                if (std::abs(field.direction.y) < kWaterVortexUprightDot) continue;
+                // 横倒しの渦は水面を «掘る» のではなく撫でる。解析項として書けない。
+                if (std::abs(field.direction.y) < kWaterVortexUprightDot) {
+                    continue;
+                }
                 flow.height = -bernoulli;
                 flow.speed  = field.direction.y >= 0.0f ? flow.speed : -flow.speed;
                 if (wantsSwell) {
                     setSwellBand();
-                    /// @note 明示的な渦の深さは演出設定であり、水平方向の作用範囲に応じて制限する。
+                    // 明示的な渦の深さは演出設定であり、水平方向の作用範囲に応じて制限する。
                     flow.height = -(std::min)({field.waterSwellAmplitude, 24.0f, 0.45f * flow.radius})
                                 * planeInfluence * flow.swellNearFade;
                 }
@@ -1256,17 +1394,21 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
             }
         }
 
-        /// @note 形を持つ型が «刻めない» ときは枠を使わない。占めたままだと、頂点に出ない形の ために Uniform / Curl の質感が押し出される。
+        // 形を持つ型が «刻めない» ときは枠を使わない。占めたままだと、頂点に出ない形の ために Uniform / Curl の質感が押し出される。
         const bool shapeless = flow.kind == FlowFieldType::Uniform
                             || flow.kind == FlowFieldType::Curl;
-        if (!shapeless && std::abs(flow.height) <= 0.0001f) continue;
+        if (!shapeless && std::abs(flow.height) <= 0.0001f) {
+            continue;
+        }
 
         const float dx = field.position.x - transform.worldPosition.x;
         const float dz = field.position.z - transform.worldPosition.z;
         if ((std::abs(dx) > halfX + reach || std::abs(dz) > halfZ + reach)
-            && !(flow.swellWavelength > 0.0f && flow.height != 0.0f && WaterSurfaceUsesHorizon(water))) continue;
+            && !(flow.swellWavelength > 0.0f && flow.height != 0.0f && WaterSurfaceUsesHorizon(water))) {
+            continue;
+        }
 
-        /// @note 枠が空いていれば足し、埋まっていれば «一番弱い枠» と競らせる。
+        // 枠が空いていれば足し、埋まっていれば «一番弱い枠» と競らせる。
         if (water.surfaceFlowCount < kWaterSurfaceFlowCount) {
             water.surfaceFlows[static_cast<size_t>(water.surfaceFlowCount)] = flow;
             ++water.surfaceFlowCount;
@@ -1275,11 +1417,13 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
         int weakest = 0;
         for (int i = 1; i < kWaterSurfaceFlowCount; ++i) {
             if (IsStrongerSurfaceFlow(water.surfaceFlows[static_cast<size_t>(weakest)],
-                                      water.surfaceFlows[static_cast<size_t>(i)]))
+                                      water.surfaceFlows[static_cast<size_t>(i)])) {
                 weakest = i;
+            }
         }
-        if (IsStrongerSurfaceFlow(flow, water.surfaceFlows[static_cast<size_t>(weakest)]))
+        if (IsStrongerSurfaceFlow(flow, water.surfaceFlows[static_cast<size_t>(weakest)])) {
             water.surfaceFlows[static_cast<size_t>(weakest)] = flow;
+        }
     }
 }
 
@@ -1298,26 +1442,30 @@ math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
     if (geometrySurface && geometry) {
         const math::Vector2 origin = water.SolveUndisplacedXZ(worldPos.x, worldPos.z, time, view);
         WaterSplineSample splineSample;
-        if (TrySampleWaterSpline(*geometry, origin.x, origin.y, splineSample))
+        if (TrySampleWaterSpline(*geometry, origin.x, origin.y, splineSample)) {
             splineFlow = splineSample.worldVelocity;
+        }
     }
     const math::Vector2 baseFlow = geometrySurface
         ? math::Vector2{splineFlow.x, splineFlow.z} : water.current;
-    if (fields.empty())
+    if (fields.empty()) {
         return {baseFlow.x, 0.0f, baseFlow.y};
+    }
     const math::Vector3 surfacePoint = {
         worldPos.x,
         surfaceBaseY + water.GetSurfaceHeightAt(worldPos.x, worldPos.z, time, view),
         worldPos.z,
     };
-    /// @note 全ビットで引く。剛体にはチャンネルの申告が無いので «どの場も受ける»。
+    // 全ビットで引く。剛体にはチャンネルの申告が無いので «どの場も受ける»。
     math::Vector3 flow = math::Vector3::ZERO;
     for (const auto& field : fields) {
-        /// @note 水域の所属と抵抗は Water が持つため、流速 0 の場の未使用形状・noise を評価する必要はない。
-        if (field.strength == 0.0f) continue;
+        // 水域の所属と抵抗は Water が持つため、流速 0 の場の未使用形状・noise を評価する必要はない。
+        if (field.strength == 0.0f) {
+            continue;
+        }
         flow += FlowReceiver{}.Sample(surfacePoint, std::span<const ActiveFlowField>{&field, 1}, time);
     }
-    /// @note 鉛直成分は捨てる。水面の «表面の流速» は水平にしか意味がなく、y を渡すと 浮いた体が浮力と綱引きして水面の上で震える。
+    // 鉛直成分は捨てる。水面の «表面の流速» は水平にしか意味がなく、y を渡すと 浮いた体が浮力と綱引きして水面の上で震える。
     return {baseFlow.x + flow.x, 0.0f, baseFlow.y + flow.z};
 }
 
@@ -1374,15 +1522,20 @@ void WaterSystem::PrepareResolvedWaves(const Scene& scene, EntityID entity, Wate
             const bool succeeded = GenerateWaveBands(*source, water.waveAuthoring,
                 generated.values, generated.count, generated.directionDisplay);
             cache.attempt = WaveAssetCache::GenerationAttempt{resolved, signature, succeeded};
-            if (succeeded) cache.lastGood = std::move(generated);
+            if (succeeded) {
+                cache.lastGood = std::move(generated);
+            }
         }
-        if (!cache.attempt->succeeded)
+        if (!cache.attempt->succeeded) {
             reason = "asset settings are invalid or use an unsupported algorithm version";
+        }
     }
 
-    /// @note 同じ参照の生成失敗では最後の正常波を直接読み、現在の材質と振幅倍率を適用し直す。
+    // 同じ参照の生成失敗では最後の正常波を直接読み、現在の材質と振幅倍率を適用し直す。
     const auto applyLastGood = [&] {
-        if (!cache.lastGood) return ResolveWaterWaveBases(water, material, {}, 0.0f, 0.0f, true);
+        if (!cache.lastGood) {
+            return ResolveWaterWaveBases(water, material, {}, 0.0f, 0.0f, true);
+        }
         const auto& waves = *cache.lastGood;
         return ResolveWaterWaveBases(water, material, std::span(waves.values.data(), waves.count),
             waves.grouping, waves.spread, true);
@@ -1391,14 +1544,18 @@ void WaterSystem::PrepareResolvedWaves(const Scene& scene, EntityID entity, Wate
     if (!useFallback && applyLastGood()) {
         cache.diagnostic.reset();
     } else {
-        if (!useFallback) reason = "resolved values could not be applied safely";
+        if (!useFallback) {
+            reason = "resolved values could not be applied safely";
+        }
         if (!cache.diagnostic || cache.diagnostic->source != resolved
             || cache.diagnostic->reason != reason || cache.diagnostic->settingsSignature != settingsSignature) {
             FBZZ_LOG_ERROR("WaterSystem: waves asset '%s' failed: %s; using same-reference last-good waves or calm water.",
                 referencePath.c_str(), reason.data());
             cache.diagnostic = WaveAssetCache::Diagnostic{resolved, settingsSignature, reason};
         }
-        if (useFallback) static_cast<void>(applyLastGood());
+        if (useFallback) {
+            static_cast<void>(applyLastGood());
+        }
     }
     water.waveDirectionDisplay = cache.lastGood ? cache.lastGood->directionDisplay : math::Vector2::ZERO;
 }
@@ -1407,8 +1564,9 @@ void WaterSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
-        if (WaterComponent* water = scene.GetComponent<WaterComponent>(id))
+        if (WaterComponent* water = scene.GetComponent<WaterComponent>(id)) {
             water->simulationReadEnabled = ctx.playing || ctx.simulating;
+        }
     }
     PrepareWaterSplineSnapshots(scene);
     const std::uint64_t sceneGeneration = scene.GetRenderSceneGeneration();
@@ -1419,14 +1577,18 @@ void WaterSystem::Update(SystemContext& ctx)
     }
     const FlowFieldFrame& flowFrame = scene.FlowFrame();
 
-    for (auto& entry : m_waveAssets) entry.second.seen = false;
+    for (auto& entry : m_waveAssets) {
+        entry.second.seen = false;
+    }
 
     std::vector<SplashTarget> targets;
     for (EntityID id : scene.GetEntities<WaterComponent>()) {
         auto* water = scene.GetComponent<WaterComponent>(id);
         GameObject* go = scene.GetGameObject(id);
-        /// @note 親ごと無効化された水面は波・流れ・波紋も止める。描画・浮力・スクリプトの問い合わせはどれも無効な水面を見ないので、準備だけ進めても使われない。
-        if (!water || !go || !go->activeInHierarchy()) continue;
+        // 親ごと無効化された水面は波・流れ・波紋も止める。描画・浮力・スクリプトの問い合わせはどれも無効な水面を見ないので、準備だけ進めても使われない。
+        if (!water || !go || !go->activeInHierarchy()) {
+            continue;
+        }
         PrepareResolvedWaves(scene, id, *water);
     }
 
@@ -1435,45 +1597,56 @@ void WaterSystem::Update(SystemContext& ctx)
     for (EntityID id : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(id);
         GameObject* go = scene.GetGameObject(id);
-        if (!water || !go || !go->activeInHierarchy() || water->zoneOwner.IsValid()) continue;
+        if (!water || !go || !go->activeInHierarchy() || water->zoneOwner.IsValid()) {
+            continue;
+        }
         water->cellSize = ResolveWaterCellSize(*water, go->transform);
         water->PrepareWaveCache();
-        /// @note 流れと輪は cellSize を決めた後で解決する。どちらも «頂点で刻めるか» を WaveMeshFade で測るので、順序が逆だと 1 フレーム古いセル実寸で判断する。
+        // 流れと輪は cellSize を決めた後で解決する。どちらも «頂点で刻めるか» を WaveMeshFade で測るので、順序が逆だと 1 フレーム古いセル実寸で判断する。
         ResolveWaterSurfaceFlows(*water, go->transform, *flowFrame.fields);
         UpdateWaterRipples(*water, go->transform, ctx.dt);
         if (water->enabled && (water->splashEnabled || water->interactionSettings.enabled)
-            && IsWaterSurfaceSupported(*water, go->transform)) targets.push_back({water, &go->transform, id});
+            && IsWaterSurfaceSupported(*water, go->transform)) {
+            targets.push_back({water, &go->transform, id});
+        }
     }
 
     PrepareWaterDepthFields(scene, WaterSurfaceReadView::LIVE_QUERY);
     if (ctx.simulating) {
         CaptureWaterSimulationSurfaces(scene);
     } else if (ctx.playing) {
-        /// @note 停止時は新しい水面を一度公開し、以前の固定ステップのスナップショットを保持する。
+        // 停止時は新しい水面を一度公開し、以前の固定ステップのスナップショットを保持する。
         CaptureWaterSimulationSurfaces(scene, true);
     }
     std::erase_if(m_waveAssets, [](const auto& entry) { return !entry.second.seen; });
 
-    /// @note 編集中は «前回どこに居たか» を持ち越さない。持ち越すと、水中に置いた物体が Play 開始の瞬間に一斉に «着水» したことになる。
+    // 編集中は «前回どこに居たか» を持ち越さない。持ち越すと、水中に置いた物体が Play 開始の瞬間に一斉に «着水» したことになる。
     if (!ctx.playing) { m_bodies.clear(); return; }
-    if (!ctx.simulating) return;
+    if (!ctx.simulating) {
+        return;
+    }
     if (targets.empty()) { m_bodies.clear(); return; }
 
     const float time = Time::time;
-    for (auto& entry : m_bodies) entry.second.seen = false;
+    for (auto& entry : m_bodies) {
+        entry.second.seen = false;
+    }
 
     for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
         auto* rb = scene.GetComponent<RigidBodyComponent>(id);
         GameObject* go = scene.GetGameObject(id);
         if (!rb || !go || !rb->enabled || !rb->rigidBody || rb->rigidBody->IsStatic()
-            || !go->activeInHierarchy())
+            || !go->activeInHierarchy()) {
             continue;
+        }
 
         const math::Vector3 pos = go->transform.worldPosition;
         WaterSurfaceHeightSample sample;
         const SplashTarget* target = FindSplashTarget(targets, pos, time,
             WaterSurfaceReadView::SIMULATION, sample);
-        if (!target) continue;
+        if (!target) {
+            continue;
+        }
 
         const float baseY = target->transform->worldPosition.y;
         const float bound = target->water->SurfaceHeightBound(WaterSurfaceReadView::SIMULATION);
@@ -1486,14 +1659,14 @@ void WaterSystem::Update(SystemContext& ctx)
             && !WaterSurfaceExclusions(*target->water, WaterSurfaceReadView::SIMULATION);
         const bool definitelySubmerged = pos.y < baseY
             && pos.y >= baseY - target->water->buoyancyDepth;
-        /// @note 泳ぎの演出は深い水中でも必要なので、波のない遠方の着水判定省略より先に数値だけ記録する。
+        // 泳ぎの演出は深い水中でも必要なので、波のない遠方の着水判定省略より先に数値だけ記録する。
         if (target->water->interactionSettings.enabled) {
             const auto velocity = rb->rigidBody->GetVelocity();
             SupplyWaterMotionImpulse(scene, target->owner, id, pos, velocity, ctx.dt,
                 std::abs(sample.depth) <= target->water->interactionSettings.surfaceBand,
                 !target->water->splashEnabled);
         }
-        /// @note 帯を飛び越えた着水・離水は正確な高さを求める。状態が変わらない遠方だけ省略する。
+        // 帯を飛び越えた着水・離水は正確な高さを求める。状態が変わらない遠方だけ省略する。
         if (rectangle && outsideBand && (inserted || state.submerged == definitelySubmerged)) {
             state.submerged = definitelySubmerged;
             continue;
@@ -1504,7 +1677,7 @@ void WaterSystem::Update(SystemContext& ctx)
         const math::Vector3 surfacePoint = { pos.x, surfaceY, pos.z };
 
         if (inserted) {
-            /// @note 初めて見た剛体は «元から水中に置いてあった» かもしれない。鳴らさずに状態だけ覚える。
+            // 初めて見た剛体は «元から水中に置いてあった» かもしれない。鳴らさずに状態だけ覚える。
             state.submerged = submerged;
             continue;
         }

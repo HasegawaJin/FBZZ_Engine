@@ -41,7 +41,7 @@ enum class TweenClock {
 };
 
 struct ScriptTweenProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 補間操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name Transform
     /// @{
@@ -84,4 +84,4 @@ struct ScriptTweenProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

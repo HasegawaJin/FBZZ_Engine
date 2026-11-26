@@ -26,14 +26,15 @@ using namespace fiber_extraction_detail;
 
 FiberFrameCB BuildFiberFrame(const AmbientWind& wind)
 {
-    /// @note 風・時刻はパス内で共通。物体・面ごとに検証し直さない。
+    // 風・時刻はパス内で共通。物体・面ごとに検証し直さない。
     FiberFrameCB frameBase;
     frameBase.m_time = std::isfinite(Time::time) ? Time::time : 0.0f;
     if (wind.active && std::isfinite(wind.direction.x) && std::isfinite(wind.direction.y)
         && std::isfinite(wind.direction.z) && std::isfinite(wind.speed)) {
         frameBase.m_wind = wind.direction * wind.speed;
-        if (!std::isfinite(frameBase.m_wind.x) || !std::isfinite(frameBase.m_wind.y) || !std::isfinite(frameBase.m_wind.z))
+        if (!std::isfinite(frameBase.m_wind.x) || !std::isfinite(frameBase.m_wind.y) || !std::isfinite(frameBase.m_wind.z)) {
             frameBase.m_wind = {};
+        }
         frameBase.m_turbulence = std::isfinite(wind.turbulence) ? wind.turbulence : 0.0f;
         frameBase.m_pulseFrequency = std::isfinite(wind.pulseFrequency) ? wind.pulseFrequency : 0.0f;
     }
@@ -67,11 +68,13 @@ void AppendFiberPlacementPages(GameObject& owner, FiberComponent& fiber, const r
     }
 }
 
-} /// @note namespace
+} // namespace
 
 void ExtractRenderFibers(RenderPassContext& context, renderer::RenderScene& output)
 {
-    if (context.scene.GetEntities<FiberComponent>().empty()) return;
+    if (context.scene.GetEntities<FiberComponent>().empty()) {
+        return;
+    }
     const RenderSelectionLookup selection(context.settings.selectedObjects);
     auto& resources = context.resources;
     auto& cache = GetFiberResources(resources);
@@ -86,20 +89,30 @@ void ExtractRenderFibers(RenderPassContext& context, renderer::RenderScene& outp
     static std::vector<FiberSurface> surfaces;
     static uint64_t nextIdentity = 0;
     for (auto& owner : context.scene.GameObjects()) {
-        if (!HasFiberSurface(owner, ~0u)) continue;
+        if (!HasFiberSurface(owner, ~0u)) {
+            continue;
+        }
         auto& fiber = *owner.GetComponent<FiberComponent>();
         const auto& materialEntry = GetFiberMaterial(cache, resources, fiber.m_materialPath);
-        if (!materialEntry.m_valid) continue;
+        if (!materialEntry.m_valid) {
+            continue;
+        }
         const asset::FiberMaterialSettings settings = ApplyFiberOverrides(materialEntry.m_settings, fiber, cache, resources);
-        if (settings.m_length <= 0.0f || settings.m_density <= 0.0f) continue;
-        /// @note 毛丈と曲げを含めたカリング球の余白。静的メッシュとスキンで同じ値を使う。
+        if (settings.m_length <= 0.0f || settings.m_density <= 0.0f) {
+            continue;
+        }
+        // 毛丈と曲げを含めたカリング球の余白。静的メッシュとスキンで同じ値を使う。
         const float fiberPadding = context.cullingBoundsPadding + settings.m_length * 3.0f + settings.m_maxBend;
         CollectFiberSurfaces(owner, fiber, fiberPadding, cache, context, surfaces);
-        if (!fiber.m_renderIdentity) fiber.m_renderIdentity = ++nextIdentity;
+        if (!fiber.m_renderIdentity) {
+            fiber.m_renderIdentity = ++nextIdentity;
+        }
         const bool selected = selection.Contains(owner.GetID());
         for (const auto& surface : surfaces) {
             const auto* mesh = surface.mesh;
-            if (!surface.vertices.IsValid() || !mesh->indexBuffer.IsValid()) continue;
+            if (!surface.vertices.IsValid() || !mesh->indexBuffer.IsValid()) {
+                continue;
+            }
             renderer::RenderFiberInput input;
             input.identity = fiber.m_renderIdentity;
             input.layer = static_cast<uint32_t>(owner.layer);
@@ -132,13 +145,16 @@ void ExtractRenderFibers(RenderPassContext& context, renderer::RenderScene& outp
             if (surface.terrain && fiber.m_mode == FiberRenderMode::BLADE && fiber.m_distanceLod
                 && sparseStart > std::max(fiber.m_lodNear, 0.0f) && sparseStart < fiber.m_lodFar) {
                 input.settings.m_terrainSparseLodStart = sparseStart;
-                if ((input.lodCenter - context.camera.m_position).Length() >= sparseStart)
+                if ((input.lodCenter - context.camera.m_position).Length() >= sparseStart) {
                     bladeDensity *= renderer::TERRAIN_SPARSE_BLADE_DENSITY_SCALE;
+                }
             }
             input.material = settings;
             input.appearance = FiberAppearanceFor(materialEntry.m_appearance, fiber.m_mode);
             input.frame = frameBase;
-            if (surface.terrain) input.frame.m_terrainWaterClip = terrainWaterClip;
+            if (surface.terrain) {
+                input.frame.m_terrainWaterClip = terrainWaterClip;
+            }
             input.frame.m_flowChannels = static_cast<uint32_t>(fiber.m_flowChannels);
             input.frame.m_flowCount = CountFiberFlows(flows.m_current, input.frame.m_flowChannels, input.boundsCenter, input.boundsRadius);
             input.frame.m_flowPreviousFirst = static_cast<uint32_t>(flows.m_currentPacked.size());
@@ -152,13 +168,17 @@ void ExtractRenderFibers(RenderPassContext& context, renderer::RenderScene& outp
                     surface.densityFromAlpha, surface.terrain);
                 return renderer::FiberResolvedGeometry{buffers.m_vertices, buffers.m_indices, buffers.m_indexCount, buffers.m_blades, buffers.m_bladeCount};
             };
-            if (fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID) input.fins = resolveShape(false);
+            if (fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID) {
+                input.fins = resolveShape(false);
+            }
             if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned && fiber.m_chunkedPlacement
                 && owner.GetComponent<MeshRenderer>()) {
                 AppendFiberPlacementPages(owner, fiber, *mesh, fiberPadding, input, flows, contacts, cache, context, output);
                 continue;
             }
-            if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned) input.blades = resolveShape(true);
+            if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned) {
+                input.blades = resolveShape(true);
+            }
             input.contacts = SelectFiberContacts(contacts, input);
             output.fibers.push_back(std::move(input));
         }
@@ -167,4 +187,4 @@ void ExtractRenderFibers(RenderPassContext& context, renderer::RenderScene& outp
     ExtractRayFiberSources(context.scene, resources, output, context.experimentalRayTracingEnabled);
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

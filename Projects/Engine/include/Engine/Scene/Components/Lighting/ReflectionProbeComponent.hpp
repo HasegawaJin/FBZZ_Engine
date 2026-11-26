@@ -34,8 +34,7 @@ struct ReflectionProbeComponentGpuState {
     renderer::OwnedResource<renderer::TextureTag> runtimePrefilter;
     uint32_t runtimeResolution = 0;
     uint32_t runtimePrefilterMipCount = 0;
-    /// @note キャプチャ成功時に、以後書き換えない新規テクスチャを公開する。無効化は設定値を変えずにキャプチャ済みの証跡を消す。
-    const renderer::ResourceManager* runtimePublicationOwner = nullptr;
+    const renderer::ResourceManager* runtimePublicationOwner = nullptr; ///< キャプチャ成功時に、以後書き換えない新規テクスチャを公開する。無効化は設定値を変えずにキャプチャ済みの証跡を消す。
     renderer::ResourceHandle<renderer::TextureTag> runtimePublishedIrradiance, runtimePublishedPrefilter;
     uint64_t runtimePublicationEpoch = 0;
     bool runtimeImmutablePublished = false;
@@ -45,15 +44,15 @@ struct ReflectionProbeComponentGpuState {
 
 struct ReflectionProbeComponent : TransientGpuState<ReflectionProbeComponentGpuState> {
     bool          enabled         = true;
-    std::string   cubemapPath;               ///< @note 静的環境キューブマップ (.dds)
+    std::string   cubemapPath; ///< 静的環境キューブマップ (.dds)
     ReflectionProbeCaptureMode captureMode = ReflectionProbeCaptureMode::Static;
-    uint32_t      captureResolution = 128;   ///< @note 動的キューブマップの 1 面解像度 [px]
-    float         updateInterval = 1.0f;     ///< @note 動的キャプチャの最短更新間隔 [s]。0 なら毎フレーム
-    bool          refreshRequested = true;   ///< @note 次フレームの更新要求
-    float         influenceRadius = 5.0f;    ///< @note 球影響半径 [m]
-    float         intensity       = 1.0f;    ///< @note 反射強度スケール
-    bool          boxInfluence    = false;   ///< @note true のときボックス影響範囲
-    math::Vector3 boxExtents      = { 1.0f, 1.0f, 1.0f }; ///< @note ボックス半径 [m]
+    uint32_t      captureResolution = 128; ///< 動的キューブマップの 1 面解像度 [px]
+    float         updateInterval = 1.0f; ///< 動的キャプチャの最短更新間隔 [s]。0 なら毎フレーム
+    bool          refreshRequested = true; ///< 次フレームの更新要求
+    float         influenceRadius = 5.0f; ///< 球影響半径 [m]
+    float         intensity       = 1.0f; ///< 反射強度スケール
+    bool          boxInfluence    = false; ///< true のときボックス影響範囲
+    math::Vector3 boxExtents      = { 1.0f, 1.0f, 1.0f }; ///< ボックス半径 [m]
 
     const char* GetTypeName() const { return "ReflectionProbe"; }
 

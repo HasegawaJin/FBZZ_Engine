@@ -13,7 +13,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptPostProcessProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< ポストプロセス操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief Script 専用のランタイム PostProcess 設定を取得する。ProjectSettings は書き換えず、
     /// @note シーン再生中だけ有効な見た目調整として扱う。
@@ -60,4 +60,4 @@ struct ScriptPostProcessProxy {
     FBZZ_ENGINE_API bool LoadProfile(std::string_view profilePath) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

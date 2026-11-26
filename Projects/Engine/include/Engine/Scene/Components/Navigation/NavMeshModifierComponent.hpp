@@ -16,11 +16,11 @@ enum class NavMeshModifierMode : uint8_t {
 };
 
 struct NavMeshModifierComponent {
-    NavMeshModifierMode mode    = NavMeshModifierMode::NotWalkable;
+    NavMeshModifierMode mode    = NavMeshModifierMode::NotWalkable; ///< ベイクで歩行禁止領域または歩行可能面として扱うモード。
     /// @note Walkable モード専用: このコライダーが生成するポリゴンに割り当てるエリアタイプ ID (0〜31)。
     /// @note NavMeshSurfaceComponent::areaCosts[areaType] がパスコスト計算に使われる。
-    int areaType = 0;
-    bool                enabled = true;
+    int areaType = 0; ///< 歩行可能ポリゴンに割り当てるエリア識別番号。
+    bool                enabled = true; ///< NavMesh のベイク対象にこの修飾を含めるかどうか。
 
     const char* GetTypeName() const { return "NavMesh Modifier"; }
     void Reflect(IReflector& r)

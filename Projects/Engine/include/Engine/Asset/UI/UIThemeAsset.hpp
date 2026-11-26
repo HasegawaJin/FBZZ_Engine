@@ -44,4 +44,4 @@ public:
 /// @note Canvas パスごとに値をコピーする。編集、再読込、キャッシュ破棄、デバイスリセットをまたぐポインターは保持しない。
 [[nodiscard]] FBZZ_ENGINE_API bool ResolveUIThemeStyle(const std::string& reference, UIThemeStyle& out);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

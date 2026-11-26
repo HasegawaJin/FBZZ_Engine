@@ -22,31 +22,35 @@ VolumetricCloudComponent* FindActiveCloud(RenderPassContext& context)
     for (EntityID entity : context.scene.GetEntities<VolumetricCloudComponent>()) {
         auto* cloud = context.scene.GetComponent<VolumetricCloudComponent>(entity);
         const GameObject* owner = context.scene.GetGameObject(entity);
-        if (cloud && cloud->enabled && owner && owner->activeInHierarchy())
+        if (cloud && cloud->enabled && owner && owner->activeInHierarchy()) {
             return cloud;
+        }
     }
     return nullptr;
 }
 
-} /// @note namespace
+} // namespace
 
 void ExtractCloud(RenderPassContext& context, renderer::RenderEnvironmentInput& environment)
 {
     auto* cloud = FindActiveCloud(context);
-    if (!cloud) return;
-    /// @note 環境流があれば雲もその向き・その速さで流す (XZ 平面へ射影)。
-    /// @note 粒子と雲の流れを 1 か所で揃えるため。環境流は SceneEnvironment が正本で、
-    /// @note 粒子が受けるものとまったく同じ値を見ている。
-    /// @note 環境流が無効なシーンは従来どおりコンポーネント固有の windDirection / windSpeed。
+    if (!cloud) {
+        return;
+    }
+    // 環境流があれば雲もその向き・その速さで流す (XZ 平面へ射影)。
+    // 粒子と雲の流れを 1 か所で揃えるため。環境流は SceneEnvironment が正本で、
+    // 粒子が受けるものとまったく同じ値を見ている。
+    // 環境流が無効なシーンは従来どおりコンポーネント固有の windDirection / windSpeed。
     math::Vector2 wind = cloud->windDirection.Normalized();
     float windSpeed = cloud->windSpeed;
     const AmbientWind& sceneWind = context.scene.FlowFrame().ambient;
     if (sceneWind.active) {
         const float horizontalWindLength = std::sqrt(sceneWind.direction.x * sceneWind.direction.x
                                     + sceneWind.direction.z * sceneWind.direction.z);
-        if (horizontalWindLength > 1.0e-4f)
+        if (horizontalWindLength > 1.0e-4f) {
             wind = { sceneWind.direction.x / horizontalWindLength, sceneWind.direction.z / horizontalWindLength };
-        /// @note 倍率ではなく m/s。雲の高さでどれだけ乗るかは windResponse が決める。
+        }
+        // 倍率ではなく m/s。雲の高さでどれだけ乗るかは windResponse が決める。
         windSpeed = sceneWind.speed * math::Clamp01(cloud->windResponse);
     }
     const float topHeight = cloud->bottomHeight + (std::max)(cloud->thickness, 1.0f);
@@ -58,12 +62,12 @@ void ExtractCloud(RenderPassContext& context, renderer::RenderEnvironmentInput& 
         (std::max)(cloud->density, 0.0f),
         math::Clamp01(cloud->coverage)
     };
-    /// @note Inspector は「大きさ [m]」で持ち、シェーダーが要る world→noise スケールへここで直す。
+    // Inspector は「大きさ [m]」で持ち、シェーダーが要る world→noise スケールへここで直す。
     const float cloudSize  = math::Clamp(cloud->cloudSize, 50.0f, 100000.0f);
     const float detailSize = math::Clamp(cloud->detailSize, 1.0f, cloudSize);
     constants.cloudNoise = {
         1.0f / cloudSize,
-        /// @note シェーダー内で 1/cloudSize と掛けて 1/detailSize になる
+        // シェーダー内で 1/cloudSize と掛けて 1/detailSize になる
         cloudSize / detailSize,
         Time::time,
         (std::max)(cloud->maxDistance, 100.0f)
@@ -118,4 +122,4 @@ void ExtractCloud(RenderPassContext& context, renderer::RenderEnvironmentInput& 
     environment.cloudHalfResolution = cloud->halfResolution;
 }
 
-} /// @note namespace fbzz::scene::environment_extraction_detail
+} // namespace fbzz::scene::environment_extraction_detail

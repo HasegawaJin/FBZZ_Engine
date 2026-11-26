@@ -52,8 +52,12 @@ math::Vector3 TransformDirection(const math::Matrix4& matrix, const math::Vector
 /// widths / radii は「点と同数」か「1 個 (全体で一定)」の 2 通りを許す。
 float SampleWidth(std::span<const float> widths, std::size_t index, float fallback)
 {
-    if (widths.empty())      return fallback;
-    if (widths.size() == 1)  return widths[0];
+    if (widths.empty()) {
+        return fallback;
+    }
+    if (widths.size() == 1) {
+        return widths[0];
+    }
     return index < widths.size() ? widths[index] : widths.back();
 }
 
@@ -121,13 +125,17 @@ void MeshBuilder::AddQuad(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 
 void MeshBuilder::ColorizeAll(const math::Vector4& color)
 {
-    for (MeshVertex& vertex : m_vertices) vertex.color = color;
+    for (MeshVertex& vertex : m_vertices) {
+        vertex.color = color;
+    }
 }
 
 void MeshBuilder::ColorizeRange(uint32_t firstVertex, uint32_t count, const math::Vector4& color)
 {
     const uint32_t last = (std::min)(static_cast<uint32_t>(m_vertices.size()), firstVertex + count);
-    for (uint32_t i = firstVertex; i < last; ++i) m_vertices[i].color = color;
+    for (uint32_t i = firstVertex; i < last; ++i) {
+        m_vertices[i].color = color;
+    }
 }
 
 /// @name 形状
@@ -143,7 +151,9 @@ void MeshBuilder::AddQuad(const math::Vector3& center, const math::Vector3& righ
     Push(center + right + up, normal, { 1.0f, 0.0f });
     Push(center + right - up, normal, { 1.0f, 1.0f });
     Push(center - right - up, normal, { 0.0f, 1.0f });
-    for (uint32_t i = 0; i < 4; ++i) m_vertices[base + i].tangent = tangent;
+    for (uint32_t i = 0; i < 4; ++i) {
+        m_vertices[base + i].tangent = tangent;
+    }
 
     AddQuad(base, base + 1, base + 2, base + 3);
 }
@@ -185,17 +195,17 @@ void MeshBuilder::AddBox(const math::Vector3& center, const math::Vector3& halfE
     const math::Vector3 y{ 0.0f, halfExtents.y, 0.0f };
     const math::Vector3 z{ 0.0f, 0.0f, halfExtents.z };
 
-    /// @note +Z
+    // +Z
     AddQuad(center + z,  x, y);
-    /// @note -Z
+    // -Z
     AddQuad(center - z, -x, y);
-    /// @note +X
+    // +X
     AddQuad(center + x, -z, y);
-    /// @note -X
+    // -X
     AddQuad(center - x,  z, y);
-    /// @note +Y
+    // +Y
     AddQuad(center + y,  x, -z);
-    /// @note -Y
+    // -Y
     AddQuad(center - y,  x,  z);
 }
 
@@ -206,7 +216,7 @@ void MeshBuilder::AddSphere(const math::Vector3& center, float radius, int segme
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     const int stride = seg + 1;
 
-    /// @note s = 経度 θ, t = 緯度 φ。Cross(∂p/∂θ, ∂p/∂φ) が外向きになる並び。
+    // s = 経度 θ, t = 緯度 φ。Cross(∂p/∂θ, ∂p/∂φ) が外向きになる並び。
     for (int j = 0; j <= ring; ++j) {
         const float v   = static_cast<float>(j) / static_cast<float>(ring);
         const float phi = v * kPi;
@@ -254,20 +264,24 @@ void MeshBuilder::AddIcoSphere(const math::Vector3& center, float radius, int su
         const math::Vector3 normal = corner.NormalizedOr(math::Vector3::UP);
         shell.Push(normal, normal, { 0.0f, 0.0f });
     }
-    /// @note 正二十面体の面リストは «反時計回りが表» で書かれた資料が多く、そのまま使うと内側だけが
-    ///       描かれる。凸多面体なので面法線が中心から外を向くかで機械的に判定して直す。
+    // 正二十面体の面リストは «反時計回りが表» で書かれた資料が多く、そのまま使うと内側だけが
+    //       描かれる。凸多面体なので面法線が中心から外を向くかで機械的に判定して直す。
     for (const auto& face : faces) {
         const math::Vector3& a = shell.m_vertices[face[0]].position;
         const math::Vector3& b = shell.m_vertices[face[1]].position;
         const math::Vector3& c = shell.m_vertices[face[2]].position;
         const bool outward = math::Vector3::Dot(FaceNormal(a, b, c), a + b + c) > 0.0f;
-        if (outward) shell.AddTriangle(face[0], face[1], face[2]);
-        else         shell.AddTriangle(face[0], face[2], face[1]);
+        if (outward) {
+            shell.AddTriangle(face[0], face[1], face[2]);
+        }
+        else {
+            shell.AddTriangle(face[0], face[2], face[1]);
+        }
     }
 
     shell.Subdivide((std::max)(0, subdivisions));
 
-    /// @note 分割で生まれた中点は球面から凹んでいるので、押し戻してから UV を張り直す。
+    // 分割で生まれた中点は球面から凹んでいるので、押し戻してから UV を張り直す。
     for (MeshVertex& vertex : shell.m_vertices) {
         const math::Vector3 normal = vertex.position.NormalizedOr(math::Vector3::UP);
         vertex.position = center + normal * radius;
@@ -321,7 +335,7 @@ void MeshBuilder::AddCone(const math::Vector3& baseCenter, const math::Vector3& 
     math::Vector3 a, right, up;
     AxisBasis(axis, a, right, up);
 
-    /// @note 側面の法線は «半径方向 * height + 軸方向 * radius» の向き。
+    // 側面の法線は «半径方向 * height + 軸方向 * radius» の向き。
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     const int stride = seg + 1;
     for (int j = 0; j <= 1; ++j) {
@@ -346,27 +360,29 @@ void MeshBuilder::AddCone(const math::Vector3& baseCenter, const math::Vector3& 
         AddQuad(s0t1, s1t1, s1t0, s0t0);
     }
 
-    if (capped) AddDisc(baseCenter, -a, radius, seg);
+    if (capped) {
+        AddDisc(baseCenter, -a, radius, seg);
+    }
 }
 
 void MeshBuilder::AddCapsule(const math::Vector3& center, const math::Vector3& axis,
                              float radius, float height, int segments, int rings)
 {
     const int seg  = (std::max)(3, segments);
-    /// @note 半球を上下に割るので偶数段でないと赤道が作れない。
+    // 半球を上下に割るので偶数段でないと赤道が作れない。
     const int ring = (std::max)(2, rings + (rings % 2));
     math::Vector3 a, right, up;
     AxisBasis(axis, a, right, up);
-    /// @note AxisBasis は «+axis 方向へ進む» 曲面 (円柱・トーラス・回転体) 向けに
-    ///       Cross(up, axis) == right を返すが、球と同じ緯度 φ は +axis から «離れる» 向きに
-    ///       進むため外積の符号が 1 回裏返る。ここだけ基底を鏡にして AddSphere と同じ並びに揃える。
+    // AxisBasis は «+axis 方向へ進む» 曲面 (円柱・トーラス・回転体) 向けに
+    //       Cross(up, axis) == right を返すが、球と同じ緯度 φ は +axis から «離れる» 向きに
+    //       進むため外積の符号が 1 回裏返る。ここだけ基底を鏡にして AddSphere と同じ並びに揃える。
     up = -up;
 
     const float half = height * 0.5f;
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     const int stride = seg + 1;
-    /// @note 緯度は 0 (上の極) → ring+1 (下の極)。赤道 (φ = π/2) だけ «上半球の縁» と «下半球の縁» の
-    ///       2 段を置き、その間が円柱の側面になる。継ぎ目を別扱いしないので法線がそのまま繋がる。
+    // 緯度は 0 (上の極) → ring+1 (下の極)。赤道 (φ = π/2) だけ «上半球の縁» と «下半球の縁» の
+    //       2 段を置き、その間が円柱の側面になる。継ぎ目を別扱いしないので法線がそのまま繋がる。
     const int rows = ring + 1;
     for (int j = 0; j <= rows; ++j) {
         const bool  upperHalf = j <= ring / 2;
@@ -444,7 +460,7 @@ void MeshBuilder::AddDisc(const math::Vector3& center, const math::Vector3& norm
     AxisBasis(normal, n, right, up);
     const float inner = (std::clamp)(innerRadius, 0.0f, radius);
 
-    /// @note s = 半径, t = 角度 の順にすると Cross(∂p/∂s, ∂p/∂t) が n を向く。
+    // s = 半径, t = 角度 の順にすると Cross(∂p/∂s, ∂p/∂t) が n を向く。
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     for (int j = 0; j <= seg; ++j) {
         const float t     = static_cast<float>(j) / static_cast<float>(seg);
@@ -468,7 +484,7 @@ void MeshBuilder::AddDisc(const math::Vector3& center, const math::Vector3& norm
         const uint32_t t1Inner = t0Inner + 2;
         const uint32_t t1Outer = t0Inner + 3;
         if (inner <= 0.0f) {
-            /// @note 内側は 1 点に潰れるので三角形 1 枚で足りる。
+            // 内側は 1 点に潰れるので三角形 1 枚で足りる。
             AddTriangle(t1Inner, t1Outer, t0Outer);
         } else {
             AddQuad(t1Inner, t1Outer, t0Outer, t0Inner);
@@ -478,35 +494,42 @@ void MeshBuilder::AddDisc(const math::Vector3& center, const math::Vector3& norm
 
 void MeshBuilder::AddPolygon(std::span<const math::Vector3> points, const math::Vector3& normal)
 {
-    if (points.size() < 3) return;
+    if (points.size() < 3) {
+        return;
+    }
     const math::Vector3 n = normal.NormalizedOr(math::Vector3::UP);
     math::Vector3 axis, right, up;
     AxisBasis(n, axis, right, up);
 
     math::Vector3 centroid = math::Vector3::ZERO;
-    for (const math::Vector3& point : points) centroid += point;
+    for (const math::Vector3& point : points) {
+        centroid += point;
+    }
     centroid = centroid / static_cast<float>(points.size());
 
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     for (const math::Vector3& point : points) {
-        /// @note UV は重心を原点にした平面座標。絶対座標のままだと桁が大きくなりタイリングが破綻する。
+        // UV は重心を原点にした平面座標。絶対座標のままだと桁が大きくなりタイリングが破綻する。
         const math::Vector3 local = point - centroid;
         const uint32_t index = Push(point, n,
             { math::Vector3::Dot(local, right), math::Vector3::Dot(local, up) });
         m_vertices[index].tangent = right;
     }
     const uint32_t count = static_cast<uint32_t>(points.size());
-    for (uint32_t i = 1; i + 1 < count; ++i)
+    for (uint32_t i = 1; i + 1 < count; ++i) {
         AddTriangle(base, base + i, base + i + 1);
+    }
 }
 
 void MeshBuilder::ExtrudePolygon(std::span<const math::Vector3> points,
                                  const math::Vector3& extrusion, bool capped)
 {
-    if (points.size() < 3) return;
+    if (points.size() < 3) {
+        return;
+    }
     const math::Vector3 up = extrusion.NormalizedOr(math::Vector3::UP);
 
-    /// @note 側面。稜線 a→b の外向き法線は Cross(extrusion, b - a) 側になる。
+    // 側面。稜線 a→b の外向き法線は Cross(extrusion, b - a) 側になる。
     for (std::size_t i = 0; i < points.size(); ++i) {
         const math::Vector3& a = points[i];
         const math::Vector3& b = points[(i + 1) % points.size()];
@@ -520,17 +543,23 @@ void MeshBuilder::ExtrudePolygon(std::span<const math::Vector3> points,
         const uint32_t v2 = Push(b + extrusion, normal, { u1, 0.0f });
         const uint32_t v3 = Push(a + extrusion, normal, { u0, 0.0f });
         const math::Vector3 tangent = (b - a).NormalizedOr(math::Vector3::RIGHT);
-        for (uint32_t v = v0; v <= v3; ++v) m_vertices[v].tangent = tangent;
+        for (uint32_t v = v0; v <= v3; ++v) {
+            m_vertices[v].tangent = tangent;
+        }
         AddQuad(v0, v1, v2, v3);
     }
 
-    if (!capped) return;
+    if (!capped) {
+        return;
+    }
 
     std::vector<math::Vector3> cap(points.begin(), points.end());
-    for (math::Vector3& point : cap) point += extrusion;
+    for (math::Vector3& point : cap) {
+        point += extrusion;
+    }
     AddPolygon(cap, up);
 
-    /// @note 底面は法線が逆なので、周回も逆にしないと «時計回りが表» を満たさない。
+    // 底面は法線が逆なので、周回も逆にしないと «時計回りが表» を満たさない。
     std::vector<math::Vector3> bottom(points.rbegin(), points.rend());
     AddPolygon(bottom, -up);
 }
@@ -539,7 +568,9 @@ void MeshBuilder::AddLathe(std::span<const math::Vector2> profile,
                            const math::Vector3& center, const math::Vector3& axis,
                            int segments)
 {
-    if (profile.size() < 2) return;
+    if (profile.size() < 2) {
+        return;
+    }
     const int seg = (std::max)(3, segments);
     math::Vector3 a, right, up;
     AxisBasis(axis, a, right, up);
@@ -547,7 +578,7 @@ void MeshBuilder::AddLathe(std::span<const math::Vector2> profile,
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     const int stride = seg + 1;
     for (std::size_t k = 0; k < profile.size(); ++k) {
-        /// @note 断面の傾きから法線を出す。両端は隣を借りる。
+        // 断面の傾きから法線を出す。両端は隣を借りる。
         const std::size_t prev = k == 0 ? 0 : k - 1;
         const std::size_t next = k + 1 < profile.size() ? k + 1 : k;
         const math::Vector2 slope{ profile[next].x - profile[prev].x,
@@ -582,7 +613,9 @@ void MeshBuilder::AddRibbon(std::span<const math::Vector3> points,
                             std::span<const float> widths,
                             const math::Vector3& up)
 {
-    if (points.size() < 2) return;
+    if (points.size() < 2) {
+        return;
+    }
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     const math::Vector3 facing = up.NormalizedOr(math::Vector3::UP);
 
@@ -591,8 +624,8 @@ void MeshBuilder::AddRibbon(std::span<const math::Vector3> points,
             ? points[i + 1] - points[i]
             : points[i] - points[i - 1];
         const math::Vector3 tangent = direction.NormalizedOr(math::Vector3::RIGHT);
-        /// @note side = Cross(up, direction) にすると Cross(direction, side) == up になり、
-        ///       帯の表が up 側を向く。
+        // side = Cross(up, direction) にすると Cross(direction, side) == up になり、
+        //       帯の表が up 側を向く。
         const math::Vector3 side =
             math::Vector3::Cross(facing, tangent).NormalizedOr(math::Vector3::RIGHT);
         const float half = SampleWidth(widths, i, 1.0f) * 0.5f;
@@ -617,7 +650,9 @@ void MeshBuilder::AddRibbonFacing(std::span<const math::Vector3> points,
                                   std::span<const float> widths,
                                   const math::Vector3& viewPosition)
 {
-    if (points.size() < 2) return;
+    if (points.size() < 2) {
+        return;
+    }
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
 
     for (std::size_t i = 0; i < points.size(); ++i) {
@@ -652,7 +687,9 @@ void MeshBuilder::AddTube(std::span<const math::Vector3> points,
                           std::span<const float> radii,
                           int sides, bool capped)
 {
-    if (points.size() < 2) return;
+    if (points.size() < 2) {
+        return;
+    }
     const int seg = (std::max)(3, sides);
     const uint32_t base = static_cast<uint32_t>(m_vertices.size());
     const int stride = seg + 1;
@@ -721,7 +758,9 @@ void MeshBuilder::Append(const MeshBuilder& other)
     const uint32_t offset = static_cast<uint32_t>(m_vertices.size());
     m_vertices.insert(m_vertices.end(), other.m_vertices.begin(), other.m_vertices.end());
     m_indices.reserve(m_indices.size() + other.m_indices.size());
-    for (uint32_t index : other.m_indices) m_indices.push_back(index + offset);
+    for (uint32_t index : other.m_indices) {
+        m_indices.push_back(index + offset);
+    }
 }
 
 void MeshBuilder::Append(const MeshBuilder& other, const math::Matrix4& matrix)
@@ -733,14 +772,18 @@ void MeshBuilder::Append(const MeshBuilder& other, const math::Matrix4& matrix)
 
 void MeshBuilder::RecalculateNormals()
 {
-    for (MeshVertex& vertex : m_vertices) vertex.normal = math::Vector3::ZERO;
+    for (MeshVertex& vertex : m_vertices) {
+        vertex.normal = math::Vector3::ZERO;
+    }
 
-    /// @note 正規化しない面法線をそのまま足すと、面積が大きい面ほど強く効く (面積重み付き)。
+    // 正規化しない面法線をそのまま足すと、面積が大きい面ほど強く効く (面積重み付き)。
     for (std::size_t i = 0; i + 2 < m_indices.size(); i += 3) {
         const uint32_t ia = m_indices[i];
         const uint32_t ib = m_indices[i + 1];
         const uint32_t ic = m_indices[i + 2];
-        if (ia >= m_vertices.size() || ib >= m_vertices.size() || ic >= m_vertices.size()) continue;
+        if (ia >= m_vertices.size() || ib >= m_vertices.size() || ic >= m_vertices.size()) {
+            continue;
+        }
         const math::Vector3 normal = FaceNormal(m_vertices[ia].position,
                                                 m_vertices[ib].position,
                                                 m_vertices[ic].position);
@@ -749,8 +792,9 @@ void MeshBuilder::RecalculateNormals()
         m_vertices[ic].normal += normal;
     }
 
-    for (MeshVertex& vertex : m_vertices)
+    for (MeshVertex& vertex : m_vertices) {
         vertex.normal = vertex.normal.NormalizedOr(math::Vector3::UP);
+    }
 }
 
 void MeshBuilder::RecalculateTangents()
@@ -761,7 +805,9 @@ void MeshBuilder::RecalculateTangents()
         const uint32_t ia = m_indices[i];
         const uint32_t ib = m_indices[i + 1];
         const uint32_t ic = m_indices[i + 2];
-        if (ia >= m_vertices.size() || ib >= m_vertices.size() || ic >= m_vertices.size()) continue;
+        if (ia >= m_vertices.size() || ib >= m_vertices.size() || ic >= m_vertices.size()) {
+            continue;
+        }
 
         const math::Vector3 edge1 = m_vertices[ib].position - m_vertices[ia].position;
         const math::Vector3 edge2 = m_vertices[ic].position - m_vertices[ia].position;
@@ -770,9 +816,11 @@ void MeshBuilder::RecalculateTangents()
         const float du2 = m_vertices[ic].uv.x - m_vertices[ia].uv.x;
         const float dv2 = m_vertices[ic].uv.y - m_vertices[ia].uv.y;
 
-        /// @note UV が潰れている面は接線を決められない。寄与を捨てて隣の面に任せる。
+        // UV が潰れている面は接線を決められない。寄与を捨てて隣の面に任せる。
         const float determinant = du1 * dv2 - du2 * dv1;
-        if (std::fabs(determinant) < 1e-12f) continue;
+        if (std::fabs(determinant) < 1e-12f) {
+            continue;
+        }
         const float inverse = 1.0f / determinant;
         const math::Vector3 tangent = (edge1 * dv2 - edge2 * dv1) * inverse;
 
@@ -783,7 +831,7 @@ void MeshBuilder::RecalculateTangents()
 
     for (std::size_t i = 0; i < m_vertices.size(); ++i) {
         const math::Vector3& normal = m_vertices[i].normal;
-        /// @note Gram-Schmidt で法線に直交させる。どの面からも寄与が無かった頂点は既定軸へ逃がす。
+        // Gram-Schmidt で法線に直交させる。どの面からも寄与が無かった頂点は既定軸へ逃がす。
         const math::Vector3 projected =
             accumulated[i] - normal * math::Vector3::Dot(normal, accumulated[i]);
         m_vertices[i].tangent = projected.NormalizedOr(math::Vector3::RIGHT);
@@ -792,19 +840,24 @@ void MeshBuilder::RecalculateTangents()
 
 void MeshBuilder::FlipFaces()
 {
-    for (std::size_t i = 0; i + 2 < m_indices.size(); i += 3)
+    for (std::size_t i = 0; i + 2 < m_indices.size(); i += 3) {
         std::swap(m_indices[i + 1], m_indices[i + 2]);
+    }
     FlipNormals();
 }
 
 void MeshBuilder::FlipNormals()
 {
-    for (MeshVertex& vertex : m_vertices) vertex.normal = -vertex.normal;
+    for (MeshVertex& vertex : m_vertices) {
+        vertex.normal = -vertex.normal;
+    }
 }
 
 void MeshBuilder::Weld(float epsilon)
 {
-    if (m_vertices.empty()) return;
+    if (m_vertices.empty()) {
+        return;
+    }
     const float cell = (std::max)(epsilon, 1e-6f);
 
     struct Key {
@@ -842,23 +895,29 @@ void MeshBuilder::Weld(float epsilon)
     }
 
     for (uint32_t& index : m_indices)
-        if (index < remap.size()) index = remap[index];
+        if (index < remap.size()) {
+            index = remap[index];
+        }
     m_vertices = std::move(merged);
 }
 
 void MeshBuilder::Subdivide(int levels)
 {
     for (int level = 0; level < levels; ++level) {
-        if (m_indices.empty()) return;
+        if (m_indices.empty()) {
+            return;
+        }
 
-        /// @note 稜線ごとに中点を 1 個だけ作る。作り直すと隣の面と頂点が割れて隙間になる。
+        // 稜線ごとに中点を 1 個だけ作る。作り直すと隣の面と頂点が割れて隙間になる。
         std::unordered_map<uint64_t, uint32_t> midpoints;
         const auto midpoint = [&](uint32_t a, uint32_t b) {
             const uint64_t key = a < b
                 ? (static_cast<uint64_t>(a) << 32) | b
                 : (static_cast<uint64_t>(b) << 32) | a;
             const auto found = midpoints.find(key);
-            if (found != midpoints.end()) return found->second;
+            if (found != midpoints.end()) {
+                return found->second;
+            }
 
             const MeshVertex& va = m_vertices[a];
             const MeshVertex& vb = m_vertices[b];
@@ -885,7 +944,7 @@ void MeshBuilder::Subdivide(int levels)
             const uint32_t ab = midpoint(a, b);
             const uint32_t bc = midpoint(b, c);
             const uint32_t ca = midpoint(c, a);
-            /// @note 4 枚とも元の三角形と同じ巻き順で並べる (裏返さない)。
+            // 4 枚とも元の三角形と同じ巻き順で並べる (裏返さない)。
             const uint32_t subTriangles[4][3] = {
                 { a, ab, ca }, { ab, b, bc }, { ca, bc, c }, { ab, bc, ca }
             };

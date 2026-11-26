@@ -58,13 +58,17 @@ bool BoneBakeAffine(const math::Matrix4& m)
 bool BoneBakeNearMatrix(const math::Matrix4& a, const math::Matrix4& b)
 {
     for (int r = 0; r < 4; ++r) for (int c = 0; c < 4; ++c)
-        if (std::abs(a.m[r][c] - b.m[r][c]) > 0.0001f * (1.0f + std::abs(b.m[r][c]))) return false;
+        if (std::abs(a.m[r][c] - b.m[r][c]) > 0.0001f * (1.0f + std::abs(b.m[r][c]))) {
+            return false;
+        }
     return true;
 }
 
 bool BoneBakeOrder(const BakedBoneAnimation& b, std::vector<uint32_t>& order, std::vector<uint8_t>* visited = nullptr)
 {
-    if (b.nodes.empty() || b.nodes.size() > BONE_BAKE_MAX_NODES || b.root >= b.nodes.size()) return false;
+    if (b.nodes.empty() || b.nodes.size() > BONE_BAKE_MAX_NODES || b.root >= b.nodes.size()) {
+        return false;
+    }
     order.clear(); order.reserve(b.nodes.size());
     std::vector<uint8_t> temporary;
     auto& done = visited ? *visited : temporary;
@@ -72,27 +76,49 @@ bool BoneBakeOrder(const BakedBoneAnimation& b, std::vector<uint32_t>& order, st
     for (size_t pass = 0; pass < b.nodes.size(); ++pass) {
         const size_t before = order.size();
         for (uint32_t i = 0; i < b.nodes.size(); ++i) {
-            if (done[i]) continue;
+            if (done[i]) {
+                continue;
+            }
             const int32_t parent = b.nodes[i].parent;
-            if (parent < -1 || parent >= static_cast<int32_t>(b.nodes.size()) || parent == static_cast<int32_t>(i)) return false;
-            if ((parent == -1) != (i == b.root)) return false;
-            if (parent >= 0 && !done[static_cast<size_t>(parent)]) continue;
+            if (parent < -1 || parent >= static_cast<int32_t>(b.nodes.size()) || parent == static_cast<int32_t>(i)) {
+                return false;
+            }
+            if ((parent == -1) != (i == b.root)) {
+                return false;
+            }
+            if (parent >= 0 && !done[static_cast<size_t>(parent)]) {
+                continue;
+            }
             done[i] = 1; order.push_back(i);
         }
-        if (order.size() == b.nodes.size()) return true;
-        if (order.size() == before) return false;
+        if (order.size() == b.nodes.size()) {
+            return true;
+        }
+        if (order.size() == before) {
+            return false;
+        }
     }
     return false;
 }
 
 bool BoneBakeShape(const BakedBoneAnimation& b)
 {
-    return b.nodes.size() <= BONE_BAKE_MAX_NODES && !b.nodes.empty() && b.root < b.nodes.size()
-        && !b.bones.empty() && b.bones.size() <= static_cast<size_t>(MAX_SKINNING_BONES)
-        && b.frameCount >= 2 && b.frameCount <= BONE_BAKE_MAX_FRAMES
-        && b.samples.size() == static_cast<uint64_t>(b.frameCount) * b.nodes.size()
-        && b.samples.size() <= BONE_BAKE_MAX_BYTES / sizeof(BakedBoneTransform)
-        && std::isfinite(b.durationSeconds) && b.durationSeconds > 0.0
+    // フレーム番号から姿勢を参照する前に、骨格とサンプル配列の寸法を照合する。
+    if (b.nodes.empty() || b.nodes.size() > BONE_BAKE_MAX_NODES || b.root >= b.nodes.size()) {
+        return false;
+    }
+    if (b.bones.empty() || b.bones.size() > static_cast<size_t>(MAX_SKINNING_BONES)) {
+        return false;
+    }
+    if (b.frameCount < 2 || b.frameCount > BONE_BAKE_MAX_FRAMES) {
+        return false;
+    }
+    const uint64_t expectedSampleCount = static_cast<uint64_t>(b.frameCount) * b.nodes.size();
+    if (b.samples.size() != expectedSampleCount || b.samples.size() > BONE_BAKE_MAX_BYTES / sizeof(BakedBoneTransform)) {
+        return false;
+    }
+
+    return std::isfinite(b.durationSeconds) && b.durationSeconds > 0.0
         && std::isfinite(b.sampleRate) && b.sampleRate >= 1.0f && b.sampleRate <= 1000.0f
         && std::isfinite(b.sourceMeshRadius) && b.sourceMeshRadius >= 0.0f
         && std::isfinite(b.conservativeRadius) && b.conservativeRadius >= 0.0f
@@ -140,9 +166,11 @@ float BoneBakeRadius(const BakedBoneAnimation& b, const std::vector<uint32_t>& o
             * (BoneBakeTranslationNorm(bone.offset) + BoneBakeLinearNorm(bone.offset) * meshRadius);
         radius = (std::max)(radius, BoneBakeTranslationNorm(b.rootInverse) + BoneBakeLinearNorm(b.rootInverse) * r);
     }
-    /// @note 浮動小数点への変換と行列の累積で、保守的に算出した半径を下方向に丸めないようにする。
+    // 浮動小数点への変換と行列の累積で、保守的に算出した半径を下方向に丸めないようにする。
     radius = radius * 1.00001 + 0.00001;
-    if (!std::isfinite(radius) || radius > (std::numeric_limits<float>::max)()) return -1.0f;
+    if (!std::isfinite(radius) || radius > (std::numeric_limits<float>::max)()) {
+        return -1.0f;
+    }
     return std::nextafter(static_cast<float>(radius), (std::numeric_limits<float>::infinity)());
 }
 
@@ -151,7 +179,9 @@ bool BoneBakeKeys(const std::vector<Key>& keys, double duration, Valid valid)
 {
     double previous = -(std::numeric_limits<double>::infinity)();
     for (const auto& k : keys) {
-        if (!std::isfinite(k.time) || k.time < 0.0 || k.time > duration || k.time <= previous || !valid(k.value)) return false;
+        if (!std::isfinite(k.time) || k.time < 0.0 || k.time > duration || k.time <= previous || !valid(k.value)) {
+            return false;
+        }
         previous = k.time;
     }
     return true;
@@ -171,15 +201,25 @@ bool BoneBakeFrameValid(const BakedBoneAnimation& b, const BakedBoneFrame& f)
 bool BoneBakeCompatible(const BakedBoneAnimation& a, const BakedBoneAnimation& b)
 {
     if (a.skeletonFingerprint != b.skeletonFingerprint || a.root != b.root
-        || a.nodes.size() != b.nodes.size() || a.bones.size() != b.bones.size()) return false;
+        || a.nodes.size() != b.nodes.size() || a.bones.size() != b.bones.size()) {
+        return false;
+    }
     for (int r = 0; r < 4; ++r) for (int c = 0; c < 4; ++c)
-        if (a.rootInverse.m[r][c] != b.rootInverse.m[r][c]) return false;
+        if (a.rootInverse.m[r][c] != b.rootInverse.m[r][c]) {
+            return false;
+        }
     for (size_t i = 0; i < a.nodes.size(); ++i)
-        if (a.nodes[i].parent != b.nodes[i].parent || a.nodes[i].bone != b.nodes[i].bone) return false;
+        if (a.nodes[i].parent != b.nodes[i].parent || a.nodes[i].bone != b.nodes[i].bone) {
+            return false;
+        }
     for (size_t i = 0; i < a.bones.size(); ++i) {
-        if (a.bones[i].node != b.bones[i].node) return false;
+        if (a.bones[i].node != b.bones[i].node) {
+            return false;
+        }
         for (int r = 0; r < 4; ++r) for (int c = 0; c < 4; ++c)
-            if (a.bones[i].offset.m[r][c] != b.bones[i].offset.m[r][c]) return false;
+            if (a.bones[i].offset.m[r][c] != b.bones[i].offset.m[r][c]) {
+                return false;
+            }
     }
     return true;
 }
@@ -194,13 +234,21 @@ struct BoneBakeWriter {
     void Vector(const math::Vector4& v) { Float(v.x); Float(v.y); Float(v.z); Float(v.w); }
 };
 struct BoneBakeReader {
-    std::span<const std::byte> bytes;
-    size_t cursor = 0;
-    bool valid = true;
+    std::span<const std::byte> bytes; ///< この読み取りで参照できるバイト範囲。
+    size_t cursor = 0; ///< bytes の先頭から次に読む位置までのバイト数。
+    bool valid = true; ///< 一度でも読み取りが範囲外になれば false。
     uint32_t U32() {
-        if (cursor > bytes.size() || bytes.size() - cursor < 4) { valid = false; return 0; }
-        uint32_t v = 0; for (int i = 0; i < 4; ++i) v |= std::to_integer<uint32_t>(bytes[cursor++]) << (i * 8);
-        return v;
+        // 残りサイズの減算がアンダーフローしないよう、先にカーソルを検証する。
+        if (cursor > bytes.size() || bytes.size() - cursor < sizeof(uint32_t)) {
+            valid = false;
+            return 0;
+        }
+
+        uint32_t value = 0;
+        for (size_t byteIndex = 0; byteIndex < sizeof(value); ++byteIndex) {
+            value |= std::to_integer<uint32_t>(bytes[cursor++]) << (byteIndex * 8);
+        }
+        return value;
     }
     uint64_t U64() { const uint64_t low = U32(); return low | (static_cast<uint64_t>(U32()) << 32); }
     float Float() { return std::bit_cast<float>(U32()); }
@@ -242,24 +290,37 @@ uint64_t BoneBakeClipFingerprint(const AnimationClip& c)
 
 BoneBakeStatus ValidateBakedBoneAnimation(const BakedBoneAnimation& b)
 {
-    if (!BoneBakeShape(b)) return BoneBakeStatus::INVALID_DATA;
+    if (!BoneBakeShape(b)) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
     std::vector<uint32_t> order;
-    if (!BoneBakeOrder(b, order)) return BoneBakeStatus::INVALID_SKELETON;
+    if (!BoneBakeOrder(b, order)) {
+        return BoneBakeStatus::INVALID_SKELETON;
+    }
     for (size_t i = 0; i < b.nodes.size(); ++i) {
         const int32_t bone = b.nodes[i].bone;
-        if (bone < -1 || bone >= static_cast<int32_t>(b.bones.size())) return BoneBakeStatus::INVALID_SKELETON;
-        if (bone >= 0 && b.bones[static_cast<size_t>(bone)].node != i) return BoneBakeStatus::INVALID_SKELETON;
-        if (b.nodes[i].padding[0] || b.nodes[i].padding[1]) return BoneBakeStatus::INVALID_DATA;
+        if (bone < -1 || bone >= static_cast<int32_t>(b.bones.size())) {
+            return BoneBakeStatus::INVALID_SKELETON;
+        }
+        if (bone >= 0 && b.bones[static_cast<size_t>(bone)].node != i) {
+            return BoneBakeStatus::INVALID_SKELETON;
+        }
+        if (b.nodes[i].padding[0] || b.nodes[i].padding[1]) {
+            return BoneBakeStatus::INVALID_DATA;
+        }
     }
     for (size_t i = 0; i < b.bones.size(); ++i) {
         const auto& bone = b.bones[i];
-        if (bone.node >= b.nodes.size() || b.nodes[bone.node].bone != static_cast<int32_t>(i) || !BoneBakeAffine(bone.offset))
+        if (bone.node >= b.nodes.size() || b.nodes[bone.node].bone != static_cast<int32_t>(i) || !BoneBakeAffine(bone.offset)) {
             return BoneBakeStatus::INVALID_SKELETON;
+        }
         for (uint32_t p : bone.padding) if (p) return BoneBakeStatus::INVALID_DATA;
     }
     for (const auto& v : b.samples) if (!BoneBakeValidTransform(v)) return BoneBakeStatus::INVALID_DATA;
     const float minimumRadius = BoneBakeRadius(b, order);
-    if (minimumRadius < 0.0f || b.conservativeRadius < minimumRadius) return BoneBakeStatus::INVALID_DATA;
+    if (minimumRadius < 0.0f || b.conservativeRadius < minimumRadius) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
     return BoneBakeStatus::OK;
 }
 
@@ -268,20 +329,30 @@ BoneBakeStatus BakeBoneAnimation(const Skeleton& s, const AnimationClip& c,
 {
     if (!std::isfinite(settings.sampleRate) || settings.sampleRate < 1.0f || settings.sampleRate > 1000.0f
         || !std::isfinite(settings.meshRadius) || settings.meshRadius < 0.0f || settings.maxFrames < 2
-        || settings.maxFrames > BONE_BAKE_MAX_FRAMES || settings.maxSampleBytes > BONE_BAKE_MAX_BYTES || settings.maxSampleBytes < 48)
+        || settings.maxFrames > BONE_BAKE_MAX_FRAMES || settings.maxSampleBytes > BONE_BAKE_MAX_BYTES || settings.maxSampleBytes < 48) {
         return BoneBakeStatus::INVALID_SETTINGS;
+    }
     if (!std::isfinite(c.durationSeconds) || c.durationSeconds <= 0.0 || !std::isfinite(c.durationTicks)
         || c.durationTicks <= 0.0 || !std::isfinite(c.ticksPerSecond) || c.ticksPerSecond <= 0.0
-        || std::abs(c.durationSeconds * c.ticksPerSecond - c.durationTicks) > 0.0001 * (1.0 + c.durationTicks))
+        || std::abs(c.durationSeconds * c.ticksPerSecond - c.durationTicks) > 0.0001 * (1.0 + c.durationTicks)) {
         return BoneBakeStatus::INVALID_CLIP;
-    if (c.hasRootMotion || !c.propertyTracks.empty()) return BoneBakeStatus::UNSUPPORTED_SIDE_EFFECT;
+    }
+    if (c.hasRootMotion || !c.propertyTracks.empty()) {
+        return BoneBakeStatus::UNSUPPORTED_SIDE_EFFECT;
+    }
     if (s.nodes.empty() || s.nodes.size() > BONE_BAKE_MAX_NODES || s.bones.empty() || s.bones.size() > MAX_SKINNING_BONES
-        || s.rootNodeIndex < 0 || static_cast<size_t>(s.rootNodeIndex) >= s.nodes.size() || !BoneBakeAffine(s.rootInverseTransform))
+        || s.rootNodeIndex < 0 || static_cast<size_t>(s.rootNodeIndex) >= s.nodes.size() || !BoneBakeAffine(s.rootInverseTransform)) {
         return BoneBakeStatus::INVALID_SKELETON;
+    }
+    // 区間数が有効なことを確認し、両端を含むフレーム数でサンプル容量を見積もる。
     const double intervals = std::ceil(c.durationSeconds * settings.sampleRate);
-    if (!std::isfinite(intervals) || intervals >= settings.maxFrames || intervals < 1.0
-        || (intervals + 1.0) * s.nodes.size() > settings.maxSampleBytes / sizeof(BakedBoneTransform))
+    if (!std::isfinite(intervals) || intervals >= settings.maxFrames || intervals < 1.0) {
         return BoneBakeStatus::CAPACITY_EXCEEDED;
+    }
+    const double sampleCount = (intervals + 1.0) * s.nodes.size();
+    if (sampleCount > settings.maxSampleBytes / sizeof(BakedBoneTransform)) {
+        return BoneBakeStatus::CAPACITY_EXCEEDED;
+    }
 
     BakedBoneAnimation b;
     b.skeletonFingerprint = BoneBakeSkeletonFingerprint(s); b.clipFingerprint = BoneBakeClipFingerprint(c);
@@ -290,39 +361,59 @@ BoneBakeStatus BakeBoneAnimation(const Skeleton& s, const AnimationClip& c,
     b.rootInverse = s.rootInverseTransform;
     std::unordered_map<std::string, uint32_t> names;
     for (uint32_t i = 0; i < s.nodes.size(); ++i) {
-        const auto& n = s.nodes[i];
-        if (n.name.empty() || !names.emplace(n.name, i).second || !BoneBakeFinite(n.bindTranslation) || !BoneBakeFinite(n.bindScale)
-            || !BoneBakeUnit(n.bindRotation) || !BoneBakeAffine(n.localBindTransform)
-            || !BoneBakeNearMatrix(math::Matrix4::TRS(n.bindTranslation, n.bindRotation, n.bindScale), n.localBindTransform))
+        // トラック名が一意のノードを指すことを確認してから、バインド姿勢を検証する。
+        const auto& node = s.nodes[i];
+        if (node.name.empty() || !names.emplace(node.name, i).second) {
             return BoneBakeStatus::INVALID_SKELETON;
-        b.nodes.push_back({n.parentIndex, n.boneIndex, {}});
+        }
+        if (!BoneBakeFinite(node.bindTranslation) || !BoneBakeFinite(node.bindScale) || !BoneBakeUnit(node.bindRotation)) {
+            return BoneBakeStatus::INVALID_SKELETON;
+        }
+        if (!BoneBakeAffine(node.localBindTransform)) {
+            return BoneBakeStatus::INVALID_SKELETON;
+        }
+        const auto bindFromTrs = math::Matrix4::TRS(node.bindTranslation, node.bindRotation, node.bindScale);
+        if (!BoneBakeNearMatrix(bindFromTrs, node.localBindTransform)) {
+            return BoneBakeStatus::INVALID_SKELETON;
+        }
+        b.nodes.push_back({node.parentIndex, node.boneIndex, {}});
     }
     for (const auto& bone : s.bones) {
-        if (bone.nodeIndex < 0 || static_cast<size_t>(bone.nodeIndex) >= s.nodes.size() || !BoneBakeAffine(bone.offsetMatrix))
+        if (bone.nodeIndex < 0 || static_cast<size_t>(bone.nodeIndex) >= s.nodes.size() || !BoneBakeAffine(bone.offsetMatrix)) {
             return BoneBakeStatus::INVALID_SKELETON;
+        }
         b.bones.push_back({bone.offsetMatrix, static_cast<uint32_t>(bone.nodeIndex), {}});
     }
     std::vector<uint32_t> order;
-    if (!BoneBakeOrder(b, order)) return BoneBakeStatus::INVALID_SKELETON;
+    if (!BoneBakeOrder(b, order)) {
+        return BoneBakeStatus::INVALID_SKELETON;
+    }
     std::vector<uint32_t> childCount(s.nodes.size());
     for (size_t i = 0; i < s.nodes.size(); ++i) {
         std::unordered_set<int> children;
         for (int child : s.nodes[i].children) {
             if (child < 0 || static_cast<size_t>(child) >= s.nodes.size() || !children.insert(child).second
-                || s.nodes[static_cast<size_t>(child)].parentIndex != static_cast<int>(i)) return BoneBakeStatus::INVALID_SKELETON;
+                || s.nodes[static_cast<size_t>(child)].parentIndex != static_cast<int>(i)) {
+                return BoneBakeStatus::INVALID_SKELETON;
+            }
             ++childCount[static_cast<size_t>(child)];
         }
     }
     for (size_t i = 0; i < s.nodes.size(); ++i)
-        if (childCount[i] != (i == b.root ? 0u : 1u)) return BoneBakeStatus::INVALID_SKELETON;
+        if (childCount[i] != (i == b.root ? 0u : 1u)) {
+            return BoneBakeStatus::INVALID_SKELETON;
+        }
     std::vector<const NodeAnimationTrack*> tracks(s.nodes.size());
     for (const auto& t : c.tracks) {
         const auto it = names.find(t.nodeName);
-        if (it == names.end() || tracks[it->second] || t.interp != AnimInterp::Linear)
+        if (it == names.end() || tracks[it->second] || t.interp != AnimInterp::Linear) {
             return BoneBakeStatus::UNSUPPORTED_TRACK;
+        }
         if (!BoneBakeKeys(t.positions, c.durationTicks, [](const auto& v) { return BoneBakeFinite(v); })
             || !BoneBakeKeys(t.scales, c.durationTicks, [](const auto& v) { return BoneBakeFinite(v); })
-            || !BoneBakeKeys(t.rotations, c.durationTicks, [](const auto& v) { return BoneBakeUnit(v); })) return BoneBakeStatus::INVALID_CLIP;
+            || !BoneBakeKeys(t.rotations, c.durationTicks, [](const auto& v) { return BoneBakeUnit(v); })) {
+            return BoneBakeStatus::INVALID_CLIP;
+        }
         tracks[it->second] = &t;
     }
     b.samples.reserve(static_cast<size_t>(b.frameCount) * b.nodes.size());
@@ -337,29 +428,44 @@ BoneBakeStatus BakeBoneAnimation(const Skeleton& s, const AnimationClip& c,
         }
     }
     b.conservativeRadius = BoneBakeRadius(b, order);
-    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) return status;
+    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) {
+        return status;
+    }
     output = std::move(b); return BoneBakeStatus::OK;
 }
 
 BoneBakeStatus ValidateBoneBakeSource(const BakedBoneAnimation& b, const Skeleton& s,
                                     const AnimationClip& c, float lodMeshRadius)
 {
-    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) return status;
-    if (BoneBakeSkeletonFingerprint(s) != b.skeletonFingerprint) return BoneBakeStatus::INCOMPATIBLE_SKELETON;
-    if (BoneBakeClipFingerprint(c) != b.clipFingerprint) return BoneBakeStatus::STALE_SOURCE;
-    if (!std::isfinite(lodMeshRadius) || lodMeshRadius < 0.0f || lodMeshRadius > b.sourceMeshRadius)
+    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) {
+        return status;
+    }
+    if (BoneBakeSkeletonFingerprint(s) != b.skeletonFingerprint) {
+        return BoneBakeStatus::INCOMPATIBLE_SKELETON;
+    }
+    if (BoneBakeClipFingerprint(c) != b.clipFingerprint) {
+        return BoneBakeStatus::STALE_SOURCE;
+    }
+    if (!std::isfinite(lodMeshRadius) || lodMeshRadius < 0.0f || lodMeshRadius > b.sourceMeshRadius) {
         return BoneBakeStatus::INCOMPATIBLE_LOD;
+    }
     return BoneBakeStatus::OK;
 }
 
 BoneBakeStatus ResolveBakedBoneFrame(const BakedBoneAnimation& b, double elapsed, double speed,
                                    double phase, bool loop, BakedBoneFrame& output)
 {
-    if (!BoneBakeShape(b) || !std::isfinite(elapsed) || !std::isfinite(speed) || !std::isfinite(phase)) return BoneBakeStatus::INVALID_DATA;
+    if (!BoneBakeShape(b) || !std::isfinite(elapsed) || !std::isfinite(speed) || !std::isfinite(phase)) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
     double time = elapsed * speed + phase;
-    if (!std::isfinite(time)) return BoneBakeStatus::INVALID_DATA;
+    if (!std::isfinite(time)) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
     if (loop) { time = std::fmod(time, b.durationSeconds); if (time < 0.0) time += b.durationSeconds; }
-    else time = std::clamp(time, 0.0, b.durationSeconds);
+    else {
+        time = std::clamp(time, 0.0, b.durationSeconds);
+    }
     const double position = std::clamp(time / b.durationSeconds * (b.frameCount - 1u), 0.0, static_cast<double>(b.frameCount - 1u));
     const uint32_t first = static_cast<uint32_t>(std::floor(position));
     output = {first, (std::min)(first + 1u, b.frameCount - 1u), static_cast<float>(position - first), 0};
@@ -368,13 +474,20 @@ BoneBakeStatus ResolveBakedBoneFrame(const BakedBoneAnimation& b, double elapsed
 
 BoneBakeStatus BoneBakeBlendRadius(const BakedBoneAnimation& b, const BakedBoneAnimation& target, float& output)
 {
-    if (ValidateBakedBoneAnimation(b) != BoneBakeStatus::OK || ValidateBakedBoneAnimation(target) != BoneBakeStatus::OK)
+    if (ValidateBakedBoneAnimation(b) != BoneBakeStatus::OK || ValidateBakedBoneAnimation(target) != BoneBakeStatus::OK) {
         return BoneBakeStatus::INVALID_DATA;
-    if (!BoneBakeCompatible(b, target)) return BoneBakeStatus::INCOMPATIBLE_SKELETON;
+    }
+    if (!BoneBakeCompatible(b, target)) {
+        return BoneBakeStatus::INCOMPATIBLE_SKELETON;
+    }
     std::vector<uint32_t> order;
-    if (!BoneBakeOrder(b, order)) return BoneBakeStatus::INVALID_SKELETON;
+    if (!BoneBakeOrder(b, order)) {
+        return BoneBakeStatus::INVALID_SKELETON;
+    }
     const float radius = BoneBakeRadius(b, order, &target);
-    if (radius < 0.0f) return BoneBakeStatus::INVALID_DATA;
+    if (radius < 0.0f) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
     output = radius; return BoneBakeStatus::OK;
 }
 
@@ -383,44 +496,73 @@ BoneBakeStatus EvaluateBakedBoneAnimation(const BakedBoneAnimation& b, const Bak
                                         const BakedBoneAnimation* target, const BakedBoneFrame* tf, float weight,
                                         BakedBoneWorkspace* workspace)
 {
-    if (!BoneBakeFrameValid(b, f) || !std::isfinite(weight) || weight < 0.0f || weight > 1.0f
-        || ((target == nullptr) != (tf == nullptr))) return BoneBakeStatus::INVALID_DATA;
-    if (target && !BoneBakeCompatible(b, *target)) return BoneBakeStatus::INCOMPATIBLE_SKELETON;
-    if (target && !BoneBakeFrameValid(*target, *tf)) return BoneBakeStatus::INVALID_DATA;
+    if (!BoneBakeFrameValid(b, f)) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    if (!std::isfinite(weight) || weight < 0.0f || weight > 1.0f) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+
+    // ブレンド先のクリップとフレームは組で受け取る。両クリップの骨格を照合してからサンプルを参照する。
+    const bool hasTarget = target != nullptr;
+    const bool hasTargetFrame = tf != nullptr;
+    if (hasTarget != hasTargetFrame) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    if (target && !BoneBakeCompatible(b, *target)) {
+        return BoneBakeStatus::INCOMPATIBLE_SKELETON;
+    }
+    if (target && !BoneBakeFrameValid(*target, *tf)) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    // 行列は作業領域に構築し、全ノードと出力骨を評価してから公開する。
     BakedBoneWorkspace temporary;
     auto& scratch = workspace ? *workspace : temporary;
     auto& order = scratch.order;
-    if (!BoneBakeOrder(b, order, &scratch.visited)) return BoneBakeStatus::INVALID_SKELETON;
+    if (!BoneBakeOrder(b, order, &scratch.visited)) {
+        return BoneBakeStatus::INVALID_SKELETON;
+    }
     auto& globals = scratch.globals; auto& matrices = scratch.matrices;
     globals.resize(b.nodes.size()); matrices.resize(b.bones.size());
     for (uint32_t i : order) {
         const auto& a = b.samples[static_cast<size_t>(f.first) * b.nodes.size() + i];
         const auto& z = b.samples[static_cast<size_t>(f.second) * b.nodes.size() + i];
-        if (!BoneBakeValidTransform(a) || !BoneBakeValidTransform(z)) return BoneBakeStatus::INVALID_DATA;
+        if (!BoneBakeValidTransform(a) || !BoneBakeValidTransform(z)) {
+            return BoneBakeStatus::INVALID_DATA;
+        }
         auto local = BoneBakeInterpolate(a, z, f.alpha);
         if (target) {
             const auto& ta = target->samples[static_cast<size_t>(tf->first) * b.nodes.size() + i];
             const auto& tz = target->samples[static_cast<size_t>(tf->second) * b.nodes.size() + i];
-            if (!BoneBakeValidTransform(ta) || !BoneBakeValidTransform(tz)) return BoneBakeStatus::INVALID_DATA;
+            if (!BoneBakeValidTransform(ta) || !BoneBakeValidTransform(tz)) {
+                return BoneBakeStatus::INVALID_DATA;
+            }
             local = BoneBakeInterpolate(local, BoneBakeInterpolate(ta, tz, tf->alpha), weight);
         }
         const auto m = math::Matrix4::TRS(BoneBakeVec(local.translation), BoneBakeQuat(local.rotation), BoneBakeVec(local.scale));
         globals[i] = b.nodes[i].parent < 0 ? m : globals[static_cast<size_t>(b.nodes[i].parent)] * m;
-        if (!BoneBakeAffine(globals[i])) return BoneBakeStatus::INVALID_DATA;
+        if (!BoneBakeAffine(globals[i])) {
+            return BoneBakeStatus::INVALID_DATA;
+        }
     }
     for (size_t i = 0; i < b.bones.size(); ++i) {
         const auto& bone = b.bones[i];
-        if (bone.node >= globals.size() || b.nodes[bone.node].bone != static_cast<int32_t>(i) || !BoneBakeAffine(bone.offset))
+        if (bone.node >= globals.size() || b.nodes[bone.node].bone != static_cast<int32_t>(i) || !BoneBakeAffine(bone.offset)) {
             return BoneBakeStatus::INVALID_SKELETON;
+        }
         matrices[i] = b.rootInverse * globals[bone.node] * bone.offset;
-        if (!BoneBakeAffine(matrices[i])) return BoneBakeStatus::INVALID_DATA;
+        if (!BoneBakeAffine(matrices[i])) {
+            return BoneBakeStatus::INVALID_DATA;
+        }
     }
     palette.swap(matrices); nodeGlobals.swap(globals); return BoneBakeStatus::OK;
 }
 
 BoneBakeStatus EncodeBoneBake(const BakedBoneAnimation& b, std::vector<std::byte>& output)
 {
-    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) return status;
+    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) {
+        return status;
+    }
     BoneBakeWriter w; w.U32(BONE_BAKE_MAGIC); w.U32(BakedBoneAnimation::FORMAT_VERSION);
     w.U64(b.skeletonFingerprint); w.U64(b.clipFingerprint); w.Double(b.durationSeconds);
     w.Float(b.sampleRate); w.Float(b.sourceMeshRadius); w.Float(b.conservativeRadius);
@@ -436,28 +578,90 @@ BoneBakeStatus EncodeBoneBake(const BakedBoneAnimation& b, std::vector<std::byte
 BoneBakeStatus DecodeBoneBake(std::span<const std::byte> bytes, BakedBoneAnimation& output)
 {
     constexpr size_t HEADER_BYTES = 128;
-    if (bytes.size() < HEADER_BYTES + 8u || bytes.size() > BONE_BAKE_MAX_BYTES + 1024u * 8u + 128u * 68u + HEADER_BYTES + 8u)
+    constexpr size_t CHECKSUM_BYTES = 8;
+    constexpr uint64_t NODE_BYTES = 8;
+    constexpr uint64_t BINDING_BYTES = 68;
+    constexpr uint64_t TRANSFORM_BYTES = 48;
+    constexpr uint64_t MAX_FILE_BYTES = HEADER_BYTES + CHECKSUM_BYTES + BONE_BAKE_MAX_BYTES
+        + BONE_BAKE_MAX_NODES * NODE_BYTES + MAX_SKINNING_BONES * BINDING_BYTES;
+
+    // ヘッダーを読む前に、ファイル全体のサイズと末尾のチェックサムを確認する。
+    if (bytes.size() < HEADER_BYTES + CHECKSUM_BYTES || bytes.size() > MAX_FILE_BYTES) {
         return BoneBakeStatus::INVALID_DATA;
-    BoneBakeReader checksumReader{bytes.last(8)};
-    if (BoneBakeChecksum(bytes.first(bytes.size() - 8u)) != checksumReader.U64()) return BoneBakeStatus::INVALID_DATA;
-    BoneBakeReader r{bytes.first(bytes.size() - 8u)};
-    if (r.U32() != BONE_BAKE_MAGIC || r.U32() != BakedBoneAnimation::FORMAT_VERSION) return BoneBakeStatus::INVALID_DATA;
-    BakedBoneAnimation b;
-    b.skeletonFingerprint = r.U64(); b.clipFingerprint = r.U64(); b.durationSeconds = r.Double();
-    b.sampleRate = r.Float(); b.sourceMeshRadius = r.Float(); b.conservativeRadius = r.Float();
-    b.frameCount = r.U32(); b.root = r.U32(); const uint32_t loop = r.U32(); b.loop = loop != 0;
-    const uint32_t nodes = r.U32(), bones = r.U32(); b.rootInverse = r.Matrix();
-    if (!r.valid || r.cursor != HEADER_BYTES || loop > 1u || nodes == 0 || nodes > BONE_BAKE_MAX_NODES
-        || bones == 0 || bones > MAX_SKINNING_BONES || b.frameCount < 2 || b.frameCount > BONE_BAKE_MAX_FRAMES) return BoneBakeStatus::INVALID_DATA;
-    const uint64_t count = static_cast<uint64_t>(nodes) * b.frameCount;
-    if (count > BONE_BAKE_MAX_BYTES / sizeof(BakedBoneTransform)
-        || HEADER_BYTES + nodes * 8ull + bones * 68ull + count * 48ull != r.bytes.size()) return BoneBakeStatus::INVALID_DATA;
-    b.nodes.reserve(nodes); b.bones.reserve(bones); b.samples.reserve(static_cast<size_t>(count));
-    for (uint32_t i = 0; i < nodes; ++i) { const auto parent = std::bit_cast<int32_t>(r.U32()), bone = std::bit_cast<int32_t>(r.U32()); b.nodes.push_back({parent, bone, {}}); }
-    for (uint32_t i = 0; i < bones; ++i) { const auto matrix = r.Matrix(); const auto node = r.U32(); b.bones.push_back({matrix, node, {}}); }
-    for (uint64_t i = 0; i < count; ++i) { const auto t = r.Vector(), q = r.Vector(), s = r.Vector(); b.samples.push_back({t, q, s}); }
-    if (!r.valid || r.cursor != r.bytes.size()) return BoneBakeStatus::INVALID_DATA;
-    if (const auto status = ValidateBakedBoneAnimation(b); status != BoneBakeStatus::OK) return status;
-    output = std::move(b); return BoneBakeStatus::OK;
+    }
+    const auto payload = bytes.first(bytes.size() - CHECKSUM_BYTES);
+    BoneBakeReader checksumReader{bytes.last(CHECKSUM_BYTES)};
+    if (BoneBakeChecksum(payload) != checksumReader.U64()) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+
+    BoneBakeReader reader{payload};
+    if (reader.U32() != BONE_BAKE_MAGIC || reader.U32() != BakedBoneAnimation::FORMAT_VERSION) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    BakedBoneAnimation candidate;
+    candidate.skeletonFingerprint = reader.U64();
+    candidate.clipFingerprint = reader.U64();
+    candidate.durationSeconds = reader.Double();
+    candidate.sampleRate = reader.Float();
+    candidate.sourceMeshRadius = reader.Float();
+    candidate.conservativeRadius = reader.Float();
+    candidate.frameCount = reader.U32();
+    candidate.root = reader.U32();
+    const uint32_t loop = reader.U32();
+    candidate.loop = loop != 0;
+    const uint32_t nodeCount = reader.U32();
+    const uint32_t boneCount = reader.U32();
+    candidate.rootInverse = reader.Matrix();
+    if (!reader.valid || reader.cursor != HEADER_BYTES || loop > 1u) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    if (nodeCount == 0 || nodeCount > BONE_BAKE_MAX_NODES || boneCount == 0 || boneCount > MAX_SKINNING_BONES) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    if (candidate.frameCount < 2 || candidate.frameCount > BONE_BAKE_MAX_FRAMES) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+
+    // ファイル上の各要素の長さで必要なバイト数を求め、配列を確保する前に照合する。
+    const uint64_t sampleCount = static_cast<uint64_t>(nodeCount) * candidate.frameCount;
+    if (sampleCount > BONE_BAKE_MAX_BYTES / sizeof(BakedBoneTransform)) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    const uint64_t expectedBytes = HEADER_BYTES + nodeCount * NODE_BYTES + boneCount * BINDING_BYTES
+        + sampleCount * TRANSFORM_BYTES;
+    if (expectedBytes != payload.size()) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+
+    candidate.nodes.reserve(nodeCount);
+    candidate.bones.reserve(boneCount);
+    candidate.samples.reserve(static_cast<size_t>(sampleCount));
+    for (uint32_t nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
+        const auto parent = std::bit_cast<int32_t>(reader.U32());
+        const auto bone = std::bit_cast<int32_t>(reader.U32());
+        candidate.nodes.push_back({parent, bone, {}});
+    }
+    for (uint32_t boneIndex = 0; boneIndex < boneCount; ++boneIndex) {
+        const auto matrix = reader.Matrix();
+        const auto node = reader.U32();
+        candidate.bones.push_back({matrix, node, {}});
+    }
+    for (uint64_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+        const auto translation = reader.Vector();
+        const auto rotation = reader.Vector();
+        const auto scale = reader.Vector();
+        candidate.samples.push_back({translation, rotation, scale});
+    }
+
+    // デコードと骨格・サンプルの検証が完了するまで、既存の出力を保持する。
+    if (!reader.valid || reader.cursor != payload.size()) {
+        return BoneBakeStatus::INVALID_DATA;
+    }
+    if (const auto status = ValidateBakedBoneAnimation(candidate); status != BoneBakeStatus::OK) {
+        return status;
+    }
+    output = std::move(candidate);
+    return BoneBakeStatus::OK;
 }
 }

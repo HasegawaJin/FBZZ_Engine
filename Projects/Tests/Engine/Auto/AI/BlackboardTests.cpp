@@ -132,8 +132,8 @@ TEST_F(BlackboardTest, OverwritingKeepsTheLatestValue)
 /// @brief Refuses to write the wrong type.
 TEST_F(BlackboardTest, RefusesToWriteTheWrongType)
 {
-    /// @note アセットとスクリプトが別々に編集された結果のオーサリングミス。
-    ///       assert で落とさず false を返し、値も書き換えない。
+    // アセットとスクリプトが別々に編集された結果のオーサリングミス。
+    // assert で落とさず false を返し、値も書き換えない。
     ASSERT_TRUE(board.SetFloat(kFloat, 1.5f));
 
     EXPECT_FALSE(board.SetBool(kFloat, true));
@@ -170,7 +170,7 @@ TEST_F(BlackboardTest, RejectsKeysOutsideTheLayout)
 /// @brief Starts with nothing written.
 TEST_F(BlackboardTest, StartsWithNothingWritten)
 {
-    /// @note 「まだ一度も見ていない」と「見て false だった」は別の状態。
+    // 「まだ一度も見ていない」と「見て false だった」は別の状態。
     EXPECT_FALSE(board.IsSet(kBool));
     EXPECT_EQ(board.GetLastWriteTick(kBool), 0u);
     EXPECT_NEAR(board.GetLastWriteTime(kBool), 0.0f, testkit::kTolerance);
@@ -179,7 +179,7 @@ TEST_F(BlackboardTest, StartsWithNothingWritten)
 /// @brief Marks a key as set once it is written.
 TEST_F(BlackboardTest, MarksAKeyAsSetOnceItIsWritten)
 {
-    /// @note 値が false でも «書かれた» ことは残る
+    // 値が false でも «書かれた» ことは残る
     board.SetBool(kBool, false);
 
     EXPECT_TRUE(board.IsSet(kBool));
@@ -208,7 +208,7 @@ TEST_F(BlackboardTest, ARejectedWriteDoesNotMarkTheKeyAsSet)
 /// @brief Stamps the current tick and time on write.
 TEST_F(BlackboardTest, StampsTheCurrentTickAndTimeOnWrite)
 {
-    /// @note 「最後にプレイヤーを見てから 5 秒」を各ノードが自前タイマーで持たずに済ませるための値。
+    // 「最後にプレイヤーを見てから 5 秒」を各ノードが自前タイマーで持たずに済ませるための値。
     board.SetTick(12);
     board.SetTime(3.5f);
 
@@ -236,7 +236,7 @@ TEST_F(BlackboardTest, TheStampMovesForwardWithEachWrite)
 /// @brief Reading does not refresh the stamp.
 TEST_F(BlackboardTest, ReadingDoesNotRefreshTheStamp)
 {
-    /// @note 読んだだけで «新しい情報» になってしまうと、記憶の減衰が働かない。
+    // 読んだだけで «新しい情報» になってしまうと、記憶の減衰が働かない。
     board.SetTick(5);
     board.SetTime(0.5f);
     board.SetFloat(kFloat, 1.0f);
@@ -359,8 +359,8 @@ TEST_F(BlackboardTest, TreatsSignedZeroAsSameValueAndNaNAsAChange)
 /// @brief Reserved keys sit at their fixed indices.
 TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
 {
-    /// @note PerceptionSystem は名前検索を避けてこの添字へ直接書く。
-    ///       並びが変わると «別のキーへ書き込む» ことになる。
+    // PerceptionSystem は名前検索を避けてこの添字へ直接書く。
+    // 並びが変わると «別のキーへ書き込む» ことになる。
     const std::vector<ai::BlackboardDef>& reserved = ai::ReservedBlackboardDefs();
 
     ASSERT_EQ(reserved.size(), ai::bb::ReservedCount);
@@ -373,7 +373,7 @@ TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
 /// @brief Reserved keys are marked reserved.
 TEST_F(BlackboardTest, ReservedKeysAreMarkedReserved)
 {
-    /// @note エディタは予約キーの名前変更と削除を禁じる。その印がここで立っている。
+    // エディタは予約キーの名前変更と削除を禁じる。その印がここで立っている。
     for (const ai::BlackboardDef& def : ai::ReservedBlackboardDefs())
         EXPECT_TRUE(def.reserved) << def.name;
 }

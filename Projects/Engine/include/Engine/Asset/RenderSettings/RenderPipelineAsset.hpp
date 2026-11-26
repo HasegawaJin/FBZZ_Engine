@@ -19,8 +19,8 @@ struct RenderPipelineAssetCodec;
 /// @see https://docs.unity3d.com/6000.1/Documentation/Manual/srp-setting-render-pipeline-asset.html Unity のレンダーパイプライン設定アセット。
 class RenderPipelineAsset final : public DataAsset {
 public:
-    static constexpr const char* TYPE_NAME = "RenderPipelineAsset";
-    static constexpr int SCHEMA_VERSION = 1;
+    static constexpr const char* TYPE_NAME = "RenderPipelineAsset"; ///< 保存文書と型レジストリーで描画パイプライン設定を識別する名前。
+    static constexpr int SCHEMA_VERSION = 1; ///< 保存した描画パイプライン設定のフィールド構成の版。
     const char* GetTypeName() const override { return TYPE_NAME; }
     FBZZ_ENGINE_API void Reflect(scene::IReflector& reflector) override;
 
@@ -32,11 +32,9 @@ public:
 
 private:
     friend struct RenderPipelineAssetCodec;
-    renderer::RenderSettings m_settings;
-    /// @note スキーマ 1 の未知の項目を編集と保存で保持し、公開 API には TOML の型を出さない。
-    std::string m_preservedToml;
-    /// @note 構造の編集では元項目の識別を保つ。新規項目を番兵値で示し、名前を変えても別パスの項目は継承しない。
-    std::vector<size_t> m_preservedPassIndices;
+    renderer::RenderSettings m_settings; ///< このアセットが供給する描画パイプラインの制作設定。
+    std::string m_preservedToml; ///< スキーマ 1 の未知の項目を編集と保存で保持し、公開 API には TOML の型を出さない。
+    std::vector<size_t> m_preservedPassIndices; ///< 構造の編集では元項目の識別を保つ。新規項目を番兵値で示し、名前を変えても別パスの項目は継承しない。
 };
 
 /// @pre プロジェクト相対参照や GUID 参照を解決する場合は AssetManager を初期化しておく。
@@ -48,4 +46,4 @@ private:
 /// @return 成功後、呼び出し側が既存のアセットブラウザー更新を通じて結果の .meta と GUID を登録する。
 [[nodiscard]] FBZZ_ENGINE_API bool CreateRenderPipelineAsset(std::string_view path, const renderer::RenderSettings& source);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

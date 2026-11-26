@@ -33,18 +33,24 @@ struct ManagedMaterialTransfers::Impl {
     /// @note インポーターやリフレクションのコールバック後は、変わらない Entity と生成時の識別情報で引き直す。以前に借りた GameObject、コンポーネント、スロットは使わない。
     static ManagedBridgeStatus ValidateOwner(Scene& scene, const Record& record, MaterialComponent*& material, bool opening = false)
     {
-        if (record.scene != scene.GetRenderSceneGeneration()) return ManagedBridgeStatus::INVALID_SCOPE;
+        if (record.scene != scene.GetRenderSceneGeneration()) {
+            return ManagedBridgeStatus::INVALID_SCOPE;
+        }
         auto* target = scene.GetGameObject(record.entity);
         material = target ? target->GetComponent<MaterialComponent>() : nullptr;
         if (!material || ManagedObjectControls::IsPendingComponentRemoval(*target, 29)
-            || scene.GetComponentLifetime<MaterialComponent>(record.entity) != record.birth || record.slot >= material->SlotCount())
+            || scene.GetComponentLifetime<MaterialComponent>(record.entity) != record.birth || record.slot >= material->SlotCount()) {
             return ManagedBridgeStatus::NOT_FOUND;
+        }
         const auto snapshot = material->RawSlotAt(record.slot).ReadAuthoring();
         if (!snapshot || !record.slotOwner || snapshot->OwnerToken() != record.slotOwner->OwnerToken()
-            || snapshot->Data().materialPath != record.material) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        const auto& row = material->RawSlotAt(record.slot);
-        if (!opening && (row.GetMaterialAsset().IsValid() ? row.GetShaderPath() : std::string{}) != record.shader)
+            || snapshot->Data().materialPath != record.material) {
             return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        const auto& row = material->RawSlotAt(record.slot);
+        if (!opening && (row.GetMaterialAsset().IsValid() ? row.GetShaderPath() : std::string{}) != record.shader) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         return ManagedBridgeStatus::OK;
     }
     uint64_t next = 1; std::unordered_map<uint64_t, Record> records;
@@ -56,11 +62,19 @@ ManagedBridgeStatus ManagedMaterialTransfers::Open(Scene& scene, GameObject& tar
 {
     const bool read = request.index == 30;
     if (request.flags != (read ? 1U : 0U) || !request.callId || !request.instanceId || !request.ownerId || !request.generation
-        || !values.empty() || text.size() != (read ? 1U : 2U) || text[0].empty() || text[0].find('\0') != std::string::npos) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        || !values.empty() || text.size() != (read ? 1U : 2U) || text[0].empty() || text[0].find('\0') != std::string::npos) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     auto* material = target.GetComponent<MaterialComponent>();
-    if (!material || ManagedObjectControls::IsPendingComponentRemoval(target, 29)) return ManagedBridgeStatus::NOT_FOUND;
-    if (slot < 0 || static_cast<uint64_t>(slot) >= material->SlotCount()) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (m_impl->records.size() >= 32 || m_impl->next > static_cast<uint64_t>(INT64_MAX)) return ManagedBridgeStatus::PENDING_LIMIT;
+    if (!material || ManagedObjectControls::IsPendingComponentRemoval(target, 29)) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
+    if (slot < 0 || static_cast<uint64_t>(slot) >= material->SlotCount()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
+    if (m_impl->records.size() >= 32 || m_impl->next > static_cast<uint64_t>(INT64_MAX)) {
+        return ManagedBridgeStatus::PENDING_LIMIT;
+    }
     const auto slotSnapshot = material->RawSlotAt(static_cast<size_t>(slot)).ReadAuthoring();
     Impl::Record record{request.ownerId, request.instanceId, request.generation, request.callId, scene.GetRenderSceneGeneration(),
         scene.GetComponentLifetime<MaterialComponent>(target.GetID()), target.GetID(), static_cast<uint32_t>(slot), read, 0,
@@ -72,7 +86,9 @@ ManagedBridgeStatus ManagedMaterialTransfers::Open(Scene& scene, GameObject& tar
         size_t count = 0;
         const bool available = proxy.material.Instance(record.slot).TryGetValueCount(MaterialPropertyId(record.property), count);
         const auto status = Impl::ValidateOwner(scene, record, material, true);
-        if (status != ManagedBridgeStatus::OK) return status;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
         if (!available) {
             result = {}; return ManagedBridgeStatus::OK;
         }
@@ -81,16 +97,22 @@ ManagedBridgeStatus ManagedMaterialTransfers::Open(Scene& scene, GameObject& tar
         record.shader = row.GetMaterialAsset().IsValid() ? row.GetShaderPath() : std::string{};
     } else {
         const auto parsed = std::from_chars(text[1].data(), text[1].data() + text[1].size(), record.expected);
-        if (parsed.ec != std::errc{} || parsed.ptr != text[1].data() + text[1].size() || record.expected > record.values.max_size()) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        /// @note 初回の遅延ロードを commit の変更検査と混同しない。ロード callback 後は旧 Component / slot を再利用しない。
+        if (parsed.ec != std::errc{} || parsed.ptr != text[1].data() + text[1].size() || record.expected > record.values.max_size()) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        // 初回の遅延ロードを commit の変更検査と混同しない。ロード callback 後は旧 Component / slot を再利用しない。
         (void)material->EnsureRawMaterialAsset(record.slot);
         const auto status = Impl::ValidateOwner(scene, record, material, true);
-        if (status != ManagedBridgeStatus::OK) return status;
+        if (status != ManagedBridgeStatus::OK) {
+            return status;
+        }
         const auto& row = material->RawSlotAt(record.slot);
         record.shader = row.GetMaterialAsset().IsValid() ? row.GetShaderPath() : std::string{};
         record.values.reserve(static_cast<size_t>(record.expected));
     }
-    if (m_impl->records.size() >= 32 || m_impl->next > static_cast<uint64_t>(INT64_MAX)) return ManagedBridgeStatus::PENDING_LIMIT;
+    if (m_impl->records.size() >= 32 || m_impl->next > static_cast<uint64_t>(INT64_MAX)) {
+        return ManagedBridgeStatus::PENDING_LIMIT;
+    }
     const auto token = m_impl->next++; const auto count = record.expected;
     m_impl->records.emplace(token, std::move(record)); result = {}; result.integer = static_cast<int64_t>(token); result.text = {std::to_string(count)};
     return ManagedBridgeStatus::OK;
@@ -98,13 +120,19 @@ ManagedBridgeStatus ManagedMaterialTransfers::Open(Scene& scene, GameObject& tar
 ManagedBridgeStatus ManagedMaterialTransfers::Run(Scene& scene, GameObject& target, Script& proxy,
     const ManagedBridgeRequest& request, ManagedServiceResult& result, ManagedBridgeReply* rawReply)
 {
-    if (!request.input || request.inputBytes < 8) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!request.input || request.inputBytes < 8) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const std::string_view bytes(request.input, request.inputBytes); size_t position = 0; uint64_t token = 0;
-    if (!Read(bytes, position, token)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Read(bytes, position, token)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const auto found = m_impl->records.find(token); if (found == m_impl->records.end()) return ManagedBridgeStatus::NOT_FOUND;
     auto& record = found->second;
     if (record.owner != request.ownerId || record.instance != request.instanceId || record.generation != request.generation || record.call != request.callId
-        || record.scene != scene.GetRenderSceneGeneration() || record.entity != target.GetID() || request.flags != (record.read ? 1U : 0U)) return ManagedBridgeStatus::INVALID_SCOPE;
+        || record.scene != scene.GetRenderSceneGeneration() || record.entity != target.GetID() || request.flags != (record.read ? 1U : 0U)) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
     MaterialComponent* material = nullptr;
     const auto ownerStatus = Impl::ValidateOwner(scene, record, material);
     if (ownerStatus != ManagedBridgeStatus::OK) { m_impl->records.erase(found); return ownerStatus; }
@@ -112,18 +140,24 @@ ManagedBridgeStatus ManagedMaterialTransfers::Run(Scene& scene, GameObject& targ
     if (request.index == 31 || request.index == 33) {
         uint64_t offset = 0; uint32_t count = 0, reserved = 0;
         if (!Read(bytes, position, offset) || !Read(bytes, position, count) || !Read(bytes, position, reserved) || reserved
-            || count > (65536U - 24U) / sizeof(double) || offset > record.expected || count > record.expected - offset) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            || count > (65536U - 24U) / sizeof(double) || offset > record.expected || count > record.expected - offset) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         if (request.index == 31) {
-            if (!record.read || bytes.size() != 24 || !rawReply || (count && !request.output)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!record.read || bytes.size() != 24 || !rawReply || (count && !request.output)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             const uint32_t needed = count * static_cast<uint32_t>(sizeof(double));
             if (request.outputCapacity < needed) { rawReply->outputBytes = needed; return ManagedBridgeStatus::BUFFER_TOO_SMALL; }
-            /// @note ネイティブのコールバックをまたぐリフレクション入力は所有する。件数だけを取得して開いた場合も、最初のページまで変換を遅らせる。
+            // ネイティブのコールバックをまたぐリフレクション入力は所有する。件数だけを取得して開いた場合も、最初のページまで変換を遅らせる。
             if (needed && !record.captured) {
                 const auto ownedRecord = record;
                 std::vector<double> capturedValues;
                 const bool available = proxy.material.Instance(ownedRecord.slot).TryGetValues(MaterialPropertyId(ownedRecord.property), capturedValues);
                 const auto current = m_impl->records.find(token);
-                if (current == m_impl->records.end()) return ManagedBridgeStatus::NOT_FOUND;
+                if (current == m_impl->records.end()) {
+                    return ManagedBridgeStatus::NOT_FOUND;
+                }
                 const auto status = Impl::ValidateOwner(scene, ownedRecord, material);
                 if (status != ManagedBridgeStatus::OK) { m_impl->records.erase(current); return status; }
                 if (!available || capturedValues.size() != ownedRecord.expected) {
@@ -135,7 +169,9 @@ ManagedBridgeStatus ManagedMaterialTransfers::Run(Scene& scene, GameObject& targ
                 rawReply->outputBytes = needed; rawReply->integer = static_cast<int64_t>(count); rawReply->callId = freshRecord.scene;
                 return ManagedBridgeStatus::OK;
             }
-            if (needed) std::memcpy(request.output, record.values.data() + static_cast<size_t>(offset), needed);
+            if (needed) {
+                std::memcpy(request.output, record.values.data() + static_cast<size_t>(offset), needed);
+            }
             rawReply->outputBytes = needed; rawReply->integer = static_cast<int64_t>(count); rawReply->callId = record.scene;
             return ManagedBridgeStatus::OK;
         }
@@ -152,10 +188,14 @@ ManagedBridgeStatus ManagedMaterialTransfers::Run(Scene& scene, GameObject& targ
     const auto ownedRecord = record;
     const bool written = proxy.material.Instance(ownedRecord.slot).SetValues(MaterialPropertyId(ownedRecord.property), ownedRecord.values);
     const auto current = m_impl->records.find(token);
-    if (current == m_impl->records.end()) return ManagedBridgeStatus::NOT_FOUND;
+    if (current == m_impl->records.end()) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     const auto status = Impl::ValidateOwner(scene, ownedRecord, material);
     m_impl->records.erase(current);
-    if (status != ManagedBridgeStatus::OK) return status;
+    if (status != ManagedBridgeStatus::OK) {
+        return status;
+    }
     result = {}; result.integer = written; return ManagedBridgeStatus::OK;
 }
 void ManagedMaterialTransfers::CancelOwner(uint64_t owner) { std::erase_if(m_impl->records, [owner](const auto& pair) { return pair.second.owner == owner; }); }

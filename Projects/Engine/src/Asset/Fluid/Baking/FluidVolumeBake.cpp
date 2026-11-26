@@ -64,7 +64,9 @@ VolumeColorRamp ToVolumeRamp(const fluid::FluidColorRamp& ramp)
 std::filesystem::path RecipeFile(const std::string& fluidRecipePath)
 {
     const std::filesystem::path direct = util::FileSystem::PathFromUtf8(fluidRecipePath);
-    if (fluidRecipePath.empty() || direct.is_absolute()) return direct;
+    if (fluidRecipePath.empty() || direct.is_absolute()) {
+        return direct;
+    }
     return util::FileSystem::PathFromUtf8(AssetManager::ResolveAssetPath(fluidRecipePath));
 }
 
@@ -108,7 +110,7 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
     settings.lightPitchDegrees = bake.lightPitchDegrees;
     settings.lightColor = bake.lightColor;
     settings.ambient = bake.ambient;
-    /// @note opacity の既定値では従来の bake.extinction を保ち、明示した濃さだけ 3D の消散係数へ反映する。
+    // opacity の既定値では従来の bake.extinction を保ち、明示した濃さだけ 3D の消散係数へ反映する。
     settings.extinction = bake.extinction * FluidOpacityScale(recipe);
     settings.anisotropy = bake.anisotropy;
     settings.emissionIntensity = bake.emissionIntensity;
@@ -124,24 +126,24 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
     settings.fireEmission = recipe.kind == fluid::FluidKind::Gas
         && recipe.render.shading == fluid::FluidShading::Fire;
     if (settings.fireEmission) {
-        /// @note render.fireIntensity は 2D Fire の強さを共有し、既定値 1 では 3D bake の校正値を保つ。
+        // render.fireIntensity は 2D Fire の強さを共有し、既定値 1 では 3D bake の校正値を保つ。
         settings.emissionIntensity *= (std::max)(recipe.render.fireIntensity, 0.0f);
-        /// @note Fire の Ramp / 黒体選択は 2D と同じ render.useEmissionRamp に従う。
+        // Fire の Ramp / 黒体選択は 2D と同じ render.useEmissionRamp に従う。
         settings.blackbodyEmission = !recipe.render.useEmissionRamp;
     }
-    /// @note 6-way の火炎マスク用。q(T) の放射強度は render.fireKelvin / bake.emissionIntensity から独立に決まる。
+    // 6-way の火炎マスク用。q(T) の放射強度は render.fireKelvin / bake.emissionIntensity から独立に決まる。
     settings.fireEmissionExtinction = (std::max)(bake.extinction, 0.0f);
     settings.blackbodyLutMaxKelvin = settings.fireEmission
         ? (std::max)(recipe.render.fireKelvin, 1.0f) * 4.0f
         : 0.0f;
 
-    /// @note albedo_ramp はリニアのまま写す (smoke_color / liquid_color は sRGB なので直す)。
+    // albedo_ramp はリニアのまま写す (smoke_color / liquid_color は sRGB なので直す)。
     const bool albedoRamp = recipe.render.useAlbedoRamp;
     if (recipe.kind == fluid::FluidKind::Liquid) {
         settings.albedoRamp = albedoRamp ? ToVolumeRamp(recipe.render.albedoRamp)
                                          : UniformVolumeRamp(SrgbToLinear(recipe.render.liquidColor));
-        /// @note 2D の liquid_threshold は画面へ投影した場の等値線で、3D の体積密度とは目盛りが違う。
-        /// @note 2D と同じ意味のスペキュラと、3D 専用の液面項目だけを写す。
+        // 2D の liquid_threshold は画面へ投影した場の等値線で、3D の体積密度とは目盛りが違う。
+        // 2D と同じ意味のスペキュラと、3D 専用の液面項目だけを写す。
         settings.liquid.specular = recipe.render.specular;
         settings.liquid.softness = recipe.render.liquidSoftness;
         settings.liquid.extinction = recipe.render.liquidExtinction;
@@ -150,7 +152,7 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
     } else {
         settings.albedoRamp = albedoRamp ? ToVolumeRamp(recipe.render.albedoRamp)
                                          : UniformVolumeRamp(SrgbToLinear(recipe.render.smokeColor));
-        /// @note 3D の流体は煙にも温度が入る。炎以外で Emission Ramp を残すと、煙の湧き口が橙に光る。
+        // 3D の流体は煙にも温度が入る。炎以外で Emission Ramp を残すと、煙の湧き口が橙に光る。
         const math::Vector3 black{ 0.0f, 0.0f, 0.0f };
         switch (recipe.render.shading) {
         case fluid::FluidShading::Fire:
@@ -165,16 +167,18 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
             settings.emissionRamp = UniformVolumeRamp(black);
             break;
         }
-        /// @note 自分で決めた Ramp は shading によらず効かせる (煙を温度で色づける使い方もある)。
-        /// @note blackbody_emission が立っていれば、レイマーチは黒体を優先する。
-        if (recipe.render.useEmissionRamp) settings.emissionRamp = ToVolumeRamp(recipe.render.emissionRamp);
+        // 自分で決めた Ramp は shading によらず効かせる (煙を温度で色づける使い方もある)。
+        // blackbody_emission が立っていれば、レイマーチは黒体を優先する。
+        if (recipe.render.useEmissionRamp) {
+            settings.emissionRamp = ToVolumeRamp(recipe.render.emissionRamp);
+        }
     }
 
     const std::filesystem::path file = RecipeFile(fluidRecipePath);
     settings.outputDirectory = util::FileSystem::PathToUtf8(file.parent_path());
     settings.baseName = util::FileSystem::PathToUtf8(file.stem());
-    /// @note .fluid から焼くときは必ず同じ名前へ上書きする。
-    /// @note 出力名が変わると同じレシピから同じ出力を得られず、追従させた .mat も前の世代を指したままになる。
+    // .fluid から焼くときは必ず同じ名前へ上書きする。
+    // 出力名が変わると同じレシピから同じ出力を得られず、追従させた .mat も前の世代を指したままになる。
     settings.overwriteOutputs = true;
     return settings;
 }
@@ -195,7 +199,9 @@ void StoreVolumeBakeSettings(const VolumeFlipbookBakeSettings& settings, fluid::
     bake.skyOcclusion = settings.skyOcclusion;
     const bool fireEmission = recipe.kind == fluid::FluidKind::Gas
         && recipe.render.shading == fluid::FluidShading::Fire;
-    if (!fireEmission) bake.blackbodyEmission = settings.blackbodyEmission;
+    if (!fireEmission) {
+        bake.blackbodyEmission = settings.blackbodyEmission;
+    }
     bake.blackbodyMinKelvin = settings.blackbodyMinKelvin;
     bake.blackbodyMaxKelvin = settings.blackbodyMaxKelvin;
     bake.sixWayLightmaps = settings.sixWayLightmaps;
@@ -203,16 +209,19 @@ void StoreVolumeBakeSettings(const VolumeFlipbookBakeSettings& settings, fluid::
     bake.lightPitchDegrees = settings.lightPitchDegrees;
     bake.lightColor = settings.lightColor;
     bake.ambient = settings.ambient;
-    /// @note 3D パネルの値を bake.extinction の基準倍率へ戻す。opacity が 0 なら逆変換できないため既存値を保つ。
+    // 3D パネルの値を bake.extinction の基準倍率へ戻す。opacity が 0 なら逆変換できないため既存値を保つ。
     const float opacityScale = FluidOpacityScale(recipe);
-    if (opacityScale > 0.0f) bake.extinction = settings.extinction / opacityScale;
+    if (opacityScale > 0.0f) {
+        bake.extinction = settings.extinction / opacityScale;
+    }
     bake.anisotropy = settings.anisotropy;
-    /// @note Fire では MakeVolumeBakeSettings の乗算を戻し、UI の保存ごとに倍率が積み上がらないようにする。
+    // Fire では MakeVolumeBakeSettings の乗算を戻し、UI の保存ごとに倍率が積み上がらないようにする。
     const float fireIntensity = (std::max)(recipe.render.fireIntensity, 0.0f);
-    /// @note 倍率が 0 のときは逆変換できないため bake 側の校正値を保つ。
-    if (!fireEmission || fireIntensity > 0.0f)
+    // 倍率が 0 のときは逆変換できないため bake 側の校正値を保つ。
+    if (!fireEmission || fireIntensity > 0.0f) {
         bake.emissionIntensity = fireEmission ? settings.emissionIntensity / fireIntensity
                                               : settings.emissionIntensity;
+    }
     bake.exposure = settings.exposure;
     bake.cameraYawDegrees = settings.cameraYawDegrees;
     bake.halfExtent = settings.halfExtent;

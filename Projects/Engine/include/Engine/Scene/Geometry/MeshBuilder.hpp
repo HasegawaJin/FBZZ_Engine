@@ -179,4 +179,4 @@ private:
     math::Vector4           m_color{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

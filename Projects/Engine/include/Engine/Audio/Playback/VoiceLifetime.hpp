@@ -9,4 +9,4 @@ namespace fbzz::audio {
 struct VoiceLifetime {
     bool active = true;
 };
-} /// @note namespace fbzz::audio
+} // namespace fbzz::audio

@@ -22,13 +22,13 @@ namespace detail {
 
 /// @note 生成時に得た実体のポインターと変換関数。保持期間は CreatedDataAsset の所有権に従う。
 struct NativeDataAssetType {
-    void* instance = nullptr;
+    void* instance = nullptr; ///< 生成された具体型の実体への非所有ポインター。asset の寿命に従う。
     void* (*query)(void*, const std::type_info&) = nullptr;
 };
 
 struct CreatedDataAsset {
-    std::unique_ptr<DataAsset> asset;
-    NativeDataAssetType nativeType;
+    std::unique_ptr<DataAsset> asset; ///< 型レジストリーから生成した DataAsset の所有ポインター。
+    NativeDataAssetType nativeType; ///< 所有実体を要求型へ照合・変換するための実体参照と問合せ関数。
 };
 
 [[nodiscard]] CreatedDataAsset CreateDataAsset(const std::string& typeName);
@@ -83,12 +83,16 @@ private:
     static void* QueryNativeType(void* original, const std::type_info& requestedType)
     {
         auto* instance = static_cast<T*>(original);
-        if (requestedType == typeid(T)) return instance;
+        if (requestedType == typeid(T)) {
+            return instance;
+        }
         const std::array<std::pair<const std::type_info*, void*>, sizeof...(Bases)> bases{{
             {&typeid(Bases), static_cast<Bases*>(instance)}...
         }};
         for (const auto& [type, address] : bases) {
-            if (requestedType == *type) return address;
+            if (requestedType == *type) {
+                return address;
+            }
         }
         return nullptr;
     }
@@ -100,7 +104,7 @@ private:
         static_assert((std::is_convertible_v<T*, Bases*> && ...));
         auto asset = std::make_unique<T>();
         auto* instance = asset.get();
-        /// @note 所有権を消去する前の T* から変換するため、仮想基底や多重継承でも部分オブジェクトを調整できる。
+        // 所有権を消去する前の T* から変換するため、仮想基底や多重継承でも部分オブジェクトを調整できる。
         return {std::move(asset), {instance, &QueryNativeType<T, Bases...>}};
     }
 };

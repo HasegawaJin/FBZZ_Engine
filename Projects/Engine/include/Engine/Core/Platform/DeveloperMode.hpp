@@ -24,4 +24,4 @@ public:
     FBZZ_ENGINE_API static void SetPreference(bool enabled);
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

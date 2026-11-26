@@ -27,7 +27,7 @@ public:
 
     /// @brief ProjectSettings を Physics / SceneManager / UI に一括反映する。
     /// @note ApplyPhysicsSettings + ApplyUISettings(primary) + SetPhysicsHz の統合。
-    /// @param primaryUICtx 最初に設定を反映する UIInteractionContext (nullptr 可)
+    /// @param[out] primaryUICtx 最初に設定を反映する UIInteractionContext (nullptr 可)
     FBZZ_ENGINE_API static void ApplySettings(physics::World& world,
                                SceneManager& sceneManager,
                                const ProjectSettings& settings,
@@ -51,4 +51,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -18,8 +18,9 @@ math::Vector3 Divide(const math::Vector3& a, const math::Vector3& b) { return {a
 math::Vector3 CrossSide(const math::Vector3& direction, const math::Vector3& view)
 {
     auto side = math::Vector3::Cross(direction, view);
-    if (side.LengthSq() <= 0.000001f)
+    if (side.LengthSq() <= 0.000001f) {
         side = math::Vector3::Cross(direction, std::abs(direction.y) < 0.9f ? math::Vector3::UP : math::Vector3::RIGHT);
+    }
     return side.NormalizedOr(math::Vector3::RIGHT);
 }
 void Quad(std::vector<renderer::Vertex>& vertices, std::vector<uint32_t>& indices,
@@ -51,7 +52,7 @@ void SliceAxis(float start, float end, float uvStart, float uvEnd, float sourceP
     uv = {uvStart, uvStart + (uvEnd - uvStart) * lowPixels / sourcePixels,
         uvEnd - (uvEnd - uvStart) * highPixels / sourcePixels, uvEnd};
 }
-} /// @note namespace
+} // namespace
 
 void CaptureLineGeometryInputs(const LineRendererComponent& line, const Transform& transform,
     const math::Vector3* cameraWorldPosition, std::vector<float>& output)
@@ -69,14 +70,18 @@ void CaptureLineGeometryInputs(const LineGeometryView& geometry, const Transform
         static_cast<float>(line.loop), static_cast<float>(line.billboard), static_cast<float>(line.shape),
         static_cast<float>(line.radialSegments)});
     Append(output, line.startColor); Append(output, line.endColor);
-    for (const auto& point : geometry.points) Append(output, point);
+    for (const auto& point : geometry.points) {
+        Append(output, point);
+    }
     const bool cameraFacing = line.shape == LineShape::Ribbon && line.billboard && cameraWorldPosition;
     output.push_back(cameraFacing ? 1.0f : 0.0f);
     if (geometry.space == LineSpace::World || cameraFacing) {
         Append(output, transform.worldPosition); Append(output, transform.worldScale);
         output.insert(output.end(), {transform.worldRotation.x, transform.worldRotation.y, transform.worldRotation.z, transform.worldRotation.w});
     }
-    if (cameraFacing) Append(output, *cameraWorldPosition);
+    if (cameraFacing) {
+        Append(output, *cameraWorldPosition);
+    }
 }
 
 void CaptureSpriteGeometryInputs(const SpriteRendererComponent& sprite, const asset::ResolvedSprite& resolved,
@@ -101,9 +106,20 @@ bool BuildLineGeometry(const LineGeometryView& geometry, const Transform& transf
     const LineRendererComponent& line = geometry.settings;
     const std::span<const math::Vector3> points = geometry.points;
     vertices.clear(); indices.clear();
-    if (points.size() < 2 || !Finite(line.startColor) || !Finite(line.endColor)
-        || !std::isfinite(line.startWidth) || !std::isfinite(line.endWidth) || line.startWidth < 0 || line.endWidth < 0
-        || !std::all_of(points.begin(), points.end(), [](const auto& value) { return Finite(value); })) return false;
+    // 生成に必要な制御点の数と、断面を決める色・幅を確認してから全座標を調べる。
+    if (points.size() < 2) {
+        return false;
+    }
+    if (!Finite(line.startColor) || !Finite(line.endColor)) {
+        return false;
+    }
+    if (!std::isfinite(line.startWidth) || !std::isfinite(line.endWidth) || line.startWidth < 0 || line.endWidth < 0) {
+        return false;
+    }
+    if (!std::all_of(points.begin(), points.end(), [](const auto& value) { return Finite(value); })) {
+        return false;
+    }
+
     const bool worldSpace = geometry.space == LineSpace::World;
     const bool cameraFacing = line.shape == LineShape::Ribbon && line.billboard && cameraWorldPosition;
     const auto& scale = transform.worldScale;
@@ -111,14 +127,20 @@ bool BuildLineGeometry(const LineGeometryView& geometry, const Transform& transf
     if ((worldSpace || cameraFacing) && (!Finite(scale) || !Finite(transform.worldPosition)
         || std::abs(scale.x) <= 0.000001f || std::abs(scale.y) <= 0.000001f || std::abs(scale.z) <= 0.000001f
         || !std::isfinite(rotation.x) || !std::isfinite(rotation.y) || !std::isfinite(rotation.z) || !std::isfinite(rotation.w)
-        || rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z + rotation.w * rotation.w <= 0.000001f)) return false;
-    if (cameraFacing && !Finite(*cameraWorldPosition)) return false;
+        || rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z + rotation.w * rotation.w <= 0.000001f)) {
+        return false;
+    }
+    if (cameraFacing && !Finite(*cameraWorldPosition)) {
+        return false;
+    }
     const auto inverse = (worldSpace || cameraFacing) ? rotation.Inverse() : math::Quaternion::Identity();
     const auto toLocal = [&](const math::Vector3& position) {
         return worldSpace ? Divide(inverse * (position - transform.worldPosition), scale) : position;
     };
     const auto localNormal = [&](const math::Vector3& normal) {
-        if (!worldSpace) return normal;
+        if (!worldSpace) {
+            return normal;
+        }
         const auto rotated = inverse * normal;
         return math::Vector3{rotated.x * scale.x, rotated.y * scale.y, rotated.z * scale.z}.NormalizedOr(math::Vector3::FORWARD);
     };
@@ -126,13 +148,19 @@ bool BuildLineGeometry(const LineGeometryView& geometry, const Transform& transf
         return worldSpace ? Divide(inverse * direction, scale).NormalizedOr(math::Vector3::RIGHT) : direction;
     };
     math::Vector3 camera = math::Vector3::ZERO;
-    if (cameraFacing) camera = worldSpace ? *cameraWorldPosition : Divide(inverse * (*cameraWorldPosition - transform.worldPosition), scale);
+    if (cameraFacing) {
+        camera = worldSpace ? *cameraWorldPosition : Divide(inverse * (*cameraWorldPosition - transform.worldPosition), scale);
+    }
     const size_t count = points.size();
     const size_t spans = line.loop ? count : count - 1;
     std::vector<float> distances(spans + 1, 0.0f);
-    for (size_t span = 0; span < spans; ++span) distances[span + 1] = distances[span] + (points[(span + 1) % count] - points[span]).Length();
+    for (size_t span = 0; span < spans; ++span) {
+        distances[span + 1] = distances[span] + (points[(span + 1) % count] - points[span]).Length();
+    }
     const float total = distances.back();
-    if (!std::isfinite(total) || total <= 0.000001f) return false;
+    if (!std::isfinite(total) || total <= 0.000001f) {
+        return false;
+    }
     const auto colorAt = [&](float t) {
         return math::Vector4{std::lerp(line.startColor.x, line.endColor.x, t), std::lerp(line.startColor.y, line.endColor.y, t),
             std::lerp(line.startColor.z, line.endColor.z, t), std::lerp(line.startColor.w, line.endColor.w, t)};
@@ -148,8 +176,12 @@ bool BuildLineGeometry(const LineGeometryView& geometry, const Transform& transf
             const auto forward = (index + 1 < count || line.loop) ? points[(index + 1) % count] - points[index] : math::Vector3::ZERO;
             const auto axis = (back + forward).NormalizedOr(firstAxis);
             normalRef = (normalRef - axis * math::Vector3::Dot(normalRef, axis)).NormalizedOr(CrossSide(axis, math::Vector3::UP));
-            if (ring == 0) initialNormal = normalRef;
-            if (line.loop && ring == spans) normalRef = initialNormal;
+            if (ring == 0) {
+                initialNormal = normalRef;
+            }
+            if (line.loop && ring == spans) {
+                normalRef = initialNormal;
+            }
             const auto binormal = math::Vector3::Cross(axis, normalRef).NormalizedOr(math::Vector3::UP);
             const float t = distances[ring] / total;
             const float radius = (line.startWidth + (line.endWidth - line.startWidth) * t) * 0.5f;
@@ -162,7 +194,9 @@ bool BuildLineGeometry(const LineGeometryView& geometry, const Transform& transf
         }
         const uint32_t stride = static_cast<uint32_t>(radial + 1);
         for (size_t span = 0; span < spans; ++span) {
-            if (distances[span + 1] == distances[span]) continue;
+            if (distances[span + 1] == distances[span]) {
+                continue;
+            }
             const auto a = static_cast<uint32_t>(span) * stride;
             const auto b = a + stride;
             for (int step = 0; step < radial; ++step) {
@@ -174,7 +208,9 @@ bool BuildLineGeometry(const LineGeometryView& geometry, const Transform& transf
         for (size_t span = 0; span < spans; ++span) {
             const auto& a = points[span];
             const auto& b = points[(span + 1) % count];
-            if (distances[span + 1] == distances[span]) continue;
+            if (distances[span + 1] == distances[span]) {
+                continue;
+            }
             const auto direction = (b - a).NormalizedOr(math::Vector3::FORWARD);
             const auto view = cameraFacing ? (camera - (a + b) * 0.5f).NormalizedOr(math::Vector3::FORWARD) : math::Vector3::FORWARD;
             const auto side = CrossSide(direction, view);
@@ -202,13 +238,23 @@ bool BuildSpriteGeometry(const SpriteRendererComponent& sprite, const asset::Res
     std::vector<renderer::Vertex>& vertices, std::vector<uint32_t>& indices)
 {
     vertices.clear(); indices.clear();
-    if (!std::isfinite(sprite.size.x) || !std::isfinite(sprite.size.y) || sprite.size.x <= 0 || sprite.size.y <= 0
-        || !std::isfinite(sprite.pivot.x) || !std::isfinite(sprite.pivot.y) || !Finite(resolved.border)
-        || !std::isfinite(resolved.uvMin.x) || !std::isfinite(resolved.uvMin.y)
-        || !std::isfinite(resolved.uvMax.x) || !std::isfinite(resolved.uvMax.y)) return false;
+    // スプライトの面積と基準点を確認し、テクスチャ上の切り出しに使う値を検証する。
+    if (!std::isfinite(sprite.size.x) || !std::isfinite(sprite.size.y) || sprite.size.x <= 0 || sprite.size.y <= 0) {
+        return false;
+    }
+    if (!std::isfinite(sprite.pivot.x) || !std::isfinite(sprite.pivot.y)) {
+        return false;
+    }
+    if (!Finite(resolved.border) || !std::isfinite(resolved.uvMin.x) || !std::isfinite(resolved.uvMin.y)
+        || !std::isfinite(resolved.uvMax.x) || !std::isfinite(resolved.uvMax.y)) {
+        return false;
+    }
+
     const float left = -sprite.pivot.x * sprite.size.x, top = (1 - sprite.pivot.y) * sprite.size.y;
     const float right = left + sprite.size.x, bottom = top - sprite.size.y;
-    if (!std::isfinite(left) || !std::isfinite(right) || !std::isfinite(top) || !std::isfinite(bottom)) return false;
+    if (!std::isfinite(left) || !std::isfinite(right) || !std::isfinite(top) || !std::isfinite(bottom)) {
+        return false;
+    }
     const float u0 = sprite.flipX ? resolved.uvMax.x : resolved.uvMin.x;
     const float u1 = sprite.flipX ? resolved.uvMin.x : resolved.uvMax.x;
     const float v0 = sprite.flipY ? resolved.uvMax.y : resolved.uvMin.y;
@@ -226,8 +272,9 @@ bool BuildSpriteGeometry(const SpriteRendererComponent& sprite, const asset::Res
         sprite.flipY ? resolved.border.y : resolved.border.w, resolved.pixelsPerUnit, y, v);
     for (size_t row = 0; row < 3; ++row)
         for (size_t column = 0; column < 3; ++column)
-            if (x[column + 1] > x[column] && y[row] > y[row + 1])
+            if (x[column + 1] > x[column] && y[row] > y[row + 1]) {
                 Quad(vertices, indices, x[column], y[row], x[column + 1], y[row + 1], u[column], v[row], u[column + 1], v[row + 1]);
+            }
     return !indices.empty();
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

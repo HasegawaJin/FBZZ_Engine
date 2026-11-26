@@ -540,7 +540,7 @@ TEST_F(WaterTerrainInfoTest, CaveSurfaceExpandsBoundsAndInvalidatesExteriorDepth
     scene::WaterTerrainSample sample;
     ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {.25f,.25f}, 2, 20, .3f, .5f, sample));
     EXPECT_TRUE(sample.hasBottom); EXPECT_FLOAT_EQ(sample.bottomY, -6); EXPECT_FLOAT_EQ(sample.depth, 8);
-    /// @note This atlas remains exterior/topmost data; camera occupancy uses the directional floor query.
+    // このアトラスには外部から見た最上面を格納する。カメラ位置の内外判定には方向付きの床面クエリを使う。
     ASSERT_TRUE(terrain->SetSurfaceGeometry({{0,-2,0},{0,-2,1},{1,-2,0}}, {0,1,2}));
     ASSERT_TRUE(cache.TryCollect(source, inputs));
     EXPECT_NE(inputs.signature, signature);

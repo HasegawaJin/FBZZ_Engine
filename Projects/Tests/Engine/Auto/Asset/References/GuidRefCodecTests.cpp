@@ -99,7 +99,7 @@ TEST_F(GuidRefCodecTest, EncodesAKnownAssetIntoAGuidReference)
 /// @brief Writes the project relative path as a hint.
 TEST_F(GuidRefCodecTest, WritesTheProjectRelativePathAsAHint)
 {
-    /// @note guid だけだと «どのファイルか» をファイルの中から辿れない。人と grep のために併記する。
+    // guid だけだと «どのファイルか» をファイルの中から辿れない。人と grep のために併記する。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
 
@@ -111,7 +111,7 @@ TEST_F(GuidRefCodecTest, WritesTheProjectRelativePathAsAHint)
 /// @brief Encoding is idempotent.
 TEST_F(GuidRefCodecTest, EncodingIsIdempotent)
 {
-    /// @note Save のたびに掛かる。2 度掛けて "guid:guid:..." になってはいけない。
+    // Save のたびに掛かる。2 度掛けて "guid:guid:..." になってはいけない。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
     const std::string once = asset::EncodeGuidRef(texture);
@@ -122,7 +122,7 @@ TEST_F(GuidRefCodecTest, EncodingIsIdempotent)
 /// @brief Leaves values that are not asset paths alone.
 TEST_F(GuidRefCodecTest, LeavesValuesThatAreNotAssetPathsAlone)
 {
-    /// @note 文書中の全文字列に掛かるため、ここが緩いとスクリプトの設定値が書き換わる。
+    // 文書中の全文字列に掛かるため、ここが緩いとスクリプトの設定値が書き換わる。
     InitDatabase();
 
     EXPECT_EQ(asset::EncodeGuidRef("Player.001"), "Player.001");
@@ -134,7 +134,7 @@ TEST_F(GuidRefCodecTest, LeavesValuesThatAreNotAssetPathsAlone)
 /// @brief Leaves paths that are not registered alone.
 TEST_F(GuidRefCodecTest, LeavesPathsThatAreNotRegisteredAlone)
 {
-    /// @note 実体が無い / Assets の外。データを勝手に捨てず、そのまま通す。
+    // 実体が無い / Assets の外。データを勝手に捨てず、そのまま通す。
     InitDatabase();
 
     EXPECT_EQ(asset::EncodeGuidRef("Assets/Textures/Missing.png"),
@@ -146,8 +146,8 @@ TEST_F(GuidRefCodecTest, LeavesPathsThatAreNotRegisteredAlone)
 /// @brief Decodes back to the runtime relative path.
 TEST_F(GuidRefCodecTest, DecodesBackToTheRuntimeRelativePath)
 {
-    /// @note ランタイムと Inspector は "Assets/..." 前提。ここだけ絶対パスを返すと
-    ///       同じアセットが 2 通りの文字列で流通する。
+    // ランタイムと Inspector は "Assets/..." 前提。ここだけ絶対パスを返すと
+    // 同じアセットが 2 通りの文字列で流通する。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
 
@@ -296,7 +296,7 @@ TEST_F(GuidRefCodecTest, DecodingLeavesPlainPathsAlone)
 /// @brief Recovers an unresolvable GUID through its path hint.
 TEST_F(GuidRefCodecTest, RecoversAnUnresolvableGuidThroughItsPathHint)
 {
-    /// @note .meta を作り直すと guid が変わる。ヒントの実体が残っていれば参照を生かす。
+    // .meta を作り直すと guid が変わる。ヒントの実体が残っていれば参照を生かす。
     CreateAsset("Textures/Player.png");
     InitDatabase();
 
@@ -309,7 +309,7 @@ TEST_F(GuidRefCodecTest, RecoversAnUnresolvableGuidThroughItsPathHint)
 /// @brief Keeps an unresolvable reference when nothing can be recovered.
 TEST_F(GuidRefCodecTest, KeepsAnUnresolvableReferenceWhenNothingCanBeRecovered)
 {
-    /// @note 引けず、ヒントの実体も無い。空にすると «何を指していたか» が永久に失われる。
+    // 引けず、ヒントの実体も無い。空にすると «何を指していたか» が永久に失われる。
     InitDatabase();
     const std::string broken =
         "guid:00000000000000000000000000000000|Assets/Textures/Gone.png";
@@ -334,8 +334,8 @@ TEST_F(GuidRefCodecTest, SurvivesTheFullRoundTripTwice)
 /// @brief Walks nested tables and arrays.
 TEST_F(GuidRefCodecTest, WalksNestedTablesAndArrays)
 {
-    /// @note Save 直前に文書全体へ掛ける。入れ子や配列の中の参照を取りこぼすと、
-    ///       その 1 つだけリネームに弱いまま残る。
+    // Save 直前に文書全体へ掛ける。入れ子や配列の中の参照を取りこぼすと、
+    // その 1 つだけリネームに弱いまま残る。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
 

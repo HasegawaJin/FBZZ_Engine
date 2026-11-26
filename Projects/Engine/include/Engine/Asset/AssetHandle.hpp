@@ -11,8 +11,8 @@ namespace fbzz::asset {
 
 template<typename T>
 struct AssetHandle {
-    uint32_t id  = 0;
-    uint32_t gen = 0;
+    uint32_t id  = 0; ///< 対応する型の AssetStore 内の割り当て番号。0 は無効。
+    uint32_t gen = 0; ///< 番号を同じストアで再利用したときに旧ハンドルと区別する世代。
 
     [[nodiscard]] bool IsValid()         const { return id != 0; }
     explicit operator bool()             const { return IsValid(); }

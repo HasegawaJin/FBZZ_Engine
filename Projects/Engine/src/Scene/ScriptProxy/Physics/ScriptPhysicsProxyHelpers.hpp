@@ -12,4 +12,4 @@ inline physics::RigidBody* SelfRigidBody(const Script* script)
     auto* component = SelfComponent<RigidBodyComponent>(script);
     return component && component->enabled ? component->rigidBody.get() : nullptr;
 }
-} /// @note namespace fbzz::scene::script_proxy_detail
+} // namespace fbzz::scene::script_proxy_detail

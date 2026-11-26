@@ -15,7 +15,9 @@ void BuildReferencePoseRecursive(Skeleton& skeleton,
                                  int nodeIndex,
                                  const math::Matrix4& parentGlobal)
 {
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
+        return;
+    }
     const SkeletonNode& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
     const math::Matrix4 global = parentGlobal * math::Matrix4::TRS(
         node.bindTranslation, node.bindRotation, node.bindScale);
@@ -27,8 +29,9 @@ void BuildReferencePoseRecursive(Skeleton& skeleton,
             skeleton.rootInverseTransform * global * bone.offsetMatrix;
     }
 
-    for (int child : node.children)
+    for (int child : node.children) {
         BuildReferencePoseRecursive(skeleton, child, global);
+    }
 }
 
 } // namespace
@@ -36,7 +39,9 @@ void BuildReferencePoseRecursive(Skeleton& skeleton,
 void BuildReferencePose(Skeleton& skeleton)
 {
     skeleton.referencePose.assign(skeleton.bones.size(), math::Matrix4::Identity());
-    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) return;
+    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) {
+        return;
+    }
     BuildReferencePoseRecursive(skeleton, skeleton.rootNodeIndex,
                                 math::Matrix4::Identity());
 }
@@ -75,15 +80,18 @@ math::Matrix4 ToMatrix4(const aiMatrix4x4& m, float unitScale)
 
 float ReadUnitScale(const aiScene* scene)
 {
-    /// @note FBX の原点単位はセンチメートルが多い。UnitScaleFactor は「1 単位 = x cm」の値なので
-    ///       0.01 を掛けることでメートルに換算する。値がない場合も同じデフォルトを使う。
+    // FBX の原点単位はセンチメートルが多い。UnitScaleFactor は「1 単位 = x cm」の値なので
+    //       0.01 を掛けることでメートルに換算する。値がない場合も同じデフォルトを使う。
     float unitScale = 0.01f;
-    if (!scene || !scene->mMetaData) return unitScale;
+    if (!scene || !scene->mMetaData) {
+        return unitScale;
+    }
 
     double factorD = 1.0;
     float  factorF = 1.0f;
-    if (scene->mMetaData->Get("UnitScaleFactor", factorD))
+    if (scene->mMetaData->Get("UnitScaleFactor", factorD)) {
         unitScale = static_cast<float>(factorD) * 0.01f;
+    }
     else if (scene->mMetaData->Get("UnitScaleFactor", factorF))
         unitScale = factorF * 0.01f;
     return unitScale;
@@ -91,10 +99,16 @@ float ReadUnitScale(const aiScene* scene)
 
 bool HasSkinning(const aiScene* scene)
 {
-    if (!scene) return false;
-    if (scene->HasAnimations()) return true;
+    if (!scene) {
+        return false;
+    }
+    if (scene->HasAnimations()) {
+        return true;
+    }
     for (uint32_t i = 0; i < scene->mNumMeshes; ++i) {
-        if (scene->mMeshes[i]->HasBones()) return true;
+        if (scene->mMeshes[i]->HasBones()) {
+            return true;
+        }
     }
     return false;
 }
@@ -109,9 +123,10 @@ renderer::Vertex ImportVertex(const aiMesh* mesh, uint32_t i, float unitScale)
     v.tangent = mesh->mTangents
         ? math::Vector3{ mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z }
         : math::Vector3{ 1.0f, 0.0f, 0.0f };
-    if (mesh->mTextureCoords[0])
+    if (mesh->mTextureCoords[0]) {
         v.uv = { mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y };
-    /// @note 頂点カラーを持つ DCC データはそのまま採る。無ければ既定の白 (= 色を持たない) のまま。
+    }
+    // 頂点カラーを持つ DCC データはそのまま採る。無ければ既定の白 (= 色を持たない) のまま。
     if (mesh->HasVertexColors(0)) {
         const aiColor4D& c = mesh->mColors[0][i];
         v.color = { c.r, c.g, c.b, c.a };
@@ -125,7 +140,9 @@ std::vector<uint32_t> ImportIndices(const aiMesh* mesh)
     indices.reserve(static_cast<size_t>(mesh->mNumFaces) * 3);
     for (uint32_t fi = 0; fi < mesh->mNumFaces; ++fi) {
         const aiFace& f = mesh->mFaces[fi];
-        if (f.mNumIndices != 3) continue;
+        if (f.mNumIndices != 3) {
+            continue;
+        }
         indices.push_back(f.mIndices[0]);
         indices.push_back(f.mIndices[1]);
         indices.push_back(f.mIndices[2]);
@@ -138,8 +155,8 @@ std::unique_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
                                                     renderer::ResourceManager& resources)
 {
     auto mat = std::make_unique<renderer::Material>();
-    /// @note paramData はシェーダー確定後に SyncMaterial が初期化するため、ここでは設定しない。
-    ///       assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
+    // paramData はシェーダー確定後に SyncMaterial が初期化するため、ここでは設定しない。
+    //       assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
     (void)resources;
     return mat;
 }
@@ -153,16 +170,18 @@ void ImportModelNodesRecursive(const aiNode* node,
                                float unitScale,
                                Model& model)
 {
-    if (!node) return;
+    if (!node) {
+        return;
+    }
 
     const int nodeIndex = static_cast<int>(model.nodes.size());
     ModelNode out;
     out.name        = NormalizeName(node->mName);
     out.parentIndex = parentIndex;
 
-    /// @note TRS へ分解して持つ。生成先が GameObject::transform (position/rotation/scale) で、
-    ///       行列のままでは代入できない。SkeletonNode のバインド TRS と同じ分解を使うことで、
-    ///       ボーンノードとメッシュノードが同じ FBX ノードを指す場合に位置がずれない。
+    // TRS へ分解して持つ。生成先が GameObject::transform (position/rotation/scale) で、
+    //       行列のままでは代入できない。SkeletonNode のバインド TRS と同じ分解を使うことで、
+    //       ボーンノードとメッシュノードが同じ FBX ノードを指す場合に位置がずれない。
     aiVector3D   scaling;
     aiVector3D   position;
     aiQuaternion rotation;
@@ -171,20 +190,24 @@ void ImportModelNodesRecursive(const aiNode* node,
     out.localRotation    = ToQuaternion(rotation);
     out.localScale       = { scaling.x, scaling.y, scaling.z };
 
-    /// @note aiNode::mMeshes はこのノードが描く aiMesh の添字列。Assimp のマテリアル分割で
-    ///       複数件になるが、DCC 上では 1 個のオブジェクトなのでノードへ束ねたまま保つ。
+    // aiNode::mMeshes はこのノードが描く aiMesh の添字列。Assimp のマテリアル分割で
+    //       複数件になるが、DCC 上では 1 個のオブジェクトなのでノードへ束ねたまま保つ。
     out.meshIndices.reserve(node->mNumMeshes);
-    for (uint32_t i = 0; i < node->mNumMeshes; ++i)
+    for (uint32_t i = 0; i < node->mNumMeshes; ++i) {
         out.meshIndices.push_back(node->mMeshes[i]);
+    }
 
     model.nodes.push_back(std::move(out));
-    if (parentIndex >= 0)
+    if (parentIndex >= 0) {
         model.nodes[static_cast<size_t>(parentIndex)].children.push_back(nodeIndex);
-    else
+    }
+    else {
         model.rootNodeIndex = nodeIndex;
+    }
 
-    for (uint32_t i = 0; i < node->mNumChildren; ++i)
+    for (uint32_t i = 0; i < node->mNumChildren; ++i) {
         ImportModelNodesRecursive(node->mChildren[i], nodeIndex, unitScale, model);
+    }
 }
 
 } // namespace
@@ -193,7 +216,9 @@ void ImportModelNodes(const aiScene* scene, float unitScale, Model& model)
 {
     model.nodes.clear();
     model.rootNodeIndex = -1;
-    if (!scene || !scene->mRootNode) return;
+    if (!scene || !scene->mRootNode) {
+        return;
+    }
     ImportModelNodesRecursive(scene->mRootNode, -1, unitScale, model);
 }
 
@@ -205,8 +230,9 @@ void BuildFlatModelNode(Model& model, const std::string& rootName)
     ModelNode root;
     root.name = rootName.empty() ? std::string("Mesh") : rootName;
     root.meshIndices.reserve(model.meshes.size());
-    for (uint32_t i = 0; i < static_cast<uint32_t>(model.meshes.size()); ++i)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(model.meshes.size()); ++i) {
         root.meshIndices.push_back(i);
+    }
     model.nodes.push_back(std::move(root));
 }
 

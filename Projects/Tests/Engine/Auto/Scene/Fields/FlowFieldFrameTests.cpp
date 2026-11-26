@@ -64,7 +64,7 @@ TEST_F(FlowFieldFrameTest, TheSameFrameReusesTheGatheredFlow)
     const std::uint64_t frame = Time::frameCount;
     ASSERT_EQ(scene.FlowFrame().fields->size(), 1u);
 
-    /// @note 同じフレームで場を 1 本足しても、キャッシュは集め直さない。
+    // 同じフレームで場を 1 本足しても、キャッシュは集め直さない。
     AddUniformField(scene, "Breeze2", 4.0f);
     EXPECT_EQ(scene.FlowFrame().fields->size(), 1u)
         << "同じフレームで集め直すと、CPU / GPU / 描画パスが別々の場を見る余地が戻る";
@@ -99,7 +99,7 @@ TEST_F(FlowFieldFrameTest, InvalidateForcesAGatherInTheSameFrame)
 /// @brief The ambient flow is also a field particles can sample.
 TEST_F(FlowFieldFrameTest, TheAmbientFlowIsAlsoAFieldParticlesCanSample)
 {
-    /// @note 環境流を «要約 (雲・水面)» にしか出さないと、粒子だけが風を受けなくなる。
+    // 環境流を «要約 (雲・水面)» にしか出さないと、粒子だけが風を受けなくなる。
     scene::Scene scene;
     scene::SceneEnvironment& environment = scene.Environment();
     environment.enabled    = true;
@@ -121,8 +121,8 @@ TEST_F(FlowFieldFrameTest, TheAmbientFlowIsAlsoAFieldParticlesCanSample)
 /// @brief Checks scene fields precede the ambient flow.
 TEST_F(FlowFieldFrameTest, SceneFieldsPrecedeTheAmbientFlow)
 {
-    /// @note 環境風を AmbientWind で受ける消費者 (繊維) は、先頭 sceneFieldCount 本だけを場として読む。
-    /// @note 境界がずれると環境風を二重に受けるか、置いた場を取りこぼす。
+    // 環境風を AmbientWind で受ける消費者 (繊維) は、先頭 sceneFieldCount 本だけを場として読む。
+    // 境界がずれると環境風を二重に受けるか、置いた場を取りこぼす。
     scene::Scene scene;
     AddUniformField(scene, "Local", 2.0f);
     scene::SceneEnvironment& environment = scene.Environment();
@@ -147,8 +147,8 @@ TEST_F(FlowFieldFrameTest, SceneFieldsPrecedeTheAmbientFlow)
 /// @brief A point outside every radius is not covered.
 TEST_F(FlowFieldFrameTest, APointOutsideEveryRadiusIsNotCovered)
 {
-    /// @note «場が無い» は «流速 0 の静止した空気» ではない。ここを覆いとして数えると、
-    /// @note 場を 1 つ置いただけで半径の外の粒子まで一斉に減速する。
+    // «場が無い» は «流速 0 の静止した空気» ではない。ここを覆いとして数えると、
+    // 場を 1 つ置いただけで半径の外の粒子まで一斉に減速する。
     scene::Scene scene;
     scene::GameObject& go = scene.CreateGameObject("Local Swirl");
     scene::FlowFieldSettings local;

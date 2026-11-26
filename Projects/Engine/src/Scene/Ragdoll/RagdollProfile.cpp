@@ -18,8 +18,12 @@ constexpr float Degrees(float value) { return value * kDegreesToRadians; }
 
 bool ContainsIgnoreCase(std::string_view haystack, std::string_view needle)
 {
-    if (needle.empty()) return true;
-    if (needle.size() > haystack.size()) return false;
+    if (needle.empty()) {
+        return true;
+    }
+    if (needle.size() > haystack.size()) {
+        return false;
+    }
 
     const auto lower = [](char c) {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -58,9 +62,9 @@ physics::XPBDJointLimits Ball(float swingDegrees, float twistDegrees)
     return limits;
 }
 
-/// @param torqueScale 自重を真横で支えるのに要るトルクへの倍率。1.0 でぎりぎり。
-/// @param sagDegrees  その姿勢で支えているときの定常たわみ [度]。
-/// @param damping     相対角速度を削る割合 [1/s]。
+/// @param[in] torqueScale 自重を真横で支えるのに要るトルクへの倍率。1.0 でぎりぎり。
+/// @param[in] sagDegrees  その姿勢で支えているときの定常たわみ [度]。
+/// @param[in] damping     相対角速度を削る割合 [1/s]。
 RagdollServo Servo(float torqueScale, float sagDegrees, float damping)
 {
     RagdollServo servo;
@@ -71,21 +75,27 @@ RagdollServo Servo(float torqueScale, float sagDegrees, float damping)
     return servo;
 }
 
-} /// @note namespace
+} // namespace
 
 bool RagdollProfile::IsExcluded(std::string_view boneName) const
 {
     for (const std::string& pattern : excludePatterns)
-        if (ContainsIgnoreCase(boneName, pattern)) return true;
+        if (ContainsIgnoreCase(boneName, pattern)) {
+            return true;
+        }
     for (const std::string& name : excludeNames)
-        if (boneName.size() == name.size() && ContainsIgnoreCase(boneName, name)) return true;
+        if (boneName.size() == name.size() && ContainsIgnoreCase(boneName, name)) {
+            return true;
+        }
     return false;
 }
 
 bool RagdollProfile::IsBodyless(std::string_view boneName) const
 {
     for (const std::string& pattern : noBodyPatterns)
-        if (ContainsIgnoreCase(boneName, pattern)) return true;
+        if (ContainsIgnoreCase(boneName, pattern)) {
+            return true;
+        }
     return false;
 }
 
@@ -93,15 +103,23 @@ const RagdollBoneSettings& RagdollProfile::Resolve(std::string_view boneName,
                                                    bool* outMatched) const
 {
     if (const auto* body = FindBody(boneName)) {
-        if (outMatched) *outMatched = true;
+        if (outMatched) {
+            *outMatched = true;
+        }
         return body->settings;
     }
     for (const Rule& rule : rules) {
-        if (!ContainsIgnoreCase(boneName, rule.pattern)) continue;
-        if (outMatched) *outMatched = true;
+        if (!ContainsIgnoreCase(boneName, rule.pattern)) {
+            continue;
+        }
+        if (outMatched) {
+            *outMatched = true;
+        }
         return rule.settings;
     }
-    if (outMatched) *outMatched = false;
+    if (outMatched) {
+        *outMatched = false;
+    }
     return fallback;
 }
 
@@ -115,25 +133,25 @@ RagdollProfile RagdollProfile::Mech()
 {
     RagdollProfile profile;
 
-    /// @note 原点に置かれた «入れ物»。剛体は作らず、枝だけ辿る。
+    // 原点に置かれた «入れ物»。剛体は作らず、枝だけ辿る。
     profile.noBodyPatterns = { "root", "armature", "motion", "scene" };
-    /// @note 足指と踵。ラグドールで動いても絵に出ないのに、脚 1 本あたり剛体が 8 個増える。
+    // 足指と踵。ラグドールで動いても絵に出ないのに、脚 1 本あたり剛体が 8 個増える。
     profile.excludePatterns = { "toe", "heel", "finger", "thumb" };
 
-    /// @note 機械の «素の関節»。狭く、硬く、そして有限のトルクしか出せない。装甲板とフレームの
-    /// @note 中空構造のため密度は 400: 中身の詰まった鋼材 (7800) で見積もると Boss_01 が 70 トンを
-    /// @note 超え、瓦礫を «弾く» が «消し飛ばす» になる。質量は倒れる速さには効かない (重力も同じ
-    /// @note だけ増えるため) が、接触で相手へ返す力積には効くので、見た目の大きさに対して妥当な桁へ置く。
+    // 機械の «素の関節»。狭く、硬く、そして有限のトルクしか出せない。装甲板とフレームの
+    // 中空構造のため密度は 400: 中身の詰まった鋼材 (7800) で見積もると Boss_01 が 70 トンを
+    // 超え、瓦礫を «弾く» が «消し飛ばす» になる。質量は倒れる速さには効かない (重力も同じ
+    // だけ増えるため) が、接触で相手へ返す力積には効くので、見た目の大きさに対して妥当な桁へ置く。
     profile.fallback.radiusRatio = 0.16f;
     profile.fallback.radiusMin   = 0.04f;
     profile.fallback.density     = 400.0f;
     profile.fallback.limits      = Ball(18.0f, 5.0f);
     profile.fallback.servo       = Servo(2.0f, 3.0f, 45.0f);
 
-    /// @note 胴は関節ではなく «塊»。ほとんど動かず、桁違いに粘る。人型の骨格は Spine、
-    /// @note 四足やロボットは Body と名付けるため両方を列挙する: Boss_01 は Body で、spine だけを
-    /// @note 見ていた頃は胴が fallback の細い棒になり、«塊» のつもりで書いた半径もトルクも
-    /// @note 1 度も使われていなかった。
+    // 胴は関節ではなく «塊»。ほとんど動かず、桁違いに粘る。人型の骨格は Spine、
+    // 四足やロボットは Body と名付けるため両方を列挙する: Boss_01 は Body で、spine だけを
+    // 見ていた頃は胴が fallback の細い棒になり、«塊» のつもりで書いた半径もトルクも
+    // 1 度も使われていなかった。
     for (const char* torso : { "spine", "body", "torso", "chest", "pelvis" }) {
         Rule rule;
         rule.pattern              = torso;
@@ -145,7 +163,7 @@ RagdollProfile RagdollProfile::Mech()
         profile.rules.push_back(rule);
     }
 
-    /// @note 胴から生えた突起 (砲身・タレット)。関節としてはほぼ動かない。
+    // 胴から生えた突起 (砲身・タレット)。関節としてはほぼ動かない。
     for (const char* mount : { "core", "muzzle", "barrel", "turret" }) {
         Rule rule;
         rule.pattern              = mount;
@@ -157,10 +175,10 @@ RagdollProfile RagdollProfile::Mech()
         profile.rules.push_back(rule);
     }
 
-    /// @note 膝は前へしか曲がらない。逆に折れないことが «機械に見える» の中心。関節フレームの
-    /// @note Z 軸は骨の向きから作るため «前» がどちら側かは FBX のボーン軸で決まり、符号が逆だと
-    /// @note «曲がるべき方向に 0°» になって脚が棒のまま倒れる。Overlays > Ragdoll で錐を見て、
-    /// @note 開いている側が曲がるべき側か確かめ、逆なら min/max を入れ替えること。
+    // 膝は前へしか曲がらない。逆に折れないことが «機械に見える» の中心。関節フレームの
+    // Z 軸は骨の向きから作るため «前» がどちら側かは FBX のボーン軸で決まり、符号が逆だと
+    // «曲がるべき方向に 0°» になって脚が棒のまま倒れる。Overlays > Ragdoll で錐を見て、
+    // 開いている側が曲がるべき側か確かめ、逆なら min/max を入れ替えること。
     for (const char* knee : { "knee", "shin", "calf" }) {
         Rule rule;
         rule.pattern              = knee;
@@ -172,8 +190,8 @@ RagdollProfile RagdollProfile::Mech()
         profile.rules.push_back(rule);
     }
 
-    /// @note 飛節 (四足の後肢で踵にあたる関節)。膝と同じ蝶番だが**逆向きに**曲がる。
-    /// @note Hock → Foot が接地する節。ここが先に力負けすると «踏ん張り切れずに崩れる» が出る。
+    // 飛節 (四足の後肢で踵にあたる関節)。膝と同じ蝶番だが**逆向きに**曲がる。
+    // Hock → Foot が接地する節。ここが先に力負けすると «踏ん張り切れずに崩れる» が出る。
     for (const char* hock : { "hock", "hough" }) {
         Rule rule;
         rule.pattern              = hock;
@@ -185,8 +203,8 @@ RagdollProfile RagdollProfile::Mech()
         profile.rules.push_back(rule);
     }
 
-    /// @note 股関節。踏ん張る側なので出力を高くする。Yaw は脚の付け根のヨー軸で、
-    /// @note 節が短いぶん «付け根の球» になる。
+    // 股関節。踏ん張る側なので出力を高くする。Yaw は脚の付け根のヨー軸で、
+    // 節が短いぶん «付け根の球» になる。
     for (const char* thigh : { "thigh", "hip", "upperleg", "yaw" }) {
         Rule rule;
         rule.pattern              = thigh;
@@ -198,7 +216,7 @@ RagdollProfile RagdollProfile::Mech()
         profile.rules.push_back(rule);
     }
 
-    /// @note 足首。可動域が狭い。
+    // 足首。可動域が狭い。
     for (const char* foot : { "foot", "ankle" }) {
         Rule rule;
         rule.pattern              = foot;
@@ -218,7 +236,7 @@ RagdollProfile RagdollProfile::Humanoid()
     RagdollProfile profile;
 
     profile.noBodyPatterns  = { "root", "armature", "motion", "scene" };
-    /// @note Player の短縮名の指と装備・アンテナは親の姿勢へ追従させ、独立した剛体を作らない。
+    // Player の短縮名の指と装備・アンテナは親の姿勢へ追従させ、独立した剛体を作らない。
     profile.excludePatterns = { "finger", "thumb", "index", "middle", "pinky", "handring", "toe" };
     profile.excludeNames = {
         "Mount_Back", "Ant_A", "Ant_B", "Grip_L", "Grip_R",
@@ -226,14 +244,14 @@ RagdollProfile RagdollProfile::Humanoid()
         "F1A_R", "F2A_R", "F3A_R", "ThA_R", "F1B_R", "F2B_R", "F3B_R", "ThB_R"
     };
 
-    /// @note 人体の平均密度は水と同じくらい。
+    // 人体の平均密度は水と同じくらい。
     profile.fallback.radiusRatio = 0.18f;
     profile.fallback.radiusMin   = 0.02f;
     profile.fallback.density     = 1000.0f;
     profile.fallback.limits      = Ball(45.0f, 25.0f);
     profile.fallback.servo       = Servo(1.2f, 10.0f, 8.0f);
 
-    /// @note Mech と同じ理由で名前を並べる。人型でも腰は Hips / Pelvis と名付けられる方が多い。
+    // Mech と同じ理由で名前を並べる。人型でも腰は Hips / Pelvis と名付けられる方が多い。
     for (const char* torso : { "spine", "hips", "pelvis", "chest", "torso" }) {
         Rule rule;
         rule.pattern              = torso;
@@ -287,4 +305,4 @@ RagdollProfile RagdollProfile::Humanoid()
     return profile;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

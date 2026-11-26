@@ -63,14 +63,18 @@ protected:
                     break;
                 }
             }
-            if (allDone) break;
+            if (allDone) {
+                break;
+            }
             std::this_thread::yield();
         }
 
         for (scene::EntityID id : surfaces) {
             const auto* surface = m_scene.GetComponent<scene::NavMeshSurfaceComponent>(id);
             EXPECT_NE(surface, nullptr);
-            if (!surface) continue;
+            if (!surface) {
+                continue;
+            }
             EXPECT_FALSE(surface->navMesh.Polygons().empty());
             EXPECT_TRUE(surface->bakeStats.failReason.empty()) << surface->bakeStats.failReason;
         }

@@ -24,7 +24,9 @@ constexpr size_t SLOTS = static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS);
 template <class T>
 void WriteArray(std::ostream& f, const T* values, size_t count)
 {
-    if (count == 0) return;
+    if (count == 0) {
+        return;
+    }
     f.write(static_cast<const char*>(static_cast<const void*>(values)), static_cast<std::streamsize>(count * sizeof(T)));
 }
 
@@ -39,7 +41,9 @@ std::vector<uint32_t> SanitizeHoles(const std::vector<uint32_t>& holes, size_t c
     std::vector<uint32_t> result;
     result.reserve(holes.size());
     for (uint32_t cell : holes)
-        if (cell < cellCount) result.push_back(cell);
+        if (cell < cellCount) {
+            result.push_back(cell);
+        }
     std::sort(result.begin(), result.end());
     result.erase(std::unique(result.begin(), result.end()), result.end());
     return result;
@@ -63,7 +67,9 @@ void FoldDenseWeights(const uint8_t* dense, uint32_t layerCount, size_t vertexCo
         candidates.clear();
         for (uint32_t li = 0; li < layerCount && li < static_cast<uint32_t>(scene::TERRAIN_MAX_LAYERS); ++li) {
             const uint8_t w = dense[v * layerCount + li];
-            if (w > 0) candidates.push_back({ static_cast<int>(li), static_cast<float>(w) });
+            if (w > 0) {
+                candidates.push_back({ static_cast<int>(li), static_cast<float>(w) });
+            }
         }
         const size_t kept = (std::min)(candidates.size(), SLOTS);
         std::partial_sort(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(kept),
@@ -79,12 +85,14 @@ void FoldDenseWeights(const uint8_t* dense, uint32_t layerCount, size_t vertexCo
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& absPath) const
 {
-    if (!scene::IsValidTerrainSurfaceGeometry(asset.surfacePositions, asset.surfaceIndices)) return false;
-    /// @note 原本の切詰めを避け、完成した FZTN だけを Core の原子的置換へ渡す。
+    if (!scene::IsValidTerrainSurfaceGeometry(asset.surfacePositions, asset.surfaceIndices)) {
+        return false;
+    }
+    // 原本の切詰めを避け、完成した FZTN だけを Core の原子的置換へ渡す。
     std::ostringstream f(std::ios::binary | std::ios::out);
 
     const uint32_t layerCount = static_cast<uint32_t>(
@@ -118,7 +126,7 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     if (asset.heightData.size() >= heightCount) {
         WriteArray(f, asset.heightData.data(), heightCount);
     } else {
-        /// @note 不完全な TerrainAsset でもロードできるよう、欠けた高さはフラット地形として 0 で埋める。
+        // 不完全な TerrainAsset でもロードできるよう、欠けた高さはフラット地形として 0 で埋める。
         const std::vector<float> defaultHeights(heightCount, 0.0f);
         WriteArray(f, defaultHeights.data(), heightCount);
     }
@@ -128,11 +136,12 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
         WriteArray(f, asset.splatIndices.data(), slotCount);
         WriteArray(f, asset.splatWeights.data(), slotCount);
     } else {
-        /// @note 塗りは全頂点に正準形のスプラットがある前提なので、欠けていれば «層 0 = 100%» で書く。
+        // 塗りは全頂点に正準形のスプラットがある前提なので、欠けていれば «層 0 = 100%» で書く。
         const std::vector<uint8_t> defaultIndices(slotCount, 0u);
         std::vector<uint8_t> defaultWeights(slotCount, 0u);
-        for (size_t i = 0; i < slotCount; i += SLOTS)
+        for (size_t i = 0; i < slotCount; i += SLOTS) {
             defaultWeights[i] = 255u;
+        }
         WriteArray(f, defaultIndices.data(), slotCount);
         WriteArray(f, defaultWeights.data(), slotCount);
     }
@@ -146,10 +155,13 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     WriteArray(f, asset.surfacePositions.data(), asset.surfacePositions.size());
     WriteArray(f, asset.surfaceIndices.data(), asset.surfaceIndices.size());
 
-    if (!f.good()) return false;
+    if (!f.good()) {
+        return false;
+    }
     const std::string bytes = std::move(f).str();
-    if (util::FileSystem::WriteBinaryAtomic(util::FileSystem::PathFromUtf8(absPath), bytes.data(), bytes.size()))
+    if (util::FileSystem::WriteBinaryAtomic(util::FileSystem::PathFromUtf8(absPath), bytes.data(), bytes.size())) {
         return true;
+    }
     FBZZ_LOG_ERROR("FzTerrainSerializer: cannot publish [%s]", absPath.c_str());
     return false;
 }
@@ -173,13 +185,17 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
     }
 
     size_t pos = 0;
-    /// @note 壊れたヘッダーの巨大な寸法で確保しないよう、確保の前に残りバイト数で弾く。
+    // 壊れたヘッダーの巨大な寸法で確保しないよう、確保の前に残りバイト数で弾く。
     const auto fits = [&](size_t count, size_t elementSize) {
         return elementSize == 0 || count <= (data.size() - pos) / elementSize;
     };
     const auto readBytes = [&](void* dst, size_t bytes) -> bool {
-        if (bytes > data.size() - pos) return false;
-        if (bytes != 0) std::memcpy(dst, data.data() + pos, bytes);
+        if (bytes > data.size() - pos) {
+            return false;
+        }
+        if (bytes != 0) {
+            std::memcpy(dst, data.data() + pos, bytes);
+        }
         pos += bytes;
         return true;
     };
@@ -211,8 +227,12 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
     candidate.layerMaterialPaths.assign(keptLayers, std::string{});
     for (uint32_t li = 0; li < hdr.layerCount; ++li) {
         char pathBuf[FZTERRAIN_PATH_LEN + 1]{};
-        if (!readBytes(pathBuf, FZTERRAIN_PATH_LEN)) return false;
-        if (li < keptLayers) candidate.layerMaterialPaths[li] = pathBuf;
+        if (!readBytes(pathBuf, FZTERRAIN_PATH_LEN)) {
+            return false;
+        }
+        if (li < keptLayers) {
+            candidate.layerMaterialPaths[li] = pathBuf;
+        }
     }
 
     const size_t heightCount = static_cast<size_t>(hdr.columns) * hdr.rows;
@@ -221,7 +241,9 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
         return false;
     }
     candidate.heightData.resize(heightCount);
-    if (!readBytes(candidate.heightData.data(), heightCount * sizeof(float))) return false;
+    if (!readBytes(candidate.heightData.data(), heightCount * sizeof(float))) {
+        return false;
+    }
 
     candidate.holeCells.clear();
     candidate.surfacePositions.clear();
@@ -233,7 +255,9 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
             return false;
         }
         std::vector<uint8_t> dense(heightCount * hdr.layerCount);
-        if (!readBytes(dense.data(), dense.size())) return false;
+        if (!readBytes(dense.data(), dense.size())) {
+            return false;
+        }
         FoldDenseWeights(dense.data(), hdr.layerCount, heightCount, candidate.splatIndices, candidate.splatWeights);
         outAsset = std::move(candidate);
         return true;
@@ -247,32 +271,42 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
     candidate.splatIndices.resize(slotCount);
     candidate.splatWeights.resize(slotCount);
     if (!readBytes(candidate.splatIndices.data(), slotCount) ||
-        !readBytes(candidate.splatWeights.data(), slotCount))
+        !readBytes(candidate.splatWeights.data(), slotCount)) {
         return false;
-    /// @note 読んだ値を信用せず正準形へ直す。番号が層数以上でも残す (描画が既定層で補う)。
-    for (size_t base = 0; base < slotCount; base += SLOTS)
+    }
+    // 読んだ値を信用せず正準形へ直す。番号が層数以上でも残す (描画が既定層で補う)。
+    for (size_t base = 0; base < slotCount; base += SLOTS) {
         scene::terrain_splat::Canonicalize(&candidate.splatIndices[base], &candidate.splatWeights[base]);
+    }
 
     if (!fits(hdr.holeCount, sizeof(uint32_t))) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: truncated hole data [%s]", absPath.c_str());
         return false;
     }
     std::vector<uint32_t> holes(hdr.holeCount);
-    if (!holes.empty() && !readBytes(holes.data(), holes.size() * sizeof(uint32_t))) return false;
+    if (!holes.empty() && !readBytes(holes.data(), holes.size() * sizeof(uint32_t))) {
+        return false;
+    }
     candidate.holeCells = SanitizeHoles(holes, CellCountOf(hdr.columns, hdr.rows));
     if (hdr.version >= 3) {
         char surfacePath[FZTERRAIN_PATH_LEN + 1]{};
-        if (!readBytes(surfacePath, FZTERRAIN_PATH_LEN) || !fits(hdr.surfaceVertexCount, sizeof(math::Vector3))) return false;
+        if (!readBytes(surfacePath, FZTERRAIN_PATH_LEN) || !fits(hdr.surfaceVertexCount, sizeof(math::Vector3))) {
+            return false;
+        }
         candidate.surfaceMaterial = surfacePath;
         candidate.surfacePositions.resize(hdr.surfaceVertexCount);
         if (!readBytes(candidate.surfacePositions.data(), candidate.surfacePositions.size() * sizeof(math::Vector3))
-            || !fits(hdr.surfaceIndexCount, sizeof(uint32_t))) return false;
+            || !fits(hdr.surfaceIndexCount, sizeof(uint32_t))) {
+            return false;
+        }
         candidate.surfaceIndices.resize(hdr.surfaceIndexCount);
         if (!readBytes(candidate.surfaceIndices.data(), candidate.surfaceIndices.size() * sizeof(uint32_t))
-            || !scene::IsValidTerrainSurfaceGeometry(candidate.surfacePositions, candidate.surfaceIndices)) return false;
+            || !scene::IsValidTerrainSurfaceGeometry(candidate.surfacePositions, candidate.surfaceIndices)) {
+            return false;
+        }
     }
     outAsset = std::move(candidate);
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

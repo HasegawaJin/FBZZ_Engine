@@ -175,8 +175,12 @@ public:
         return allowReload;
     }
     std::unique_ptr<r::IShader> CreateNativeShader(const std::string& path) override {
-        if (++shaderCreates == failAt || path == failedShaderPath) return {};
-        if (r::IsErrorShader(path)) return std::make_unique<TestShader>(path, 0);
+        if (++shaderCreates == failAt || path == failedShaderPath) {
+            return {};
+        }
+        if (r::IsErrorShader(path)) {
+            return std::make_unique<TestShader>(path, 0);
+        }
         auto shader = std::make_unique<TestShader>(path, shaderSize, shaderVars);
         lastCreatedShader = shader.get();
         return shader;
@@ -184,7 +188,9 @@ public:
     std::unique_ptr<r::IConstantBuffer> CreateNativeConstantBuffer(size_t size) override {
         auto callback = std::exchange(beforeConstantBufferCreate, {});
         if (callback) callback();
-        if (failConstantBuffers) return {};
+        if (failConstantBuffers) {
+            return {};
+        }
         return std::make_unique<TestConstantBuffer>(size, constantBufferUpdates, afterConstantBufferUpdate);
     }
     void Shutdown() override {}
@@ -474,20 +480,28 @@ protected:
         const auto metaPath = std::filesystem::path(path + ".meta");
         std::error_code error;
         const bool hadMeta = std::filesystem::exists(metaPath, error);
-        if (error) return false;
+        if (error) {
+            return false;
+        }
         const auto previousTime = hadMeta ? std::filesystem::last_write_time(metaPath, error)
                                           : std::filesystem::file_time_type{};
-        if (error) return false;
-        if (!util::FileSystem::WriteText(path, "float4 PSMain() : SV_Target { return 1; }\n")) return false;
+        if (error) {
+            return false;
+        }
+        if (!util::FileSystem::WriteText(path, "float4 PSMain() : SV_Target { return 1; }\n")) {
+            return false;
+        }
         uint64_t hash = 14695981039346656037ull;
         for (const unsigned char character : name) { hash ^= character; hash *= 1099511628211ull; }
         const std::string suffix = std::to_string(hash);
         const std::string guid = std::string(32 - suffix.size(), '0') + suffix;
         const std::string meta = "[meta]\nguid='" + guid + "'\n[shader]\n"
                                + std::string(declaration);
-        if (!util::FileSystem::WriteText(path + ".meta", meta)) return false;
+        if (!util::FileSystem::WriteText(path + ".meta", meta)) {
+            return false;
+        }
         if (hadMeta) {
-            /// @note sleep や現在時刻に依存せず、再宣言を metadata cache に反映させる。
+            // sleep や現在時刻に依存せず、再宣言を metadata cache に反映させる。
             std::filesystem::last_write_time(metaPath, previousTime + std::chrono::seconds(2), error);
         }
         return !error;
@@ -1396,7 +1410,7 @@ protected:
         m_scene.SetResourceManager(m_resources.get());
         asset::AssetManager::Init(*m_resources, m_temp.Path().generic_string() + "/");
         asset::DataAssetRegistry::ClearCache();
-        /// @note Retire the previous fixture's function-static instance materials before this renderer owns any constant buffers.
+        // このレンダラーが定数バッファを確保する前に、直前のフィクスチャが関数内 static に残したインスタンス材質を解放する。
         Extract();
         m_backend.constantBufferUpdates = 0;
         asset::MaterialAssetAuthoring material;
@@ -1635,7 +1649,9 @@ TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitWithoutR
     ShadowContextObserver* lateObserver = nullptr;
     int callbacks = 0;
     m_backend.afterConstantBufferUpdate = [&](size_t bytes) {
-        if (bytes != sizeof(r::AdvancedGraphicsCB)) return;
+        if (bytes != sizeof(r::AdvancedGraphicsCB)) {
+            return;
+        }
         m_backend.afterConstantBufferUpdate = {};
         ++callbacks;
         AddObject(10000);
@@ -1668,7 +1684,9 @@ TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitOfAnExis
     ShadowContextObserver* lateObserver = nullptr;
     int callbacks = 0;
     m_backend.afterConstantBufferUpdate = [&](size_t bytes) {
-        if (bytes != sizeof(r::AdvancedGraphicsCB) || callbacks != 0) return;
+        if (bytes != sizeof(r::AdvancedGraphicsCB) || callbacks != 0) {
+            return;
+        }
         ++callbacks;
         caster.transform.position = caster.transform.worldPosition = {90, 0, 0};
         lateObserver = &Observe(m_scene.CreateGameObject("Late native shadow reader"));
@@ -1735,7 +1753,7 @@ TEST_F(ShadowPreparationRenderTest, UsesCurrentPoseBoundsForSkinnedDirectionalAn
                 item.deformedVertexBuffer = computed ? deformed : r::ResourceHandle<r::BufferTag>{};
                 item.indexBuffer = indexBuffer;
                 item.indexCount = item.vertexCount = 3;
-                /// @note The bind pose is outside when the animated pose is visible or unknown, and inside for the excluded animated pose.
+                // The bind pose is outside when the animated pose is visible or unknown, and inside for the excluded animated pose.
                 item.boundsCenter = {boundsCase == 1 ? 0.0f : 100.0f, 0, 0.5f};
                 item.boundsRadius = 0.25f;
                 snapshot->items.push_back(item);
@@ -1845,7 +1863,7 @@ TEST_F(MaterialExtractionSharingTest, FiltersOpaqueCoverageInForwardAndGBufferOc
                 writeFloat(12, 1.0f);
                 item.forwardMaterial = item.material;
                 if (i == 0) {
-                    /// @note Forward must validate the material actually submitted, even when the GBuffer alternative remains fully opaque.
+                    // Forward must validate the material actually submitted, even when the GBuffer alternative remains fully opaque.
                     auto& material = gbuffer ? item.material : item.forwardMaterial;
                     const auto set = [&](size_t offset, float value) {
                         std::memcpy(material.gbufferParams.data() + offset, &value, sizeof(value));
@@ -2015,7 +2033,7 @@ TEST_F(MaterialExtractionSharingTest, InvalidatesCpuAndGpuOcclusionWitnessAfterV
         EXPECT_FALSE(r::IsViewOcclusionCurrent(context));
         EXPECT_FALSE(r::IsViewOccluded(context, {0, 0, 20}, 0.01f));
         EXPECT_FALSE(r::IsViewAabbOccluded(context, target, {-0.01f, -0.01f, -0.01f}, {0.01f, 0.01f, 0.01f}));
-        /// @note GPU consumers use the same publication/view proof even if an earlier uploaded row handle remains present.
+        // GPU consumers use the same publication/view proof even if an earlier uploaded row handle remains present.
         EXPECT_TRUE(context.occlusionGpuRows.IsValid());
     }
 }
@@ -2141,7 +2159,9 @@ protected:
         auto& component = go.AddComponent<scene::ScriptComponent>();
         auto& entry = component.scripts.emplace_back();
         entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.SettingsComponent", entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&m_scene, &go);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;
@@ -2187,7 +2207,9 @@ protected:
     static const r::RenderObject* Object(const r::RenderScene& view, scene::EntityID id)
     {
         for (const auto& object : view.Objects())
-            if (object.sourceIndex == id.index && object.sourceGeneration == id.generation) return &object;
+            if (object.sourceIndex == id.index && object.sourceGeneration == id.generation) {
+                return &object;
+            }
         return nullptr;
     }
 
@@ -2266,7 +2288,7 @@ TEST_F(ManagedFrameGeometryTest, RetiresNoScriptGeometryAcrossNativeMutationAndR
     auto& removed = AddObject(6);
     const auto removedId = removed.GetID();
     scene::RenderFrameGeometryCache cache;
-    /// @note Prime from a no-script view, then introduce a writer without changing the frame or Scene generation.
+    // Prime from a no-script view, then introduce a writer without changing the frame or Scene generation.
     RenderView(cache);
     ASSERT_NE(cache.geometry, nullptr);
     const auto earlier = cache.geometry;
@@ -2307,7 +2329,7 @@ TEST_F(ManagedFrameGeometryTest, RetiresNoScriptGeometryAcrossNativeMutationAndR
     ASSERT_NE(Object(*earlier, firstId), nullptr);
     EXPECT_FLOAT_EQ(Object(*earlier, firstId)->sortPosition.x, 0);
 
-    /// @note Removing the last script permits sharing again, but must never resurrect the pre-writer pose.
+    // Removing the last script permits sharing again, but must never resurrect the pre-writer pose.
     hookOwner.RemoveComponent<scene::ScriptComponent>();
     RenderView(cache);
     ASSERT_NE(cache.geometry, nullptr);
@@ -2363,7 +2385,7 @@ TEST_F(ManagedFrameGeometryTest, RejectsAnyScriptPresenceAndProtectsAllCanvasGeo
     RenderView(cache);
     ASSERT_NE(cache.geometry, nullptr);
 
-    /// @note With all scripts removed, these assertions exercise the Canvas guard rather than script bypass.
+    // With all scripts removed, these assertions exercise the Canvas guard rather than script bypass.
     auto& canvasOwner = m_scene.CreateGameObject("Canvas root mesh");
     canvasOwner.AddComponent<scene::UICanvas>();
     canvasOwner.AddComponent<scene::MeshRenderer>().enabled = false;
@@ -2403,7 +2425,7 @@ TEST_F(ManagedFrameGeometryTest, RebuildsUiGeometryAfterLayoutRunsForAnOverlayOu
     child.SetParent(canvasOwner);
     child.transform.scale = {100, 40, 1};
     scene::RenderFrameGeometryCache cache;
-    /// @note Seed the former no-Script cache path, then demonstrate its retirement and actual UI writes.
+    // Seed the former no-Script cache path, then demonstrate its retirement and actual UI writes.
     const auto original = ExtractView({}, &cache);
     ASSERT_NE(cache.geometry, nullptr);
     RenderView(cache, {}, 800, 600, scene::UIRenderTargetView::SceneViewport);
@@ -2438,7 +2460,7 @@ TEST_F(ManagedFrameGeometryTest, RebuildsColorEligibilityForDirectMaterialEnable
     EXPECT_FALSE(disabled->items[0].visible);
     EXPECT_FALSE(disabled->items[0].material.valid);
 
-    /// @note Public component and asset writes between views require no scene generation notification.
+    // Public component and asset writes between views require no scene generation notification.
     auto* material = asset::AssetManager::Get<asset::MaterialAsset>(m_asset);
     ASSERT_NE(material, nullptr);
     EditMaterialAuthoring(*material, [&](auto& values) { values.params["roughness"] = {0.87f}; });
@@ -2475,8 +2497,8 @@ TEST_F(ManagedFrameGeometryTest, RebuildsColorEligibilityForDirectMaterialEnable
     EXPECT_TRUE(enabled->items[0].visible);
     EXPECT_FLOAT_EQ(Roughness(enabled->items[0].material), 0.87f);
 
-    /// @note Exercise the public extractor directly as well: material lifetime changes affect eligibility,
-    /// @note while the caller keeps geometry stable. Missing material remains an eligible unassigned surface.
+    // Exercise the public extractor directly as well: material lifetime changes affect eligibility,
+    // while the caller keeps geometry stable. Missing material remains an eligible unassigned surface.
     const auto disabledAgainGeometry = cache.geometry;
     owner.RemoveComponent<scene::MaterialComponent>();
     const auto missing = ExtractView({}, &cache);
@@ -2637,7 +2659,7 @@ TEST_F(MaterialExtractionSharingTest, PackingPlanRechecksInPlaceNativeTypeChange
     });
     const auto authoring = asset::ReadMaterialAuthoring(m_asset);
     ASSERT_TRUE(authoring);
-    /// @note Material import can change reference spelling; mutate the exact shader resource key used by extraction.
+    // Material import can change reference spelling; mutate the exact shader resource key used by extraction.
     const std::string shaderReference = authoring->Data().shaderPath;
     const auto shader = m_resources->LoadShader(shaderReference);
     ASSERT_TRUE(shader.IsValid());
@@ -2658,7 +2680,7 @@ TEST_F(MaterialExtractionSharingTest, PackingPlanRechecksInPlaceNativeTypeChange
     EXPECT_EQ(m_resources->GetShaderVersion(), shaderVersion);
     ASSERT_EQ(output->items.size(), 1u);
     ASSERT_TRUE(output->items[0].material.valid);
-    /// @note The bounded synchronization retry derives current bytes; packing must reject its earlier UInt copy plan.
+    // The bounded synchronization retry derives current bytes; packing must reject its earlier UInt copy plan.
     EXPECT_EQ(output->items[0].material.shader, shader);
     EXPECT_FLOAT_EQ(Roughness(output->items[0].material), 0.25f);
     float strength = 0;
@@ -3101,7 +3123,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandSkipsMaskedBindingsAndRestor
         uint64_t value;
         ~RestoreFrameCount() { Time::frameCount = value; }
     } restoreFrame{Time::frameCount};
-    /// @note Scene publication and resource retirement use independent frame clocks.
+    // Scene publication and resource retirement use independent frame clocks.
     const auto resourceFrame = m_resources->FrameStamp();
     Time::frameCount = resourceFrame + 17;
     ASSERT_NE(Time::frameCount, resourceFrame);

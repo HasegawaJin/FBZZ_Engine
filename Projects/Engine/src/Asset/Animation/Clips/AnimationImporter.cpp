@@ -90,14 +90,17 @@ struct FzBoolKeyV3 { double time; uint8_t value; uint8_t _pad[7]; };
 void ResolveRootMotionNodeName(AnimationClip& clip)
 {
     clip.rootMotionNodeName.clear();
-    if (clip.rootMotionTrackIndex < clip.tracks.size())
+    if (clip.rootMotionTrackIndex < clip.tracks.size()) {
         clip.rootMotionNodeName = clip.tracks[clip.rootMotionTrackIndex].nodeName;
+    }
 }
 
 std::unique_ptr<AnimationClip> LoadV3(BinaryReader& r, const FzAnimHeader& hdr)
 {
     FzAnimV3Extension ext{};
-    if (!r.Read(ext)) return nullptr;
+    if (!r.Read(ext)) {
+        return nullptr;
+    }
 
     auto clip = std::make_unique<AnimationClip>();
     clip->name = hdr.name;
@@ -119,14 +122,18 @@ std::unique_ptr<AnimationClip> LoadV3(BinaryReader& r, const FzAnimHeader& hdr)
     clip->events.resize(ext.eventCount);
     for (uint32_t i = 0; i < ext.eventCount; ++i) {
         FzAnimEventV3 ev{};
-        if (!r.Read(ev)) return nullptr;
+        if (!r.Read(ev)) {
+            return nullptr;
+        }
         clip->events[i] = { ev.time, ev.name, ev.intParam, ev.floatParam };
     }
 
     clip->tracks.resize(hdr.trackCount);
     for (uint32_t i = 0; i < hdr.trackCount; ++i) {
         FzAnimTrackHeaderV3 th{};
-        if (!r.Read(th)) return nullptr;
+        if (!r.Read(th)) {
+            return nullptr;
+        }
         auto& track = clip->tracks[i];
         track.targetPath = th.targetPath;
         track.nodeName = th.nodeName;
@@ -136,12 +143,16 @@ std::unique_ptr<AnimationClip> LoadV3(BinaryReader& r, const FzAnimHeader& hdr)
         track.scales.resize(th.scaleCount);
         for (auto& key : track.positions) {
             FzVectorKey value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, { value.x, value.y, value.z } };
         }
         for (auto& key : track.rotations) {
             FzQuaternionKey value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = {
                 value.time,
                 math::Quaternion{ value.x, value.y, value.z, value.w }.Normalized()
@@ -149,7 +160,9 @@ std::unique_ptr<AnimationClip> LoadV3(BinaryReader& r, const FzAnimHeader& hdr)
         }
         for (auto& key : track.scales) {
             FzVectorKey value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, { value.x, value.y, value.z } };
         }
     }
@@ -157,7 +170,9 @@ std::unique_ptr<AnimationClip> LoadV3(BinaryReader& r, const FzAnimHeader& hdr)
     clip->propertyTracks.resize(ext.propertyTrackCount);
     for (auto& track : clip->propertyTracks) {
         FzPropertyTrackHeaderV3 th{};
-        if (!r.Read(th)) return nullptr;
+        if (!r.Read(th)) {
+            return nullptr;
+        }
         track.targetPath = th.targetPath;
         track.componentType = th.componentType;
         track.propertyName = th.propertyName;
@@ -170,37 +185,49 @@ std::unique_ptr<AnimationClip> LoadV3(BinaryReader& r, const FzAnimHeader& hdr)
         track.floatKeys.resize(th.floatCount);
         for (auto& key : track.floatKeys) {
             FzFloatKeyV3 value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, value.value, value.inTangent, value.outTangent };
         }
         track.vector2Keys.resize(th.vector2Count);
         for (auto& key : track.vector2Keys) {
             FzVector2KeyV3 value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, { value.x, value.y } };
         }
         track.vector3Keys.resize(th.vector3Count);
         for (auto& key : track.vector3Keys) {
             FzVectorKey value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, { value.x, value.y, value.z } };
         }
         track.vector4Keys.resize(th.vector4Count);
         for (auto& key : track.vector4Keys) {
             FzVector4KeyV3 value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, { value.x, value.y, value.z, value.w } };
         }
         track.intKeys.resize(th.intCount);
         for (auto& key : track.intKeys) {
             FzIntKeyV3 value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, value.value };
         }
         track.boolKeys.resize(th.boolCount);
         for (auto& key : track.boolKeys) {
             FzBoolKeyV3 value{};
-            if (!r.Read(value)) return nullptr;
+            if (!r.Read(value)) {
+                return nullptr;
+            }
             key = { value.time, value.value != 0 };
         }
     }
@@ -228,7 +255,9 @@ std::unique_ptr<AnimationClip> AnimationImporter::Import(
         return nullptr;
     }
 
-    if (hdr.version == 3) return LoadV3(r, hdr);
+    if (hdr.version == 3) {
+        return LoadV3(r, hdr);
+    }
 
     FBZZ_LOG_ERROR("AnimationImporter: unsupported .anim version %u (expected v3) [%s]",
                    hdr.version,

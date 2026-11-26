@@ -19,15 +19,14 @@ namespace fbzz::asset {
 /// @note 参照は `"guid:<32hex>"` を保存し AssetManager::ResolvePath が解決する。GUID は生成後不変なため、リネーム・移動しても索引再構築だけで参照が生きる。
 class AssetDatabase {
 public:
-    /// @brief `"guid:"` 参照プレフィックス。この後ろに 32 桁 hex が続く。
-    static constexpr std::string_view kGuidPrefix = "guid:";
+    static constexpr std::string_view kGuidPrefix = "guid:"; ///< `"guid:"` 参照プレフィックス。この後ろに 32 桁 hex が続く。
 
     /// @brief プロジェクトだけの GUID 索引を構築する。
     FBZZ_ENGINE_API static void Init(const std::string& assetsRoot);
 
     /// @brief プロジェクトと共有 Engine asset の GUID 索引を構築する。
-    /// @param assetsRoot GUID を修復できるプロジェクトの Assets ルート。
-    /// @param sharedAssetsRoot 任意の読み取り専用共有 Assets ルート。親の `Assets/` も受け付ける。
+    /// @param[in] assetsRoot GUID を修復できるプロジェクトの Assets ルート。
+    /// @param[in] sharedAssetsRoot 任意の読み取り専用共有 Assets ルート。親の `Assets/` も受け付ける。
     /// @note project 索引を優先し、共有 root では .meta を生成しない。
     FBZZ_ENGINE_API static void Init(const std::string& assetsRoot,
                      const std::string& sharedAssetsRoot);
@@ -69,7 +68,7 @@ public:
     /// @brief 参照に人が読めるパスを併記するときの区切り。
     /// @note 形式: `guid:<32hex>[サブアセット接尾辞]|<プロジェクト相対パス>`。権威は guid、ヒントは復旧用。
     /// @note 導出 guid (Library/Baked) は文字列として存在せず grep で辿れないため併記する。'|' は Windows のファイル名に使えず衝突しない。
-    static constexpr char kRefHintSeparator = '|';
+    static constexpr char kRefHintSeparator = '|'; ///< GUID 参照の識別子と表示用のパスヒントを区切る文字。
 
     /// @brief 参照文字列から guid 本体 (32hex) だけを取り出す。`"guid:"` プレフィックス・パスヒント・サブアセット接尾辞を落とす。
     /// @return guid 参照でなければ空文字列。
@@ -94,8 +93,8 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API static std::string GenerateGuid();
 
     /// @brief 原本の GUID とサブキーから、生成物の GUID を決定論的に導出する。
-    /// @param sourceGuid 原本 (git 管理下) の GUID。
-    /// @param subKey baked コンテナ内の相対パス (例 `"anims/MiniBot@Idle.anim"`)。
+    /// @param[in] sourceGuid 原本 (git 管理下) の GUID。
+    /// @param[in] subKey baked コンテナ内の相対パス (例 `"anims/MiniBot@Idle.anim"`)。
     /// @note 乱数だと Library (.gitignore 済み) の再インポートで GUID が変わり参照が切れる。導出なら環境やキャッシュ削除に依らず同じ値に戻る。
     [[nodiscard]] FBZZ_ENGINE_API static std::string DeriveGuid(std::string_view sourceGuid,
                                                 std::string_view subKey);
@@ -105,21 +104,21 @@ public:
     FBZZ_ENGINE_API static void IndexBakedLibrary(const std::string& libraryBakedRoot);
 
     /// @brief このファイルは .meta を持つべきか。
-    /// @param lowerFileName ファイル名のみ (パスではない、小文字化済み)。
+    /// @param[in] lowerFileName ファイル名のみ (パスではない、小文字化済み)。
     /// @note 除外リスト方式。再生成できる派生物 (.fzasset/.mesh/.skel/.cso/.generated.hpp/ビルド出力) と無拡張ファイル以外は GUID を持つ。
     [[nodiscard]] FBZZ_ENGINE_API static bool ShouldHaveMeta(std::string_view lowerFileName);
 
     /// @brief このフォルダは .meta (`<フォルダ名>.meta` を隣に置く) を持つべきか。
-    /// @param folderName フォルダ名のみ (パスではない)。
+    /// @param[in] folderName フォルダ名のみ (パスではない)。
     /// @note フォルダも参照対象になりうるため guid を持たせる。ドット始まり・生成物置き場は除外する。
     [[nodiscard]] FBZZ_ENGINE_API static bool ShouldHaveFolderMeta(std::string_view folderName);
 
     /// @brief 同じ guid を名乗る実体が 2 つ以上見つかった記録。
     /// @note 索引は先勝ちで、後から来た側は自分の guid を名乗り続けるが PathFromGuid は先勝ち側を返す。参照が静かに吸われるだけで壊れた形で現れないため、修復には衝突組の記録が要る。
     struct GuidConflict {
-        std::string guid;
-        std::string keptPath;       ///< @note 索引が採用しているアセット絶対パス。
-        std::string duplicatePath;  ///< @note 索引から弾かれた側。
+        std::string guid; ///< 異なるファイルに重複して割り当てられた GUID。
+        std::string keptPath; ///< 索引が採用しているアセット絶対パス。
+        std::string duplicatePath; ///< 索引から弾かれた側。
     };
 
     /// @brief 現在の衝突一覧。呼び出しのたびに .meta を読み直し、解消済みの記録は捨てる。
@@ -136,16 +135,16 @@ public:
 
     /// @brief Library/Baked の掃除結果。
     struct BakedSweepResult {
-        size_t   scanned    = 0;  ///< @note 走査した guid ディレクトリ数。
-        size_t   removed    = 0;  ///< @note 消した孤児コンテナ数。
-        uint64_t bytesFreed = 0;
-        bool     aborted    = false;  ///< @note 安全弁が働いて 1 件も消していない。
-        std::string abortReason;      ///< @note aborted のときだけ埋まる。
-        std::vector<std::string> removedGuids;  ///< @note 後片付け (ImportCache 等) 用。
+        size_t   scanned    = 0; ///< 走査した guid ディレクトリ数。
+        size_t   removed    = 0; ///< 消した孤児コンテナ数。
+        uint64_t bytesFreed = 0; ///< ベイク済み成果物を削除して回収した合計容量 [byte]。
+        bool     aborted    = false; ///< 安全弁が働いて 1 件も消していない。
+        std::string abortReason; ///< aborted のときだけ埋まる。
+        std::vector<std::string> removedGuids; ///< 後片付け (ImportCache 等) 用。
     };
 
     /// @brief `Library/Baked/<guid>/` のうち、どの .meta もその guid を名乗っていないものを消す。
-    /// @param dryRun true なら数えるだけで何も消さない。
+    /// @param[in] dryRun true なら数えるだけで何も消さない。
     /// @pre Init 済みであること。
     /// @note 中身は原本から焼き直せるため、参照を失った時点で価値が無い。
     /// @note 安全弁は孤児の割合でなく索引の健全性で張る。索引が空 / Assets ルートを読めなければ 1 件も消さず aborted で返す。

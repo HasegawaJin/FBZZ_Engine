@@ -128,7 +128,7 @@ TEST_F(GeneratedManagedBridgeTest, ConnectsAllGeneratedCallsToNativeHierarchyInp
     EXPECT_VEC3_NEAR(m_descendant->transform.worldPosition, (math::Vector3{12, 4, 4}), testkit::kTolerance);
     ExpectKeyState(true, true, false);
 
-    /// @note Application と同じく、観測後に前フレーム状態を進めて Held と Down を区別する。
+    // Application と同じく、観測後に前フレーム状態を進めて Held と Down を区別する。
     input::Input::Update();
     ASSERT_TRUE(m_adapter->ApplySettingsJson(R"({"operation":1})"));
     ASSERT_TRUE(Tick()) << scene::ManagedScriptRuntime::Instance().LastDiagnostic();

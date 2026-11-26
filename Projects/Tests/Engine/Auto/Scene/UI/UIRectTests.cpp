@@ -99,7 +99,7 @@ TEST_F(UIRectTest, CentreIsTheMiddleOfTheRect)
 /// @brief Checks point at maps normalised coordinates.
 TEST_F(UIRectTest, PointAtMapsNormalisedCoordinates)
 {
-    /// @note (0,0)=左上 〜 (1,1)=右下。y が下向きであることも含めて固定する。
+    // (0,0)=左上 〜 (1,1)=右下。y が下向きであることも含めて固定する。
     const scene::UIRect rect{ { 10.0f, 20.0f }, { 100.0f, 50.0f } };
 
     EXPECT_VEC2_NEAR(rect.PointAt({ 0.0f, 0.0f }), math::Vector2(10.0f, 20.0f),
@@ -125,8 +125,8 @@ TEST_F(UIRectTest, ContainsIncludesTheEdges)
 /// @brief Default anchoring places the rect at the local position.
 TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
 {
-    /// @note 既定は「親の左上を基準に、自分の左上を合わせる」。ここが動くと
-    /// @note アンカーを設定していない既存シーンが全部ずれる。
+    // 既定は「親の左上を基準に、自分の左上を合わせる」。ここが動くと
+    // アンカーを設定していない既存シーンが全部ずれる。
     const scene::UIAnchor anchoring;
 
     const scene::UIRect rect =
@@ -142,7 +142,7 @@ TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
 TEST_F(UIRectTest, AnchorPicksTheReferencePointInTheParent)
 {
     scene::UIAnchor anchoring;
-    /// @note 親の右下
+    // 親の右下
     anchoring.anchor = { 1.0f, 1.0f };
 
     const scene::UIRect rect =
@@ -154,7 +154,7 @@ TEST_F(UIRectTest, AnchorPicksTheReferencePointInTheParent)
 /// @brief Pivot picks which corner meets the anchor.
 TEST_F(UIRectTest, PivotPicksWhichCornerMeetsTheAnchor)
 {
-    /// @note 右下基準・右下合わせ = 画面の右下にぴったり収まる。
+    // 右下基準・右下合わせ = 画面の右下にぴったり収まる。
     scene::UIAnchor anchoring;
     anchoring.anchor = { 1.0f, 1.0f };
     anchoring.pivot  = { 1.0f, 1.0f };
@@ -182,7 +182,7 @@ TEST_F(UIRectTest, CentreAnchorWithCentrePivotSitsInTheMiddle)
 /// @brief Local position offsets from the anchor.
 TEST_F(UIRectTest, LocalPositionOffsetsFromTheAnchor)
 {
-    /// @note 「右下から左へ 20px」がアンカーとピボットを分けた理由そのもの。
+    // 「右下から左へ 20px」がアンカーとピボットを分けた理由そのもの。
     scene::UIAnchor anchoring;
     anchoring.anchor = { 1.0f, 1.0f };
     anchoring.pivot  = { 1.0f, 1.0f };
@@ -196,7 +196,7 @@ TEST_F(UIRectTest, LocalPositionOffsetsFromTheAnchor)
 /// @brief Anchored layout follows a resized parent.
 TEST_F(UIRectTest, AnchoredLayoutFollowsAResizedParent)
 {
-    /// @note Canvas の解像度が変わっても «右下からの距離» が保たれること。
+    // Canvas の解像度が変わっても «右下からの距離» が保たれること。
     scene::UIAnchor anchoring;
     anchoring.anchor = { 1.0f, 1.0f };
     anchoring.pivot  = { 1.0f, 1.0f };
@@ -244,7 +244,7 @@ TEST_F(UIRectTest, StretchingSpansTheParentWidth)
 /// @brief Stretching uses the margins on both sides.
 TEST_F(UIRectTest, StretchingUsesTheMarginsOnBothSides)
 {
-    /// @note 「左右 40px を空けた帯」。下限側は position、上限側は offsetMax が担う。
+    // 「左右 40px を空けた帯」。下限側は position、上限側は offsetMax が担う。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.anchorMax = { 1.0f, 1.0f };
@@ -260,7 +260,7 @@ TEST_F(UIRectTest, StretchingUsesTheMarginsOnBothSides)
 /// @brief Stretching is per axis.
 TEST_F(UIRectTest, StretchingIsPerAxis)
 {
-    /// @note 横だけ伸ばして高さは指定どおり、が実用上いちばん多い構成。
+    // 横だけ伸ばして高さは指定どおり、が実用上いちばん多い構成。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.stretchY  = false;
@@ -276,7 +276,7 @@ TEST_F(UIRectTest, StretchingIsPerAxis)
 /// @brief Stretching ignores the pivot.
 TEST_F(UIRectTest, StretchingIgnoresThePivot)
 {
-    /// @note ストレッチした軸では «自分のどこを合わせるか» という問いが消える。
+    // ストレッチした軸では «自分のどこを合わせるか» という問いが消える。
     scene::UIAnchor withPivot;
     withPivot.stretchX  = true;
     withPivot.anchorMax = { 1.0f, 1.0f };
@@ -314,7 +314,7 @@ TEST_F(UIRectTest, StretchingFollowsAResizedParent)
 /// @brief Never produces a negative size.
 TEST_F(UIRectTest, NeverProducesANegativeSize)
 {
-    /// @note 余白どうしが行き違ったとき。裏返ると当たり判定が «常に当たる» 側へ倒れる。
+    // 余白どうしが行き違ったとき。裏返ると当たり判定が «常に当たる» 側へ倒れる。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.anchorMax = { 1.0f, 1.0f };
@@ -330,7 +330,7 @@ TEST_F(UIRectTest, NeverProducesANegativeSize)
 /// @brief Stretching between partial anchors uses that span.
 TEST_F(UIRectTest, StretchingBetweenPartialAnchorsUsesThatSpan)
 {
-    /// @note 親の中央 50% を占める帯。
+    // 親の中央 50% を占める帯。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.anchor    = { 0.25f, 0.0f };

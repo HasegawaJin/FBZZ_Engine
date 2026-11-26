@@ -62,12 +62,14 @@ float FiniteAmount(float value)
 
 Vector3 Center(const WaterfallSection& section) { return Midpoint(section.left, section.right); }
 Vector3 InnerCenter(const WaterfallSection& section) { return Midpoint(section.insideLeft, section.insideRight); }
-} /// @note namespace
+} // namespace
 
 bool GetWaterfallRiverSection(const WaterSplineSnapshot& snapshot, bool atStart, bool incoming, WaterfallSection& out)
 {
     const auto& outline = snapshot.outlineIndices;
-    if (snapshot.shape != WaterSurfaceShape::SPLINE_RIVER || outline.size() < 4 || outline.size() % 2 != 0) return false;
+    if (snapshot.shape != WaterSurfaceShape::SPLINE_RIVER || outline.size() < 4 || outline.size() % 2 != 0) {
+        return false;
+    }
     const std::size_t count = outline.size() / 2;
     const std::size_t end = atStart ? 0 : count - 1;
     const std::size_t inside = atStart ? 1 : count - 2;
@@ -79,7 +81,9 @@ bool GetWaterfallRiverSection(const WaterSplineSnapshot& snapshot, bool atStart,
     const auto& right = vertex(end, false);
     const float width = (right.worldPosition - left.worldPosition).Length();
     const float reach = (vertex(inside, true).worldPosition - left.worldPosition).Length();
-    if (!std::isfinite(width) || width < 0.02f || !std::isfinite(reach) || reach < 0.001f) return false;
+    if (!std::isfinite(width) || width < 0.02f || !std::isfinite(reach) || reach < 0.001f) {
+        return false;
+    }
     const float blend = (std::min)(0.85f, (std::max)(0.25f, width * (incoming ? 0.18f : 0.65f)) / reach);
     out = {left.worldPosition, right.worldPosition,
         Vector3::Lerp(left.worldPosition, vertex(inside, true).worldPosition, blend),
@@ -93,15 +97,32 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
 {
     const auto& source = geometry.source;
     const auto& receiver = geometry.receiver;
-    if (!Finite(source) || !Finite(receiver)) return false;
+    if (!Finite(source) || !Finite(receiver)) {
+        return false;
+    }
     const Vector3 start = Center(source), end = Center(receiver);
     const Vector3 delta = Horizontal(end - start);
     const float height = start.y - end.y, run = delta.Length();
     const float width = (source.right - source.left).Length();
     const float endWidth = (receiver.right - receiver.left).Length();
-    if (!Finite(start) || !Finite(end) || !std::isfinite(width) || !std::isfinite(endWidth)
-        || height < 0.3f || height > 2000.0f || run > 2000.0f || width < 0.02f || endWidth < 0.02f
-        || width > 2000.0f || endWidth > 2000.0f) return false;
+
+    // 落下の始点・終点と、取り付ける両断面の幅が有限か確認する。
+    if (!Finite(start) || !Finite(end) || !std::isfinite(width) || !std::isfinite(endWidth)) {
+        return false;
+    }
+
+    // 落差と水平距離を制限し、入口・着地点にはそれぞれ許容範囲内の幅を求める。
+    constexpr float MIN_FALL_HEIGHT = 0.3f;
+    constexpr float MIN_SECTION_WIDTH = 0.02f;
+    constexpr float MAX_FALL_DIMENSION = 2000.0f;
+    if (height < MIN_FALL_HEIGHT || height > MAX_FALL_DIMENSION || run > MAX_FALL_DIMENSION) {
+        return false;
+    }
+    if (width < MIN_SECTION_WIDTH || endWidth < MIN_SECTION_WIDTH
+        || width > MAX_FALL_DIMENSION || endWidth > MAX_FALL_DIMENSION) {
+        return false;
+    }
+
     const Vector3 forward = delta.NormalizedOr(Horizontal(start - InnerCenter(source)).NormalizedOr(Vector3::FORWARD));
     const auto along = [&](const Vector3& tangent) {
         const auto heading = Horizontal(tangent).NormalizedOr(forward);
@@ -114,7 +135,9 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
     const Vector3 receiverTangent = along(InnerCenter(receiver) - end) * (2.0f * run - launch);
     const auto sourceAxis = (source.right - source.left).NormalizedOr(Vector3::RIGHT);
     const auto receiverAxis = (receiver.right - receiver.left).NormalizedOr(sourceAxis);
-    if (Vector3::Dot(sourceAxis, receiverAxis) < -0.25f) return false;
+    if (Vector3::Dot(sourceAxis, receiverAxis) < -0.25f) {
+        return false;
+    }
     const int rings = std::clamp(static_cast<int>(std::ceil(std::sqrt(height + run) * 2.2f)), 14, 56);
     const int sides = std::clamp(static_cast<int>(std::ceil(std::sqrt(width) * 2.0f)), 8, 20);
     const int clearanceSamples = std::clamp(static_cast<int>(std::ceil((std::max)(width, endWidth) * 2.0f)), 8, 48);
@@ -137,9 +160,15 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
         Vector3 center = start + delta * blend + sourceTangent * (t * remaining * remaining)
             - receiverTangent * (t * t * remaining);
         center.y = start.y - height * (geometry.rockAttached ? t : t * t);
-        if (ring < 0) center = InnerCenter(source);
-        if (ring == rings) center = end;
-        if (ring > rings) center = InnerCenter(receiver);
+        if (ring < 0) {
+            center = InnerCenter(source);
+        }
+        if (ring == rings) {
+            center = end;
+        }
+        if (ring > rings) {
+            center = InnerCenter(receiver);
+        }
         const float envelope = 4.0f * t * (1.0f - t);
         const auto horizontalTangent = delta * (6.0f * t * remaining)
             + sourceTangent * (remaining * (1.0f - 3.0f * t)) + receiverTangent * (t * (3.0f * t - 2.0f));
@@ -156,15 +185,22 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
                     * std::sqrt((std::max)(0.0f, 1.0f - across * across)));
                 lift = (std::max)({lift, ground(lower) - lower.y, ground(upper) - upper.y});
             }
-            /// @note 落ち口での浅い交差は上流の水面帯に覆われる場合がある。
+            // 落ち口での浅い交差は上流の水面帯に覆われる場合がある。
             const float clearance = std::lerp(0.28f, 0.10f, envelope);
-            if (lift > clearance && !geometry.rockAttached) return false;
-            if (geometry.rockAttached && std::isfinite(lift))
+            if (lift > clearance && !geometry.rockAttached) {
+                return false;
+            }
+            if (geometry.rockAttached && std::isfinite(lift)) {
                 center.y += (std::max)(lift + 0.025f, -(std::min)(height * 0.08f, 1.0f) * envelope);
-            if (center.y > previousY + clearance) return false;
+            }
+            if (center.y > previousY + clearance) {
+                return false;
+            }
             previousY = center.y;
         }
-        if (ring == rings / 2) middle = center;
+        if (ring == rings / 2) {
+            middle = center;
+        }
         for (int side = 0; side <= sides; ++side) {
             const float angle = 2.0f * std::numbers::pi_v<float> * static_cast<float>(side) / static_cast<float>(sides);
             const float across = std::cos(angle), around = std::sin(angle);
@@ -197,7 +233,7 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
     candidate.AddQuad(first, first + 1, first + 2, first + 3);
     if (farIndexStart) {
         *farIndexStart = candidate.IndexCount();
-        /// @note 両インデックス範囲で継ぎ目の頂点と泡を共有し、地形に沿う滝は軌道上の全リングを保持する。
+        // 両インデックス範囲で継ぎ目の頂点と泡を共有し、地形に沿う滝は軌道上の全リングを保持する。
         const auto vertex = [&](int ring, int side) { return static_cast<std::uint32_t>((ring + 1) * (sides + 1) + side); };
         const int ringStep = geometry.rockAttached ? 1 : 3;
         for (int row = -1; row < rings + 1;) {
@@ -211,7 +247,9 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
         }
         candidate.AddQuad(first, first + 1, first + 2, first + 3);
     }
-    if (midFall) *midFall = middle;
+    if (midFall) {
+        *midFall = middle;
+    }
     out = std::move(candidate);
     return true;
 }
@@ -228,7 +266,9 @@ bool ReadWaterfallConnections(Scene& scene, GameObject& owner, WaterfallComponen
         || !PrepareWaterSplineSnapshot(scene, upper->GetID(), *source, upper->transform)
         || !PrepareWaterSplineSnapshot(scene, lower->GetID(), *receiver, lower->transform)
         || !source->splineSnapshot
-        || !GetWaterfallRiverSection(*source->splineSnapshot, waterfall.upstreamAtStart, true, geometry.source)) return false;
+        || !GetWaterfallRiverSection(*source->splineSnapshot, waterfall.upstreamAtStart, true, geometry.source)) {
+        return false;
+    }
     geometry.breakup = FiniteAmount(waterfall.breakupAmount);
     geometry.rockAttached = waterfall.rockAttached;
     if (receiver->splineSnapshot && receiver->splineSnapshot->shape == WaterSurfaceShape::SPLINE_RIVER) {
@@ -244,7 +284,9 @@ bool ReadWaterfallConnections(Scene& scene, GameObject& owner, WaterfallComponen
     const auto sample = [&](Vector3 point, Vector3& surface, float& depth, Vector3& velocity) {
         WaterSurfaceHeightSample height;
         if (!TrySampleWaterSurfaceHeightWorld(*receiver, lower->transform, point, 0.0f, height)
-            || !height.insideSurface || height.excluded) return false;
+            || !height.insideSurface || height.excluded) {
+            return false;
+        }
         surface = {point.x, height.position.y - height.displacement, point.z};
         depth = height.waterDepthLimit;
         WaterSplineSample base;
@@ -257,7 +299,7 @@ bool ReadWaterfallConnections(Scene& scene, GameObject& owner, WaterfallComponen
         }
         return Finite(surface) && depth > 0.0f;
     };
-    /// @note 湖・長方形には流入断面がないため、落下位置の帯全体を水域の内側に収める。
+    // 湖・長方形には流入断面がないため、落下位置の帯全体を水域の内側に収める。
     for (float fraction : {1.0f, 0.7f, 0.45f, 0.25f}) {
         const float span = halfWidth * fraction;
         const Vector3 back = forward * (std::max)(span, 0.4f);
@@ -268,13 +310,19 @@ bool ReadWaterfallConnections(Scene& scene, GameObject& owner, WaterfallComponen
             || !sample(hint - right * span, section.left, ignoredDepth, ignoredVelocity)
             || !sample(hint + right * span, section.right, ignoredDepth, ignoredVelocity)
             || !sample(hint + back - right * span, section.insideLeft, ignoredDepth, ignoredVelocity)
-            || !sample(hint + back + right * span, section.insideRight, ignoredDepth, ignoredVelocity)) continue;
+            || !sample(hint + back + right * span, section.insideRight, ignoredDepth, ignoredVelocity)) {
+            continue;
+        }
         bool wet = true;
         for (float along : {0.0f, 0.5f, 1.0f}) for (float across : {0.25f, 0.5f, 0.75f}) {
             if (!sample(hint + back * along + right * ((across * 2.0f - 1.0f) * span),
-                    center, ignoredDepth, ignoredVelocity)) wet = false;
+                    center, ignoredDepth, ignoredVelocity)) {
+                wet = false;
+            }
         }
-        if (!wet) continue;
+        if (!wet) {
+            continue;
+        }
         geometry.receiver = section;
         return true;
     }
@@ -336,11 +384,17 @@ bool EnsureWaterfallParts(Scene& scene, GameObject& owner, WaterfallComponent& w
 {
     const auto missing = std::count_if(waterfall.parts.begin(), waterfall.parts.begin() + PART_NAMES.size(),
         [&](EntityID id) { return !scene.IsValid(id); });
-    if (!scene.CanCreateGameObjects(static_cast<std::size_t>(missing))) return false;
+    if (!scene.CanCreateGameObjects(static_cast<std::size_t>(missing))) {
+        return false;
+    }
     for (std::size_t part = 0; part < PART_NAMES.size(); ++part) {
-        if (scene.IsValid(waterfall.parts[part])) continue;
+        if (scene.IsValid(waterfall.parts[part])) {
+            continue;
+        }
         auto* child = scene.TryCreateGameObject(PART_NAMES[part]);
-        if (!child) return false;
+        if (!child) {
+            return false;
+        }
         child->SetRuntimeGenerated(true);
         child->SetParent(owner);
         child->AddComponent<WaterfallPart>({part});
@@ -357,7 +411,7 @@ bool EnsureWaterfallParts(Scene& scene, GameObject& owner, WaterfallComponent& w
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool ResolveWaterfallGeometry(Scene& scene, GameObject& owner, WaterfallGeometry& out)
 {
@@ -377,7 +431,9 @@ struct WaterfallTerrainSource {
 
     bool Overlaps(const math::Vector4& bounds) const
     {
-        if (!canReject) return true;
+        if (!canReject) {
+            return true;
+        }
         const auto axisOverlaps = [](float low, float high, float origin, float scale, double extent) {
             const float first = (low - origin) / scale;
             const float last = (high - origin) / scale;
@@ -396,11 +452,17 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
         auto* parent = child ? child->GetParent() : nullptr;
         const auto* owner = parent ? parent->GetComponent<WaterfallComponent>() : nullptr;
         const auto* part = scene.GetComponent<WaterfallPart>(id);
-        if (!owner || part->index >= owner->parts.size() || owner->parts[part->index] != id) orphans.push_back(id);
+        if (!owner || part->index >= owner->parts.size() || owner->parts[part->index] != id) {
+            orphans.push_back(id);
+        }
     }
-    if (!orphans.empty()) scene.DestroyGameObjects(orphans);
+    if (!orphans.empty()) {
+        scene.DestroyGameObjects(orphans);
+    }
     const auto owners = scene.GetEntities<WaterfallComponent>();
-    if (owners.empty()) return;
+    if (owners.empty()) {
+        return;
+    }
 
     constexpr uint64_t HASH_BASIS = 1469598103934665603ull;
     const auto hash = [](uint64_t& value, uint64_t word) { value = (value ^ word) * 1099511628211ull; };
@@ -421,8 +483,12 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
         const auto& pose = object->transform;
         for (const auto value : std::array{pose.worldPosition.x, pose.worldPosition.y, pose.worldPosition.z,
             pose.worldRotation.x, pose.worldRotation.y, pose.worldRotation.z, pose.worldRotation.w,
-            pose.worldScale.x, pose.worldScale.y, pose.worldScale.z}) add(std::bit_cast<uint32_t>(value));
-        if (!enabled) continue;
+            pose.worldScale.x, pose.worldScale.y, pose.worldScale.z}) {
+            add(std::bit_cast<uint32_t>(value));
+        }
+        if (!enabled) {
+            continue;
+        }
         hash(stamp, scene.GetComponentLifetime<TerrainComponent>(id));
         const auto& rotation = pose.worldRotation;
         const bool canReject = terrain->surfacePositions.empty() && terrain->surfaceIndices.empty()
@@ -437,7 +503,9 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
         uint64_t revision = HASH_BASIS;
         if (waterfall.hasGroundProbes || !waterfall.groundProbesFinite)
             for (const auto& source : sources)
-                if (!waterfall.groundProbesFinite || source.Overlaps(waterfall.groundProbeBounds)) hash(revision, source.revision);
+                if (!waterfall.groundProbesFinite || source.Overlaps(waterfall.groundProbeBounds)) {
+                    hash(revision, source.revision);
+                }
         return revision;
     };
 
@@ -463,7 +531,9 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
             waterfall.geometry = geometry;
             waterfall.prepared = true;
         }
-        if (!changed && !waterfall.valid) continue;
+        if (!changed && !waterfall.valid) {
+            continue;
+        }
         const bool missing = std::any_of(waterfall.parts.begin(), waterfall.parts.begin() + PART_NAMES.size(),
             [&](EntityID part) { return !scene.IsValid(part); });
         MeshBuilder builder;
@@ -473,7 +543,9 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
             const auto ground = [&](const Vector3& point) {
                 const math::Vector4 bounds{point.x, point.z, point.x, point.z};
                 auto& footprint = waterfall.groundProbeBounds;
-                if (!std::isfinite(point.x) || !std::isfinite(point.z)) waterfall.groundProbesFinite = false;
+                if (!std::isfinite(point.x) || !std::isfinite(point.z)) {
+                    waterfall.groundProbesFinite = false;
+                }
                 else if (waterfall.hasGroundProbes) {
                     footprint = {(std::min)(footprint.x, point.x), (std::min)(footprint.y, point.z),
                         (std::max)(footprint.z, point.x), (std::max)(footprint.w, point.z)};
@@ -485,14 +557,15 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
                 for (const auto& source : sources) {
                     TerrainSurfaceSample sample;
                     if (source.Overlaps(bounds)
-                        && TrySampleTerrainWorld(*source.terrain, *source.pose, point.x, point.z, sample))
+                        && TrySampleTerrainWorld(*source.terrain, *source.pose, point.x, point.z, sample)) {
                         result = (std::max)(result, sample.position.y);
+                    }
                 }
                 return result;
             };
             std::uint32_t farIndexStart = 0;
             waterfall.valid = BuildWaterfallGeometry(geometry, ground, builder, &waterfall.midFall, &farIndexStart);
-            /// @note 地面は高さを変え、生成を中断する場合もある。最初の失敗までに調べた XZ 座標は依存関係に残す。
+            // 地面は高さを変え、生成を中断する場合もある。最初の失敗までに調べた XZ 座標は依存関係に残す。
             waterfall.terrainRevision = curtainRevision(waterfall);
             if (!waterfall.valid) {
                 hide();
@@ -526,14 +599,19 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
             child.SetActive(true);
             const auto rotation = part == 0 ? math::Quaternion::Identity() : yaw;
             if (changed || missing || (child.transform.worldPosition - anchors[part]).LengthSq() > 0.000001f
-                || child.transform.worldScale != Vector3::ONE || child.transform.worldRotation != rotation)
+                || child.transform.worldScale != Vector3::ONE || child.transform.worldRotation != rotation) {
                 SetWorldPose(child, anchors[part], rotation, Vector3::ONE);
-            if (part == 0 || (!changed && !missing && waterfall.spray == spray && waterfall.mist == mist)) continue;
+            }
+            if (part == 0 || (!changed && !missing && waterfall.spray == spray && waterfall.mist == mist)) {
+                continue;
+            }
             auto& emitter = *child.GetComponent<ParticleEmitter>();
             const float span = part == 1 || part == 4 ? (geometry.receiver.right - geometry.receiver.left).Length() : width;
             ConfigureWaterfallEmitter(emitter, part, span, height, foot.y, impact, part == 4 ? mist : spray,
                 id.index * 1973u + static_cast<std::uint32_t>(part) * 7919u + 1u);
-            if (missing) emitter.ResetPlayback();
+            if (missing) {
+                emitter.ResetPlayback();
+            }
         }
         waterfall.spray = spray;
         waterfall.mist = mist;
@@ -545,12 +623,16 @@ void PrepareWaterfallSeams(Scene& scene)
 {
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         auto* water = scene.GetComponent<WaterComponent>(id);
-        if (water->waterfallSeams.front().w != 0.0f) water->waterfallSeams = {};
+        if (water->waterfallSeams.front().w != 0.0f) {
+            water->waterfallSeams = {};
+        }
     }
     const auto add = [&](EntityRef& reference, const WaterfallSection& section) {
         auto* object = reference.Resolve(scene);
         auto* water = object ? ResolveWaterZoneOwner(scene, object->GetID()) : nullptr;
-        if (!water || water->waterfallSeams.front().w < 0.0f) return;
+        if (!water || water->waterfallSeams.front().w < 0.0f) {
+            return;
+        }
         const Vector3 center = Center(section);
         const float radius = (std::max)({Horizontal(section.left - center).Length(),
             Horizontal(section.right - center).Length(), Horizontal(section.insideLeft - center).Length(),
@@ -560,17 +642,23 @@ void PrepareWaterfallSeams(Scene& scene)
         const auto slot = std::find_if(seams.begin(), seams.end(), [&](const auto& entry) {
             return entry.w == 0.0f || (entry.x == center.x && entry.y == center.z);
         });
-        if (slot != seams.end()) *slot = {center.x, center.z, (std::max)(slot->z, radius), (std::max)(slot->w, radius + fade)};
-        else seams.front().w = -1.0f;
+        if (slot != seams.end()) {
+            *slot = {center.x, center.z, (std::max)(slot->z, radius), (std::max)(slot->w, radius + fade)};
+        }
+        else {
+            seams.front().w = -1.0f;
+        }
     };
     for (const EntityID id : scene.GetEntities<WaterfallComponent>()) {
         const auto* object = scene.GetGameObject(id);
         auto* waterfall = scene.GetComponent<WaterfallComponent>(id);
         if (!waterfall->enabled || !waterfall->prepared || !waterfall->valid || !object->activeInHierarchy()
-            || !scene.IsValid(waterfall->parts[0])) continue;
+            || !scene.IsValid(waterfall->parts[0])) {
+            continue;
+        }
         add(waterfall->upstream, waterfall->geometry.source);
         add(waterfall->downstream, waterfall->geometry.receiver);
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

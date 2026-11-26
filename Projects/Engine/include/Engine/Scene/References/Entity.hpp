@@ -11,15 +11,15 @@
 namespace fbzz::scene {
 
 struct EntityID {
-    static constexpr uint32_t INVALID_INDEX = 0xFFFFFFFFu;
+    static constexpr uint32_t INVALID_INDEX = 0xFFFFFFFFu; ///< Entity の空参照を表す予約済み添字。
 
-    uint32_t index      = INVALID_INDEX;
-    uint32_t generation = 0;
+    uint32_t index      = INVALID_INDEX; ///< Entity の格納スロットを識別する添字。
+    uint32_t generation = 0; ///< 添字を再利用した別の Entity を識別する世代。
 
     bool IsValid() const { return index != INVALID_INDEX; }
     bool operator==(const EntityID&) const = default;
 
-    static const EntityID INVALID;
+    static const EntityID INVALID; ///< どの Entity も指さない無効 ID。
 };
 
 inline const EntityID EntityID::INVALID = {};

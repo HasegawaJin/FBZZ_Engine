@@ -16,9 +16,9 @@ class GameObject;
 struct ScriptSceneProxy;
 
 struct EntityRef {
-    mutable EntityID id;
-    mutable std::string guid;
-    mutable std::uint64_t sceneGeneration = 0;
+    mutable EntityID id; ///< 参照先を直ちに引くためのキャッシュ済み Entity ID。
+    mutable std::string guid; ///< 保存・再解決に使う参照先 GameObject の GUID。
+    mutable std::uint64_t sceneGeneration = 0; ///< キャッシュ済み ID が属するシーンの世代。
 
     bool IsValid() const { return id.IsValid(); }
     /// @note 欠損GUIDも設定済みとして扱い、未設定専用のfallbackへ切り替えない。
@@ -37,8 +37,12 @@ struct EntityRef {
 
     bool operator==(const EntityRef& other) const
     {
-        if (!guid.empty() && !other.guid.empty()) return guid == other.guid;
-        if (guid.empty() && other.guid.empty()) return id == other.id;
+        if (!guid.empty() && !other.guid.empty()) {
+            return guid == other.guid;
+        }
+        if (guid.empty() && other.guid.empty()) {
+            return id == other.id;
+        }
         return id.IsValid() && other.id.IsValid() && id == other.id;
     }
 
@@ -48,4 +52,4 @@ struct EntityRef {
     FBZZ_ENGINE_API GameObject* Resolve(Scene& scene) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -89,7 +89,12 @@ public:
     /// @note subscription=0 は対象 callback、非零は現在所有する global Sequence 購読。両方とも一回だけ配送する。
     FBZZ_ENGINE_API bool InvokeSequenceEvent(ManagedScriptAdapter& adapter, const SequenceEventInfo& info, uint64_t subscription = 0);
     FBZZ_ENGINE_API bool InvokeSequenceFinished(ManagedScriptAdapter& adapter, std::string_view sequenceName);
-    /// @note 独立した設定候補から world 描画 command を一回取得する。失敗で live Script を停止・変更しない。
+    /// @brief 独立した設定候補からワールド空間のギズモ描画コマンドを取得する。
+    /// @param[in,out] adapter 対象のスクリプト。現在世代への所有者接続を確認する。
+    /// @param[in] selected 選択中のギズモ描画コールバックを要求する場合は true。
+    /// @param[out] commands 検証済みのコマンド一覧。失敗時は空にする。
+    /// @param[in] capacity 取得できるコマンドの最大件数。
+    /// @note 失敗した場合も実行中のスクリプトを停止・変更しない。
     FBZZ_ENGINE_API bool CaptureGizmos(ManagedScriptAdapter& adapter, bool selected, std::vector<ScriptDebugDrawCommand>& commands, uint32_t capacity = 1024);
     FBZZ_ENGINE_API bool InvokeOwned(ManagedScriptAdapter& adapter, ManagedCallback callback, uint64_t token,
                      std::string_view payload, float progress, bool completed, bool nativeSequence = false);
@@ -104,7 +109,7 @@ private:
     /// @note Scene 寿命の通知は CLR や未初期化 singleton を呼び出さない。
     FBZZ_ENGINE_API static void RetireScene(Scene& scene);
     FBZZ_ENGINE_API static void RetireObject(Scene& scene, EntityID entity);
-    static ManagedScriptRuntime* m_liveRuntime;
+    static ManagedScriptRuntime* m_liveRuntime; ///< ネイティブ入口が現在使うランタイムの非所有参照。
     FBZZ_ENGINE_API ManagedScriptRuntime();
     ManagedScriptRuntime(const ManagedScriptRuntime&) = delete;
     ManagedScriptRuntime& operator=(const ManagedScriptRuntime&) = delete;
@@ -115,7 +120,7 @@ private:
     FBZZ_ENGINE_API bool InvokePayload(ManagedScriptAdapter& adapter, ManagedCallback callback, std::string_view payload);
     FBZZ_ENGINE_API static int32_t __cdecl NativeDispatch(const ManagedBridgeRequest* request, ManagedBridgeReply* reply);
     struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    std::unique_ptr<Impl> m_impl; ///< Managed 実行、世代、ブリッジの状態実装を所有する。
 };
 
 }

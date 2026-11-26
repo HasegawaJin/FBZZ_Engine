@@ -28,7 +28,7 @@ consteval bool Matches(KeyCode key, int virtualKey)
 {
     return static_cast<uint32_t>(key) == static_cast<uint32_t>(virtualKey);
 }
-} /// @note namespace
+} // namespace
 
 static_assert(Matches(KeyCode::ESCAPE,      VK_ESCAPE));
 static_assert(Matches(KeyCode::SPACE,       VK_SPACE));
@@ -94,28 +94,32 @@ GameInputConsumption& GameInputConsumptionState()
     static GameInputConsumption state;
     return state;
 }
-} /// @note namespace input_detail
+} // namespace input_detail
 
 namespace {
 /// @note 既存の InputAxis の既定デッドゾーンに合わせ、パッドの微小なドリフトでは軸を消費しない。
 constexpr float ACQUISITION_AXIS_DEADZONE = 0.25f;
 static_assert(static_cast<std::size_t>(GamepadButton::COUNT) == input_detail::GameInputConsumption::PAD_BUTTON_COUNT);
 static_assert(static_cast<std::size_t>(GamepadAxis::COUNT) == input_detail::GameInputConsumption::PAD_AXIS_COUNT);
-} /// @note namespace
+} // namespace
 
 void Input::ConsumeGameInput()
 {
     auto& consumed = input_detail::GameInputConsumptionState();
     consumed.CancelInteractions();
-    for (std::size_t key = 0; key < s_current.size(); ++key)
+    for (std::size_t key = 0; key < s_current.size(); ++key) {
         consumed.BlockKey(key, s_current[key] || s_previous[key] || s_injectedKeys[key]);
-    for (std::size_t button = 0; button < s_mouseCurrent.size(); ++button)
+    }
+    for (std::size_t button = 0; button < s_mouseCurrent.size(); ++button) {
         consumed.BlockMouse(button, s_mouseCurrent[button] || s_mousePrevious[button] || s_injectedMouseButtons[button]);
+    }
     for (int pad = 0; pad < Gamepad::MAX_PADS; ++pad) {
-        for (std::size_t button = 0; button < input_detail::GameInputConsumption::PAD_BUTTON_COUNT; ++button)
+        for (std::size_t button = 0; button < input_detail::GameInputConsumption::PAD_BUTTON_COUNT; ++button) {
             consumed.BlockPadButton(pad, button, Gamepad::ButtonHeld(static_cast<GamepadButton>(button), pad));
-        for (std::size_t axis = 0; axis < input_detail::GameInputConsumption::PAD_AXIS_COUNT; ++axis)
+        }
+        for (std::size_t axis = 0; axis < input_detail::GameInputConsumption::PAD_AXIS_COUNT; ++axis) {
             consumed.BlockPadAxis(pad, axis, std::fabs(Gamepad::Axis(static_cast<GamepadAxis>(axis), pad)) > ACQUISITION_AXIS_DEADZONE);
+        }
     }
     consumed.BlockMotion();
 }
@@ -181,8 +185,8 @@ void Input::Reset()
     s_textInput.clear();
     s_gameTextInput.clear();
 
-    /// @note ゲームパッドの押下状態も一緒に落とす。Play モードの開始・終了で Input だけリセットすると、
-    /// @note パッドのボタンが押されたままの状態で持ち越され、Play 開始直後に意図しない入力が発火する。
+    // ゲームパッドの押下状態も一緒に落とす。Play モードの開始・終了で Input だけリセットすると、
+    // パッドのボタンが押されたままの状態で持ち越され、Play 開始直後に意図しない入力が発火する。
     Gamepad::Reset();
 }
 
@@ -207,14 +211,18 @@ void Input::ResetNativeState()
 bool Input::GameKeyHeld(KeyCode key)
 {
     const auto index = static_cast<std::size_t>(key);
-    if (index >= KEY_COUNT) return false;
+    if (index >= KEY_COUNT) {
+        return false;
+    }
     return input_detail::GameInputConsumption::ResolveButton(s_current[index], s_injectedKeys[index],
         core::Cursor::CanReadGameInput(), input_detail::GameInputConsumptionState().KeyBlocked(index));
 }
 bool Input::GameKeyDown(KeyCode key)
 {
     const auto index = static_cast<std::size_t>(key);
-    if (index >= KEY_COUNT) return false;
+    if (index >= KEY_COUNT) {
+        return false;
+    }
     const bool previous = input_detail::GameInputConsumption::ResolveButton(s_previous[index], s_previousInjectedKeys[index],
         core::Cursor::CanReadGameInput(), input_detail::GameInputConsumptionState().KeyBlocked(index));
     return GameKeyHeld(key) && !previous;
@@ -222,39 +230,51 @@ bool Input::GameKeyDown(KeyCode key)
 bool Input::GameKeyUp(KeyCode key)
 {
     const auto index = static_cast<std::size_t>(key);
-    if (index >= KEY_COUNT) return false;
+    if (index >= KEY_COUNT) {
+        return false;
+    }
     const bool previous = input_detail::GameInputConsumption::ResolveButton(s_previous[index], s_previousInjectedKeys[index],
         core::Cursor::CanReadGameInput(), input_detail::GameInputConsumptionState().KeyBlocked(index));
     return !GameKeyHeld(key) && previous;
 }
 bool Input::GameMouseButton(int button)
 {
-    if (button < 0 || button >= 3) return false;
+    if (button < 0 || button >= 3) {
+        return false;
+    }
     return input_detail::GameInputConsumption::ResolveButton(s_mouseCurrent[button], s_injectedMouseButtons[button],
         core::Cursor::CanReadGameInput(), input_detail::GameInputConsumptionState().MouseBlocked(button));
 }
 bool Input::GameMouseButtonDown(int button)
 {
-    if (button < 0 || button >= 3) return false;
+    if (button < 0 || button >= 3) {
+        return false;
+    }
     const bool previous = input_detail::GameInputConsumption::ResolveButton(s_mousePrevious[button], s_previousInjectedMouseButtons[button],
         core::Cursor::CanReadGameInput(), input_detail::GameInputConsumptionState().MouseBlocked(button));
     return GameMouseButton(button) && !previous;
 }
 bool Input::GameMouseButtonUp(int button)
 {
-    if (button < 0 || button >= 3) return false;
+    if (button < 0 || button >= 3) {
+        return false;
+    }
     const bool previous = input_detail::GameInputConsumption::ResolveButton(s_mousePrevious[button], s_previousInjectedMouseButtons[button],
         core::Cursor::CanReadGameInput(), input_detail::GameInputConsumptionState().MouseBlocked(button));
     return !GameMouseButton(button) && previous;
 }
 math::Vector2 Input::GameMouseDelta()
 {
-    if (s_hasInjectedMouseDelta) return s_injectedMouseDelta;
+    if (s_hasInjectedMouseDelta) {
+        return s_injectedMouseDelta;
+    }
     return core::Cursor::CanReadGameInput() && !input_detail::GameInputConsumptionState().MotionBlocked() ? MouseDelta() : math::Vector2{};
 }
 math::Vector2 Input::GameMousePosition()
 {
-    if (!core::Cursor::CanReadGameInput() && s_hasInjectedMousePosition) return s_injectedMousePosition;
+    if (!core::Cursor::CanReadGameInput() && s_hasInjectedMousePosition) {
+        return s_injectedMousePosition;
+    }
     return core::Cursor::CanReadGameInput() ? MousePosition() : math::Vector2{};
 }
 float Input::GameMouseScrollDelta()
@@ -267,23 +287,27 @@ void Input::Update()
 {
     auto& consumed = input_detail::GameInputConsumptionState();
     consumed.BeginFrame();
-    /// @note ポーリング前の生の状態を確認し、操作を離したフレームも消費の対象に含める。
-    for (std::size_t key = 0; key < s_current.size(); ++key)
+    // ポーリング前の生の状態を確認し、操作を離したフレームも消費の対象に含める。
+    for (std::size_t key = 0; key < s_current.size(); ++key) {
         consumed.ReleaseKey(key, s_current[key] || s_injectedKeys[key]);
-    for (std::size_t button = 0; button < s_mouseCurrent.size(); ++button)
-        consumed.ReleaseMouse(button, s_mouseCurrent[button] || s_injectedMouseButtons[button]);
-    for (int pad = 0; pad < Gamepad::MAX_PADS; ++pad) {
-        for (std::size_t button = 0; button < input_detail::GameInputConsumption::PAD_BUTTON_COUNT; ++button)
-            consumed.ReleasePadButton(pad, button, Gamepad::ButtonHeld(static_cast<GamepadButton>(button), pad));
-        for (std::size_t axis = 0; axis < input_detail::GameInputConsumption::PAD_AXIS_COUNT; ++axis)
-            consumed.ReleasePadAxis(pad, axis, std::fabs(Gamepad::Axis(static_cast<GamepadAxis>(axis), pad)) > ACQUISITION_AXIS_DEADZONE);
     }
-    /// @note ゲームパッドは Win32 メッセージポンプに乗らないため、ここで明示的にポーリングする。
-    /// @note 入力更新の呼び出し点は Editor/Standalone/Sandbox に散らばっており、それぞれへ追記
-    /// @note させると呼び忘れで「特定の実行経路でだけパッドが効かない」再現困難な不具合になる。
+    for (std::size_t button = 0; button < s_mouseCurrent.size(); ++button) {
+        consumed.ReleaseMouse(button, s_mouseCurrent[button] || s_injectedMouseButtons[button]);
+    }
+    for (int pad = 0; pad < Gamepad::MAX_PADS; ++pad) {
+        for (std::size_t button = 0; button < input_detail::GameInputConsumption::PAD_BUTTON_COUNT; ++button) {
+            consumed.ReleasePadButton(pad, button, Gamepad::ButtonHeld(static_cast<GamepadButton>(button), pad));
+        }
+        for (std::size_t axis = 0; axis < input_detail::GameInputConsumption::PAD_AXIS_COUNT; ++axis) {
+            consumed.ReleasePadAxis(pad, axis, std::fabs(Gamepad::Axis(static_cast<GamepadAxis>(axis), pad)) > ACQUISITION_AXIS_DEADZONE);
+        }
+    }
+    // ゲームパッドは Win32 メッセージポンプに乗らないため、ここで明示的にポーリングする。
+    // 入力更新の呼び出し点は Editor/Standalone/Sandbox に散らばっており、それぞれへ追記
+    // させると呼び忘れで「特定の実行経路でだけパッドが効かない」再現困難な不具合になる。
     Gamepad::Update();
 
-    /// @note 物理入力とAI注入を合成した値を前フレームへ保存し、注入でもDown/Upを正しく生成する。
+    // 物理入力とAI注入を合成した値を前フレームへ保存し、注入でもDown/Upを正しく生成する。
     for (size_t index = 0; index < s_current.size(); ++index) {
         s_previousPhysicalKeys[index] = s_current[index];
         s_previousInjectedKeys[index] = s_injectedKeys[index];
@@ -331,8 +355,9 @@ bool Input::MouseButtonUp  (int b) { return !(s_mouseCurrent[b] || s_injectedMou
 math::Vector2 Input::MousePosition() { return s_mousePos; }
 math::Vector2 Input::MouseDelta()
 {
-    if (s_hasOverrideMouseDelta)
+    if (s_hasOverrideMouseDelta) {
         return s_overrideMouseDelta;
+    }
     return { s_mousePos.x - s_prevMousePos.x, s_mousePos.y - s_prevMousePos.y };
 }
 
@@ -344,7 +369,9 @@ void Input::OverrideMouseDelta(const math::Vector2& delta)
 
 void Input::HandleKeyMessage(unsigned int msg, std::uintptr_t wParam)
 {
-    if (wParam >= static_cast<std::uintptr_t>(KEY_COUNT)) return;
+    if (wParam >= static_cast<std::uintptr_t>(KEY_COUNT)) {
+        return;
+    }
     s_current[wParam] = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
 }
 
@@ -370,11 +397,14 @@ void Input::HandleTextInput(wchar_t character, std::uint32_t physicalKey)
     const bool gameText = core::Cursor::CanReadGameInput()
         && !input_detail::GameInputConsumptionState().MotionBlocked()
         && !input_detail::GameInputConsumptionState().KeyBlocked(physicalKey);
-    if (character < 0x20 && character != L'\n' && character != L'\r' && character != L'\b')
+    if (character < 0x20 && character != L'\n' && character != L'\r' && character != L'\b') {
         return;
+    }
     if (character == L'\b') {
         s_textInput.push_back('\b');
-        if (gameText) s_gameTextInput.push_back('\b');
+        if (gameText) {
+            s_gameTextInput.push_back('\b');
+        }
         return;
     }
 
@@ -383,7 +413,9 @@ void Input::HandleTextInput(wchar_t character, std::uint32_t physicalKey)
                                            static_cast<int>(sizeof(buffer)), nullptr, nullptr);
     if (count > 0) {
         s_textInput.append(buffer, static_cast<size_t>(count));
-        if (gameText) s_gameTextInput.append(buffer, static_cast<size_t>(count));
+        if (gameText) {
+            s_gameTextInput.append(buffer, static_cast<size_t>(count));
+        }
     }
 }
 
@@ -407,14 +439,18 @@ void Input::HandleMouseButton(unsigned int msg)
 
 bool Input::InjectKey(uint32_t virtualKey, bool pressed)
 {
-    if (virtualKey >= static_cast<uint32_t>(KEY_COUNT)) return false;
+    if (virtualKey >= static_cast<uint32_t>(KEY_COUNT)) {
+        return false;
+    }
     s_injectedKeys[virtualKey] = pressed;
     return true;
 }
 
 bool Input::InjectMouseButton(int button, bool pressed)
 {
-    if (button < 0 || button >= static_cast<int>(s_mouseCurrent.size())) return false;
+    if (button < 0 || button >= static_cast<int>(s_mouseCurrent.size())) {
+        return false;
+    }
     const size_t index = static_cast<size_t>(button);
     s_injectedMouseButtons[index] = pressed;
     const uint32_t virtualKey = button == 0 ? VK_LBUTTON : (button == 1 ? VK_RBUTTON : VK_MBUTTON);
@@ -443,7 +479,9 @@ void Input::InjectMouseScroll(float delta)
 
 bool Input::SetVirtualAxis(std::string_view name, float value)
 {
-    if (name.empty() || name.size() > 64 || !std::isfinite(value)) return false;
+    if (name.empty() || name.size() > 64 || !std::isfinite(value)) {
+        return false;
+    }
     s_virtualAxes[std::string(name)] = std::clamp(value, -1.0f, 1.0f);
     return true;
 }
@@ -456,7 +494,9 @@ float Input::GetVirtualAxis(std::string_view name)
 
 bool Input::SetVirtualButton(std::string_view name, bool pressed)
 {
-    if (name.empty() || name.size() > 64) return false;
+    if (name.empty() || name.size() > 64) {
+        return false;
+    }
     s_virtualButtons[std::string(name)] = pressed;
     return true;
 }
@@ -501,4 +541,4 @@ void Input::ClearInjected()
     s_gameTextInput.clear();
 }
 
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

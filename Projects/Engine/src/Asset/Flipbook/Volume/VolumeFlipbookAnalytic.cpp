@@ -29,9 +29,10 @@ struct Matrix3x3 {
     {
         Matrix3x3 out;
         for (int row = 0; row < 3; ++row)
-            for (int column = 0; column < 3; ++column)
+            for (int column = 0; column < 3; ++column) {
                 out.m[row][column] = m[row][0] * rhs.m[0][column] + m[row][1] * rhs.m[1][column]
                     + m[row][2] * rhs.m[2][column];
+            }
         return out;
     }
 
@@ -39,7 +40,9 @@ struct Matrix3x3 {
     {
         Matrix3x3 out = *this;
         for (auto& row : out.m)
-            for (float& value : row) value *= s;
+            for (float& value : row) {
+                value *= s;
+            }
         return out;
     }
 
@@ -47,7 +50,9 @@ struct Matrix3x3 {
     {
         Matrix3x3 out;
         for (int row = 0; row < 3; ++row)
-            for (int column = 0; column < 3; ++column) out.m[row][column] = m[column][row];
+            for (int column = 0; column < 3; ++column) {
+                out.m[row][column] = m[column][row];
+            }
         return out;
     }
 };
@@ -83,8 +88,10 @@ StretchFrame StretchAt(const VolumePuff& puff, float age)
     const float speed = velocity.Length();
     StretchFrame frame;
     frame.sigma = (std::max)(1.0f, puff.stretch + puff.stretchPerSpeed * speed);
-    /// @note 向きの符号は d·dᵀ に効かない。速さが 0 を跨ぐ瞬間に向きが飛んでも、stretch = 1 なら σ = 1 で形は連続する。
-    if (speed > 1.0e-6f) frame.direction = velocity / speed;
+    // 向きの符号は d·dᵀ に効かない。速さが 0 を跨ぐ瞬間に向きが飛んでも、stretch = 1 なら σ = 1 で形は連続する。
+    if (speed > 1.0e-6f) {
+        frame.direction = velocity / speed;
+    }
     return frame;
 }
 
@@ -97,8 +104,9 @@ Matrix3x3 StretchMatrix(const StretchFrame& frame, bool inverse)
     const float d[3] = { frame.direction.x, frame.direction.y, frame.direction.z };
     Matrix3x3 e;
     for (int row = 0; row < 3; ++row)
-        for (int column = 0; column < 3; ++column)
+        for (int column = 0; column < 3; ++column) {
             e.m[row][column] = (row == column ? across : 0.0f) + (along - across) * d[row] * d[column];
+        }
     return e;
 }
 
@@ -126,7 +134,9 @@ Matrix3x3 FlowMatrix(const VolumePuff& puff, float a0, float a1)
 
 float Envelope(const VolumePuff& puff, float age)
 {
-    if (age < 0.0f || age > puff.lifetime) return 0.0f;
+    if (age < 0.0f || age > puff.lifetime) {
+        return 0.0f;
+    }
     const float in = puff.fadeIn > 0.0f ? std::clamp(age / puff.fadeIn, 0.0f, 1.0f) : 1.0f;
     const float out = puff.fadeOut > 0.0f
         ? std::clamp((puff.lifetime - age) / puff.fadeOut, 0.0f, 1.0f) : 1.0f;
@@ -164,9 +174,10 @@ float Affine(const float (&row)[4], const math::Vector3& x)
 
 math::Vector3 PuffCenterAt(const VolumePuff& puff, float age)
 {
-    if (puff.drag < kMinDrag)
+    if (puff.drag < kMinDrag) {
         return puff.startCenter + puff.velocity * age + puff.acceleration * (0.5f * age * age);
-    /// @note c'' = g - k·c' の解。
+    }
+    // c'' = g - k·c' の解。
     const float k = puff.drag;
     const float decay = (1.0f - std::exp(-k * age)) / k;
     return puff.startCenter + puff.velocity * decay + puff.acceleration * ((age - decay) / k);
@@ -174,7 +185,9 @@ math::Vector3 PuffCenterAt(const VolumePuff& puff, float age)
 
 math::Vector3 PuffCenterVelocityAt(const VolumePuff& puff, float age)
 {
-    if (puff.drag < kMinDrag) return puff.velocity + puff.acceleration * age;
+    if (puff.drag < kMinDrag) {
+        return puff.velocity + puff.acceleration * age;
+    }
     const float k = puff.drag;
     const float decay = std::exp(-k * age);
     return puff.velocity * decay + puff.acceleration * ((1.0f - decay) / k);
@@ -193,7 +206,7 @@ float EvaluatePuffBodyDensity(const math::Vector3& bodyPosition, float noiseSeed
     const float amplitude = std::clamp(noise.amplitude * noiseScale, 0.0f, 1.0f);
     const math::Vector3 seedShift = { noiseSeedOffset, noiseSeedOffset * 1.31f, noiseSeedOffset * 0.73f };
     const float n = FbmNoise3D(bodyPosition * noise.frequency + seedShift, 4);
-    /// @note FBM の振幅合計は 0.9375。縁は最大 0.375 外へずれるので、|y| < 1.375 に収まる。
+    // FBM の振幅合計は 0.9375。縁は最大 0.375 外へずれるので、|y| < 1.375 に収まる。
     const float r = bodyPosition.Length() - amplitude * 0.4f * n;
     return Saturate(1.0f - SmoothStep(0.3f, 1.0f, r)) * Saturate(0.65f + 0.5f * n);
 }
@@ -202,7 +215,9 @@ std::uint32_t CountLiveVolumePuffs(std::span<const VolumePuff> puffs, float time
 {
     std::uint32_t count = 0;
     for (const VolumePuff& puff : puffs)
-        if (Envelope(puff, time - puff.birthTime) > 0.0f) ++count;
+        if (Envelope(puff, time - puff.birthTime) > 0.0f) {
+            ++count;
+        }
     return count;
 }
 
@@ -219,8 +234,12 @@ std::uint32_t PackVolumeFill(std::span<const VolumePuff> puffs, const VolumeNois
     for (const VolumePuff& puff : puffs) {
         const float age = time - puff.birthTime;
         const float envelope = Envelope(puff, age);
-        if (envelope <= 0.0f) continue;
-        if (out.puffs.size() >= kVolumeFillMaxPuffs) break;
+        if (envelope <= 0.0f) {
+            continue;
+        }
+        if (out.puffs.size() >= kVolumeFillMaxPuffs) {
+            break;
+        }
 
         VolumeFillPuffGpu& gpu = out.puffs.emplace_back();
         const math::Vector3 center = PuffCenterAt(puff, age);
@@ -233,13 +252,14 @@ std::uint32_t PackVolumeFill(std::span<const VolumePuff> puffs, const VolumeNois
             gpu.body[row][3] = -math::Vector3::Dot(b, center);
         }
 
-        /// @note 割線速度: x' = c1 + F (x - c0)  →  v = ((F - I) x + c1 - F c0) / Δ
+        // 割線速度: x' = c1 + F (x - c0)  →  v = ((F - I) x + c1 - F c0) / Δ
         const Matrix3x3 flow = FlowMatrix(puff, age, age + dt);
         const math::Vector3 flowCenter = flow.Apply(center);
         const math::Vector3 nextCenter = PuffCenterAt(puff, age + dt);
         for (int row = 0; row < 3; ++row) {
-            for (int column = 0; column < 3; ++column)
+            for (int column = 0; column < 3; ++column) {
                 gpu.velocity[row][column] = (flow.m[row][column] - (row == column ? 1.0f : 0.0f)) / dt;
+            }
         }
         gpu.velocity[0][3] = (nextCenter.x - flowCenter.x) / dt;
         gpu.velocity[1][3] = (nextCenter.y - flowCenter.y) / dt;
@@ -263,12 +283,14 @@ std::vector<VolumeBound> CollectVisibleVolumeBounds(std::span<const VolumePuff> 
     std::vector<VolumeBound> bounds;
     for (const VolumePuff& puff : puffs) {
         const float age = time - puff.birthTime;
-        /// @note フェードの裾で薄くなった puff は数えない。
-        if (Envelope(puff, age) * puff.density < 0.1f) continue;
-        /// @note 縁の揺らぎの半分までを «見える» とする (smoothstep(0.3, 1, r) の裾はほぼ透明)。
+        // フェードの裾で薄くなった puff は数えない。
+        if (Envelope(puff, age) * puff.density < 0.1f) {
+            continue;
+        }
+        // 縁の揺らぎの半分までを «見える» とする (smoothstep(0.3, 1, r) の裾はほぼ透明)。
         const float amplitude = std::clamp(noise.amplitude * puff.noiseScale, 0.0f, 1.0f);
         const float visibleBodyRadius = 1.0f + 0.2f * amplitude;
-        /// @note σ ≥ 1 なので最も伸びる向きは進行方向 (横は 1/√σ ≤ 1)。
+        // σ ≥ 1 なので最も伸びる向きは進行方向 (横は 1/√σ ≤ 1)。
         const float sigma = StretchAt(puff, age).sigma;
         bounds.push_back({ PuffCenterAt(puff, age), visibleBodyRadius * ScaleAt(puff, age) * puff.radius * sigma });
     }
@@ -287,9 +309,13 @@ VolumeSample SampleVolumeFill(const VolumeFillFrame& frame, const math::Vector3&
     for (std::size_t i = 0; i < count; ++i) {
         const VolumeFillPuffGpu& puff = frame.puffs[i];
         const math::Vector3 y = { Affine(puff.body[0], x), Affine(puff.body[1], x), Affine(puff.body[2], x) };
-        if (y.LengthSq() > puff.params[3] * puff.params[3]) continue;
+        if (y.LengthSq() > puff.params[3] * puff.params[3]) {
+            continue;
+        }
         const float density = puff.params[0] * EvaluatePuffBodyDensity(y, puff.params[2], noise, puff.look[2]);
-        if (density <= 0.0f) continue;
+        if (density <= 0.0f) {
+            continue;
+        }
         const math::Vector3 v = { Affine(puff.velocity[0], x), Affine(puff.velocity[1], x),
                                   Affine(puff.velocity[2], x) };
         densitySum += density;

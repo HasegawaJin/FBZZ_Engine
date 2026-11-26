@@ -24,7 +24,7 @@ std::string_view NavMeshDebugPass::Name() const { return "NavMeshDebug"; }
 
 void NavMeshDebugPass::Setup(renderer::PassBuilder& builder, const RenderPassContext&) const
 {
-    /// @note 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
     builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
@@ -76,17 +76,21 @@ math::Vector4 VoxelColor(NavMeshBakeCell cell)
 void ReserveLines(size_t vertexCount)
 {
     if (renderer::DebugDraw::PendingLineVertices() + vertexCount
-        > renderer::DebugDraw::MaxBatchVertices())
+        > renderer::DebugDraw::MaxBatchVertices()) {
         renderer::DebugDraw::Flush();
+    }
 }
 
 void ReserveFill(size_t polygonVertices)
 {
-    if (polygonVertices < 3) return;
+    if (polygonVertices < 3) {
+        return;
+    }
     const size_t needed = (polygonVertices - 2) * 3;
     if (renderer::DebugDraw::PendingTriangleVertices() + needed
-        > renderer::DebugDraw::MaxBatchVertices())
+        > renderer::DebugDraw::MaxBatchVertices()) {
         renderer::DebugDraw::Flush();
+    }
 }
 
 /// @note 内部エッジと同じ 1px の線では NavMesh の「穴」と単なる分割線が同じ絵になるため、外周だけ手前へ立ち上げて輪郭を読めるようにする (Recast のデバッグ表示と同様)。
@@ -102,11 +106,12 @@ void DrawBorderRim(renderer::IRenderer& r, const math::Vector3& a, const math::V
 
 bool EdgeHasPortal(const NavMeshPolygon& poly, const math::Vector3& a, const math::Vector3& b)
 {
-    /// @note 位置は Portal 構築時に同じ頂点配列からコピーされるので厳密一致で照合できる。
+    // 位置は Portal 構築時に同じ頂点配列からコピーされるので厳密一致で照合できる。
     for (const auto& portal : poly.portals) {
         if (portal.left.x == a.x && portal.left.z == a.z
-         && portal.right.x == b.x && portal.right.z == b.z)
+         && portal.right.x == b.x && portal.right.z == b.z) {
             return true;
+        }
     }
     return false;
 }
@@ -138,12 +143,14 @@ void DrawVisionFan(renderer::IRenderer& renderer, const math::Vector3& origin,
 {
     math::Vector3 fwd = forward;
     fwd.y = 0.0f;
-    if (fwd.LengthSq() < 0.0001f) fwd = math::Vector3::FORWARD;
+    if (fwd.LengthSq() < 0.0001f) {
+        fwd = math::Vector3::FORWARD;
+    }
     fwd = fwd.Normalized();
 
     const float halfAngleRad = std::clamp(angleDeg, 1.0f, 360.0f) * 0.5f * (3.14159265f / 180.0f);
 
-    /// @note Y 軸回りの回転 (左手系: +Z が前方)。
+    // Y 軸回りの回転 (左手系: +Z が前方)。
     auto rotateY = [](const math::Vector3& v, float rad) {
         const float c = std::cos(rad), s = std::sin(rad);
         return math::Vector3{ v.x * c + v.z * s, v.y, -v.x * s + v.z * c };
@@ -168,7 +175,9 @@ void DrawSurfacePlaceholder(RenderPassContext& ctx, EntityID eid,
                             const NavMeshSurfaceComponent& surface, const GameObject& go)
 {
     math::Vector4 color = { 1.0f, 0.55f, 0.05f, 0.85f };
-    if (surface.bakeState == NavMeshBakeState::Baking)      color = { 0.20f, 0.85f, 1.00f, 0.85f };
+    if (surface.bakeState == NavMeshBakeState::Baking) {
+        color = { 0.20f, 0.85f, 1.00f, 0.85f };
+    }
     else if (!surface.bakeStats.failReason.empty())         color = { 1.00f, 0.20f, 0.20f, 0.90f };
 
     if (surface.collectObjects == NavMeshCollectObjects::ThisObject) {
@@ -189,20 +198,29 @@ void DrawPolygons(RenderPassContext& ctx, const NavMeshSurfaceComponent& surface
     const NavMesh& navMesh = surface.navMesh;
 
     float fillAlpha = 0.40f;
-    if (mode == NavMeshDrawMode::Transparent) fillAlpha = 0.14f;
-    if (mode == NavMeshDrawMode::Portals)     fillAlpha = 0.08f;
+    if (mode == NavMeshDrawMode::Transparent) {
+        fillAlpha = 0.14f;
+    }
+    if (mode == NavMeshDrawMode::Portals) {
+        fillAlpha = 0.08f;
+    }
 
     std::vector<math::Vector3> lifted;
     for (const auto& poly : navMesh.Polygons()) {
         const math::Vector3 center = poly.Center();
-        if (maxDistanceSq > 0.0f && (center - cameraPos).LengthSq() > maxDistanceSq) continue;
+        if (maxDistanceSq > 0.0f && (center - cameraPos).LengthSq() > maxDistanceSq) {
+            continue;
+        }
 
         const size_t n = poly.vertices.size();
-        if (n < 3) continue;
+        if (n < 3) {
+            continue;
+        }
 
         lifted.resize(n);
-        for (size_t i = 0; i < n; ++i)
+        for (size_t i = 0; i < n; ++i) {
             lifted[i] = poly.vertices[i] + math::Vector3(0.0f, kLift, 0.0f);
+        }
 
         math::Vector4 fill = (mode == NavMeshDrawMode::Areas)
             ? kAreaFill[poly.areaType & 7]
@@ -231,7 +249,9 @@ void DrawPolygons(RenderPassContext& ctx, const NavMeshSurfaceComponent& surface
             const math::Vector3 from = center + math::Vector3(0.0f, kLift + 0.05f, 0.0f);
             for (const auto& portal : poly.portals) {
                 if (portal.neighbor < 0
-                 || portal.neighbor >= static_cast<int>(navMesh.Polygons().size())) continue;
+                 || portal.neighbor >= static_cast<int>(navMesh.Polygons().size())) {
+                    continue;
+                }
                 const math::Vector3 to =
                     navMesh.Polygons()[static_cast<size_t>(portal.neighbor)].Center()
                     + math::Vector3(0.0f, kLift + 0.05f, 0.0f);
@@ -261,14 +281,18 @@ void DrawVoxelGrid(RenderPassContext& ctx, const NavMeshBakeDebugGrid& grid,
     for (int z = minZ; z <= maxZ && budget > 0; ++z) {
         for (int x = minX; x <= maxX && budget > 0; ++x) {
             const NavMeshBakeCell state = grid.CellAt(x, z);
-            if (state == NavMeshBakeCell::NoSurface) continue;
+            if (state == NavMeshBakeCell::NoSurface) {
+                continue;
+            }
 
             const float h00 = grid.CornerAt(x,     z);
             const float h10 = grid.CornerAt(x + 1, z);
             const float h11 = grid.CornerAt(x + 1, z + 1);
             const float h01 = grid.CornerAt(x,     z + 1);
-            /// @note 角が 1 つでも欠けているセルは高さが確定しないので描かない。
-            if (h00 < -1.0e29f || h10 < -1.0e29f || h11 < -1.0e29f || h01 < -1.0e29f) continue;
+            // 角が 1 つでも欠けているセルは高さが確定しないので描かない。
+            if (h00 < -1.0e29f || h10 < -1.0e29f || h11 < -1.0e29f || h01 < -1.0e29f) {
+                continue;
+            }
 
             const float wx = grid.origin.x + x * grid.cellSize;
             const float wz = grid.origin.z + z * grid.cellSize;
@@ -284,7 +308,7 @@ void DrawVoxelGrid(RenderPassContext& ctx, const NavMeshBakeDebugGrid& grid,
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool NavMeshDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
@@ -293,7 +317,7 @@ bool NavMeshDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void NavMeshDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
 {
-    /// @note TAA 前の HDR 深度と同じ射影を使い、遮蔽と履歴の標本位置を揃える。
+    // TAA 前の HDR 深度と同じ射影を使い、遮蔽と履歴の標本位置を揃える。
     const auto viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, viewProjection);
 
@@ -306,8 +330,10 @@ void NavMeshDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshSurfaceComponent>()) {
             auto* surface = ctx.scene.GetComponent<NavMeshSurfaceComponent>(eid);
             auto* go      = ctx.scene.GetGameObject(eid);
-            /// @note 非アクティブな GO はベイクと経路探索からも外れるため、歩けない面を表示しない。
-            if (!surface || !go || !go->activeInHierarchy()) continue;
+            // 非アクティブな GO はベイクと経路探索からも外れるため、歩けない面を表示しない。
+            if (!surface || !go || !go->activeInHierarchy()) {
+                continue;
+            }
 
             if (surface->needsBake || !surface->navMesh.IsValid()) {
                 DrawSurfacePlaceholder(ctx, eid, *surface, *go);
@@ -320,27 +346,35 @@ void NavMeshDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
                                          surface->size * 0.5f, kBoundsColor);
             }
 
-            if (mode == NavMeshDrawMode::Voxels && surface->bakeDebug.IsValid())
+            if (mode == NavMeshDrawMode::Voxels && surface->bakeDebug.IsValid()) {
                 DrawVoxelGrid(ctx, surface->bakeDebug, cameraPos, drawDist);
-            else
+            }
+            else {
                 DrawPolygons(ctx, *surface, mode, cameraPos, maxDistSq);
+            }
 
             for (const auto& link : surface->navMesh.OffMeshLinks()) {
                 DrawLinkArc(ctx.renderer, link.posA, link.posB, kOffMeshColor);
-                if (!link.bidirectional)
+                if (!link.bidirectional) {
                     renderer::DebugDraw::Arrow(ctx.renderer, link.posA, link.posB,
                                                0.25f, 0.08f, kOffMeshColor);
+                }
             }
         }
 
         for (EntityID eid : ctx.scene.GetEntities<NavMeshAgentComponent>()) {
             auto* agent = ctx.scene.GetComponent<NavMeshAgentComponent>(eid);
             auto* go    = ctx.scene.GetGameObject(eid);
-            if (!agent || !go || !go->activeInHierarchy()) continue;
-            if (agent->isStuck)
+            if (!agent || !go || !go->activeInHierarchy()) {
+                continue;
+            }
+            if (agent->isStuck) {
                 renderer::DebugDraw::Sphere(ctx.renderer,
                     go->transform.worldPosition + math::Vector3::UP * 1.5f, 0.15f, kStuckColor);
-            if (agent->path.empty()) continue;
+            }
+            if (agent->path.empty()) {
+                continue;
+            }
             math::Vector3 prev = go->transform.worldPosition;
             for (size_t i = agent->currentWaypoint; i < agent->path.size(); ++i) {
                 ReserveLines(2);
@@ -353,8 +387,12 @@ void NavMeshDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshPatrolComponent>()) {
             auto* patrol = ctx.scene.GetComponent<NavMeshPatrolComponent>(eid);
             auto* go     = ctx.scene.GetGameObject(eid);
-            if (!patrol || !go || !go->activeInHierarchy()) continue;
-            if (patrol->waypoints.size() < 2) continue;
+            if (!patrol || !go || !go->activeInHierarchy()) {
+                continue;
+            }
+            if (patrol->waypoints.size() < 2) {
+                continue;
+            }
             const size_t count = patrol->mode == NavMeshPatrolComponent::Mode::LOOP
                 ? patrol->waypoints.size() : patrol->waypoints.size() - 1;
             for (size_t i = 0; i < count; ++i) {
@@ -370,14 +408,17 @@ void NavMeshDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshSensorComponent>()) {
             auto* sensor = ctx.scene.GetComponent<NavMeshSensorComponent>(eid);
             auto* go     = ctx.scene.GetGameObject(eid);
-            if (!sensor || !go || !sensor->enabled || !go->activeInHierarchy()) continue;
+            if (!sensor || !go || !sensor->enabled || !go->activeInHierarchy()) {
+                continue;
+            }
             const math::Vector4& color = sensor->targetVisible ? kDangerColor : kSafeColor;
             DrawVisionFan(ctx.renderer, go->transform.worldPosition, go->transform.forward,
                          sensor->viewAngleDeg, sensor->viewDistance, color);
             if (sensor->targetVisible) {
-                if (auto* targetGo = ctx.scene.GetGameObject(sensor->detectedTarget))
+                if (auto* targetGo = ctx.scene.GetGameObject(sensor->detectedTarget)) {
                     renderer::DebugDraw::Line(ctx.renderer, go->transform.worldPosition,
                                               targetGo->transform.worldPosition, kDangerColor);
+                }
             }
         }
     }
@@ -385,4 +426,4 @@ void NavMeshDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx)
     renderer::DebugDraw::Flush();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

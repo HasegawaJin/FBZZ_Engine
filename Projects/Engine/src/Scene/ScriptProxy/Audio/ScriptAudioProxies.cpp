@@ -39,12 +39,15 @@ audio::AudioManager* ActiveAudioManager()
 
 bool LoadSynthSpecFromPath(std::string_view path, audio::SynthSpec& out)
 {
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
     const std::string requested(path);
     const std::string resolved = asset::AssetManager::ResolveAssetPath(requested);
     asset::SynthAsset synth;
-    if (!asset::LoadSynthAssetFromFile(resolved.empty() ? requested : resolved, synth))
+    if (!asset::LoadSynthAssetFromFile(resolved.empty() ? requested : resolved, synth)) {
         return false;
+    }
     out = synth.spec;
     return true;
 }
@@ -54,7 +57,9 @@ bool LoadSynthSpecFromPath(std::string_view path, audio::SynthSpec& out)
 
 void HandOffPendingClip(audio::AudioManager& manager, uint32_t& slot, uint32_t clip)
 {
-    if (slot != 0) manager.ReleaseClip(slot);
+    if (slot != 0) {
+        manager.ReleaseClip(slot);
+    }
     slot = clip;
 }
 
@@ -65,13 +70,15 @@ void HandOffPendingClip(audio::AudioManager& manager, uint32_t& slot, uint32_t c
 void WarnMissingAudioSource(const Script* script, const char* api)
 {
     static std::unordered_set<std::string> reported;
-    /// @note m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
-    /// @note 直接は引けないため、公開されている scene プロキシ経由で取り出す。
+    // m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
+    // 直接は引けないため、公開されている scene プロキシ経由で取り出す。
     const GameObject* go = script ? script->scene.Self() : nullptr;
     std::string key = go ? go->name : std::string("<no object>");
     key += '/';
     key += api;
-    if (!reported.insert(key).second) return;
+    if (!reported.insert(key).second) {
+        return;
+    }
     FBZZ_LOG_WARN("audio.%s: '%s' に AudioSourceComponent がありません — この呼び出しは無視されます",
                   api, go ? go->name.c_str() : "<no object>");
 }
@@ -81,7 +88,9 @@ void WarnMissingAudioSource(const Script* script, const char* api)
 AudioSourceComponent* SelfAudioSource(const Script* script, const char* api)
 {
     auto* source = SelfComponent<AudioSourceComponent>(script);
-    if (!source) WarnMissingAudioSource(script, api);
+    if (!source) {
+        WarnMissingAudioSource(script, api);
+    }
     return source;
 }
 
@@ -91,8 +100,9 @@ void PushOneShot(AudioSourceComponent& source, AudioSourceComponent::OneShotRequ
 {
     if (source.m_pendingOneShots.size() >= AudioSourceComponent::MAX_PENDING_ONE_SHOTS) {
         if (request.clipId != 0) {
-            if (auto* manager = core::Application::Get().GetAudioManager())
+            if (auto* manager = core::Application::Get().GetAudioManager()) {
                 manager->ReleaseClip(request.clipId);
+            }
         }
         return;
     }
@@ -100,7 +110,7 @@ void PushOneShot(AudioSourceComponent& source, AudioSourceComponent::OneShotRequ
 }
 
 
-} /// @note namespace
+} // namespace
 bool ScriptAudioProxy::Preload(std::string_view clipPath) const
 {
     auto* manager = ActiveAudioManager();
@@ -121,7 +131,9 @@ bool ScriptAudioProxy::Preload(const AudioClipRef& clip) const
 void ScriptAudioProxy::Play() const
 {
     auto* audio = SelfAudioSource(script, "Play");
-    if (!audio) return;
+    if (!audio) {
+        return;
+    }
     if (audio->clipPath.empty()) {
         FBZZ_LOG_WARN("audio.Play(): Clip Path が未設定です (Inspector で指定するか "
                       "Play(path) を使ってください)");
@@ -137,7 +149,9 @@ void ScriptAudioProxy::Play() const
 void ScriptAudioProxy::Play(std::string_view clipPath) const
 {
     auto* audio = SelfAudioSource(script, "Play");
-    if (!audio) return;
+    if (!audio) {
+        return;
+    }
     audio->clipPath       = std::string(clipPath);
     audio->enabled        = true;
     audio->m_pendingPlay  = true;
@@ -155,7 +169,9 @@ void ScriptAudioProxy::Play(const AudioClipRef& clip) const
 void ScriptAudioProxy::Stop() const
 {
     auto* audio = SelfAudioSource(script, "Stop");
-    if (!audio) return;
+    if (!audio) {
+        return;
+    }
     audio->m_pendingStop   = true;
     audio->m_pendingPlay   = false;
     audio->m_pendingPause  = false;
@@ -166,7 +182,9 @@ void ScriptAudioProxy::Stop() const
 void ScriptAudioProxy::Pause() const
 {
     auto* audio = SelfAudioSource(script, "Pause");
-    if (!audio) return;
+    if (!audio) {
+        return;
+    }
     audio->m_pendingPause  = true;
     audio->m_pendingPlay   = false;
     audio->m_pendingResume = false;
@@ -176,7 +194,9 @@ void ScriptAudioProxy::Pause() const
 void ScriptAudioProxy::Resume() const
 {
     auto* audio = SelfAudioSource(script, "Resume");
-    if (!audio) return;
+    if (!audio) {
+        return;
+    }
     audio->m_pendingResume = true;
     audio->m_pendingPause  = false;
 }
@@ -184,15 +204,17 @@ void ScriptAudioProxy::Resume() const
 
 void ScriptAudioProxy::SetVolume(float v) const
 {
-    if (auto* audio = SelfAudioSource(script, "SetVolume"))
+    if (auto* audio = SelfAudioSource(script, "SetVolume")) {
         audio->volume = std::clamp(v, 0.0f, 1.0f);
+    }
 }
 
 
 void ScriptAudioProxy::SetLoop(bool loop) const
 {
-    if (auto* audio = SelfAudioSource(script, "SetLoop"))
+    if (auto* audio = SelfAudioSource(script, "SetLoop")) {
         audio->loop = loop;
+    }
 }
 
 
@@ -212,8 +234,9 @@ float ScriptAudioProxy::GetVolume() const
 
 void ScriptAudioProxy::SetPitch(float pitch) const
 {
-    if (auto* audio = SelfAudioSource(script, "SetPitch"))
+    if (auto* audio = SelfAudioSource(script, "SetPitch")) {
         audio->pitch = std::clamp(pitch, 0.01f, 4.0f);
+    }
 }
 
 
@@ -240,8 +263,9 @@ bool ScriptAudioProxy::IsPaused() const
 
 void ScriptAudioProxy::SetSpatialBlend(float blend) const
 {
-    if (auto* audio = SelfAudioSource(script, "SetSpatialBlend"))
+    if (auto* audio = SelfAudioSource(script, "SetSpatialBlend")) {
         audio->spatialBlend = std::clamp(blend, 0.0f, 1.0f);
+    }
 }
 
 
@@ -265,7 +289,9 @@ void ScriptAudioProxy::Set3DDistances(float minDistance, float maxDistance, floa
 void ScriptAudioProxy::PlayOneShot(std::string_view clipPath, float volumeScale) const
 {
     auto* audio = SelfAudioSource(script, "PlayOneShot");
-    if (!audio || clipPath.empty()) return;
+    if (!audio || clipPath.empty()) {
+        return;
+    }
     AudioSourceComponent::OneShotRequest request;
     request.path        = std::string(clipPath);
     request.volumeScale = (std::max)(volumeScale, 0.0f);
@@ -319,7 +345,9 @@ SynthClip ScriptAudioProxy::Synthesize(audio::SynthPreset preset, uint32_t seed)
 
 void ScriptAudioProxy::ReleaseClip(SynthClip clip) const
 {
-    if (auto* manager = ActiveAudioManager()) manager->ReleaseClip(clip.id);
+    if (auto* manager = ActiveAudioManager()) {
+        manager->ReleaseClip(clip.id);
+    }
 }
 
 
@@ -327,8 +355,10 @@ void ScriptAudioProxy::PlayClip(SynthClip clip) const
 {
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "PlayClip");
-    if (!manager || !audio || !clip.IsValid()) return;
-    /// @note 要求が参照を 1 つ握る。AudioSystem が再生後に手放す。
+    if (!manager || !audio || !clip.IsValid()) {
+        return;
+    }
+    // 要求が参照を 1 つ握る。AudioSystem が再生後に手放す。
     manager->AddClipRef(clip.id);
     AudioSourceComponent::OneShotRequest request;
     request.clipId = clip.id;
@@ -340,7 +370,9 @@ void ScriptAudioProxy::PlayClipAsSource(SynthClip clip) const
 {
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "PlayClipAsSource");
-    if (!manager || !audio || !clip.IsValid()) return;
+    if (!manager || !audio || !clip.IsValid()) {
+        return;
+    }
     manager->AddClipRef(clip.id);
     HandOffPendingClip(*manager, audio->m_pendingClipId, clip.id);
     audio->enabled        = true;
@@ -353,10 +385,14 @@ void ScriptAudioProxy::PlaySynth(const audio::SynthSpec& spec) const
 {
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "PlaySynth");
-    if (!manager || !audio) return;
-    /// @note AcquireGeneratedClip が返す参照をそのまま要求へ譲る。
+    if (!manager || !audio) {
+        return;
+    }
+    // AcquireGeneratedClip が返す参照をそのまま要求へ譲る。
     const uint32_t clip = manager->AcquireGeneratedClip(spec);
-    if (clip == 0) return;
+    if (clip == 0) {
+        return;
+    }
     AudioSourceComponent::OneShotRequest request;
     request.clipId = clip;
     PushOneShot(*audio, std::move(request));
@@ -372,11 +408,15 @@ void ScriptAudioProxy::PlaySynth(audio::SynthPreset preset, uint32_t seed) const
 void ScriptAudioProxy::PlaySynth2D(const audio::SynthSpec& spec, std::string_view bus) const
 {
     auto* manager = ActiveAudioManager();
-    if (!manager) return;
+    if (!manager) {
+        return;
+    }
     const uint32_t clip = manager->AcquireGeneratedClip(spec);
-    if (clip == 0) return;
+    if (clip == 0) {
+        return;
+    }
     (void)manager->PlayClipVoice(clip, false, manager->FindBus(bus));
-    /// @note 再生中は voice 側が実体を押さえる。ここでの参照はもう要らない。
+    // 再生中は voice 側が実体を押さえる。ここでの参照はもう要らない。
     manager->ReleaseClip(clip);
 }
 
@@ -384,7 +424,9 @@ void ScriptAudioProxy::PlaySynth2D(const audio::SynthSpec& spec, std::string_vie
 void ScriptAudioProxy::PlayClip2D(SynthClip clip, std::string_view bus) const
 {
     auto* manager = ActiveAudioManager();
-    if (!manager || !clip.IsValid()) return;
+    if (!manager || !clip.IsValid()) {
+        return;
+    }
     (void)manager->PlayClipVoice(clip.id, false, manager->FindBus(bus));
 }
 
@@ -393,14 +435,16 @@ void ScriptAudioProxy::PlayAtPoint(std::string_view clipPath, const math::Vector
                                    float volume) const
 {
     auto* manager = ActiveAudioManager();
-    if (!manager || clipPath.empty()) return;
+    if (!manager || clipPath.empty()) {
+        return;
+    }
 
     audio::AudioManager::PositionalRequest request;
     request.path   = std::string(clipPath);
     request.volume = (std::max)(volume, 0.0f);
     request.x = position.x; request.y = position.y; request.z = position.z;
-    /// @note 自 GameObject に AudioSource があれば、その 3D 設定を引き継ぐ (無ければ既定値)。
-    /// @note «同じ銃の弾着音» を発生源の減衰カーブと揃えたい場合が普通なので設定を流用する。
+    // 自 GameObject に AudioSource があれば、その 3D 設定を引き継ぐ (無ければ既定値)。
+    // «同じ銃の弾着音» を発生源の減衰カーブと揃えたい場合が普通なので設定を流用する。
     if (const auto* source = SelfComponent<AudioSourceComponent>(script)) {
         request.minDistance   = source->minDistance;
         request.maxDistance   = source->maxDistance;
@@ -426,7 +470,9 @@ void ScriptAudioProxy::PlayClipAtPoint(SynthClip clip, const math::Vector3& posi
                                        float volume) const
 {
     auto* manager = ActiveAudioManager();
-    if (!manager || !clip.IsValid()) return;
+    if (!manager || !clip.IsValid()) {
+        return;
+    }
 
     manager->AddClipRef(clip.id);
     audio::AudioManager::PositionalRequest request;
@@ -449,8 +495,9 @@ void ScriptAudioProxy::PlayClipAtPoint(SynthClip clip, const math::Vector3& posi
 
 void ScriptAudioProxy::PlayBGM(std::string_view clipPath, bool loop, float fadeSeconds) const
 {
-    if (auto* manager = ActiveAudioManager())
+    if (auto* manager = ActiveAudioManager()) {
         manager->PlayBGM(std::string(clipPath), loop, (std::max)(fadeSeconds, 0.0f));
+    }
 }
 
 
@@ -462,7 +509,9 @@ void ScriptAudioProxy::PlayBGM(const AudioClipRef& clip, bool loop, float fadeSe
 
 void ScriptAudioProxy::StopBGM(float fadeSeconds) const
 {
-    if (auto* manager = ActiveAudioManager()) manager->StopBGM((std::max)(fadeSeconds, 0.0f));
+    if (auto* manager = ActiveAudioManager()) {
+        manager->StopBGM((std::max)(fadeSeconds, 0.0f));
+    }
 }
 
 
@@ -470,7 +519,9 @@ void ScriptAudioProxy::FadeTo(float gain, float seconds) const
 {
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "FadeTo");
-    if (!manager || !audio || audio->m_voiceId == 0) return;
+    if (!manager || !audio || audio->m_voiceId == 0) {
+        return;
+    }
     manager->FadeVoice(audio->m_voiceId, gain, (std::max)(seconds, 0.0f));
 }
 
@@ -479,9 +530,11 @@ void ScriptAudioProxy::FadeOutAndStop(float seconds) const
 {
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "FadeOutAndStop");
-    if (!manager || !audio || audio->m_voiceId == 0) return;
+    if (!manager || !audio || audio->m_voiceId == 0) {
+        return;
+    }
     manager->FadeOutAndStop(audio->m_voiceId, (std::max)(seconds, 0.0f));
-    /// @note ハンドルはこの時点で AudioManager 側の持ち物になる。
+    // ハンドルはこの時点で AudioManager 側の持ち物になる。
     audio->m_voiceId   = 0;
     audio->m_isPlaying = false;
     audio->m_isPaused  = false;
@@ -497,15 +550,16 @@ bool ScriptAudioProxy::IsBGMPlaying() const
 
 void ScriptAudioProxy::SetBus(std::string_view bus) const
 {
-    if (auto* audio = SelfAudioSource(script, "SetBus"))
+    if (auto* audio = SelfAudioSource(script, "SetBus")) {
         audio->busName = std::string(bus);
+    }
 }
 
 
 std::string_view ScriptAudioProxy::GetBus() const
 {
-    /// @note 参照先は AudioSourceComponent が所有する文字列。呼び出し側が SetBus を
-    /// @note 挟まない限り有効で、コピーを返さずに済む。
+    // 参照先は AudioSourceComponent が所有する文字列。呼び出し側が SetBus を
+    // 挟まない限り有効で、コピーを返さずに済む。
     const auto* audio = SelfComponent<AudioSourceComponent>(script);
     return audio ? std::string_view(audio->busName) : std::string_view{};
 }
@@ -513,7 +567,9 @@ std::string_view ScriptAudioProxy::GetBus() const
 
 void ScriptAudioProxy::SetBusVolume(std::string_view bus, float volume) const
 {
-    if (auto* manager = ActiveAudioManager()) manager->SetBusVolume(bus, volume);
+    if (auto* manager = ActiveAudioManager()) {
+        manager->SetBusVolume(bus, volume);
+    }
 }
 
 
@@ -526,8 +582,10 @@ float ScriptAudioProxy::GetBusVolume(std::string_view bus) const
 
 void ScriptAudioProxy::SetBusLowPass(std::string_view bus, float normalizedCutoff) const
 {
-    if (auto* manager = ActiveAudioManager()) manager->SetBusLowPass(bus, normalizedCutoff);
+    if (auto* manager = ActiveAudioManager()) {
+        manager->SetBusLowPass(bus, normalizedCutoff);
+    }
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

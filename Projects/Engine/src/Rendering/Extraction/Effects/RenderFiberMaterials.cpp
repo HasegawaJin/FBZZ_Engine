@@ -22,8 +22,9 @@ void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset
     const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
     const auto* values = snapshot ? &snapshot->Data() : nullptr;
     if (values) {
-        if (const auto it = values->textures.find(asset::FIBER_MASK_TEXTURE_KEY); it != values->textures.end())
+        if (const auto it = values->textures.find(asset::FIBER_MASK_TEXTURE_KEY); it != values->textures.end()) {
             path = it->second;
+        }
     }
     ResolveFiberMaskTexture(settings, path, resources, slot);
 }
@@ -31,13 +32,15 @@ void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset
 void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::string& path,
     renderer::ResourceManager& resources, FiberMaskSlot& slot)
 {
-    /// @note 毎フレーム利用権を更新する。読込失敗は resolver が保持し、同期 I/O を繰り返さない。
+    // 毎フレーム利用権を更新する。読込失敗は resolver が保持し、同期 I/O を繰り返さない。
     {
         slot.m_path = path;
         slot.m_texture = path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, path);
     }
     const renderer::ITexture* texture = resources.Get(slot.m_texture);
-    if (!texture) texture = resources.Get(resources.GetWhiteTexture());
+    if (!texture) {
+        texture = resources.Get(resources.GetWhiteTexture());
+    }
     settings.m_maskIndex = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
 }
 
@@ -48,7 +51,9 @@ const FiberMaterialEntry& GetFiberMaterial(FiberResources& cache, renderer::Reso
     const std::string& path)
 {
     auto& materialEntry = cache.m_materials[path];
-    if (materialEntry.m_frame == Time::frameCount) return materialEntry;
+    if (materialEntry.m_frame == Time::frameCount) {
+        return materialEntry;
+    }
     materialEntry.m_frame = Time::frameCount;
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     const auto authoringSnapshot = asset::ReadMaterialAuthoring(handle);
@@ -82,11 +87,12 @@ asset::FiberMaterialSettings ApplyFiberOverrides(const asset::FiberMaterialSetti
     settings.m_length = std::clamp(baseSettings.m_length * scale(fiber.m_lengthScale), 0.0f, 2.0f);
     settings.m_density = std::clamp(baseSettings.m_density * scale(fiber.m_densityScale), 0.0f, 1.0f);
     settings.m_clumping = std::clamp(baseSettings.m_clumping * scale(fiber.m_clumpingScale), 0.0f, 1.0f);
-    if (!fiber.m_maskPath.empty())
+    if (!fiber.m_maskPath.empty()) {
         ResolveFiberMaskTexture(settings, fiber.m_maskPath, resources, cache.m_maskOverrides[fiber.m_maskPath]);
+    }
     return settings;
 }
 
-} /// @note namespace fiber_extraction_detail
+} // namespace fiber_extraction_detail
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -18,14 +18,14 @@
 namespace fbzz::asset {
 
 struct SubmeshEntry {
-    uint32_t                        materialSlotIndex = 0;
-    std::string                     name;
-    std::unique_ptr<renderer::Mesh> mesh;
+    uint32_t                        materialSlotIndex = 0; ///< サブメッシュの描画に使うモデル内の材質スロット番号。
+    std::string                     name; ///< 同じ LOD 内でこのサブメッシュを照合する名前。
+    std::unique_ptr<renderer::Mesh> mesh; ///< このサブメッシュの GPU 描画メッシュを所有するポインター。
 };
 
 struct LodLevel {
-    float                    screenSizeThreshold = 0.0f; ///< @note 0.0 = 常時使用
-    std::vector<SubmeshEntry> submeshes;
+    float                    screenSizeThreshold = 0.0f; ///< 0.0 = 常時使用
+    std::vector<SubmeshEntry> submeshes; ///< この LOD に含まれるメッシュと材質の対応列。
 };
 
 struct ModelAsset {
@@ -39,21 +39,19 @@ struct ModelAsset {
     ModelAsset(ModelAsset&&)                 = default;
     ModelAsset& operator=(ModelAsset&&)      = default;
 
-    /// @note lods[0] が最高品質。常に 1 以上存在する。
-    std::vector<LodLevel>          lods;
-    /// @note マテリアルスロット名。Scene/Prefab で実際の .mat に束縛する。
-    std::vector<std::string>       materialSlotNames;
-    std::unique_ptr<Skeleton>      skeleton; ///< @note nullptr = 静的メッシュ
+    std::vector<LodLevel>          lods; ///< lods[0] が最高品質。常に 1 以上存在する。
+    std::vector<std::string>       materialSlotNames; ///< マテリアルスロット名。Scene/Prefab で実際の .mat に束縛する。
+    std::unique_ptr<Skeleton>      skeleton; ///< nullptr = 静的メッシュ
 
     /// @note DCC のノード階層。meshIndices は lods[0].submeshes の添字を指す。
     /// @note 空 = ノード情報なし (v3 以前のベイク)。この場合は「全 submesh を 1 GameObject」
     /// @note という従来の解釈へフォールバックする。
-    std::vector<ModelNode>         nodes;
-    int                            rootNodeIndex = -1;
+    std::vector<ModelNode>         nodes; ///< モデルの親子階層・ローカル姿勢・メッシュ割り当てを表すノード配列。
+    int                            rootNodeIndex = -1; ///< nodes 内のルートの添字。-1 は階層なし。
     /// @note nodes の localTranslation/Rotation/Scale が既に頂点へ焼き込まれているか。
     /// @note true の場合、配置側は Transform へ代入してはならない (二重変換になる)。
     /// @note 詳細は FzModelFormat.hpp の FZMODEL_FLAG_NODE_TRANSFORMS_BAKED を参照。
-    bool                           nodeTransformsBaked = true;
+    bool                           nodeTransformsBaked = true; ///< 階層のノード変換をメッシュ頂点に焼き込み済みか。
 
     bool IsSkinned()   const { return skeleton != nullptr; }
     uint32_t LodCount() const { return static_cast<uint32_t>(lods.size()); }
@@ -66,9 +64,11 @@ struct ModelAsset {
     {
         for (uint32_t i = 0; i < LodCount(); ++i)
             for (const SubmeshEntry& submesh : lods[i].submeshes)
-                if (submesh.mesh) return i;
+                if (submesh.mesh) {
+                    return i;
+                }
         return LodCount();
     }
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

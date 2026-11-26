@@ -26,4 +26,4 @@ private:
     bool m_ownsTimeScale = false;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

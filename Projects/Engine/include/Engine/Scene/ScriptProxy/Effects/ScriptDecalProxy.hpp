@@ -18,14 +18,14 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptDecalProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< デカール操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name 配置
     /// @{
     /// @brief レイキャストの当たり点と法線へ痕を 1 枚置く。DecalComponent が無くても呼べる。
-    /// @param point,normal 当たり点・受け面の法線 (ともにワールド)。normal は長さ 0 なら上向き
-    /// @param materialPath render_path = "decal" の .mat。空文字列で組み込み経路
-    /// @param size,lifetime,depth,rollDegrees 一辺[m]・寿命[秒](<0で永続)・投影厚み[m]・
+    /// @param[in] point,normal 当たり点・受け面の法線 (ともにワールド)。normal は長さ 0 なら上向き
+    /// @param[in] materialPath render_path = "decal" の .mat。空文字列で組み込み経路
+    /// @param[in] size,lifetime,depth,rollDegrees 一辺[m]・寿命[秒](<0で永続)・投影厚み[m]・
     /// @note 法線まわりの回転[度]
     /// @return 置いたデカールの参照。作れなければ無効な EntityRef (runtimeGenerated で非保存)
     [[nodiscard]] FBZZ_ENGINE_API EntityRef Spawn(const math::Vector3& point,
@@ -55,8 +55,8 @@ struct ScriptDecalProxy {
     FBZZ_ENGINE_API void SetOpacity(float opacity) const;
 
     /// @note 受け面が投影軸から傾くほど薄くする度合い。
-    /// @param strength 0 でフェードなし、1 で最大
-    /// @param limitDegrees これ以上寝た面では完全に消える [0, 89]
+    /// @param[in] strength 0 でフェードなし、1 で最大
+    /// @param[in] limitDegrees これ以上寝た面では完全に消える [0, 89]
     FBZZ_ENGINE_API void SetAngleFade(float strength, float limitDegrees) const;
 
     /// @note デカールを受け取るレイヤーのビットマスク。
@@ -104,4 +104,4 @@ struct ScriptDecalProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetEffectiveOpacity() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

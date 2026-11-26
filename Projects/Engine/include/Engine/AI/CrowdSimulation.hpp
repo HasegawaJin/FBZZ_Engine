@@ -155,11 +155,19 @@ private:
                           CrowdStats&, CrowdWorkspace&);
 };
 
-/// @brief Scene に触れず、処理量を制限した判断と連続的な移動を 1 回ずつ行う。
+/// @brief 独立したスナップショットに対し、回数制限付きの判断と脅威回避を含む連続的な移動を 1 回行う。
+/// @param[in] settings 生息域と観測者のワールド座標、更新間隔 [s]、判断予算。
+/// @param[in] profiles 個体が添字で参照する操舵プロファイル。
+/// @param[in] agents 更新前の個体をスロット順に並べたスナップショット。
+/// @param[in] threats 位置・半径・強度と記憶時間を持つワールド空間の脅威。
+/// @param[in] obstacles 回避対象とするワールド空間の障害物球。
+/// @param[out] output 更新後の個体を先頭から入力順に格納する。書き込み範囲は agents と重ねない。
+/// @param[out] stats この更新での処理件数、運動の最大値、次回の判断開始位置。
+/// @param[in,out] workspace 呼び出し側が所有し、バッチをまたいで一時領域の容量を再利用する。
 /// @return 不正な入力や同じ領域を参照する入出力では false を返し、出力と統計は変更しない。
 /// @note 判断の上限は決定的な処理回数で指定する。脅威回避の操舵は上限の対象外。
-/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-mass-gameplay-in-unreal-engine
-/// @see https://www.red3d.com/cwr/boids/
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-mass-gameplay-in-unreal-engine Unreal Engine の MassGameplay 概要
+/// @see https://www.red3d.com/cwr/boids/ Craig Reynolds, Boids
 [[nodiscard]] FBZZ_ENGINE_API bool StepCrowd(const CrowdSettings& settings, std::span<const CrowdProfile> profiles,
                              std::span<const CrowdAgent> agents, std::span<const CrowdThreat> threats,
                              std::span<const CrowdObstacle> obstacles, std::span<CrowdAgent> output,

@@ -37,7 +37,7 @@ FBZZ_ENGINE_API void UpdateParticleCpuSimulation(Scene& scene, physics::World& w
                                                   const Transform& transform, float deltaTime);
 
 /// @brief 一時シーンの Emitter を指定 FPS・周期数だけ再生し、粒子と Atlas の可視範囲が空になるフレームを数える。
-/// @param frameCoverage Atlas 各コマの可視画素率。空なら粒子の有無だけを検査する。
+/// @param[in] frameCoverage Atlas 各コマの可視画素率。空なら粒子の有無だけを検査する。
 /// @pre scene と emitter はこの検査専用で、実シーンの再生状態を渡さない。
 [[nodiscard]] FBZZ_ENGINE_API bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
                                               GameObject& gameObject, ParticleEmitter& emitter,
@@ -52,4 +52,4 @@ FBZZ_ENGINE_API void ScrubParticleEmitterForEditor(Scene& scene, physics::World&
                                    GameObject& gameObject, ParticleEmitter& emitter,
                                    float targetTime, float time);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

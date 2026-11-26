@@ -18,12 +18,12 @@ class Script;
 class GameObject;
 
 struct Ray {
-    math::Vector3 origin;
-    math::Vector3 direction;
+    math::Vector3 origin; ///< カメラから作成したレイのワールド原点 [m]。
+    math::Vector3 direction; ///< カメラから作成したレイのワールド方向。
 };
 
 struct ScriptCameraProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< カメラ操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetAsMain() const;
     FBZZ_ENGINE_API void SetFOV(float fovY) const;
@@ -66,4 +66,4 @@ struct ScriptCameraProxy {
     FBZZ_ENGINE_API Ray   ScreenPointToRay(float screenX, float screenY) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

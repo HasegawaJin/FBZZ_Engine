@@ -13,7 +13,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptMeshTrailProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< メッシュ残像操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief Mesh / SkinnedMesh の形状残像を切り替える。
     /// @note ダッシュ中や攻撃中だけオブジェクト形状の残像を出す用途を Script から簡潔に書ける。
@@ -51,4 +51,4 @@ struct ScriptMeshTrailProxy {
     [[nodiscard]] FBZZ_ENGINE_API int   GetSampleCount() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

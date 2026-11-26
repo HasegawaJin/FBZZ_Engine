@@ -28,7 +28,7 @@ std::string MiB(std::uint64_t bytes)
     return std::to_string((bytes + kMiB - 1) / kMiB) + " MiB";
 }
 
-} /// @note namespace
+} // namespace
 
 FluidBakeBudget EstimateFluidBakeBudget(const fluid::FluidRecipe& source)
 {
@@ -39,11 +39,13 @@ FluidBakeBudget EstimateFluidBakeBudget(const fluid::FluidRecipe& source)
     const std::uint64_t supersample = static_cast<std::uint64_t>(recipe.output.supersampling);
     FluidBakeBudget budget;
     budget.atlasPixels = pixels;
-    /// @note コマの float RGBA/MV、Atlas の色/MV/被覆と超解像の作業画像を同時に保持する。
+    // コマの float RGBA/MV、Atlas の色/MV/被覆と超解像の作業画像を同時に保持する。
     budget.cpuBytes = pixels * (recipe.output.motionVectors ? 48ull : 32ull)
         + tile * tile * supersample * supersample * 32ull;
     budget.diskBytes = pixels * (recipe.output.motionVectors ? 20ull : 10ull);
-    if (recipe.output.vectorField) budget.cpuBytes += 64ull * 64ull * 64ull * 32ull;
+    if (recipe.output.vectorField) {
+        budget.cpuBytes += 64ull * 64ull * 64ull * 32ull;
+    }
     return budget;
 }
 
@@ -57,7 +59,7 @@ FluidBakeBudget EstimateVolumeBakeBudget(const VolumeFlipbookBakeSettings& setti
     const std::uint64_t maps = settings.sixWayLightmaps ? 4ull : 0ull;
     FluidBakeBudget budget;
     budget.atlasPixels = pixels;
-    /// @note Atlas の 8bit 出力、float の動き/被覆、ループ先頭の HDR タイルを含む概算。
+    // Atlas の 8bit 出力、float の動き/被覆、ループ先頭の HDR タイルを含む概算。
     budget.cpuBytes = pixels * (28ull + maps * 8ull)
         + tile * tile * (std::min)(frames / 2, 32ull) * (32ull + maps * 16ull);
     const std::uint64_t supersampling = static_cast<std::uint64_t>((std::max)(settings.supersampling, 1));
@@ -86,7 +88,7 @@ bool ValidateFluidBakeBudget(const FluidBakeBudget& budget,
     }
     std::error_code error;
     const auto space = std::filesystem::space(outputDirectory, error);
-    /// @note 旧出力と仮出力を同時に保持するため、新しい出力の 2 倍を予約する。
+    // 旧出力と仮出力を同時に保持するため、新しい出力の 2 倍を予約する。
     if (!error && budget.diskBytes * 2ull > space.available) {
         outError = "Bake の推定ディスク使用量 " + MiB(budget.diskBytes * 2ull)
             + " に対して空き容量 " + MiB(space.available) + " が不足しています";
@@ -95,4 +97,4 @@ bool ValidateFluidBakeBudget(const FluidBakeBudget& budget,
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

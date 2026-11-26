@@ -25,4 +25,4 @@ namespace fbzz::asset {
 /// @note (コマ数やタイルは [output] の値を触らない)。
 FBZZ_ENGINE_API void StoreVolumeBakeSettings(const VolumeFlipbookBakeSettings& settings, fluid::FluidRecipe& recipe);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

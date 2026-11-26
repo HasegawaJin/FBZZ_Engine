@@ -23,8 +23,7 @@ struct ProceduralMeshComponentGpuState {
 struct ProceduralMeshComponent : TransientGpuState<ProceduralMeshComponentGpuState> {
     bool enabled = true;
 
-    /// @note 形の正本。スクリプトが直接書き換えてよい。
-    MeshBuilder builder;
+    MeshBuilder builder; ///< 形の正本。スクリプトが直接書き換えてよい。
 
     /// @note 差し込むマテリアル。空文字列なら MaterialComponent に触らない
     /// @note (Inspector で別のマテリアルを付けたい場合はこちらを空にする)。

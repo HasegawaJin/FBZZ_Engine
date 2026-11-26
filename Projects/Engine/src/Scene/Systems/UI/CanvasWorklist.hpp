@@ -20,9 +20,13 @@ inline std::vector<EntityID> CollectCanvasEntities(Scene& scene)
     for (const auto id : scene.GetEntities<UICanvas>()) {
         const auto* object = scene.GetGameObject(id);
         const auto* canvas = scene.GetComponent<UICanvas>(id);
-        if (object && object->activeInHierarchy() && canvas && canvas->enabled) entities.push_back(id);
+        if (object && object->activeInHierarchy() && canvas && canvas->enabled) {
+            entities.push_back(id);
+        }
     }
-    if (entities.size() < 2) return entities;
+    if (entities.size() < 2) {
+        return entities;
+    }
 
     struct OrderedCanvas {
         EntityID entity;
@@ -45,20 +49,28 @@ inline std::vector<EntityID> CollectCanvasEntities(Scene& scene)
         std::reverse(entry.path.begin(), entry.path.end());
         ordered.push_back(std::move(entry));
     }
-    /// @note 解決不能な親を持つ個体をルートに含めないよう、Scene のルート列から所属と順序を確定する。
+    // 解決不能な親を持つ個体をルートに含めないよう、Scene のルート列から所属と順序を確定する。
     size_t rootOrder = 0;
     for (const auto* root : scene.GetRootGameObjects()) {
-        if (const auto found = rootOrders.find(root); found != rootOrders.end()) found->second = rootOrder++;
+        if (const auto found = rootOrders.find(root); found != rootOrders.end()) {
+            found->second = rootOrder++;
+        }
     }
-    for (auto& entry : ordered) entry.rootOrder = rootOrders.find(entry.root)->second;
+    for (auto& entry : ordered) {
+        entry.rootOrder = rootOrders.find(entry.root)->second;
+    }
     std::erase_if(ordered, [](const auto& entry) { return entry.rootOrder == SIZE_MAX; });
-    /// @note 同じルートでは、親の短いキーを子孫のキーより前に置いて深さ優先順を再現する。
+    // 同じルートでは、親の短いキーを子孫のキーより前に置いて深さ優先順を再現する。
     std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
-        if (a.rootOrder != b.rootOrder) return a.rootOrder < b.rootOrder;
+        if (a.rootOrder != b.rootOrder) {
+            return a.rootOrder < b.rootOrder;
+        }
         return a.path < b.path;
     });
     entities.clear();
-    for (const auto& entry : ordered) entities.push_back(entry.entity);
+    for (const auto& entry : ordered) {
+        entities.push_back(entry.entity);
+    }
     return entities;
 }
 }

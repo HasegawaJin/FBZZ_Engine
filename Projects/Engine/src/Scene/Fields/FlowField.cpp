@@ -13,9 +13,9 @@ void ReflectFlowFieldList(IReflector& r, std::vector<FlowFieldSettings>& forces,
 {
     r.BeginField(key, displayName);
     const std::size_t count = r.BeginObjectList(displayName, forces.size());
-    /// @note @note 保存キーはリスト自身の分で使い切る。戻さずに要素へ入ると、FlowFieldSettings::Reflect
-    ///       が並べる Field が全部この key を指す ── 書けば先勝ちで 1 個目以外が黙って捨てられ、
-    ///       読めば全部が既定値のまま残る。どちらもエラーは出ない。
+    // @note 保存キーはリスト自身の分で使い切る。戻さずに要素へ入ると、FlowFieldSettings::Reflect
+    //       が並べる Field が全部この key を指す ── 書けば先勝ちで 1 個目以外が黙って捨てられ、
+    //       読めば全部が既定値のまま残る。どちらもエラーは出ない。
     r.EndField();
     forces.resize(count);
     for (std::size_t index = 0; index < forces.size(); ++index) {
@@ -24,8 +24,9 @@ void ReflectFlowFieldList(IReflector& r, std::vector<FlowFieldSettings>& forces,
         r.EndObjectElement();
     }
     const std::size_t removeIndex = r.EndObjectList();
-    if (removeIndex < forces.size())
+    if (removeIndex < forces.size()) {
         forces.erase(forces.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+    }
     r.EndField();
 }
 

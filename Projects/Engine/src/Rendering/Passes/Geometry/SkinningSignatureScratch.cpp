@@ -62,7 +62,9 @@ ScratchMetrics CurrentSignatureScratchMetrics()
     metrics.activeLeases=pool.depth;
     metrics.storageBytes=pool.entries.size()*sizeof(SignatureScratchStorage);
     metrics.pointerPayloadBytes=pool.entries.capacity()*sizeof(std::unique_ptr<SignatureScratchStorage>);
-    for(const auto& entry:pool.entries)metrics.payloadBytes+=entry->words.capacity()*sizeof(uint32_t);
+    for(const auto& entry:pool.entries) {
+        metrics.payloadBytes+=entry->words.capacity()*sizeof(uint32_t);
+    }
     return metrics;
 }
 

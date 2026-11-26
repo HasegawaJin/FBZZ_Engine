@@ -46,5 +46,5 @@ void BindWaterAppearance(const asset::MaterialAssetAuthoring* material, WaterRen
 void LinkHorizonWaterMaterials(std::vector<renderer::RenderWaterInput>& waterInputs,
     std::span<const HorizonMaterialLink> materialLinks);
 
-} /// @note namespace water_render_detail
-} /// @note namespace fbzz::scene
+} // namespace water_render_detail
+} // namespace fbzz::scene

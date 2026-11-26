@@ -34,7 +34,7 @@ scene::ParticleCurve DistinctCurve()
 scene::ParticleGradient DistinctGradient()
 {
     scene::ParticleGradient gradient;
-    /// @note HDR の RGB
+    // HDR の RGB
     gradient.keys[0]     = { 0.0f, { 2.0f, 0.5f, 0.25f, 1.0f } };
     gradient.keys[1]     = { 0.6f, { 1.0f, 1.0f, 0.0f, 0.5f } };
     gradient.keys[2]     = { 1.0f, { 0.0f, 0.0f, 0.0f, 0.0f } };
@@ -87,7 +87,7 @@ TEST_F(ParticleCodecTest, CurveKeepsItsKeysThroughARoundTrip)
 /// @brief Curve keeps its interpolation mode.
 TEST_F(ParticleCodecTest, CurveKeepsItsInterpolationMode)
 {
-    /// @note モードを落とすと «なめらかにしたカーブが折れ線に戻る»。値は合っているので気づけない。
+    // モードを落とすと «なめらかにしたカーブが折れ線に戻る»。値は合っているので気づけない。
     const scene::ParticleCurve restored = RoundTrip(DistinctCurve());
 
     EXPECT_EQ(restored.interpolation, scene::ParticleCurveInterpolation::Smooth);
@@ -96,7 +96,7 @@ TEST_F(ParticleCodecTest, CurveKeepsItsInterpolationMode)
 /// @brief Curve evaluates the same after a round trip.
 TEST_F(ParticleCodecTest, CurveEvaluatesTheSameAfterARoundTrip)
 {
-    /// @note 最終的に一致していてほしいのは «同じ時刻で同じ値» であること。
+    // 最終的に一致していてほしいのは «同じ時刻で同じ値» であること。
     const scene::ParticleCurve original = DistinctCurve();
     const scene::ParticleCurve restored = RoundTrip(original);
 
@@ -111,7 +111,7 @@ TEST_F(ParticleCodecTest, CurveEvaluatesTheSameAfterARoundTrip)
 /// @brief Deserialising a missing key leaves the target alone.
 TEST_F(ParticleCodecTest, DeserialisingAMissingKeyLeavesTheTargetAlone)
 {
-    /// @note 古い .particle には新しい項目が無い。読めなくなるのではなく既定値のまま残す。
+    // 古い .particle には新しい項目が無い。読めなくなるのではなく既定値のまま残す。
     const toml::table empty;
     scene::ParticleCurve curve = DistinctCurve();
 
@@ -142,7 +142,7 @@ TEST_F(ParticleCodecTest, GradientKeepsEveryChannelThroughARoundTrip)
 /// @brief Gradient keeps HDR values above one.
 TEST_F(ParticleCodecTest, GradientKeepsHdrValuesAboveOne)
 {
-    /// @note RGB は 1 を超えてよい (HDR)。保存時にクランプすると発光が死ぬ。
+    // RGB は 1 を超えてよい (HDR)。保存時にクランプすると発光が死ぬ。
     const scene::ParticleGradient restored = RoundTrip(DistinctGradient());
 
     EXPECT_GT(restored.keys[0].color.x, 1.0f);
@@ -173,7 +173,7 @@ TEST_F(ParticleCodecTest, GradientEvaluatesTheSameAfterARoundTrip)
 /// @brief A default curve survives the round trip unchanged.
 TEST_F(ParticleCodecTest, ADefaultCurveSurvivesTheRoundTripUnchanged)
 {
-    /// @note 既定値そのものが往復で変わると、触っていないエフェクトの差分が出る。
+    // 既定値そのものが往復で変わると、触っていないエフェクトの差分が出る。
     const scene::ParticleCurve original;
 
     const scene::ParticleCurve restored = RoundTrip(original);
@@ -204,7 +204,7 @@ TEST_F(ParticleCodecTest, LegacyGravityKeyBecomesTheEmitterGravity)
     scene::ParticleEmitterSettings emitter;
     asset::DeserializeParticleEmitterSettings(legacy, emitter);
 
-    /// @note 重力は加速度のまま。場に相乗りしていたのをエミッターの枠へ戻すだけで換算は無い。
+    // 重力は加速度のまま。場に相乗りしていたのをエミッターの枠へ戻すだけで換算は無い。
     EXPECT_VEC3_NEAR(emitter.gravity, math::Vector3(0.0f, -9.8f, 0.0f), testkit::kTolerance);
     EXPECT_EQ(FindForce(emitter, scene::FlowFieldType::Uniform), nullptr)
         << "重力が流れとして残ると、環境流と二重に掛かる";
@@ -226,7 +226,7 @@ TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingFlows)
     scene::ParticleEmitterSettings emitter;
     asset::DeserializeParticleEmitterSettings(legacy, emitter);
 
-    /// @note 旧 velocityDamping [1/s] と新 flowCoupling [1/s] は同じ単位。換算しない。
+    // 旧 velocityDamping [1/s] と新 flowCoupling [1/s] は同じ単位。換算しない。
     EXPECT_NEAR(emitter.flowCoupling, 2.5f, testkit::kTolerance);
     EXPECT_VEC3_NEAR(emitter.gravity, math::Vector3(0.0f, -5.0f, 0.0f), testkit::kTolerance);
 
@@ -242,10 +242,10 @@ TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingFlows)
     ASSERT_NE(vortex, nullptr);
     EXPECT_NEAR(vortex->strength, 4.0f * toFlow, testkit::kTolerance);
     EXPECT_VEC3_NEAR(vortex->direction, math::Vector3(0.0f, 0.0f, 1.0f), testkit::kTolerance);
-    /// @note 周回はエミッター原点まわりの運動。World にすると原点が世界の中心へ飛ぶ。
+    // 周回はエミッター原点まわりの運動。World にすると原点が世界の中心へ飛ぶ。
     EXPECT_EQ(vortex->space, scene::FlowFieldSpace::Emitter);
 
-    /// @note 旧 radialVelocity の負値は «吸い込み»。Source の負の強さと同じ規約なので符号を保つ。
+    // 旧 radialVelocity の負値は «吸い込み»。Source の負の強さと同じ規約なので符号を保つ。
     const auto* source = FindForce(emitter, scene::FlowFieldType::Source);
     ASSERT_NE(source, nullptr);
     EXPECT_NEAR(source->strength, -1.5f * toFlow, testkit::kTolerance);
@@ -255,7 +255,7 @@ TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingFlows)
 /// @brief Legacy file without motion keys gets no flows.
 TEST_F(ParticleCodecTest, LegacyFileWithoutMotionKeysGetsNoFlows)
 {
-    /// @note 旧ファイルが gravity を書いていない = 既定 (0,-5,0) だった、が正しい復元。
+    // 旧ファイルが gravity を書いていない = 既定 (0,-5,0) だった、が正しい復元。
     toml::table legacy;
     legacy.insert("emitRate", 10.0);
 
@@ -294,7 +294,7 @@ TEST_F(ParticleCodecTest, LegacyAccelerationForcesBecomeFlowSpeeds)
     scene::ParticleEmitterSettings emitter;
     asset::DeserializeParticleEmitterSettings(legacy, emitter);
 
-    /// @note 真下を向いた World の Uniform は重力へ。残るのは横向きの 1 本だけ。
+    // 真下を向いた World の Uniform は重力へ。残るのは横向きの 1 本だけ。
     EXPECT_VEC3_NEAR(emitter.gravity, math::Vector3(0.0f, -5.0f, 0.0f), testkit::kTolerance);
     EXPECT_NEAR(emitter.flowCoupling, 2.0f, testkit::kTolerance);
     ASSERT_EQ(emitter.localForces.size(), 1u);
@@ -306,8 +306,8 @@ TEST_F(ParticleCodecTest, LegacyAccelerationForcesBecomeFlowSpeeds)
 /// @brief An empty flow list survives the round trip.
 TEST_F(ParticleCodecTest, AnEmptyFlowListSurvivesTheRoundTrip)
 {
-    /// @note «流れを全部消した» と «旧ファイル» は区別が要る。前者で既定が復活すると、
-    /// @note 意図して止めたエフェクトが開き直すたびに動き始める。
+    // «流れを全部消した» と «旧ファイル» は区別が要る。前者で既定が復活すると、
+    // 意図して止めたエフェクトが開き直すたびに動き始める。
     scene::ParticleEmitterSettings original;
     original.localForces.clear();
     original.flowCoupling = 1.25f;

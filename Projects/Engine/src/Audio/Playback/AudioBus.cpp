@@ -23,7 +23,7 @@ std::string LowerCopy(std::string_view s)
 
 std::vector<BusDesc> DefaultBusLayout()
 {
-    /// @note SE と Voice だけが残響を受ける。BGM と UI は空間に置かれた音ではないので素通し。
+    // SE と Voice だけが残響を受ける。BGM と UI は空間に置かれた音ではないので素通し。
     return {
         BusDesc{ kMasterBusName, {},             1.0f, 1.0f, false },
         BusDesc{ "BGM",          kMasterBusName, 1.0f, 1.0f, false },
@@ -38,12 +38,14 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
     std::vector<BusDesc> unique;
     std::unordered_map<std::string, size_t> indexByName;
 
-    /// @note Master は必ず先頭に 1 本だけ存在させる。入力に無ければ既定値で補う。
+    // Master は必ず先頭に 1 本だけ存在させる。入力に無ければ既定値で補う。
     unique.push_back(BusDesc{ kMasterBusName, {}, 1.0f, 1.0f, false });
     indexByName[LowerCopy(kMasterBusName)] = 0;
 
     for (const BusDesc& desc : descs) {
-        if (desc.name.empty()) continue;
+        if (desc.name.empty()) {
+            continue;
+        }
         const std::string key = LowerCopy(desc.name);
         const auto it = indexByName.find(key);
         if (it != indexByName.end()) {
@@ -51,7 +53,9 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
             existing.volume        = desc.volume;
             existing.lowPassCutoff = desc.lowPassCutoff;
             existing.reverb        = desc.reverb;
-            if (it->second != 0) existing.parent = desc.parent;
+            if (it->second != 0) {
+                existing.parent = desc.parent;
+            }
             continue;
         }
         indexByName[key] = unique.size();
@@ -59,8 +63,8 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
     }
     unique[0].parent.clear();
 
-    /// @note 親を先に出す順序へ並べ替え、親が未解決のまま一巡したら Master 直下へ倒す。
-    ///       綴り違いや循環による無音を「意図しない場所で鳴る」で済ませるため。
+    // 親を先に出す順序へ並べ替え、親が未解決のまま一巡したら Master 直下へ倒す。
+    //       綴り違いや循環による無音を「意図しない場所で鳴る」で済ませるため。
     std::vector<BusDesc> ordered;
     std::vector<bool> emitted(unique.size(), false);
     ordered.reserve(unique.size());
@@ -71,16 +75,22 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
     while (progressed) {
         progressed = false;
         for (size_t i = 1; i < unique.size(); ++i) {
-            if (emitted[i]) continue;
+            if (emitted[i]) {
+                continue;
+            }
             const auto parent = indexByName.find(LowerCopy(unique[i].parent));
-            if (parent == indexByName.end() || !emitted[parent->second]) continue;
+            if (parent == indexByName.end() || !emitted[parent->second]) {
+                continue;
+            }
             ordered.push_back(unique[i]);
             emitted[i] = true;
             progressed = true;
         }
     }
     for (size_t i = 1; i < unique.size(); ++i) {
-        if (emitted[i]) continue;
+        if (emitted[i]) {
+            continue;
+        }
         BusDesc fallback = unique[i];
         fallback.parent = kMasterBusName;
         ordered.push_back(std::move(fallback));

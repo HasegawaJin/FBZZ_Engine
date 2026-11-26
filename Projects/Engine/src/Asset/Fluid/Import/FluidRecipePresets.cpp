@@ -137,17 +137,17 @@ void FluidPresetBuilder::ConfigureBakeDefaults()
 {
     FluidBakeSettings& bakeSettings = m_recipe.bake;
     bakeSettings.mode = FluidBakeMode::Volume3D;
-    /// @note 超解像で煙の縁のちらつきと液面のギザギザを抑える。設定は 2D / 3D で共通。
+    // 超解像で煙の縁のちらつきと液面のギザギザを抑える。設定は 2D / 3D で共通。
     m_recipe.output.supersampling = 2;
     if (m_recipe.kind == FluidKind::Liquid) {
-        /// @note 粒子の太さに対して 64³ で液面が足りる。粒子のプリセットは確認済みの CPU ソルバーを使う。
+        // 粒子の太さに対して 64³ で液面が足りる。粒子のプリセットは確認済みの CPU ソルバーを使う。
         bakeSettings.volumeResolution = 64;
         bakeSettings.solver = FluidBakeSolver::Cpu;
         return;
     }
 
     bakeSettings.volumeResolution = 128;
-    /// @note 発光だけの Glow や歪みマップは 6 方向ライトマップを使わない。
+    // 発光だけの Glow や歪みマップは 6 方向ライトマップを使わない。
     const FluidShading shading = m_recipe.render.shading;
     bakeSettings.sixWayLightmaps = shading == FluidShading::Smoke || shading == FluidShading::Fire;
 }
@@ -205,8 +205,8 @@ void FluidPresetBuilder::ConfigureSmoke()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 芯・外周リング・左右の耳の 3 役で湧かせ、repulse で押し開いてタイルを埋めるまで育てる。
-    /// @note 1 つの球だけだと «小さな煙玉が中央でくすぶる» 絵にしかならない。
+    // 芯・外周リング・左右の耳の 3 役で湧かせ、repulse で押し開いてタイルを埋めるまで育てる。
+    // 1 つの球だけだと «小さな煙玉が中央でくすぶる» 絵にしかならない。
     FluidSource& core = AddSphericalSource("Core", { 0.0f, -0.5f, 0.0f }, 0.26f);
     core.density = 6.0f;
     core.temperature = 3.0f;
@@ -252,7 +252,7 @@ void FluidPresetBuilder::ConfigureSmoke()
     gasSettings.velocityDamping = 0.12f;
     renderSettings.shading = FluidShading::Smoke;
     renderSettings.useAlbedoRamp = true;
-    /// @note 鍵 0 = 芯の濃い灰、鍵 1 = 外周の明るい灰。混ざる境目が «厚み» に見える。
+    // 鍵 0 = 芯の濃い灰、鍵 1 = 外周の明るい灰。混ざる境目が «厚み» に見える。
     renderSettings.albedoRamp = { { FluidColorStop{ { 0.16f, 0.16f, 0.17f }, 0.0f },
                           FluidColorStop{ { 0.24f, 0.24f, 0.25f }, 0.33f },
                           FluidColorStop{ { 0.36f, 0.36f, 0.38f }, 0.66f },
@@ -267,9 +267,9 @@ void FluidPresetBuilder::ConfigureFire()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 燃料だけを流し込み、燃えた所に熱と少しの煤が生まれる。炎の長さは Cooling で決まる。
-    /// @note 口を 1 つにすると «細い蝋燭» になる。中央の柱に左右の舌と根元の輪を足して幅を作り、
-    /// @note 逆向きの渦 2 つで舌を内側へ巻き込む。煙は注がない (煤は燃焼からしか生まれない)。
+    // 燃料だけを流し込み、燃えた所に熱と少しの煤が生まれる。炎の長さは Cooling で決まる。
+    // 口を 1 つにすると «細い蝋燭» になる。中央の柱に左右の舌と根元の輪を足して幅を作り、
+    // 逆向きの渦 2 つで舌を内側へ巻き込む。煙は注がない (煤は燃焼からしか生まれない)。
     FluidSource& column = AddConeSource("Fuel Column", { 0.0f, -0.95f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 0.24f, 0.6f);
     column.density = 0.0f;
     column.fuel = 6.5f;
@@ -323,7 +323,7 @@ void FluidPresetBuilder::ConfigureFire()
     outputSettings.warmup = 1.0f;
     outputSettings.substeps = 4;
     outputSettings.loop = true;
-    /// @note 3D の黒体は温度 1 を blackbodyMaxKelvin に当てる。芯だけが白く、先端が暗い赤に落ちる幅にする。
+    // 3D の黒体は温度 1 を blackbodyMaxKelvin に当てる。芯だけが白く、先端が暗い赤に落ちる幅にする。
     m_recipe.bake.blackbodyEmission = true;
     m_recipe.bake.blackbodyMinKelvin = 900.0f;
     m_recipe.bake.blackbodyMaxKelvin = 2200.0f;
@@ -335,24 +335,24 @@ void FluidPresetBuilder::ConfigureExplosion()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 一瞬で大量の燃料を燃やす。膨張が圧力解法を押し広げて火球と爆風になる。
+    // 一瞬で大量の燃料を燃やす。膨張が圧力解法を押し広げて火球と爆風になる。
     FluidSource& core = AddSphericalSource("Core", { 0.0f, -0.1f, 0.0f }, 0.2f);
     core.density = 0.8f;
     core.fuel = 10.0f;
     core.temperature = 2.6f;
     core.duration = 0.14f;
     core.noise = 0.7f;
-    /// @note 火球の周りに明るい土煙の輪を置く (2D の断面では芯の左右 2 か所)。芯の煤と色の鍵を分け、
-    /// @note 黒い芯と灰茶の外側が混ざる境目を albedo_ramp で描く (発生源ごとの色の見本)。
-    /// @note 燃料は持たせない: 燃えると膨張で芯より先に爆ぜ、火球の形が崩れる。
+    // 火球の周りに明るい土煙の輪を置く (2D の断面では芯の左右 2 か所)。芯の煤と色の鍵を分け、
+    // 黒い芯と灰茶の外側が混ざる境目を albedo_ramp で描く (発生源ごとの色の見本)。
+    // 燃料は持たせない: 燃えると膨張で芯より先に爆ぜ、火球の形が崩れる。
     FluidSource& dust = AddRingSource("Dust Ring", { 0.0f, -0.14f, 0.0f }, 0.38f, 0.11f);
     dust.density = 3.2f;
     dust.temperature = 0.4f;
     dust.duration = 0.25f;
     dust.noise = 0.85f;
     dust.colorKey = 1.0f;
-    /// @note 火球より一回り外を遅れて走る «衝撃の輪» と、そこから千切れて飛ぶ塊。芯の煙が届く前に
-    /// @note 画面の端まで «何かが来た» と分かる。
+    // 火球より一回り外を遅れて走る «衝撃の輪» と、そこから千切れて飛ぶ塊。芯の煙が届く前に
+    // 画面の端まで «何かが来た» と分かる。
     FluidSource& shock = AddRingSource("Shock Ring", { 0.0f, -0.1f, 0.0f }, 0.6f, 0.08f);
     shock.density = 1.6f;
     shock.temperature = 0.2f;
@@ -383,7 +383,7 @@ void FluidPresetBuilder::ConfigureExplosion()
     shred.noiseFrequency = 3.5f;
     shred.noiseSpeed = 1.2f;
     renderSettings.useAlbedoRamp = true;
-    /// @note リニア。鍵 0 = 芯の煤 (smoke_color より一段暗い)、鍵 1 = 外側の土煙。
+    // リニア。鍵 0 = 芯の煤 (smoke_color より一段暗い)、鍵 1 = 外側の土煙。
     renderSettings.albedoRamp = { { FluidColorStop{ { 0.050f, 0.045f, 0.040f }, 0.0f },
                           FluidColorStop{ { 0.125f, 0.105f, 0.087f }, 0.33f },
                           FluidColorStop{ { 0.200f, 0.165f, 0.133f }, 0.66f },
@@ -417,15 +417,15 @@ void FluidPresetBuilder::ConfigureSteam()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 細い口から噴き上がる蒸気。円錐は口で細く、上へ開くので «噴く» 形が球より出やすい。
-    /// @note 円錐の体積は同じ幅の球より小さい。注ぐ量が減って薄くならないよう密度を少し上げてある。
+    // 細い口から噴き上がる蒸気。円錐は口で細く、上へ開くので «噴く» 形が球より出やすい。
+    // 円錐の体積は同じ幅の球より小さい。注ぐ量が減って薄くならないよう密度を少し上げてある。
     FluidSource& steamJet = AddConeSource("Jet", { 0.0f, -1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 0.2f, 0.55f);
     steamJet.density = 5.0f;
     steamJet.temperature = 1.2f;
     steamJet.velocity = { 0.0f, 2.0f, 0.0f };
     steamJet.noise = 0.7f;
-    /// @note 柱 1 本だと画面の真ん中に細い線が立つだけ。斜めの口を左右に足して裾を広げ、
-    /// @note 高い所へ «雲の頭» を別に湧かせて repulse で潰す (上るほど太る蒸気の形)。
+    // 柱 1 本だと画面の真ん中に細い線が立つだけ。斜めの口を左右に足して裾を広げ、
+    // 高い所へ «雲の頭» を別に湧かせて repulse で潰す (上るほど太る蒸気の形)。
     for (int sideIndex = 0; sideIndex < 2; ++sideIndex) {
         const float sideSign = sideIndex == 0 ? -1.0f : 1.0f;
         FluidSource& vent = AddConeSource(sideIndex == 0 ? "Vent L" : "Vent R", { sideSign * 0.3f, -0.95f, 0.0f },
@@ -467,16 +467,16 @@ void FluidPresetBuilder::ConfigureDustBurst()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 床に張り付いた爆発 (着地・衝撃の土煙)。横へ這わせるだけだと床に薄い帯が残って終わるので、
-    /// @note 端をめくり上げてから浮かせ、立ち上がる壁にする。
+    // 床に張り付いた爆発 (着地・衝撃の土煙)。横へ這わせるだけだと床に薄い帯が残って終わるので、
+    // 端をめくり上げてから浮かせ、立ち上がる壁にする。
     FluidSource& impactSource = AddSphericalSource("Impact", { 0.0f, -0.88f, 0.0f }, 0.2f);
     impactSource.density = 2.5f;
     impactSource.fuel = 7.0f;
     impactSource.temperature = 0.7f;
     impactSource.duration = 0.12f;
     impactSource.noise = 0.8f;
-    /// @note 床を «掃く» 円錐を左右へ寝かせ、逆回りの渦で外側の端をめくり上げる。押し出す力だけでは
-    /// @note 薄い帯が床を這うだけで終わり、縦に何も無い絵になる。
+    // 床を «掃く» 円錐を左右へ寝かせ、逆回りの渦で外側の端をめくり上げる。押し出す力だけでは
+    // 薄い帯が床を這うだけで終わり、縦に何も無い絵になる。
     for (int sideIndex = 0; sideIndex < 2; ++sideIndex) {
         const float sideSign = sideIndex == 0 ? -1.0f : 1.0f;
         FluidSource& sweep = AddConeSource(sideIndex == 0 ? "Sweep L" : "Sweep R", { sideSign * 0.1f, -0.9f, 0.0f },
@@ -540,7 +540,7 @@ void FluidPresetBuilder::ConfigureDustBurst()
     renderSettings.opacity = 3.5f;
     renderSettings.selfShadow = 2.0f;
     renderSettings.useAlbedoRamp = true;
-    /// @note 鍵 0 = 焦げた芯、鍵 1 = 掃き出された乾いた土。
+    // 鍵 0 = 焦げた芯、鍵 1 = 掃き出された乾いた土。
     renderSettings.albedoRamp = { { FluidColorStop{ { 0.070f, 0.055f, 0.040f }, 0.0f },
                           FluidColorStop{ { 0.180f, 0.140f, 0.095f }, 0.33f },
                           FluidColorStop{ { 0.320f, 0.245f, 0.160f }, 0.66f },
@@ -555,10 +555,10 @@ void FluidPresetBuilder::ConfigureInk()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 浮力なし・高い渦度。噴き出した勢いだけで巻き込む (水中のインク・霊気の渦)。
-    /// @note 噴き出し口を横へ振る。動く速さが流れに乗り (inherit_velocity)、筋が片側へ巻き込む。
-    /// @note 上下から逆向きに撃ち合わせるのは «ぶつかった所で巻く» ため。1 本だけだと筋が真上へ伸びて
-    /// @note 途中で力尽き、タイルの半分が空のまま終わる。
+    // 浮力なし・高い渦度。噴き出した勢いだけで巻き込む (水中のインク・霊気の渦)。
+    // 噴き出し口を横へ振る。動く速さが流れに乗り (inherit_velocity)、筋が片側へ巻き込む。
+    // 上下から逆向きに撃ち合わせるのは «ぶつかった所で巻く» ため。1 本だけだと筋が真上へ伸びて
+    // 途中で力尽き、タイルの半分が空のまま終わる。
     FluidSource& nozzle = AddSphericalSource("Nozzle", { 0.0f, -0.7f, 0.0f }, 0.1f);
     nozzle.density = 8.0f;
     nozzle.temperature = 0.0f;
@@ -614,7 +614,7 @@ void FluidPresetBuilder::ConfigureInk()
     renderSettings.selfShadow = 0.6f;
     renderSettings.detailStrength = 0.2f;
     renderSettings.useAlbedoRamp = true;
-    /// @note 鍵 0 = 下から撃つ藍、鍵 1 = 上から落ちる紫。ぶつかった所で 2 色が混ざる。
+    // 鍵 0 = 下から撃つ藍、鍵 1 = 上から落ちる紫。ぶつかった所で 2 色が混ざる。
     renderSettings.albedoRamp = { { FluidColorStop{ { 0.030f, 0.045f, 0.140f }, 0.0f },
                           FluidColorStop{ { 0.070f, 0.060f, 0.180f }, 0.33f },
                           FluidColorStop{ { 0.130f, 0.055f, 0.200f }, 0.66f },
@@ -629,8 +629,8 @@ void FluidPresetBuilder::ConfigureMagicWisp()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 柱 + 輪 + 周回する 2 つの玉。玉は motion のキーで «湧き口ごと» 回るので、
-    /// @note 力で回すのと違って輪郭が保たれたまま動く。
+    // 柱 + 輪 + 周回する 2 つの玉。玉は motion のキーで «湧き口ごと» 回るので、
+    // 力で回すのと違って輪郭が保たれたまま動く。
     FluidSource& wisp = AddSphericalSource("Wisp", { 0.0f, -0.6f, 0.0f }, 0.16f);
     wisp.density = 3.5f;
     wisp.temperature = 1.4f;
@@ -647,12 +647,12 @@ void FluidPresetBuilder::ConfigureMagicWisp()
         mote.temperature = 0.8f;
         mote.noise = 1.0f;
         mote.motion.inheritVelocity = true;
-        /// @note 端と端が同じ位置なので、ループの継ぎ目で玉が跳ばない。
+        // 端と端が同じ位置なので、ループの継ぎ目で玉が跳ばない。
         mote.motion.keys = { FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
                              FluidMotionKey{ 1.75f, { sideSign * -0.25f, 0.75f, 0.0f } },
                              FluidMotionKey{ 3.5f, { 0.0f, 0.0f, 0.0f } } };
     }
-    /// @note 立ち上る柱をゆっくりねじる渦。半径の外では効かないので形は崩さない。
+    // 立ち上る柱をゆっくりねじる渦。半径の外では効かないので形は崩さない。
     FluidForce& swirl = AddForce("Swirl", FluidForceType::Vortex, 1.6f);
     swirl.center = { 0.0f, -0.1f, 0.0f };
     swirl.direction = { 0.0f, 1.0f, 0.0f };
@@ -675,7 +675,7 @@ void FluidPresetBuilder::ConfigureMagicWisp()
     renderSettings.smokeColor = { 0.35f, 0.7f, 1.0f, 1.0f };
     renderSettings.opacity = 3.2f;
     renderSettings.useEmissionRamp = true;
-    /// @note 冷えた縁の藍から芯の白へ。HDR (1 を超える) のままにして Bloom を掛ける。
+    // 冷えた縁の藍から芯の白へ。HDR (1 を超える) のままにして Bloom を掛ける。
     renderSettings.emissionRamp = { { FluidColorStop{ { 0.02f, 0.05f, 0.18f }, 0.0f },
                             FluidColorStop{ { 0.10f, 0.55f, 1.60f }, 0.35f },
                             FluidColorStop{ { 0.45f, 1.60f, 2.60f }, 0.7f },
@@ -692,9 +692,9 @@ void FluidPresetBuilder::ConfigureHeatHaze()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 見えない熱気の流れを歪みマップへ。密度は «どこが揺らぐか» のマスクとしてだけ使う。
-    /// @note 歪みは色を持たないので、揺れる «面積» がそのまま効き目になる。細い柱ではなく
-    /// @note 床いっぱいの熱の床から立ち上げる。
+    // 見えない熱気の流れを歪みマップへ。密度は «どこが揺らぐか» のマスクとしてだけ使う。
+    // 歪みは色を持たないので、揺れる «面積» がそのまま効き目になる。細い柱ではなく
+    // 床いっぱいの熱の床から立ち上げる。
     FluidSource& heatBed = AddSphericalSource("Heat Bed", { 0.0f, -0.85f, 0.0f }, 0.7f);
     heatBed.shape = FluidSourceShape::Box;
     heatBed.size = { 0.7f, 0.12f, 0.3f };
@@ -742,10 +742,10 @@ void FluidPresetBuilder::ConfigureWaterSplash()
 
     ConfigureLiquidDefaults();
 
-    /// @note 芯の柱 + 左右の王冠 + 上から降る霧。spread (ばらつき) は «撃ち出す速さ × spread» の
-    /// @note 横向きの当たりくじで、1 秒あれば当たった粒はタイルの外へ出るため小さく保ち、横幅は
-    /// @note 別の湧き口で作る。寿命を付けるのは、床に落ちた粒の溜まりが «粒子の数 ÷ 高さ» の幅まで
-    /// @note 必ず広がるため。飛沫が消えていけば、溜まりが枠を越える前に絵が終わる。
+    // 芯の柱 + 左右の王冠 + 上から降る霧。spread (ばらつき) は «撃ち出す速さ × spread» の
+    // 横向きの当たりくじで、1 秒あれば当たった粒はタイルの外へ出るため小さく保ち、横幅は
+    // 別の湧き口で作る。寿命を付けるのは、床に落ちた粒の溜まりが «粒子の数 ÷ 高さ» の幅まで
+    // 必ず広がるため。飛沫が消えていけば、溜まりが枠を越える前に絵が終わる。
     FluidSource& splashSource = AddSphericalSource("Splash", { 0.0f, -0.85f, 0.0f }, 0.15f);
     splashSource.velocity = { 0.0f, 3.6f, 0.0f };
     splashSource.spread = 0.16f;
@@ -793,22 +793,22 @@ void FluidPresetBuilder::ConfigureWaterJet()
     jetSource.spread = 0.08f;
     jetSource.count = 1600;
     jetSource.duration = 1.6f;
-    /// @note 芯の弧に «ばらけた霧» を重ねて 1 本の線に見えないようにする。ばらつきは小さく保つ
-    /// @note (大きくすると後ろ向きに飛ぶ粒が出て、口の左側がタイルからはみ出す)。
+    // 芯の弧に «ばらけた霧» を重ねて 1 本の線に見えないようにする。ばらつきは小さく保つ
+    // (大きくすると後ろ向きに飛ぶ粒が出て、口の左側がタイルからはみ出す)。
     FluidSource& spray = AddSphericalSource("Spray", { -0.82f, -0.28f, 0.0f }, 0.07f);
     spray.velocity = { 2.1f, 1.5f, 0.0f };
     spray.spread = 0.22f;
     spray.count = 600;
     spray.duration = 1.6f;
-    /// @note 岩の天面から跳ね返る水。ほぼ真上に撃つ (横へ撃つと右端から出ていく)。
+    // 岩の天面から跳ね返る水。ほぼ真上に撃つ (横へ撃つと右端から出ていく)。
     FluidSource& rebound = AddSphericalSource("Rebound", { 0.62f, -0.62f, 0.0f }, 0.12f);
     rebound.velocity = { 0.0f, 2.2f, 0.0f };
     rebound.spread = 0.4f;
     rebound.count = 700;
     rebound.startTime = 0.25f;
     rebound.duration = 1.35f;
-    /// @note 弧が床の少し上を横切る所 (x ≈ 0.7) に岩を置く。噴流が天面で砕けて両側へこぼれる。
-    /// @note 床 (floorHeight = -0.95) に接地させ、下をくぐる隙間を作らない。
+    // 弧が床の少し上を横切る所 (x ≈ 0.7) に岩を置く。噴流が天面で砕けて両側へこぼれる。
+    // 床 (floorHeight = -0.95) に接地させ、下をくぐる隙間を作らない。
     FluidCollider rock;
     rock.name = "Rock";
     rock.shape = FluidColliderShape::Box;
@@ -835,9 +835,9 @@ void FluidPresetBuilder::ConfigureBloodBurst()
 
     ConfigureLiquidDefaults();
 
-    /// @note 全方位へ飛ぶ粘い雫。床は置かず、寿命で細りながら消す (被弾の飛沫)。床が無いので、
-    /// @note 撃ち出す速さは遅く保つ (速い粒はそのままタイルの外へ出て二度と戻らない)。«大きさ» は
-    /// @note 速度ではなく «湧き口の広さ» と «数» で作る (粒子どうしが押し合って広がる)。
+    // 全方位へ飛ぶ粘い雫。床は置かず、寿命で細りながら消す (被弾の飛沫)。床が無いので、
+    // 撃ち出す速さは遅く保つ (速い粒はそのままタイルの外へ出て二度と戻らない)。«大きさ» は
+    // 速度ではなく «湧き口の広さ» と «数» で作る (粒子どうしが押し合って広がる)。
     FluidSource& burstSource = AddSphericalSource("Burst", { 0.0f, 0.2f, 0.0f }, 0.26f);
     burstSource.velocity = { 0.0f, 0.3f, 0.0f };
     burstSource.spread = 0.5f;
@@ -865,7 +865,7 @@ void FluidPresetBuilder::ConfigureBloodBurst()
     liquidSettings.particleLifetime = 1.1f;
     renderSettings.liquidColor = { 0.42f, 0.02f, 0.03f, 0.95f };
     renderSettings.specular = 0.6f;
-    /// @note 3D の液面: 血は濃く (透けない)、艶は水より鈍い。
+    // 3D の液面: 血は濃く (透けない)、艶は水より鈍い。
     renderSettings.liquidExtinction = 120.0f;
     renderSettings.liquidGloss = 64.0f;
     outputSettings.duration = 0.9f;
@@ -879,9 +879,9 @@ void FluidPresetBuilder::ConfigureLavaBlob()
 
     ConfigureLiquidDefaults();
 
-    /// @note 噴き上げた塊が落ちて、床いっぱいに広がる «溜まり» になる。粒子 1 つは «その面積» を
-    /// @note 要求し、床に落ちた溜まりの広さはほぼ «数 × 粒子の断面» で決まるので、粒子を増やすと
-    /// @note タイルの左右から溢れる (高さは増えない)。
+    // 噴き上げた塊が落ちて、床いっぱいに広がる «溜まり» になる。粒子 1 つは «その面積» を
+    // 要求し、床に落ちた溜まりの広さはほぼ «数 × 粒子の断面» で決まるので、粒子を増やすと
+    // タイルの左右から溢れる (高さは増えない)。
     FluidSource& lavaSource = AddSphericalSource("Blob", { 0.0f, -0.8f, 0.0f }, 0.12f);
     lavaSource.velocity = { 0.0f, 2.6f, 0.0f };
     lavaSource.spread = 0.3f;
@@ -910,7 +910,7 @@ void FluidPresetBuilder::ConfigureLavaBlob()
     liquidSettings.floorFriction = 0.95f;
     renderSettings.liquidColor = { 1.0f, 0.38f, 0.06f, 1.0f };
     renderSettings.specular = 0.5f;
-    /// @note 3D の液面: 溶岩は不透明で縁が柔らかい。
+    // 3D の液面: 溶岩は不透明で縁が柔らかい。
     renderSettings.liquidExtinction = 160.0f;
     renderSettings.liquidSoftness = 0.12f;
     renderSettings.liquidGloss = 32.0f;
@@ -923,14 +923,14 @@ void FluidPresetBuilder::ConfigurePlasmaBurst()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 放電が弾けた «瞬間» の空気。稲妻の線そのものは VFX Line の担当で、ここは線の周りだけ。
-    /// @note 芯 → 輪 → 上下へ抜ける枝の 3 段で、0.8 秒のうちにタイルの端まで届いて消える。
+    // 放電が弾けた «瞬間» の空気。稲妻の線そのものは VFX Line の担当で、ここは線の周りだけ。
+    // 芯 → 輪 → 上下へ抜ける枝の 3 段で、0.8 秒のうちにタイルの端まで届いて消える。
     FluidSource& core = AddSphericalSource("Core", { 0.0f, 0.0f, 0.0f }, 0.14f);
     core.density = 7.0f;
     core.temperature = 4.0f;
     core.duration = 0.08f;
     core.noise = 0.4f;
-    /// @note 輪の法線を奥行き軸にして «こちらを向いた輪» にする (上向きだと真横から見た線になる)。
+    // 輪の法線を奥行き軸にして «こちらを向いた輪» にする (上向きだと真横から見た線になる)。
     FluidSource& shell = AddRingSource("Shell", { 0.0f, 0.0f, 0.0f }, 0.4f, 0.12f);
     shell.direction = { 0.0f, 0.0f, 1.0f };
     shell.density = 4.0f;
@@ -943,7 +943,7 @@ void FluidPresetBuilder::ConfigurePlasmaBurst()
         math::Vector3 direction;
         math::Vector3 velocity;
     };
-    /// @note 上下で傾きを揃えない。左右対称だと «X 字» に見えて、枝分かれではなく図形になる。
+    // 上下で傾きを揃えない。左右対称だと «X 字» に見えて、枝分かれではなく図形になる。
     const Branch BRANCHES[] = { { "Branch Up", { 0.25f, 1.0f, 0.0f }, { 0.5f, 2.2f, 0.0f } },
                                  { "Branch Down", { -0.3f, -1.0f, 0.0f }, { -0.6f, -2.2f, 0.0f } } };
     for (const Branch& branch : BRANCHES) {
@@ -961,7 +961,7 @@ void FluidPresetBuilder::ConfigurePlasmaBurst()
     FluidForce& fork = AddForce("Fork", FluidForceType::Noise, 3.0f);
     fork.noiseFrequency = 6.0f;
     fork.noiseSpeed = 2.5f;
-    /// @note 押し切ったあとに止める。減速が無いと «弾けた» ではなく «流れ去った» に見える。
+    // 押し切ったあとに止める。減速が無いと «弾けた» ではなく «流れ去った» に見える。
     FluidForce& settle = AddForce("Settle", FluidForceType::Drag, 4.0f);
     settle.startTime = 0.3f;
     gasSettings.buoyancy = 0.25f;
@@ -976,7 +976,7 @@ void FluidPresetBuilder::ConfigurePlasmaBurst()
     renderSettings.smokeColor = { 0.55f, 0.75f, 1.0f, 1.0f };
     renderSettings.opacity = 5.0f;
     renderSettings.useEmissionRamp = true;
-    /// @note 青 → 白。白の側は 1 を大きく超える HDR にして、Bloom で «放電» の明るさを出す。
+    // 青 → 白。白の側は 1 を大きく超える HDR にして、Bloom で «放電» の明るさを出す。
     renderSettings.emissionRamp = { { FluidColorStop{ { 0.05f, 0.12f, 0.45f }, 0.0f },
                             FluidColorStop{ { 0.35f, 0.95f, 2.60f }, 0.4f },
                             FluidColorStop{ { 1.80f, 3.20f, 5.50f }, 0.75f },
@@ -992,7 +992,7 @@ void FluidPresetBuilder::ConfigureArcHaze()
     FluidRenderSettings& renderSettings = m_recipe.render;
     FluidOutputSettings& outputSettings = m_recipe.output;
 
-    /// @note 放電の残り香。細く長く漂う靄。形を崩すのは noise の力で、位置を運ぶのは玉の motion。
+    // 放電の残り香。細く長く漂う靄。形を崩すのは noise の力で、位置を運ぶのは玉の motion。
     FluidSource& trailSource = AddConeSource("Trail", { 0.0f, -0.95f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 0.16f, 0.7f);
     trailSource.density = 2.4f;
     trailSource.temperature = 1.2f;
@@ -1010,7 +1010,7 @@ void FluidPresetBuilder::ConfigureArcHaze()
         math::Vector3 rest;
         math::Vector3 swing;
     };
-    /// @note 端 (0 と 3.5) が同じ位置なので、ループの継ぎ目で玉が跳ばない。左右は位相を逆に取る。
+    // 端 (0 と 3.5) が同じ位置なので、ループの継ぎ目で玉が跳ばない。左右は位相を逆に取る。
     const Ember EMBERS[] = { { "Ember L", -0.55f, { 0.0f, -0.15f, 0.0f }, { 0.3f, 0.35f, 0.0f } },
                               { "Ember R", 0.55f, { 0.0f, 0.35f, 0.0f }, { -0.3f, -0.15f, 0.0f } } };
     for (const Ember& ember : EMBERS) {
@@ -1186,7 +1186,7 @@ void FluidPresetBuilder::ConfigureSigilFlare()
     outputSettings.duration = 1.4f;
 }
 
-} /// @note namespace
+} // namespace
 
 const char* FluidPresetName(FluidPreset preset)
 {
@@ -1220,4 +1220,4 @@ fluid::FluidRecipe MakeFluidPreset(FluidPreset preset)
     return FluidPresetBuilder::Build(preset);
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

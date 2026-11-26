@@ -16,7 +16,7 @@
 
 namespace fbzz::scene {
 
-/// @param angle Canvas の回転角 [rad]。
+/// @param[in] angle Canvas の回転角 [rad]。
 [[nodiscard]] inline math::Vector2 RotateUIVector(const math::Vector2& v, float angle)
 {
     const float c = std::cosf(angle);
@@ -33,8 +33,8 @@ namespace fbzz::scene {
 
 /// @note UI 要素の矩形 (Canvas 空間、原点は左上・y は下向き)。
 struct UIRect {
-    math::Vector2 position = math::Vector2::ZERO;  ///< @note 左上
-    math::Vector2 size     = math::Vector2::ZERO;
+    math::Vector2 position = math::Vector2::ZERO; ///< 左上
+    math::Vector2 size     = math::Vector2::ZERO; ///< UI のレイアウトに使う矩形の幅と高さ。
 
     [[nodiscard]] math::Vector2 Center() const
     {
@@ -56,18 +56,17 @@ struct UIRect {
 /// @note 既定 (0,0)/(0,0) は旧 UIImage の挙動と一致し既存シーンは動かない。ストレッチは
 /// @note axis ごとの bool で持つ (anchorMax==anchor 判定だと anchorMax 未保存の旧シーンが壊れる)。
 struct UIAnchor {
-    math::Vector2 anchor = math::Vector2::ZERO;  ///< @note 親のどこを基準にするか (ストレッチ時は下限)
-    math::Vector2 pivot  = math::Vector2::ZERO;  ///< @note 自分のどこをその点へ合わせるか
+    math::Vector2 anchor = math::Vector2::ZERO; ///< 親のどこを基準にするか (ストレッチ時は下限)
+    math::Vector2 pivot  = math::Vector2::ZERO; ///< 自分のどこをその点へ合わせるか
 
     /// @note ストレッチする軸。true にすると、その軸のサイズは自分の scale ではなく
     /// @note 「anchor 〜 anchorMax が親の上で占める幅」から決まる。
-    bool stretchX = false;
-    bool stretchY = false;
-    /// @note ストレッチ時の上限アンカー。stretch していない軸では読まない。
-    math::Vector2 anchorMax = math::Vector2::ONE;
+    bool stretchX = false; ///< 左右アンカーの間隔に合わせて矩形の幅を伸縮するかどうか。
+    bool stretchY = false; ///< 上下アンカーの間隔に合わせて矩形の高さを伸縮するかどうか。
+    math::Vector2 anchorMax = math::Vector2::ONE; ///< ストレッチ時の上限アンカー。stretch していない軸では読まない。
     /// @note ストレッチ時の上限側の余白 (Canvas ピクセル)。下限側は transform.position が担う。
     /// @note 無いと画面幅いっぱいの帯しか作れず、「左右 40px を空けた帯」等が表現できない。
-    math::Vector2 offsetMax = math::Vector2::ZERO;
+    math::Vector2 offsetMax = math::Vector2::ZERO; ///< 右下アンカーの基準位置から矩形の右下端までのオフセット。
 
     void Reflect(IReflector& r)
     {
@@ -94,16 +93,16 @@ struct UIAnchor {
 /// @note 点アンカー   … 左上 = 親サイズ × anchor + ローカル位置 - 自分のサイズ × pivot
 /// @note ストレッチ軸 … 下限 = 親サイズ × anchor    + ローカル位置
 /// @note 上限 = 親サイズ × anchorMax - offsetMax
-/// @param parentSize 親要素の矩形サイズ。直下が Canvas なら Canvas の寸法。
-/// @param localPosition transform.position.xy (基準点からのずれ / 下限側の余白)
-/// @param size この要素の矩形サイズ。ストレッチする軸では使わない。
+/// @param[in] parentSize 親要素の矩形サイズ。直下が Canvas なら Canvas の寸法。
+/// @param[in] localPosition transform.position.xy (基準点からのずれ / 下限側の余白)
+/// @param[in] size この要素の矩形サイズ。ストレッチする軸では使わない。
 [[nodiscard]] inline UIRect ResolveUIRect(const math::Vector2& parentSize,
                                           const math::Vector2& localPosition,
                                           const math::Vector2& size,
                                           const UIAnchor& anchoring)
 {
-    /// @note 軸ごとに独立して解く。片方だけストレッチする構成 (画面幅の帯・縦の仕切り) が
-    /// @note 実用上いちばん多く、両軸を 1 つの式へ押し込めない。
+    // 軸ごとに独立して解く。片方だけストレッチする構成 (画面幅の帯・縦の仕切り) が
+    // 実用上いちばん多く、両軸を 1 つの式へ押し込めない。
     const auto axis = [](float parent, float local, float extent, float anchorLow,
                          float anchorHigh, float offsetHigh, float pivot,
                          bool stretch, float& outPosition, float& outSize) {
@@ -115,8 +114,8 @@ struct UIAnchor {
         const float low  = parent * anchorLow + local;
         const float high = parent * anchorHigh - offsetHigh;
         outPosition = low;
-        /// @note 余白どうしが行き違っても矩形を裏返さない。裏返ると当たり判定が
-        /// @note 「どこにも当たらない」ではなく「常に当たる」側へ倒れることがある。
+        // 余白どうしが行き違っても矩形を裏返さない。裏返ると当たり判定が
+        // 「どこにも当たらない」ではなく「常に当たる」側へ倒れることがある。
         outSize = high > low ? high - low : 0.0f;
     };
 

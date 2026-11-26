@@ -15,7 +15,9 @@ namespace {
 template<typename Tag>
 void ReleaseOwned(renderer::ResourceHandle<Tag>& handle)
 {
-    if (auto* owner = renderer::ResourceManager::FindOwner(handle.owner)) owner->Release(handle);
+    if (auto* owner = renderer::ResourceManager::FindOwner(handle.owner)) {
+        owner->Release(handle);
+    }
     handle = {};
 }
 void ReleaseOwnedMesh(renderer::Mesh& mesh)
@@ -23,19 +25,23 @@ void ReleaseOwnedMesh(renderer::Mesh& mesh)
     ReleaseOwned(mesh.vertexBuffer);
     ReleaseOwned(mesh.indexBuffer);
 }
-} /// @note namespace
+} // namespace
 
 ModelAsset::~ModelAsset()
 {
     for (LodLevel& lod : lods)
         for (SubmeshEntry& submesh : lod.submeshes)
-            if (submesh.mesh) ReleaseOwnedMesh(*submesh.mesh);
+            if (submesh.mesh) {
+                ReleaseOwnedMesh(*submesh.mesh);
+            }
 }
 
 Model::~Model()
 {
     for (const auto& mesh : meshes)
-        if (mesh) ReleaseOwnedMesh(*mesh);
+        if (mesh) {
+            ReleaseOwnedMesh(*mesh);
+        }
     ReleaseOwned(referencePoseCB);
 }
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

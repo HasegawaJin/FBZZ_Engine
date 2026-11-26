@@ -19,12 +19,12 @@ class Script;
 
 /// @note Option の解像度ドロップダウン用。
 struct DisplayResolution {
-    uint32_t width  = 0;
-    uint32_t height = 0;
+    uint32_t width  = 0; ///< この表示モードの解像度の幅 [px]。
+    uint32_t height = 0; ///< この表示モードの解像度の高さ [px]。
 };
 
 struct ScriptDisplayProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 画面操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name ウィンドウ形態
     /// @{
@@ -55,4 +55,4 @@ struct ScriptDisplayProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -39,8 +39,9 @@ uint64_t NextSpatialUpdateVersion()
 {
     auto version = s_spatialUpdateVersion.load(std::memory_order_relaxed);
     while (version != UINT64_MAX) {
-        if (s_spatialUpdateVersion.compare_exchange_weak(version, version + 1, std::memory_order_relaxed))
+        if (s_spatialUpdateVersion.compare_exchange_weak(version, version + 1, std::memory_order_relaxed)) {
             return version + 1;
+        }
     }
     return 0;
 }
@@ -73,7 +74,9 @@ public:
 
     void Append(EntityID entity, uint64_t lifetime, bool skinned, bool boundsChanged)
     {
-        if (!m_update) return;
+        if (!m_update) {
+            return;
+        }
         const size_t ordinal = m_update->objectCount++;
         const SpatialObjectIdentity identity{entity, lifetime, skinned};
         if (ordinal == m_cache.spatialObjects.size()) {
@@ -83,13 +86,16 @@ public:
             m_cache.spatialObjects[ordinal] = identity;
             m_update->fullReplacement = true;
         }
-        if (boundsChanged && ordinal <= UINT32_MAX)
+        if (boundsChanged && ordinal <= UINT32_MAX) {
             m_update->changedObjectOrdinals.push_back(static_cast<uint32_t>(ordinal));
+        }
     }
 
     std::optional<renderer::RenderSpatialUpdate> Finish()
     {
-        if (!m_update) return std::nullopt;
+        if (!m_update) {
+            return std::nullopt;
+        }
         if (m_update->objectCount != m_cache.spatialObjects.size()) {
             m_cache.spatialObjects.resize(m_update->objectCount);
             m_update->fullReplacement = true;
@@ -98,7 +104,9 @@ public:
             m_cache.spatialVersion = 0;
             return std::nullopt;
         }
-        if (m_update->fullReplacement) m_update->baseVersion = 0;
+        if (m_update->fullReplacement) {
+            m_update->baseVersion = 0;
+        }
         m_cache.spatialVersion = m_update->version;
         return std::move(m_update);
     }
@@ -147,15 +155,18 @@ std::unordered_map<uint64_t, RayLodSelection> CollectRayLodRenderers(Scene& scen
     for (EntityID id : scene.GetEntities<LODGroupComponent>()) {
         const auto* group = scene.GetComponent<LODGroupComponent>(id);
         const auto* owner = scene.GetGameObject(id);
-        if (!group || !group->enabled || !owner || !owner->activeInHierarchy()) continue;
+        if (!group || !group->enabled || !owner || !owner->activeInHierarchy()) {
+            continue;
+        }
         bool canonicalMissing = false;
         for (size_t levelIndex = 0; levelIndex < group->levels.size(); ++levelIndex) {
             const auto& level = group->levels[levelIndex];
             for (const auto& reference : level.renderers) {
                 EntityID renderer = reference.entity;
                 if (!scene.IsValid(renderer) && !reference.instanceId.empty()) {
-                    if (const auto* resolved = scene.FindByGuid(reference.instanceId))
+                    if (const auto* resolved = scene.FindByGuid(reference.instanceId)) {
                         renderer = resolved->GetID();
+                    }
                 }
                 if (!scene.IsValid(renderer)) {
                     canonicalMissing |= levelIndex == 0;
@@ -172,9 +183,10 @@ std::unordered_map<uint64_t, RayLodSelection> CollectRayLodRenderers(Scene& scen
                 }
             }
         }
-        /// @note 未解決の canonical renderer の layer は証明できず、下位 LOD の layer で除外しない。
-        if (canonicalMissing)
+        // 未解決の canonical renderer の layer は証明できず、下位 LOD の layer で除外しない。
+        if (canonicalMissing) {
             diagnostics.push_back({id.index, id.generation, UINT32_MAX});
+        }
     }
     return result;
 }
@@ -224,7 +236,7 @@ renderer::RenderObject ExtractObject(GameObject& owner, T& component, uint64_t f
 
 float WorldOccluderRadius(const math::Matrix4& world, float localRadius)
 {
-    /// @note TRS の最小軸長を掛けると、負や不均一なスケールでも内接球を形状内に保てる。
+    // TRS の最小軸長を掛けると、負や不均一なスケールでも内接球を形状内に保てる。
     const float sx = math::Vector3{world.m[0][0], world.m[1][0], world.m[2][0]}.Length();
     const float sy = math::Vector3{world.m[0][1], world.m[1][1], world.m[2][1]}.Length();
     const float sz = math::Vector3{world.m[0][2], world.m[1][2], world.m[2][2]}.Length();
@@ -269,7 +281,9 @@ public:
     { m_output.geometry.EditObjects().reserve(hint); m_output.items.reserve(hint); m_meshes.reserve(32); }
     void MarkMovingGeometry()
     {
-        if (m_movingSeen) return;
+        if (m_movingSeen) {
+            return;
+        }
         m_movingSeen = true;
         FBZZ_PROFILE_MARKER("RenderSceneExtractor::MovingGeometry");
     }
@@ -330,9 +344,13 @@ __forceinline renderer::RenderObject ExtractUncachedStaticObject(GameObject& own
     auto& item = denseGeometry.Append(*component.mesh, object.world, ComputeWorldBoundsScale(object.world));
     const float windPadding = ComputeLeafWindBoundsPadding(owner, 1);
     object.leafWindBoundsPadding = windPadding;
-    if (windPadding < 0.0f) item.boundsRadius = 0.0f;
+    if (windPadding < 0.0f) {
+        item.boundsRadius = 0.0f;
+    }
     else if (item.boundsRadius > 0.0f) item.boundsRadius += windPadding;
-    if (windPadding != 0.0f) item.occluderRadius = 0.0f;
+    if (windPadding != 0.0f) {
+        item.occluderRadius = 0.0f;
+    }
     object.boundsCenter = item.boundsCenter; object.boundsRadius = item.boundsRadius;
     object.itemCount = 1;
     item.objectIndex = static_cast<uint32_t>(output.Objects().size());
@@ -347,9 +365,11 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
 {
     boundsChanged = false;
     const auto entity = owner.GetID();
-    /// @note Component の格納位置は有効状態や Scene の表示順で変わらない。
+    // Component の格納位置は有効状態や Scene の表示順で変わらない。
     const size_t denseComponentIndex = staticMeshes.GetDenseIndex(entity);
-    if (denseComponentIndex >= cache.entries.size()) cache.entries.resize(denseComponentIndex + 1);
+    if (denseComponentIndex >= cache.entries.size()) {
+        cache.entries.resize(denseComponentIndex + 1);
+    }
     auto& cachedGeometry = cache.entries[denseComponentIndex];
     const auto componentLifetime = staticMeshes.GetLifetime(entity);
     const auto poseInputs = StaticPoseInputs(owner.transform);
@@ -364,14 +384,19 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
         denseGeometry.MarkMovingGeometry();
         return ExtractUncachedStaticObject(owner, component, frameStamp, output, denseGeometry);
     }
-    if (!sameMeshComponent) cachedGeometry.lastPoseChangeFrame = UINT64_MAX;
+    if (!sameMeshComponent) {
+        cachedGeometry.lastPoseChangeFrame = UINT64_MAX;
+    }
     else if (poseChanged) cachedGeometry.lastPoseChangeFrame = frameStamp;
     const auto meshInputs = StaticMeshInputs(*component.mesh);
     const float windPadding = ComputeLeafWindBoundsPadding(owner, 1);
-    if (!cachedGeometry.valid || cachedGeometry.entity != entity || cachedGeometry.lifetime != componentLifetime || cachedGeometry.mesh != component.mesh
-        || cachedGeometry.pose != poseInputs || cachedGeometry.meshInputs != meshInputs || cachedGeometry.windPadding != windPadding) {
+    const bool reusableBounds = cachedGeometry.valid && sameMeshComponent && !poseChanged
+        && cachedGeometry.meshInputs == meshInputs && cachedGeometry.windPadding == windPadding;
+    if (!reusableBounds) {
         boundsChanged = true;
-        if (cachedGeometry.entity.IsValid()) denseGeometry.MarkExistingChange();
+        if (cachedGeometry.entity.IsValid()) {
+            denseGeometry.MarkExistingChange();
+        }
         std::optional<profiler::ProfileScope> rebuildProfile;
         if (profiler::Profiler::IsEnabled()) rebuildProfile.emplace(
             profiler::ProfilerMarker("RenderSceneExtractor::StaticGeometryRebuild"));
@@ -409,7 +434,9 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
     uint64_t* staticGeometryRevision, renderer::RenderScene* reusableStorage, SkinnedObjectRange* skinnedObjects)
 {
     FBZZ_PROFILE_SCOPE("RenderSceneExtractor::Geometry");
-    if (skinnedObjects) *skinnedObjects = {};
+    if (skinnedObjects) {
+        *skinnedObjects = {};
+    }
     const bool fuseColorEligibility = options.fuseColorEligibility && !options.extractItemMaterialState;
     const bool rayTracingInputs = options.rayTracingInputs;
     const auto* resources = options.resources;
@@ -445,18 +472,28 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
     const auto& staticMeshes = detail::ComponentStorageAccess<MeshRenderer>::Get(scene);
     if (reuseStaticGeometry) {
         const size_t meshCount = staticMeshes.Count();
-        if (staticGeometry.entries.size() > meshCount) staticGeometry.entries.resize(meshCount);
-        if (staticGeometry.entries.capacity() < meshCount) staticGeometry.entries.reserve(meshCount);
+        if (staticGeometry.entries.size() > meshCount) {
+            staticGeometry.entries.resize(meshCount);
+        }
+        if (staticGeometry.entries.capacity() < meshCount) {
+            staticGeometry.entries.reserve(meshCount);
+        }
     }
     size_t staticObjectCount = 0;
     for (EntityID id : candidates) {
         auto* source = scene.GetGameObject(id);
-        if (!source) continue;
+        if (!source) {
+            continue;
+        }
         auto& owner = *source;
-        if (!owner.activeInHierarchy()) continue;
+        if (!owner.activeInHierarchy()) {
+            continue;
+        }
         std::optional<bool> colorEligibility;
         const auto applyColorEligibility = [&](renderer::RenderObject& object) {
-            if (!fuseColorEligibility) return;
+            if (!fuseColorEligibility) {
+                return;
+            }
             if (!colorEligibility.has_value()) {
                 const auto* material = owner.GetComponent<MaterialComponent>();
                 colorEligibility = !material || material->enabled;
@@ -480,20 +517,26 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
                 }
                 const auto& shadowBakeLodRenderers = rayTracingInputs ? rayLodRenderers : *rasterShadowBakeLodRenderers;
                 object.shadowBakeStatic = !shadowBakeLodRenderers.contains(EntityKey(owner.GetID()));
-                if (object.shadowBakeStatic)
+                if (object.shadowBakeStatic) {
                     output.shadowBakeMeshObjects.push_back(static_cast<uint32_t>(objects.size()));
+                }
             }
-            if (spatialUpdates.Enabled())
+            if (spatialUpdates.Enabled()) {
                 spatialUpdates.Append(id, staticMeshes.GetLifetime(id), false, boundsChanged);
+            }
             applyColorEligibility(object);
             objects.push_back(object);
         } else if (reuseStaticGeometry && meshRenderer && meshRenderer->enabled) {
-            /// @note メッシュの解除やスキン付きへの切り替えを観測したら、静的形状の再利用を打ち切る。
+            // メッシュの解除やスキン付きへの切り替えを観測したら、静的形状の再利用を打ち切る。
             const size_t slot = staticMeshes.GetDenseIndex(id);
-            if (slot < staticGeometry.entries.size()) staticGeometry.entries[slot].entity = EntityID::INVALID;
+            if (slot < staticGeometry.entries.size()) {
+                staticGeometry.entries[slot].entity = EntityID::INVALID;
+            }
         }
         auto* skinnedRenderer = owner.GetComponent<SkinnedMeshRenderer>();
-        if (!skinnedRenderer || !skinnedRenderer->enabled || !skinnedRenderer->model) continue;
+        if (!skinnedRenderer || !skinnedRenderer->enabled || !skinnedRenderer->model) {
+            continue;
+        }
         auto object = ExtractObject(owner, *skinnedRenderer, frameStamp);
         if (const auto lod = rayLodRenderers.find(EntityKey(owner.GetID())); lod != rayLodRenderers.end()) {
             object.rayVisible = lod->second.visible;
@@ -502,47 +545,59 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
         object.skinned = true;
         object.leafWindBoundsPadding = ComputeLeafWindBoundsPadding(owner, skinnedRenderer->SubmeshCount());
         object.firstItem = static_cast<uint32_t>(output.items.size());
-        /// @note この走査ではコールバックを呼ばないため、全サブメッシュが同じ姿勢を使える。
+        // この走査ではコールバックを呼ばないため、全サブメッシュが同じ姿勢を使える。
         const float maximumScale = ComputeWorldBoundsScale(object.world);
         ExtractSkinnedPose(owner, *skinnedRenderer, identityPalette, resources, object);
         for (size_t slot = 0; slot < skinnedRenderer->SubmeshCount(); ++slot) {
             const auto* mesh = skinnedRenderer->SubmeshMesh(slot);
-            if (!mesh) continue;
+            if (!mesh) {
+                continue;
+            }
             auto& item = denseGeometry.Append(*mesh, object.world, maximumScale);
             item.objectIndex = static_cast<uint32_t>(objects.size());
             item.materialSlot = static_cast<uint32_t>(slot);
             item.sourceSubmesh = skinnedRenderer->SubmeshAt(slot);
             item.skinningVertexBuffer = skinnedRenderer->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer);
-            /// @note 古いフレームやモーフ対象に残った GPU 出力を再利用しない。
-            if (skinnedRenderer->gpuSkinningFrame == frameStamp && skinnedRenderer->skinnedBufferModel == skinnedRenderer->model)
+            // 古いフレームやモーフ対象に残った GPU 出力を再利用しない。
+            if (skinnedRenderer->gpuSkinningFrame == frameStamp && skinnedRenderer->skinnedBufferModel == skinnedRenderer->model) {
                 item.deformedVertexBuffer = skinnedRenderer->ResolveSlotSkinnedVertexBuffer(slot);
+            }
         }
         object.itemCount = static_cast<uint32_t>(output.items.size()) - object.firstItem;
-        if (spatialUpdates.Enabled())
+        if (spatialUpdates.Enabled()) {
             spatialUpdates.Append(id, scene.GetComponentLifetime<SkinnedMeshRenderer>(id), true, true);
+        }
         applyColorEligibility(object);
         if (skinnedObjects) {
-            if (skinnedObjects->begin == skinnedObjects->end) skinnedObjects->begin = objects.size();
+            if (skinnedObjects->begin == skinnedObjects->end) {
+                skinnedObjects->begin = objects.size();
+            }
             skinnedObjects->end = objects.size() + 1;
         }
         objects.push_back(object);
     }
     if (reuseStaticGeometry) {
-        /// @note 単発のテレポートを除外するため、変更が多い抽出が連続したときだけ一時的に追跡を省く。
+        // 単発のテレポートを除外するため、変更が多い抽出が連続したときだけ一時的に追跡を省く。
         const bool highChange = staticObjectCount >= 64 && denseGeometry.ExistingChanges() >= staticObjectCount - staticObjectCount / 4;
         if (highChange && staticGeometry.highChangeLastBuild) {
             staticGeometry.denseBuildsRemaining = 16;
             staticGeometry.highChangeLastBuild = false;
-        } else staticGeometry.highChangeLastBuild = highChange;
+        } else {
+            staticGeometry.highChangeLastBuild = highChange;
+        }
     }
     staticGeometry.primed = true;
     auto update = spatialUpdates.Finish();
-    if (staticGeometryRevision) *staticGeometryRevision = staticGeometry.revision;
+    if (staticGeometryRevision) {
+        *staticGeometryRevision = staticGeometry.revision;
+    }
     candidates.clear();
     profiler::Profiler::EndScope(objectsProfile);
     const auto materialCapabilitiesProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSceneExtractor::GeometryMaterialCapabilities", "Rendering"));
-    if (!fuseColorEligibility) ExtractGeometryMaterialState(scene, output, options.extractItemMaterialState);
+    if (!fuseColorEligibility) {
+        ExtractGeometryMaterialState(scene, output, options.extractItemMaterialState);
+    }
     output.geometry.SetSpatialUpdate(std::move(update));
     profiler::Profiler::EndScope(materialCapabilitiesProfile);
     return output;

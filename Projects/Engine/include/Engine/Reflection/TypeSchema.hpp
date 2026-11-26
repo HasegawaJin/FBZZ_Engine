@@ -88,13 +88,19 @@ PropertyDesc MakeProperty(std::string_view key, PropertyType type, std::string_v
     property.range = range;
     property.exposable = exposable;
     property.get = [](const void* owner) -> std::any {
-        if (owner == nullptr) return {};
+        if (owner == nullptr) {
+            return {};
+        }
         return static_cast<const Owner*>(owner)->*Member;
     };
     property.set = [](void* owner, const std::any& value) -> bool {
-        if (owner == nullptr) return false;
+        if (owner == nullptr) {
+            return false;
+        }
         const auto* typed = std::any_cast<Value>(&value);
-        if (typed == nullptr) return false;
+        if (typed == nullptr) {
+            return false;
+        }
         static_cast<Owner*>(owner)->*Member = *typed;
         return true;
     };
@@ -120,16 +126,28 @@ PropertyDesc MakeEnumProperty(std::string_view key, std::string_view display,
     property.exposable = exposable;
     property.enumNames = names;
     property.get = [](const void* owner) -> std::any {
-        if (owner == nullptr) return {};
+        if (owner == nullptr) {
+            return {};
+        }
         return static_cast<int>(static_cast<const Owner*>(owner)->*Member);
     };
     property.set = [](void* owner, const std::any& value) -> bool {
-        if (owner == nullptr) return false;
+        if (owner == nullptr) {
+            return false;
+        }
         int raw = 0;
-        if (const auto* asInt = std::any_cast<int>(&value)) raw = *asInt;
-        else return false;
-        if (raw < 0) raw = 0;
-        if (raw > MaximumValue) raw = MaximumValue;
+        if (const auto* asInt = std::any_cast<int>(&value)) {
+            raw = *asInt;
+        }
+        else {
+            return false;
+        }
+        if (raw < 0) {
+            raw = 0;
+        }
+        if (raw > MaximumValue) {
+            raw = MaximumValue;
+        }
         static_cast<Owner*>(owner)->*Member = static_cast<Enum>(raw);
         return true;
     };
@@ -152,15 +170,23 @@ PropertyDesc MakeIntProperty(std::string_view key, std::string_view display,
     property.range = range;
     property.exposable = exposable;
     property.get = [](const void* owner) -> std::any {
-        if (owner == nullptr) return {};
+        if (owner == nullptr) {
+            return {};
+        }
         return static_cast<int>(static_cast<const Owner*>(owner)->*Member);
     };
     property.set = [](void* owner, const std::any& value) -> bool {
-        if (owner == nullptr) return false;
+        if (owner == nullptr) {
+            return false;
+        }
         int raw = 0;
-        if (const auto* asInt = std::any_cast<int>(&value)) raw = *asInt;
+        if (const auto* asInt = std::any_cast<int>(&value)) {
+            raw = *asInt;
+        }
         else if (const auto* asValue = std::any_cast<Value>(&value)) raw = static_cast<int>(*asValue);
-        else return false;
+        else {
+            return false;
+        }
         if constexpr (std::is_unsigned_v<Value>) { if (raw < 0) raw = 0; }
         static_cast<Owner*>(owner)->*Member = static_cast<Value>(raw);
         return true;
@@ -186,17 +212,23 @@ PropertyDesc MakeArrayProperty(std::string_view key, std::string_view display,
         return owner != nullptr ? (static_cast<const Owner*>(owner)->*Member).size() : 0;
     };
     property.getConstElement = [](const void* owner, std::size_t index) -> const void* {
-        if (owner == nullptr) return nullptr;
+        if (owner == nullptr) {
+            return nullptr;
+        }
         const Container& container = static_cast<const Owner*>(owner)->*Member;
         return index < container.size() ? &container[index] : nullptr;
     };
     property.getElement = [](void* owner, std::size_t index) -> void* {
-        if (owner == nullptr) return nullptr;
+        if (owner == nullptr) {
+            return nullptr;
+        }
         Container& container = static_cast<Owner*>(owner)->*Member;
         return index < container.size() ? &container[index] : nullptr;
     };
     property.resizeArray = [](void* owner, std::size_t size) -> bool {
-        if (owner == nullptr) return false;
+        if (owner == nullptr) {
+            return false;
+        }
         (static_cast<Owner*>(owner)->*Member).resize(size);
         return true;
     };
@@ -246,7 +278,7 @@ struct PathSegment {
         result.key = segment;
         return result;
     }
-    /// @note "[" があるなら必ず末尾が "]" で、中身は非空の 10 進数であること。
+    // "[" があるなら必ず末尾が "]" で、中身は非空の 10 進数であること。
     if (segment.empty() || segment.back() != ']' || open + 2 >= segment.size()) {
         result.valid = false;
         return result;
@@ -274,29 +306,44 @@ template<typename OwnerPtr>
     const ITypeSchema* currentSchema = &schema;
     OwnerPtr currentOwner = root;
     while (true) {
-        if (currentOwner == nullptr) return false;
+        if (currentOwner == nullptr) {
+            return false;
+        }
         const std::size_t separator = path.find('.');
         const PathSegment segment = ParsePathSegment(path.substr(0, separator));
-        if (!segment.valid) return false;
+        if (!segment.valid) {
+            return false;
+        }
 
         const PropertyDesc* found = nullptr;
         for (const PropertyDesc& property : currentSchema->Properties()) {
             if (property.key == segment.key) { found = &property; break; }
         }
-        if (found == nullptr) return false;
+        if (found == nullptr) {
+            return false;
+        }
 
         if (segment.hasIndex) {
-            /// @note 添字は配列 leaf にしか付けられない。要素は必ず構造体なので、
-            ///       ここで path が終わっていたら leaf ではない (さらに .field が要る)。
-            if (found->type != PropertyType::Array || found->childSchema == nullptr) return false;
-            if (found->arraySize == nullptr || segment.index >= found->arraySize(currentOwner))
+            // 添字は配列 leaf にしか付けられない。要素は必ず構造体なので、
+            //       ここで path が終わっていたら leaf ではない (さらに .field が要る)。
+            if (found->type != PropertyType::Array || found->childSchema == nullptr) {
                 return false;
-            if (separator == std::string_view::npos) return false;
+            }
+            if (found->arraySize == nullptr || segment.index >= found->arraySize(currentOwner)) {
+                return false;
+            }
+            if (separator == std::string_view::npos) {
+                return false;
+            }
             if constexpr (kMutable) {
-                if (found->getElement == nullptr) return false;
+                if (found->getElement == nullptr) {
+                    return false;
+                }
                 currentOwner = found->getElement(currentOwner, segment.index);
             } else {
-                if (found->getConstElement == nullptr) return false;
+                if (found->getConstElement == nullptr) {
+                    return false;
+                }
                 currentOwner = found->getConstElement(currentOwner, segment.index);
             }
             currentSchema = found->childSchema;
@@ -305,25 +352,36 @@ template<typename OwnerPtr>
         }
 
         if (separator == std::string_view::npos) {
-            /// @note 構造体・配列そのものは値として読み書きできないため leaf ではない。
-            if (found->type == PropertyType::Struct || found->type == PropertyType::Array)
+            // 構造体・配列そのものは値として読み書きできないため leaf ではない。
+            if (found->type == PropertyType::Struct || found->type == PropertyType::Array) {
                 return false;
+            }
             if constexpr (kMutable) {
-                if (found->set == nullptr) return false;
+                if (found->set == nullptr) {
+                    return false;
+                }
                 output = { found, currentOwner, currentOwner };
             } else {
-                if (found->get == nullptr) return false;
+                if (found->get == nullptr) {
+                    return false;
+                }
                 output = { found, currentOwner, nullptr };
             }
             return true;
         }
 
-        if (found->childSchema == nullptr) return false;
+        if (found->childSchema == nullptr) {
+            return false;
+        }
         if constexpr (kMutable) {
-            if (found->getChild == nullptr) return false;
+            if (found->getChild == nullptr) {
+                return false;
+            }
             currentOwner = found->getChild(currentOwner);
         } else {
-            if (found->getConstChild == nullptr) return false;
+            if (found->getConstChild == nullptr) {
+                return false;
+            }
             currentOwner = found->getConstChild(currentOwner);
         }
         currentSchema = found->childSchema;
@@ -358,17 +416,25 @@ inline void CollectLeafPaths(const ITypeSchema& schema, const void* owner,
         path.append(property.key);
 
         if (property.type == PropertyType::Struct) {
-            if (property.childSchema == nullptr || property.getConstChild == nullptr) continue;
+            if (property.childSchema == nullptr || property.getConstChild == nullptr) {
+                continue;
+            }
             const void* child = property.getConstChild(owner);
-            if (child == nullptr) continue;
+            if (child == nullptr) {
+                continue;
+            }
             CollectLeafPaths(*property.childSchema, child, path, outPaths);
         } else if (property.type == PropertyType::Array) {
             if (property.childSchema == nullptr || property.arraySize == nullptr
-                || property.getConstElement == nullptr) continue;
+                || property.getConstElement == nullptr) {
+                continue;
+            }
             const std::size_t count = property.arraySize(owner);
             for (std::size_t index = 0; index < count; ++index) {
                 const void* element = property.getConstElement(owner, index);
-                if (element == nullptr) continue;
+                if (element == nullptr) {
+                    continue;
+                }
                 CollectLeafPaths(*property.childSchema, element,
                                  path + '[' + std::to_string(index) + ']', outPaths);
             }

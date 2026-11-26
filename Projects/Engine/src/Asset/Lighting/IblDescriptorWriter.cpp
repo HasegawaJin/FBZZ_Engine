@@ -19,9 +19,13 @@ bool WriteIblDescriptor(const std::filesystem::path& path, const renderer::IblBa
     const auto copy = [&](char (&destination)[256], const std::string& source) {
         std::error_code error;
         auto relative = std::filesystem::relative(std::filesystem::path(source), path.parent_path(), error);
-        if (error) relative = std::filesystem::path(source).filename();
+        if (error) {
+            relative = std::filesystem::path(source).filename();
+        }
         const auto text = relative.generic_string();
-        if (text.size() >= sizeof(destination)) return false;
+        if (text.size() >= sizeof(destination)) {
+            return false;
+        }
         std::memcpy(destination, text.c_str(), text.size() + 1);
         return true;
     };
@@ -35,7 +39,9 @@ bool WriteIblDescriptor(const std::filesystem::path& path, const renderer::IblBa
     std::ofstream stream(path, std::ios::binary);
     const auto bytes = std::bit_cast<std::array<char, sizeof(FzIblHeader)>>(header);
     stream.write(bytes.data(), bytes.size());
-    if (stream) return true;
+    if (stream) {
+        return true;
+    }
     FBZZ_LOG_ERROR("IBL descriptor: write failed [%s]", path.string().c_str());
     return false;
 }

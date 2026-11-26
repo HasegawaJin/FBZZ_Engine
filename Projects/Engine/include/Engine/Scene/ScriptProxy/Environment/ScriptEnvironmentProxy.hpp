@@ -15,7 +15,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptEnvironmentProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 環境操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name EnvironmentLightComponent (IBL)
     /// @{
@@ -43,4 +43,4 @@ struct ScriptEnvironmentProxy {
     FBZZ_ENGINE_API float         GetMieG()             const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

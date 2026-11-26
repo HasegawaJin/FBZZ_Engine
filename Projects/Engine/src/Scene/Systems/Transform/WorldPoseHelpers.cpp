@@ -24,8 +24,12 @@ thread_local OwnedAiWorldMath s_ownedAiWorldMath;
 void PrepareAiWorldMath()
 {
     const uint32_t control = _mm_getcsr() & 0xFFC0u;
-    if (g_aiWorldMath.control == control) return;
-    for (std::size_t index = 0; index < g_aiWorldMath.count; ++index) g_aiWorldMath.rows[index].valid = false;
+    if (g_aiWorldMath.control == control) {
+        return;
+    }
+    for (std::size_t index = 0; index < g_aiWorldMath.count; ++index) {
+        g_aiWorldMath.rows[index].valid = false;
+    }
     g_aiWorldMath.control = control;
 }
 
@@ -34,7 +38,9 @@ void ReserveAiWorldMath(std::size_t slots)
     constexpr std::size_t MAX_MEMO_SLOTS = 65536;
     const auto count = slots < MAX_MEMO_SLOTS ? slots : MAX_MEMO_SLOTS;
     auto& rows = s_ownedAiWorldMath.rows;
-    if (rows.size() < count) rows.resize(count);
+    if (rows.size() < count) {
+        rows.resize(count);
+    }
     g_aiWorldMath.rows = rows.data(); g_aiWorldMath.count = rows.size();
     PrepareAiWorldMath();
 }

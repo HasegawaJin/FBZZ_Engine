@@ -43,9 +43,13 @@ void TerrainCollisionDebugPass::Execute(renderer::PassResources&, RenderPassCont
     for (EntityID id : ctx.scene.GetEntities<TerrainColliderComponent>()) {
         GameObject* go  = ctx.scene.GetGameObject(id);
         auto*       col = ctx.scene.GetComponent<TerrainColliderComponent>(id);
-        if (!go || !col || !col->enabled || !go->activeInHierarchy()) continue;
-        /// @note 停止中は PhysicsSystem (SimOnly) が BVH を作らないので、ここで同じ手順を通す。
-        if (!PrepareCollider(ctx.scene, *go, *col)) continue;
+        if (!go || !col || !col->enabled || !go->activeInHierarchy()) {
+            continue;
+        }
+        // 停止中は PhysicsSystem (SimOnly) が BVH を作らないので、ここで同じ手順を通す。
+        if (!PrepareCollider(ctx.scene, *go, *col)) {
+            continue;
+        }
 
         const physics::ColliderDebugGeometry geometry =
             physics::BuildColliderDebugGeometry(*col->collider, view);

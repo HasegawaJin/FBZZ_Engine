@@ -19,7 +19,7 @@ enum class ScriptPatrolMode : uint8_t {
 };
 
 struct ScriptPatrolProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 巡回操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetMode(ScriptPatrolMode mode) const;

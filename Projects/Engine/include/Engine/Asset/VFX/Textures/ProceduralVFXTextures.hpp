@@ -58,4 +58,4 @@ struct ProceduralVFXTextureResult {
 
 [[nodiscard]] FBZZ_ENGINE_API const char* ProceduralFlipbookPresetName(ProceduralFlipbookPreset preset);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

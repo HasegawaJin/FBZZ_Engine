@@ -14,25 +14,25 @@ namespace fbzz::asset {
 /// @brief Atlasの列数と出力先を指定する。
 /// @note 行数はフレーム数から一意に決まるため保存値を二重化せず、columns=0を自動配置とする。
 struct FlipbookAtlasBakeSettings {
-    std::vector<std::string> framePaths;
-    std::string outputPath;
-    int columns = 0;
-    bool overwrite = false;
-    bool generateTextureMeta = true;
+    std::vector<std::string> framePaths; ///< フリップブックへ配置する入力画像のパス列。並び順が再生順。
+    std::string outputPath; ///< 焼いたアトラス画像のファイルパス。
+    int columns = 0; ///< アトラスに横方向へ並べるコマ数。
+    bool overwrite = false; ///< 同名の出力画像を上書きできるか。
+    bool generateTextureMeta = true; ///< 生成したアトラスにテクスチャのインポート設定を添えるか。
 };
 
 /// @note 生成物の参照とParticleEmitterへ設定するColumns/Rowsを呼び出し側へ返す。
 struct FlipbookAtlasBakeResult {
-    bool success = false;
-    std::string message;
-    std::string outputPath;
-    int frameCount = 0;
-    int columns = 0;
-    int rows = 0;
-    std::uint32_t frameWidth = 0;
-    std::uint32_t frameHeight = 0;
-    std::uint32_t atlasWidth = 0;
-    std::uint32_t atlasHeight = 0;
+    bool success = false; ///< アトラスの生成・出力に成功したか。
+    std::string message; ///< 画像入力の不一致や書き込み失敗などの診断。
+    std::string outputPath; ///< 焼いたアトラス画像のファイルパス。
+    int frameCount = 0; ///< アトラスに格納した有効なコマ数。
+    int columns = 0; ///< アトラスに横方向へ並べるコマ数。
+    int rows = 0; ///< アトラスに縦方向へ並べたコマ数。
+    std::uint32_t frameWidth = 0; ///< 元画像 1 コマの幅 [px]。
+    std::uint32_t frameHeight = 0; ///< 元画像 1 コマの高さ [px]。
+    std::uint32_t atlasWidth = 0; ///< 出力アトラス全体の幅 [px]。
+    std::uint32_t atlasHeight = 0; ///< 出力アトラス全体の高さ [px]。
 };
 
 /// @note framePathsの順序を再生順として、左上から右方向・次に下方向へ配置する。
@@ -40,4 +40,4 @@ struct FlipbookAtlasBakeResult {
 [[nodiscard]] FBZZ_ENGINE_API FlipbookAtlasBakeResult BakeFlipbookAtlas(
     const FlipbookAtlasBakeSettings& settings);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

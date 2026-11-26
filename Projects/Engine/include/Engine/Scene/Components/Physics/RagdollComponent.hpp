@@ -70,39 +70,38 @@ enum class RagdollStatus : std::uint8_t {
 /// @note コピーで空になるのは、Inspector の自動対応がコピー可能な型を要求するため
 /// @note (ComponentRegistry の static_assert)。剛体は単一所有で複製に意味が無く、
 /// @note «条件が変わったら組み直す» 経路で次の更新に自然に組み上がる。
-struct RagdollDriveOverride { std::string bone; RagdollBodyDrive settings; };
+struct RagdollDriveOverride {
+    std::string bone; ///< 上書き先となるスケルトンのノード名。
+    RagdollBodyDrive settings; ///< 指定した骨のサーボへ適用する駆動設定。
+};
 
 struct RagdollRuntime {
     /// @note 剛体・関節・接地拘束。組めるまで null。
     ///
     /// @note unique_ptr 越しに持つのは、内部で非所有ポインタ (ソルバ → 剛体、関節 → 剛体) が
     /// @note 絡むため。コンポーネントは配列の再確保で動く。
-    std::unique_ptr<RagdollRig> rig;
-    /// @note このフレームの FK 姿勢。捕獲元であり、サーボの目標であり、ブレンド先でもある。
-    std::vector<RagdollBonePose> bones;
-    /// @note bones[i] に対応するスケルトンのノード添字。
-    std::vector<int>             boneNodes;
-    /// @note bones[i] の FK スケール。物理は姿勢しか動かさないので、書き戻しはこれを使う。
-    std::vector<math::Vector3>   boneScales;
-    double remainingTime = 0.0;
-    std::string loadedReference;
-    int loadedAssetGeneration = -1;
-    bool definitionValid = false;
-    RagdollDefinition definition;
-    std::vector<RagdollBodyDriveEntry> driveProfile;
-    std::vector<RagdollDriveOverride> driveOverrides;
-    std::uint64_t definitionRevision = 0;
-    std::uint64_t builtDefinitionRevision = 0;
+    std::unique_ptr<RagdollRig> rig; ///< 剛体・関節・接地拘束をこの個体が単独所有する。構築前は nullptr。
+    std::vector<RagdollBonePose> bones; ///< このフレームの FK 姿勢。捕獲元であり、サーボの目標であり、ブレンド先でもある。
+    std::vector<int>             boneNodes; ///< bones[i] に対応するスケルトンのノード添字。
+    std::vector<math::Vector3>   boneScales; ///< bones[i] の FK スケール。物理は姿勢しか動かさないので、書き戻しはこれを使う。
+    double remainingTime = 0.0; ///< 固定幅で解くラグドールで次のステップに持ち越す未消費時間（秒）。
+    std::string loadedReference; ///< 最後に読み込みを試みたラグドール定義のアセット参照。
+    int loadedAssetGeneration = -1; ///< 定義を読み込み直すか判定するために保存したアセット世代。
+    bool definitionValid = false; ///< ロード済みのアセットからラグドール定義を解決できた。
+    RagdollDefinition definition; ///< 読み込み済みアセットから解決した剛体・関節構成。
+    std::vector<RagdollBodyDriveEntry> driveProfile; ///< 構築済みの骨ごとに使うサーボ設定の基準値。
+    std::vector<RagdollDriveOverride> driveOverrides; ///< ボーン名ごとのサーボ設定を実行時に上書きする一覧。
+    std::uint64_t definitionRevision = 0; ///< 読み込んだラグドール定義が変わるたびに進む版。
+    std::uint64_t builtDefinitionRevision = 0; ///< 直近に rig を構築した際に使用した definitionRevision。
 
-    /// @note rig を組んだときの条件。1 つでも変わったら組み直す。
-    const asset::Skeleton*   builtSkeleton = nullptr;
-    std::size_t builtNodeCount = 0;
-    math::Vector3 builtScale = math::Vector3::ONE;
-    std::string              builtRoot;
-    std::vector<std::string> builtExtraRoots;
-    int                      builtMaxDepth = -1;
-    RagdollProfileKind     builtProfile  = RagdollProfileKind::Mech;
-    std::vector<std::string> builtExcludedRoots;
+    const asset::Skeleton*   builtSkeleton = nullptr; ///< rig を組んだときの条件。1 つでも変わったら組み直す。
+    std::size_t builtNodeCount = 0; ///< rig の構築に使ったスケルトンのノード数。
+    math::Vector3 builtScale = math::Vector3::ONE; ///< rig の構築に使ったオーナーのワールドスケール。
+    std::string              builtRoot; ///< rig の構築に使った主ルートのボーン名。
+    std::vector<std::string> builtExtraRoots; ///< rig の構築に使った追加のルートボーン名の列。
+    int                      builtMaxDepth = -1; ///< rig の構築に使った各ルートからの深さの上限。
+    RagdollProfileKind     builtProfile  = RagdollProfileKind::Mech; ///< rig の構築に使った骨格の物理特性プリセット。
+    std::vector<std::string> builtExcludedRoots; ///< rig の構築から除外したボーン部分木のルート名。
 
     RagdollRuntime()  = default;
     ~RagdollRuntime() = default;
@@ -139,11 +138,10 @@ struct RagdollRuntime {
 
 /// @note 発生した衝撃。フレーム末で消費する。
 struct RagdollImpulse {
-    math::Vector3 origin    = math::Vector3::ZERO;
-    math::Vector3 velocity  = math::Vector3::ZERO;
-    /// @note 0 以下なら全剛体へ一律に効く。
-    float         radius    = 0.0f;
-    math::Vector3 angularVelocity = math::Vector3::ZERO;
+    math::Vector3 origin    = math::Vector3::ZERO; ///< 衝撃の作用範囲を測る中心（ワールド座標）。
+    math::Vector3 velocity  = math::Vector3::ZERO; ///< 範囲内の剛体のワールド速度に加える変化量（m/s）。
+    float         radius    = 0.0f; ///< 0 以下なら全剛体へ一律に効く。
+    math::Vector3 angularVelocity = math::Vector3::ZERO; ///< 範囲内の剛体のワールド角速度に加える変化量（rad/s）。
 };
 
 /// @note スキンドメッシュの骨を一時的に物理へ渡す。AnimatorSystem / IKSystem / SpringBoneSystem
@@ -152,73 +150,56 @@ struct RagdollImpulse {
 /// @note 剛体と関節の実体は RagdollRig が持つ。コンポーネントは配列の再確保で動くので、
 /// @note 非所有ポインタが絡む RagdollRig は必ず unique_ptr 越しに持つ。
 struct RagdollComponent {
-    bool enabled = true;
+    bool enabled = true; ///< ラグドールの状態更新と姿勢の書き戻しを有効にする。
 
-    /// @note 落とし始める骨。空ならスケルトンの根から。
-    std::string rootBoneName;
+    std::string rootBoneName; ///< 落とし始める骨。空ならスケルトンの根から。
     /// @note 追加の根。互いに繋がっていない部分木を同時に落とすときに使う。
     /// @note «壊れた脚だけを脱力» のように体の一部だけ落としたい構成があり、根 1 本では
     /// @note «脚 1 本» か «全身» しか選べないため。重複と他の根の下にある骨は Build 側で
     /// @note 落とす (同じ骨を 2 度剛体にすると 2 つが書き戻して震える)。
-    std::vector<std::string> extraRootBones;
-    /// @note 指定したボーンとその全子孫を除外する。名前はスケルトンのノード名。
-    std::vector<std::string> excludedRootBones;
-    /// @note 根から何段まで剛体にするか。0 で葉まで。すべての根へ同じ深さが掛かる。
-    int maxDepth = 0;
-    /// @note 骨の太さ・重さ・可動域・サーボ特性を骨名から決めるプリセット。
-    RagdollProfileKind profile = RagdollProfileKind::Mech;
-    /// @note GUID または .ragdoll パス。空なら従来の名前規則を使う。
-    std::string physicsAssetPath;
+    std::vector<std::string> extraRootBones; ///< 主ルートから独立してラグドール化する部分木のルートボーン名。
+    std::vector<std::string> excludedRootBones; ///< 指定したボーンとその全子孫を除外する。名前はスケルトンのノード名。
+    int maxDepth = 0; ///< 根から何段まで剛体にするか。0 で葉まで。すべての根へ同じ深さが掛かる。
+    RagdollProfileKind profile = RagdollProfileKind::Mech; ///< 骨の太さ・重さ・可動域・サーボ特性を骨名から決めるプリセット。
+    std::string physicsAssetPath; ///< GUID または .ragdoll パス。空なら従来の名前規則を使う。
 
-    /// @note 重力加速度 [m/s^2]。実測値より重い方が «重機が崩れる» に寄る。
-    float gravity = 26.0f;
+    float gravity = 26.0f; ///< 重力加速度 [m/s^2]。実測値より重い方が «重機が崩れる» に寄る。
     /// @note 1 フレームを何回に割って解くか。増やすほど硬いサーボが安定する。
     /// @note 反復回数ではなく substep: 質量比の大きい関節連鎖は同じ刻みを何度も回しても
     /// @note 収束せず、刻みを小さくする方が効く (Macklin 2019)。
-    int   substeps = 12;
-    /// @note 速度の減衰 [1/s]。空気抵抗ではなく «関節のこすれ» の代用。
-    float linearDrag  = 0.35f;
-    float angularDrag = 0.60f;
+    int   substeps = 12; ///< 1 フレームの処理時間を分割して解くサブステップ数。
+    float linearDrag  = 0.35f; ///< 速度の減衰 [1/s]。空気抵抗ではなく «関節のこすれ» の代用。
+    float angularDrag = 0.60f; ///< 剛体の角速度を減衰させる係数（1/s）。
 
     /// @note 骨の表面のクーロン摩擦係数。0 で氷の上、1 前後で «倒れた所で止まる»。
     /// @note 世界側のマテリアルとは PhysicsMaterial の合成規則で混ざる。
     float friction    = 0.9f;
-    /// @note 負値は旧 friction と同値。それ以外は静摩擦係数として独立に合成する。
-    float staticFriction = -1.0f;
-    bool allowRest = true;
-    /// @note 骨の反発係数。ラグドールが跳ねると重さが消えるので、既定は 0。
-    float restitution = 0.0f;
+    float staticFriction = -1.0f; ///< 負値は旧 friction と同値。それ以外は静摩擦係数として独立に合成する。
+    bool allowRest = true; ///< 接触して静止に近いラグドール剛体の休止を許可する。
+    float restitution = 0.0f; ///< 骨の反発係数。ラグドールが跳ねると重さが消えるので、既定は 0。
 
-    /// @note 世界の地形・壁と当たる。
-    bool contactWorld   = true;
-    /// @note 世界の «動く» 剛体とも当たる。瓦礫を蹴る / 弾かれる。
-    bool contactDynamic = true;
-    /// @note 自分の骨どうしが当たる。腕や脚が胴を貫通しなくなる。
-    bool contactSelf    = true;
+    bool contactWorld   = true; ///< 世界の地形・壁と当たる。
+    bool contactDynamic = true; ///< 世界の «動く» 剛体とも当たる。瓦礫を蹴る / 弾かれる。
+    bool contactSelf    = true; ///< 自分の骨どうしが当たる。腕や脚が胴を貫通しなくなる。
     /// @note Active (サーボで支えている) 間も世界の接触を解くか。
     /// @note 既定で切る: 立っている間の足の置き所はクリップが決めており、床はその通りに
     /// @note 踏まれている前提。押し出しを重ねると足が半径ぶん浮いてサーボと釣り合い、
     /// @note 体が宙に浮くため。世界と噛み合わせたいのは «崩れてから» なので支えている間は
     /// @note 切る (抜け止めの水平面は Active でもクリップの最下点まで下がるので残る)。
     bool contactWhileActive = false;
-    /// @note 関節グラフ上でこの段数以内の先祖・子孫とは当てない。1 で親子、2 で祖父–孫まで。
-    int  selfSkip       = 2;
+    int  selfSkip       = 2; ///< 関節グラフ上でこの段数以内の先祖・子孫とは当てない。1 で親子、2 で祖父–孫まで。
 
     /// @note 世界のコライダーを取りこぼしたときの抜け止めに、水平面を 1 枚張る。
     /// @note 実接触後も残すのは、床コライダーの置き忘れが «床下へ消えていく» という
     /// @note 最も分かりにくい壊れ方になるため。面はオーナー足元とクリップ最下点の低い方に
     /// @note 置くので実際の床がある限り何もしない。段差や多層の地形では切ること。
     bool  groundPlane  = true;
-    /// @note 抜け止めの面の高さ。オーナーの足元からの相対 [m]。
-    float groundOffset = 0.0f;
+    float groundOffset = 0.0f; ///< 抜け止めの面の高さ。オーナーの足元からの相対 [m]。
 
-    /// @note アニメーションから物理へ移る秒数。0 で即座に切り替わる。
-    float blendIn  = 0.06f;
-    /// @note 物理からアニメーションへ戻る秒数。
-    float blendOut = 0.40f;
+    float blendIn  = 0.06f; ///< アニメーションから物理へ移る秒数。0 で即座に切り替わる。
+    float blendOut = 0.40f; ///< 物理からアニメーションへ戻る秒数。
 
-    /// @note simulateInEditor 相当。既定では Play 中だけ動く。
-    bool simulateInEditor = false;
+    bool simulateInEditor = false; ///< simulateInEditor 相当。既定では Play 中だけ動く。
 
     /// @note サーボのトルク上限と剛性に掛かる倍率。Active 専用。
     /// @note 絶対値 [N·m] ではなく無次元にするのは、適正なトルクが骨の長さと質量で
@@ -229,44 +210,35 @@ struct RagdollComponent {
     /// @note 一律にしないのは、全身を同じ強さで引くと骨がクリップへ張り付き «少し遅れて
     /// @note 同じ絵» になるため。腰を強く末端を弱くすると «こらえている» 形が出る。
     float driveFalloff = 0.90f;
-    /// @note サーボの減衰に掛かる倍率。下げるほど目標を追い越して揺れ戻る。
-    float driveDamping = 1.0f;
+    float driveDamping = 1.0f; ///< サーボの減衰に掛かる倍率。下げるほど目標を追い越して揺れ戻る。
     /// @note クリップが要求する関節角を測り、可動域をそこまで広げる。
     /// @note 既定で入れるのは、プロファイルの可動域がクリップより狭いとサーボが目標へ行けず
     /// @note «アニメーションが崩れる» ためで、崩しているのは «物理が許していない» こと。
     /// @note 切ると手で詰めることになる。
     bool  learnLimits = true;
-    /// @note 測った範囲へ足す余裕 [度]。押されて少し越えるぶんを吸収する。
-    float limitMargin = 5.0f;
+    float limitMargin = 5.0f; ///< 測った範囲へ足す余裕 [度]。押されて少し越えるぶんを吸収する。
 
     /// @note 根の骨をアニメーションへ繋ぎ止める力。自重を支えるのに要る力への倍率。
     /// @note 関節は隣の骨との相対しか拘束しないため根は何にも繋がっておらず、0 だと
     /// @note サーボが形を保ったまま全体が重力で落ちる。1.0 でぎりぎり自重を支える。
     float rootAnchor = 3.0f;
-    /// @note 繋ぎ止めが上限の力を出し切るまでに沈む距離 [m]。押されたときの «遊び»。
-    float rootAnchorSag = 0.04f;
-    /// @note 同じく、上限のトルクを出し切るまでに傾く角 [rad]。
-    float rootAnchorTilt = 0.05f;
+    float rootAnchorSag = 0.04f; ///< 繋ぎ止めが上限の力を出し切るまでに沈む距離 [m]。押されたときの «遊び»。
+    float rootAnchorTilt = 0.05f; ///< 同じく、上限のトルクを出し切るまでに傾く角 [rad]。
 
-    /// @note 衝撃を受けた瞬間に抜ける力みの割合 [0,1]。0 で «押されても硬いまま»。
-    float impactSlack = 0.60f;
-    /// @note 抜けた力みが元へ戻るまでの秒数。«こらえ直す» 時間。
-    float recoverySeconds = 0.50f;
+    float impactSlack = 0.60f; ///< 衝撃を受けた瞬間に抜ける力みの割合 [0,1]。0 で «押されても硬いまま»。
+    float recoverySeconds = 0.50f; ///< 抜けた力みが元へ戻るまでの秒数。«こらえ直す» 時間。
     /// @note 姿勢差がこの距離 [m] を超えたらサーボを捨てて脱力へ落ちる。0 で無効。
     /// @note トルク上限があっても押し続けると «たわんだまま立っている» に落ち着くため、
     /// @note 支え切れなくなったら倒れる、が入って初めて立っている絵に意味が出る。
     float collapseDistance = 0.90f;
-    /// @note 根位置・骨長を維持し、FK姿勢からの変位を制限する。駆動モードは変更しない。
-    bool standingGuard = false;
-    float standingMaxDistance = 0.15f;
-    float standingMaxDegrees = 15.0f;
-    /// @note Play に入った時点で Active を起動する。スクリプト無しで立ったまま効かせる口。
-    bool activateOnStart = false;
+    bool standingGuard = false; ///< 根位置・骨長を維持し、FK姿勢からの変位を制限する。駆動モードは変更しない。
+    float standingMaxDistance = 0.15f; ///< 立ち姿勢保持時に許す FK 姿勢との位置差の上限（m）。
+    float standingMaxDegrees = 15.0f; ///< 立ち姿勢保持時に許す FK 姿勢との角度差の上限（度）。
+    bool activateOnStart = false; ///< Play に入った時点で Active を起動する。スクリプト無しで立ったまま効かせる口。
 
-    RagdollMode  mode   = RagdollMode::Passive;
-    RagdollPhase phase  = RagdollPhase::Idle;
-    /// @note 現在の適用率 [0,1]。0 で完全に FK ポーズ。
-    float weight = 0.0f;
+    RagdollMode  mode   = RagdollMode::Passive; ///< ラグドールを脱力状態またはアニメーション追従の駆動状態で解く。
+    RagdollPhase phase  = RagdollPhase::Idle; ///< アニメーションとラグドールの混合が現在どの段階にあるか。
+    float weight = 0.0f; ///< 現在の適用率 [0,1]。0 で完全に FK ポーズ。
 
     /// @note この起動で Hold 中に到達する適用率 [0,1]。Begin() が決める。
     /// @note 1 固定にしないのは、被弾のよろめきは «歩いている絵の上に押された分だけ» 乗せたい
@@ -276,47 +248,38 @@ struct RagdollComponent {
     /// @note よろめきで落とすのは、0.5 秒でも 26 m/s^2 は 3m 落ち «崩れ落ちてから戻る» という
     /// @note 溶けた動きに見えるため。よろめきは勢いが減衰して戻るだけでよく落下は要らない。
     float activationGravity = 1.0f;
-    /// @note Hold に留まる残り秒数。0 以下なら End() が呼ばれるまで続く。
-    float holdRemaining = 0.0f;
-    float phaseTimer    = 0.0f;
-    float phaseStartWeight = 0.0f;
+    float holdRemaining = 0.0f; ///< Hold に留まる残り秒数。0 以下なら End() が呼ばれるまで続く。
+    float phaseTimer    = 0.0f; ///< 現在のブレンド段階へ移ってからの経過時間（秒）。
+    float phaseStartWeight = 0.0f; ///< 現在のブレンド段階へ入ったときの適用率（0〜1）。
 
-    /// @note 次の更新で捕獲し直す。Begin() が立てる。
-    bool beginRequested = false;
-    /// @note 次の更新でブレンドアウトへ入る。End() が立てる。
-    bool endRequested   = false;
-    /// @note 次の更新から Active で走る。BeginActive() が立てる。
-    bool activeRequested = false;
-    /// @note activateOnStart を消費済み。Play を抜けるたびに戻る。
-    bool startTriggered  = false;
+    bool beginRequested = false; ///< 次の更新で捕獲し直す。Begin() が立てる。
+    bool endRequested   = false; ///< 次の更新でブレンドアウトへ入る。End() が立てる。
+    bool activeRequested = false; ///< 次の更新から Active で走る。BeginActive() が立てる。
+    bool startTriggered  = false; ///< activateOnStart を消費済み。Play を抜けるたびに戻る。
 
-    /// @note 今の力み倍率 [0,1]。衝撃で 1-impactSlack まで落ち、recoverySeconds で 1 へ戻る。
-    float muscleScale       = 1.0f;
-    float recoveryRemaining = 0.0f;
+    float muscleScale       = 1.0f; ///< 今の力み倍率 [0,1]。衝撃で 1-impactSlack まで落ち、recoverySeconds で 1 へ戻る。
+    float recoveryRemaining = 0.0f; ///< 衝撃で落ちたサーボの力を元へ戻すまでの残り時間（秒）。
 
-    std::vector<RagdollImpulse> pendingImpulses;
+    std::vector<RagdollImpulse> pendingImpulses; ///< 次の更新でラグドールへ反映する衝撃要求。
 
-    RagdollRuntime runtime;
+    RagdollRuntime runtime; ///< このコンポーネントが所有する剛体構成と実行時の計算状態。
 
     /// @note 実際に使っている接地面の高さ [m]。Passive では起動時に決まり、その起動の
     /// @note あいだ動かない ─ 途中で上げると、崩れ落ちている体が一瞬で持ち上がる。
     float         runtimeGround     = 0.0f;
-    int           runtimeBodyCount  = 0;
-    int           runtimeJointCount = 0;
-    /// @note トルク上限に張り付いている関節の数。0 でない ＝ どこかが力負けしている。
-    int           runtimeSaturated  = 0;
+    int           runtimeBodyCount  = 0; ///< 現在の rig に存在する物理剛体の数。
+    int           runtimeJointCount = 0; ///< 現在の rig が解く関節の数。
+    int           runtimeSaturated  = 0; ///< トルク上限に張り付いている関節の数。0 でない ＝ どこかが力負けしている。
     /// @note 可動域に食い込んでいる関節の数。0 でない ＝ クリップが «曲げてよいことに
     /// @note なっていない» 所まで曲げている。アニメーションが崩れる主因はたいていこちら。
     int           runtimeLimited    = 0;
-    /// @note このフレームに解いた接触の数。0 のまま落ちていくなら世界に床コライダーが無い。
-    int           runtimeContacts   = 0;
+    int           runtimeContacts   = 0; ///< このフレームに解いた接触の数。0 のまま落ちていくなら世界に床コライダーが無い。
     /// @note プロファイルのどの規則にも当たらなかった骨の数。0 でないなら、その骨は可動域も
     /// @note 太さも fallback のまま ─ «膝が逆に折れない» のような設定が効いていない。
     /// @note 骨の名前は組み直したときにログへ出る。
     int           runtimeUnmatched  = 0;
-    RagdollStatus runtimeStatus     = RagdollStatus::Idle;
-    /// @note アニメーション姿勢から一番離れた剛体の距離 [m]。collapseDistance の判定値。
-    float         runtimeDeviation  = 0.0f;
+    RagdollStatus runtimeStatus     = RagdollStatus::Idle; ///< 構築や起動の結果を Inspector に表示する診断ステータス。
+    float         runtimeDeviation  = 0.0f; ///< アニメーション姿勢から一番離れた剛体の距離 [m]。collapseDistance の判定値。
 
     const char* GetTypeName() const { return "Ragdoll"; }
 

@@ -45,7 +45,9 @@ bool IsFinite(const math::Quaternion& value)
 
 bool IsUnitQuaternion(const math::Quaternion& value)
 {
-    if (!IsFinite(value)) return false;
+    if (!IsFinite(value)) {
+        return false;
+    }
     const double length = std::sqrt(static_cast<double>(value.x) * value.x
                                   + static_cast<double>(value.y) * value.y
                                   + static_cast<double>(value.z) * value.z
@@ -104,8 +106,9 @@ bool ToVector3(Double3 value, math::Vector3& out)
     if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z)
         || std::abs(value.x) > static_cast<double>(std::numeric_limits<float>::max())
         || std::abs(value.y) > static_cast<double>(std::numeric_limits<float>::max())
-        || std::abs(value.z) > static_cast<double>(std::numeric_limits<float>::max()))
+        || std::abs(value.z) > static_cast<double>(std::numeric_limits<float>::max())) {
         return false;
+    }
     out = {static_cast<float>(value.x), static_cast<float>(value.y), static_cast<float>(value.z)};
     return IsFinite(out);
 }
@@ -120,16 +123,22 @@ bool OwnerLocalPosition(const GameObject& owner, const GameObject& target, math:
     if (target.IsDescendantOf(owner)) {
         std::vector<const GameObject*> chain;
         for (const GameObject* current = &target; current && current != &owner; current = current->GetParent()) {
-            if (!IsFiniteTransform(current->transform, true)) return false;
+            if (!IsFiniteTransform(current->transform, true)) {
+                return false;
+            }
             chain.push_back(current);
         }
-        if (chain.empty() || chain.back()->GetParent() != &owner) return false;
+        if (chain.empty() || chain.back()->GetParent() != &owner) {
+            return false;
+        }
 
         Double3 relativeWorld{};
         for (auto current = chain.rbegin(); current != chain.rend(); ++current) {
             const Transform& transform = (*current)->transform;
             const GameObject* parent = (*current)->GetParent();
-            if (!parent || !IsFiniteTransform(parent->transform, true)) return false;
+            if (!parent || !IsFiniteTransform(parent->transform, true)) {
+                return false;
+            }
             const Double3 localPosition{transform.position.x, transform.position.y, transform.position.z};
             relativeWorld = Add(relativeWorld, Rotate(parent->transform.worldRotation,
                 Hadamard(localPosition, parent->transform.worldScale)));
@@ -149,7 +158,7 @@ bool OwnerLocalPosition(const GameObject& owner, const GameObject& target, math:
         static_cast<double>(target.transform.worldPosition.x) - owner.transform.worldPosition.x,
         static_cast<double>(target.transform.worldPosition.y) - owner.transform.worldPosition.y,
         static_cast<double>(target.transform.worldPosition.z) - owner.transform.worldPosition.z};
-    /// @note 単位クォータニオンであることを検証済みなので、所有オブジェクトの回転の逆元には共役を使える。
+    // 単位クォータニオンであることを検証済みなので、所有オブジェクトの回転の逆元には共役を使える。
     const math::Quaternion inverse{-owner.transform.worldRotation.x,
                                    -owner.transform.worldRotation.y,
                                    -owner.transform.worldRotation.z,
@@ -208,8 +217,14 @@ bool ResolveControlPointBindings(Scene& scene,
 {
     status = ControlPointResolveStatus::SUCCESS;
     signature = 0;
+
+    // 所有者のローカル座標へ変換するため、所有者とその姿勢を先に検査する。
     GameObject* owner = scene.GetGameObject(ownerId);
-    if (!owner || !scene.IsValid(ownerId)) {
+    if (!owner) {
+        status = ControlPointResolveStatus::INVALID_OWNER;
+        return false;
+    }
+    if (!scene.IsValid(ownerId)) {
         status = ControlPointResolveStatus::INVALID_OWNER;
         return false;
     }
@@ -225,11 +240,14 @@ bool ResolveControlPointBindings(Scene& scene,
     std::unordered_set<uint32_t> bindingIds;
     bindingIds.reserve(bindings.size());
     std::unordered_set<uint64_t> targetIds;
-    if (requireTargetPointMarker) targetIds.reserve(bindings.size());
+    if (requireTargetPointMarker) {
+        targetIds.reserve(bindings.size());
+    }
     std::unordered_map<std::string, GameObject*> slowGuidLookup;
     bool needsGuidLookup = false;
     const uint64_t sceneGeneration = scene.GetRenderSceneGeneration();
 
+    // 点の識別子を検査し、現在の Scene 世代で借用できる参照が失効したら GUID 検索を準備する。
     for (const ControlPointBinding& binding : bindings) {
         if (binding.stableId == 0 || binding.stableId > static_cast<uint32_t>((std::numeric_limits<int32_t>::max)())) {
             status = ControlPointResolveStatus::INVALID_BINDING_ID;
@@ -252,17 +270,21 @@ bool ResolveControlPointBindings(Scene& scene,
         }
         const GameObject* cached = reference.sceneGeneration == sceneGeneration && scene.IsValid(reference.id)
             ? scene.GetGameObject(reference.id) : nullptr;
-        if (!cached || cached->instanceId != reference.guid)
+        if (!cached || cached->instanceId != reference.guid) {
             needsGuidLookup = true;
-        if (needsGuidLookup)
+        }
+        if (needsGuidLookup) {
             slowGuidLookup.try_emplace(reference.guid, nullptr);
+        }
     }
 
+    // キャッシュで解決できない GUID を一回の Scene 走査で引く。先に現れた個体を採用する。
     if (needsGuidLookup && !slowGuidLookup.empty()) {
         for (GameObject& object : scene.GameObjects()) {
             const auto found = slowGuidLookup.find(object.instanceId);
-            if (found != slowGuidLookup.end() && !found->second)
+            if (found != slowGuidLookup.end() && !found->second) {
                 found->second = &object;
+            }
         }
     }
 
@@ -274,6 +296,7 @@ bool ResolveControlPointBindings(Scene& scene,
     HashValue(currentSignature, ownerId.generation);
     HashValue(currentSignature, static_cast<uint64_t>(bindings.size()));
 
+    // 各対象を検証し、位置・姿勢の値と、次回の変更判定に使う署名を同じ順序で作る。
     for (const ControlPointBinding& binding : bindings) {
         const ObjectReference& reference = *binding.target;
         if (reference.guid.empty()) {
@@ -285,11 +308,15 @@ bool ResolveControlPointBindings(Scene& scene,
         GameObject* target = nullptr;
         if (reference.sceneGeneration == sceneGeneration && scene.IsValid(reference.id)) {
             GameObject* cached = scene.GetGameObject(reference.id);
-            if (cached && cached->instanceId == reference.guid) target = cached;
+            if (cached && cached->instanceId == reference.guid) {
+                target = cached;
+            }
         }
         if (!target) {
             const auto found = slowGuidLookup.find(reference.guid);
-            if (found != slowGuidLookup.end()) target = found->second;
+            if (found != slowGuidLookup.end()) {
+                target = found->second;
+            }
         }
         if (!target) {
             reference.id = EntityID::INVALID;
@@ -353,7 +380,11 @@ bool ResolveControlPointBindings(Scene& scene,
         HashVector(currentSignature, point.worldScale);
     }
 
-    if (currentSignature == 0) currentSignature = 1;
+    if (currentSignature == 0) {
+        currentSignature = 1;
+    }
+
+    // すべての参照が解決したところで、呼び出し側の点列と署名を置き換える。
     out = std::move(resolved);
     signature = currentSignature;
     return true;

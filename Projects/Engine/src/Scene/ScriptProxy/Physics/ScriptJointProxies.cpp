@@ -31,10 +31,16 @@ namespace {
 
 JointComponent* EnsureJointComponent(const Script* script)
 {
-    if (script == nullptr) return nullptr;
-    if (auto* joint = SelfComponent<JointComponent>(script)) return joint;
+    if (script == nullptr) {
+        return nullptr;
+    }
+    if (auto* joint = SelfComponent<JointComponent>(script)) {
+        return joint;
+    }
     GameObject* self = script->scene.Self();
-    if (self == nullptr || !self->IsValid()) return nullptr;
+    if (self == nullptr || !self->IsValid()) {
+        return nullptr;
+    }
     return &self->AddComponent<JointComponent>();
 }
 
@@ -43,14 +49,18 @@ JointComponent* EnsureJointComponent(const Script* script)
 
 JointComponent* BeginJointConnect(const Script* script, JointType type, GameObject* target)
 {
-    if (!target || !target->IsValid()) return nullptr;
+    if (!target || !target->IsValid()) {
+        return nullptr;
+    }
     JointComponent* joint = EnsureJointComponent(script);
-    if (!joint) return nullptr;
+    if (!joint) {
+        return nullptr;
+    }
     joint->enabled         = true;
     joint->type            = type;
     joint->connectedBody.id = target->GetID();
-    /// @note 相手を名指しした以上、祖先へのフォールバックは切る。
-    /// @note 残したままだと、相手が消えた瞬間に «別のものへ勝手に繋ぎ変わる»。
+    // 相手を名指しした以上、祖先へのフォールバックは切る。
+    // 残したままだと、相手が消えた瞬間に «別のものへ勝手に繋ぎ変わる»。
     joint->connectToParent = false;
     joint->chainBodies.clear();
     return joint;
@@ -65,7 +75,7 @@ void SetAuthoredJointDistance(JointComponent& joint, float distance)
 }
 
 
-} /// @note namespace
+} // namespace
 void ScriptJointProxy::ConnectFixed(GameObject* target) const
 {
     BeginJointConnect(script, JointType::Fixed, target);
@@ -74,15 +84,17 @@ void ScriptJointProxy::ConnectFixed(GameObject* target) const
 
 void ScriptJointProxy::ConnectDistance(GameObject* target, float distance) const
 {
-    if (auto* joint = BeginJointConnect(script, JointType::Distance, target))
+    if (auto* joint = BeginJointConnect(script, JointType::Distance, target)) {
         SetAuthoredJointDistance(*joint, distance);
+    }
 }
 
 
 void ScriptJointProxy::ConnectRope(GameObject* target, float maxLength) const
 {
-    if (auto* joint = BeginJointConnect(script, JointType::Rope, target))
+    if (auto* joint = BeginJointConnect(script, JointType::Rope, target)) {
         SetAuthoredJointDistance(*joint, maxLength);
+    }
 }
 
 
@@ -92,7 +104,9 @@ void ScriptJointProxy::ConnectSpring(GameObject* target,
                                      float damping) const
 {
     auto* joint = BeginJointConnect(script, JointType::Spring, target);
-    if (!joint) return;
+    if (!joint) {
+        return;
+    }
     SetAuthoredJointDistance(*joint, restLength);
     joint->spring  = stiffness < 0.0f ? 0.0f : stiffness;
     joint->damping = damping < 0.0f ? 0.0f : damping;
@@ -105,7 +119,9 @@ void ScriptJointProxy::ConnectHinge(GameObject* target,
                                     const math::Vector3& connectedAnchor) const
 {
     auto* joint = BeginJointConnect(script, JointType::Hinge, target);
-    if (!joint) return;
+    if (!joint) {
+        return;
+    }
     joint->axis            = axis;
     joint->anchor          = anchor;
     joint->connectedAnchor = connectedAnchor;
@@ -114,8 +130,9 @@ void ScriptJointProxy::ConnectHinge(GameObject* target,
 
 void ScriptJointProxy::ConnectSlider(GameObject* target, const math::Vector3& axis) const
 {
-    if (auto* joint = BeginJointConnect(script, JointType::Slider, target))
+    if (auto* joint = BeginJointConnect(script, JointType::Slider, target)) {
         joint->axis = axis;
+    }
 }
 
 
@@ -124,15 +141,17 @@ void ScriptJointProxy::ConnectChain(const std::vector<GameObject*>& following,
                                     int iterations) const
 {
     JointComponent* joint = EnsureJointComponent(script);
-    if (!joint) return;
+    if (!joint) {
+        return;
+    }
     joint->enabled = true;
     joint->type    = JointType::Chain;
     joint->connectedBody.id = EntityID::INVALID;
     joint->chainBodies.clear();
     joint->chainBodies.reserve(following.size());
     for (GameObject* go : following) {
-        /// @note 1 つでも欠けると «どこから先が繋がっていないのか» が分からなくなる。
-        /// @note 並びの穴を許さず、丸ごと張らないことで気付ける形にする。
+        // 1 つでも欠けると «どこから先が繋がっていないのか» が分からなくなる。
+        // 並びの穴を許さず、丸ごと張らないことで気付ける形にする。
         if (!go || !go->IsValid()) { joint->chainBodies.clear(); return; }
         joint->chainBodies.push_back(EntityRef{ go->GetID() });
     }
@@ -143,9 +162,12 @@ void ScriptJointProxy::ConnectChain(const std::vector<GameObject*>& following,
 
 void ScriptJointProxy::Break() const
 {
-    if (!script || !script->m_gameObject) return;
-    if (script->m_gameObject->GetComponent<JointComponent>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (script->m_gameObject->GetComponent<JointComponent>()) {
         script->m_gameObject->RemoveComponent<JointComponent>();
+    }
 }
 
 
@@ -164,7 +186,9 @@ bool ScriptJointProxy::IsConnected() const
 
 void ScriptJointProxy::SetEnabled(bool enabled) const
 {
-    if (auto* joint = SelfComponent<JointComponent>(script)) joint->enabled = enabled;
+    if (auto* joint = SelfComponent<JointComponent>(script)) {
+        joint->enabled = enabled;
+    }
 }
 
 
@@ -178,10 +202,12 @@ bool ScriptJointProxy::IsEnabled() const
 void ScriptJointProxy::SetLimits(float lower, float upper) const
 {
     auto* joint = SelfComponent<JointComponent>(script);
-    if (!joint) return;
+    if (!joint) {
+        return;
+    }
     joint->useLimits  = true;
-    /// @note 逆に渡されても入れ替えて受ける。Physics 側の SetLimits も min/max を並べ替えるが、
-    /// @note Inspector に «下限 > 上限» のまま残ると «可動域が効かない» に見える。
+    // 逆に渡されても入れ替えて受ける。Physics 側の SetLimits も min/max を並べ替えるが、
+    // Inspector に «下限 > 上限» のまま残ると «可動域が効かない» に見える。
     joint->lowerLimit = std::min(lower, upper);
     joint->upperLimit = std::max(lower, upper);
 }
@@ -189,14 +215,18 @@ void ScriptJointProxy::SetLimits(float lower, float upper) const
 
 void ScriptJointProxy::ClearLimits() const
 {
-    if (auto* joint = SelfComponent<JointComponent>(script)) joint->useLimits = false;
+    if (auto* joint = SelfComponent<JointComponent>(script)) {
+        joint->useLimits = false;
+    }
 }
 
 
 void ScriptJointProxy::SetMotor(float targetSpeed, float maxTorque) const
 {
     auto* joint = SelfComponent<JointComponent>(script);
-    if (!joint) return;
+    if (!joint) {
+        return;
+    }
     joint->useMotor       = true;
     joint->motorSpeed     = targetSpeed;
     joint->motorMaxTorque = maxTorque < 0.0f ? 0.0f : maxTorque;
@@ -205,14 +235,17 @@ void ScriptJointProxy::SetMotor(float targetSpeed, float maxTorque) const
 
 void ScriptJointProxy::ClearMotor() const
 {
-    if (auto* joint = SelfComponent<JointComponent>(script)) joint->useMotor = false;
+    if (auto* joint = SelfComponent<JointComponent>(script)) {
+        joint->useMotor = false;
+    }
 }
 
 
 void ScriptJointProxy::SetDistance(float distance) const
 {
-    if (auto* joint = SelfComponent<JointComponent>(script))
+    if (auto* joint = SelfComponent<JointComponent>(script)) {
         SetAuthoredJointDistance(*joint, distance);
+    }
 }
 
 
@@ -226,13 +259,17 @@ float ScriptJointProxy::GetDistance() const
 float ScriptJointProxy::GetCurrentDistance() const
 {
     auto* joint = SelfComponent<JointComponent>(script);
-    if (!joint || !script || !script->m_gameObject || !script->m_scene) return 0.0f;
+    if (!joint || !script || !script->m_gameObject || !script->m_scene) {
+        return 0.0f;
+    }
     const physics::RigidBody* self = SelfRigidBody(script);
     const physics::RigidBody* other =
         ResolveJointPartner(*script->m_scene, *script->m_gameObject, *joint);
-    if (!self || !other) return 0.0f;
+    if (!self || !other) {
+        return 0.0f;
+    }
     return (other->GetPosition() - self->GetPosition()).Length();
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

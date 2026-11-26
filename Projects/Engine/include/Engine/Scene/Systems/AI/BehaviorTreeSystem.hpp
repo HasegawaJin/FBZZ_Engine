@@ -28,4 +28,4 @@ private:
     std::vector<math::Vector3> m_cameraPositions;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

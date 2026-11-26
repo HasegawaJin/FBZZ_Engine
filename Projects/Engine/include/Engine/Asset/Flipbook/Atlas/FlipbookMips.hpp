@@ -24,9 +24,9 @@ enum class FlipbookMipContent : std::uint8_t {
 };
 
 struct FlipbookMipLevel {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    std::vector<std::uint8_t> rgba;
+    std::uint32_t width = 0; ///< この mip レベルのアトラス幅 [px]。
+    std::uint32_t height = 0; ///< この mip レベルのアトラス高さ [px]。
+    std::vector<std::uint8_t> rgba; ///< 行優先で格納した RGBA8 テクセル列。
 };
 
 /// @note 作れるミップの段数 (0 段目を含む)。コマの 1 辺が 4 px を下回る手前か、奇数になる手前で止める。
@@ -40,4 +40,4 @@ struct FlipbookMipLevel {
                                                               std::uint32_t tileWidth, std::uint32_t tileHeight,
                                                               FlipbookMipContent content);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

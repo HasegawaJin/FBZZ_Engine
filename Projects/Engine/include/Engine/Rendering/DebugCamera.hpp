@@ -21,10 +21,10 @@ public:
 
     float moveSpeed      = 5.0f;
     float fastMultiplier = 3.0f;
-    float mouseSens      = 0.15f;  ///< @note 1 ピクセルあたりの回転角度
-    float panSensitivity = 0.003f; ///< @note focusDistance を基準にした 1 ピクセルあたりの移動量
-    float scrollSpeed    = 1.0f;   ///< @note 速度加算量 (focus-distance 比)
-    float scrollDamping  = 10.0f;  ///< @note 速度減衰係数 (大きいほど素早く停止)
+    float mouseSens      = 0.15f; ///< 1 ピクセルあたりの回転角度
+    float panSensitivity = 0.003f; ///< focusDistance を基準にした 1 ピクセルあたりの移動量
+    float scrollSpeed    = 1.0f; ///< 速度加算量 (focus-distance 比)
+    float scrollDamping  = 10.0f; ///< 速度減衰係数 (大きいほど素早く停止)
 
     /// @brief 指定ターゲットへの向きから yaw / pitch とピボットを初期化する。
     FBZZ_ENGINE_API void LookAt(const math::Vector3& target);
@@ -44,7 +44,9 @@ public:
     /// @note 突然欠けないようにする。ただし far の半分までは引かない: シャドウカスケードや
     /// @note 距離カリングは「カメラからの距離」で効くため、数百単位引くと影が丸ごと消える。
     [[nodiscard]] float ViewDistance() const noexcept {
-        if (camera.m_projection != ProjectionMode::Orthographic) return m_focusDistance;
+        if (camera.m_projection != ProjectionMode::Orthographic) {
+            return m_focusDistance;
+        }
         const float pullback = camera.m_orthoHeight * 2.0f;
         return pullback > m_focusDistance ? pullback : m_focusDistance;
     }
@@ -60,7 +62,7 @@ private:
     float         m_pitch         = 0.0f;
     float         m_focusDistance = 10.0f;
     math::Vector3 m_pivot         = {};
-    float         m_dollyVelocity = 0.0f;  ///< @note 秒あたりの移動量
+    float         m_dollyVelocity = 0.0f; ///< 秒あたりの移動量
 
     FBZZ_ENGINE_API void ApplyRotation();
     FBZZ_ENGINE_API void ApplyDolly(float dt);
@@ -68,4 +70,4 @@ private:
     FBZZ_ENGINE_API void RepositionFromPivot();
 };
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

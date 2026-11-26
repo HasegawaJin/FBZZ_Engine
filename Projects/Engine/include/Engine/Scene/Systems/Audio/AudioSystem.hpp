@@ -29,4 +29,4 @@ private:
     uint64_t m_sceneGeneration = 0;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

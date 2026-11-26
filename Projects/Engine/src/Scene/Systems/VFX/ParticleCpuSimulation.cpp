@@ -66,24 +66,32 @@ void PrepareParticleSimulationInputs(ParticleEmitter& emitter)
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     if (const auto snapshot = asset::ReadMaterialAuthoring(handle)) {
         const auto* mat = &snapshot->Data();
-            /// @note .mat の [params] albedo を色調整として引き継ぐ。
-            /// @note オーサリング値は sRGB なので、他の色と同じくリニアへ揃えて渡す。
+            // .mat の [params] albedo を色調整として引き継ぐ。
+            // オーサリング値は sRGB なので、他の色と同じくリニアへ揃えて渡す。
             math::Vector4 tint{ 1.0f, 1.0f, 1.0f, 1.0f };
             if (const auto param = mat->params.find("albedo"); param != mat->params.end()) {
                 const auto& values = param->second;
-                /// @note float / float2 / float3 / float4 が同じ形式で入る。足りない成分は既定のまま。
-                if (values.size() > 0) tint.x = values[0];
-                if (values.size() > 1) tint.y = values[1];
-                if (values.size() > 2) tint.z = values[2];
-                if (values.size() > 3) tint.w = values[3];
+                // float / float2 / float3 / float4 が同じ形式で入る。足りない成分は既定のまま。
+                if (values.size() > 0) {
+                    tint.x = values[0];
+                }
+                if (values.size() > 1) {
+                    tint.y = values[1];
+                }
+                if (values.size() > 2) {
+                    tint.z = values[2];
+                }
+                if (values.size() > 3) {
+                    tint.w = values[3];
+                }
             }
             emitter.runtime.materialTint = ParticleSrgbToLinear(tint);
 
-            /// @note 見た目一式を .mat から «読む»。settings はシーン保存対象なので書き戻さない
-            /// @note («触っていないのに保存内容が変わる» / «Inspector で変えても戻る» が起きる)。
+            // 見た目一式を .mat から «読む»。settings はシーン保存対象なので書き戻さない
+            // («触っていないのに保存内容が変わる» / «Inspector で変えても戻る» が起きる)。
             emitter.runtime.material      = mat->particle;
             emitter.runtime.resolvedBlend = ParticleBlendFromMaterial(mat->blendMode);
-            /// @note アトラス分割は 0 だと UV 矩形が発散する。.mat は手書きできるのでここで丸める。
+            // アトラス分割は 0 だと UV 矩形が発散する。.mat は手書きできるのでここで丸める。
             emitter.runtime.material.flipbook.spriteColumns =
                 (std::max)(emitter.runtime.material.flipbook.spriteColumns, 1);
             emitter.runtime.material.flipbook.spriteRows =
@@ -112,17 +120,21 @@ void AppendParticleTrailPoint(const ParticleEmitter& emitter, Particle& particle
     }
     const int capacity = std::clamp(emitter.settings.trail.trailPointCount, 1, kMaxParticleTrailPoints);
     particle.trailSampleTimer += dt;
-    /// @note 間隔 0 を許すと 1 フレームに何度も積んで履歴が一瞬で埋まるため下限を切る。
+    // 間隔 0 を許すと 1 フレームに何度も積んで履歴が一瞬で埋まるため下限を切る。
     const float interval = (std::max)(emitter.settings.trail.trailSampleInterval, 0.001f);
-    if (particle.trailSampleTimer < interval) return;
+    if (particle.trailSampleTimer < interval) {
+        return;
+    }
     particle.trailSampleTimer = 0.0f;
 
-    for (int index = (std::min)(static_cast<int>(particle.trailCount), capacity - 1); index > 0; --index)
+    for (int index = (std::min)(static_cast<int>(particle.trailCount), capacity - 1); index > 0; --index) {
         particle.trailPoints[static_cast<std::size_t>(index)] =
             particle.trailPoints[static_cast<std::size_t>(index - 1)];
+    }
     particle.trailPoints[0] = particle.position;
-    if (particle.trailCount < capacity)
+    if (particle.trailCount < capacity) {
         particle.trailCount = static_cast<uint8_t>(particle.trailCount + 1);
+    }
 }
 
 /// @brief 粒子ごとの色ゆらぎ倍率を 1 粒子ぶん引く。RGB を各チャンネル独立に [1-v, 1+v] 倍して
@@ -133,7 +145,9 @@ void AppendParticleTrailPoint(const ParticleEmitter& emitter, Particle& particle
 math::Vector3 NextColorVariation(ParticleEmitter& emitter)
 {
     const float variation = Clamp01(emitter.settings.colorVariation);
-    if (variation <= 0.0f) return { 1.0f, 1.0f, 1.0f };
+    if (variation <= 0.0f) {
+        return { 1.0f, 1.0f, 1.0f };
+    }
     const auto jitter = [&emitter, variation]() {
         return (std::max)(0.0f, 1.0f + RandomSigned01(emitter) * variation);
     };
@@ -150,11 +164,15 @@ math::Vector3 NextColorVariation(ParticleEmitter& emitter)
 /// @brief 粒の寿命ではなく再生時刻で引く — これはエミッターの «出し方» であって粒の性質ではない。
 [[nodiscard]] float EmitRateCurveScale(const ParticleEmitter& emitter)
 {
-    if (!emitter.settings.useEmitRateCurve) return 1.0f;
+    if (!emitter.settings.useEmitRateCurve) {
+        return 1.0f;
+    }
     const float span = (std::max)(emitter.settings.duration, 0.0001f);
     float t = emitter.runtime.playTime / span;
-    /// @note loop するエミッターは 1 周ごとに同じ形を繰り返す。
-    if (emitter.settings.loop) t -= std::floor(t);
+    // loop するエミッターは 1 周ごとに同じ形を繰り返す。
+    if (emitter.settings.loop) {
+        t -= std::floor(t);
+    }
     return (std::max)(emitter.settings.emitRateCurve.Evaluate(Clamp01(t)), 0.0f);
 }
 
@@ -176,8 +194,8 @@ math::Vector4 EvaluateParticleColorLinear(const ParticleEmitter& emitter,
     color.x *= particle.colorScale.x;
     color.y *= particle.colorScale.y;
     color.z *= particle.colorScale.z;
-    /// @note 速さによる色。寿命の色へ «乗算» する。置き換えると、跳ね返って減速した粒だけ
-    /// @note 寿命の色を失う。
+    // 速さによる色。寿命の色へ «乗算» する。置き換えると、跳ね返って減速した粒だけ
+    // 寿命の色を失う。
     if (emitter.settings.useSpeedColorGradient) {
         const math::Vector4 tint = emitter.settings.speedColorGradient.EvaluateLinear(
             NormalizedParticleSpeed(emitter, particle));
@@ -217,8 +235,8 @@ math::Vector4 SpriteRectForFrame(int frame, int columns, int rows)
 SpriteFrameState ComputeSpriteFrameState(const ParticleEmitter& emitter, float normalizedAge,
                                          float ageSeconds = 0.0f, float spriteSeed = 0.0f)
 {
-    /// @note コマ選びの規則は EvaluateFlipbookFrame が正本。.mat Inspector のプレビューも同じ関数を
-    /// @note 呼ぶので、ここで独自に丸めると «プレビューとゲームで 1 コマずれる» になる。
+    // コマ選びの規則は EvaluateFlipbookFrame が正本。.mat Inspector のプレビューも同じ関数を
+    // 呼ぶので、ここで独自に丸めると «プレビューとゲームで 1 コマずれる» になる。
     const asset::ParticleFlipbookSettings& flipbook = emitter.runtime.material.flipbook;
     const asset::FlipbookFrameSample sample =
         asset::EvaluateFlipbookFrame(flipbook, normalizedAge, ageSeconds, spriteSeed);
@@ -239,9 +257,11 @@ math::Vector4 ComputeSpriteRect(const ParticleEmitter& emitter, float normalized
 
 const AnimatorComponent* FindParticleAnimator(GameObject& object)
 {
-    /// @note VFX Graphの生成Particleはownerの子になるため、Skinned Mesh spawnは祖先Animatorも参照する。
+    // VFX Graphの生成Particleはownerの子になるため、Skinned Mesh spawnは祖先Animatorも参照する。
     for (GameObject* current = &object; current != nullptr; current = current->GetParent())
-        if (const auto* animator = current->GetComponent<AnimatorComponent>()) return animator;
+        if (const auto* animator = current->GetComponent<AnimatorComponent>()) {
+            return animator;
+        }
     return nullptr;
 }
 
@@ -250,20 +270,25 @@ const AnimatorComponent* FindParticleAnimator(GameObject& object)
 void EnsureMeshShapePoints(ParticleEmitter& emitter)
 {
     if (emitter.runtime.loadedMeshShapePath == emitter.settings.meshShapePath
-        && emitter.runtime.loadedMeshShapeIndex == emitter.settings.meshShapeIndex)
+        && emitter.runtime.loadedMeshShapeIndex == emitter.settings.meshShapeIndex) {
         return;
+    }
 
     emitter.runtime.meshShapeVertices.clear();
     emitter.runtime.meshShapeTriangles.clear();
     emitter.runtime.loadedMeshShapePath = emitter.settings.meshShapePath;
     emitter.runtime.loadedMeshShapeIndex = emitter.settings.meshShapeIndex;
-    if (emitter.settings.meshShapePath.empty()) return;
+    if (emitter.settings.meshShapePath.empty()) {
+        return;
+    }
 
     const asset::Model* model = asset::AssetManager::LoadAndGet<asset::Model>(emitter.settings.meshShapePath);
-    if (!model) return;
+    if (!model) {
+        return;
+    }
 
     auto appendMesh = [&](const renderer::Mesh& mesh) {
-        /// @note サブメッシュを 1 本の頂点列へ連結するので、三角形の添字はこの分だけずらす。
+        // サブメッシュを 1 本の頂点列へ連結するので、三角形の添字はこの分だけずらす。
         const uint32_t vertexBase = static_cast<uint32_t>(emitter.runtime.meshShapeVertices.size());
 
         if (!mesh.cpuSkinnedVertices.empty()) {
@@ -293,7 +318,9 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
 
         const uint32_t appended =
             static_cast<uint32_t>(emitter.runtime.meshShapeVertices.size()) - vertexBase;
-        if (appended == 0 || mesh.cpuIndices.size() < 3) return;
+        if (appended == 0 || mesh.cpuIndices.size() < 3) {
+            return;
+        }
 
         emitter.runtime.meshShapeTriangles.reserve(
             emitter.runtime.meshShapeTriangles.size() + mesh.cpuIndices.size() / 3);
@@ -305,18 +332,23 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
                 if (localIndex >= appended) { inRange = false; break; }
                 triangle.indices[corner] = vertexBase + localIndex;
             }
-            /// @note 壊れたインデックス 1 本で形状全体を捨てるより、その面だけ落として続ける。
-            if (inRange) emitter.runtime.meshShapeTriangles.push_back(triangle);
+            // 壊れたインデックス 1 本で形状全体を捨てるより、その面だけ落として続ける。
+            if (inRange) {
+                emitter.runtime.meshShapeTriangles.push_back(triangle);
+            }
         }
     };
 
     if (emitter.settings.meshShapeIndex >= 0) {
         const size_t meshIndex = static_cast<size_t>(emitter.settings.meshShapeIndex);
-        if (meshIndex < model->meshes.size() && model->meshes[meshIndex])
+        if (meshIndex < model->meshes.size() && model->meshes[meshIndex]) {
             appendMesh(*model->meshes[meshIndex]);
+        }
     } else {
         for (const auto& mesh : model->meshes) {
-            if (mesh) appendMesh(*mesh);
+            if (mesh) {
+                appendMesh(*mesh);
+            }
         }
     }
 
@@ -328,8 +360,10 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
         totalArea += math::Vector3::Cross(b - a, c - a).Length() * 0.5f;
         triangle.cumulativeArea = totalArea;
     }
-    /// @note 面積が実質ゼロ (退化三角形しかない) なら面積抽選は成立しない。頂点一様抽選へ落とす。
-    if (totalArea <= 1.0e-12f) emitter.runtime.meshShapeTriangles.clear();
+    // 面積が実質ゼロ (退化三角形しかない) なら面積抽選は成立しない。頂点一様抽選へ落とす。
+    if (totalArea <= 1.0e-12f) {
+        emitter.runtime.meshShapeTriangles.clear();
+    }
 }
 
 /// @brief 面積の累積分布を 1 回の乱数で引く。三角形が無いときは呼ばない。
@@ -356,7 +390,9 @@ void SkinMeshShapeVertex(const MeshShapeVertex& vertex, const AnimatorComponent&
     for (int influence = 0; influence < 4; ++influence) {
         const float weight = vertex.boneWeights[influence];
         const size_t boneIndex = static_cast<size_t>(vertex.boneIndices[influence]);
-        if (weight <= 0.0f || boneIndex >= animator.boneMatrices.size()) continue;
+        if (weight <= 0.0f || boneIndex >= animator.boneMatrices.size()) {
+            continue;
+        }
         const math::Matrix4& bone = animator.boneMatrices[boneIndex];
         const math::Vector4 skinnedPosition =
             bone * math::Vector4{ vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
@@ -381,7 +417,9 @@ bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* ani
                           math::Vector3& outPoint, math::Vector3& outNormal)
 {
     EnsureMeshShapePoints(emitter);
-    if (emitter.runtime.meshShapeVertices.empty()) return false;
+    if (emitter.runtime.meshShapeVertices.empty()) {
+        return false;
+    }
 
     const bool skin = emitter.settings.meshShapeFollowSkinnedAnimation
         && animator != nullptr && !animator->boneMatrices.empty();
@@ -397,8 +435,8 @@ bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* ani
 
     if (!emitter.runtime.meshShapeTriangles.empty()) {
         const MeshShapeTriangle& triangle = PickMeshShapeTriangle(emitter);
-        /// @note 三角形内部の一様分布。(u, v) が外側へ出たら折り返す — sqrt を使う定番より
-        /// @note 分岐 1 つ分安く、乱数の消費が 2 回で固定される。
+        // 三角形内部の一様分布。(u, v) が外側へ出たら折り返す — sqrt を使う定番より
+        // 分岐 1 つ分安く、乱数の消費が 2 回で固定される。
         float u = Random01(emitter);
         float v = Random01(emitter);
         if (u + v > 1.0f) {
@@ -415,7 +453,7 @@ bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* ani
         outPoint = position0 * w + position1 * u + position2 * v;
         outNormal = (normal0 * w + normal1 * u + normal2 * v).NormalizedOr(math::Vector3::UP);
     } else {
-        /// @note インデックスを持たないメッシュは面を組めない。従来どおり頂点を一様に引く。
+        // インデックスを持たないメッシュは面を組めない。従来どおり頂点を一様に引く。
         const size_t lastIndex = emitter.runtime.meshShapeVertices.size() - 1;
         const size_t index = (std::min)(
             static_cast<size_t>(Random01(emitter) * static_cast<float>(emitter.runtime.meshShapeVertices.size())),
@@ -424,18 +462,22 @@ bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* ani
         outNormal = outNormal.NormalizedOr(math::Vector3::UP);
     }
 
-    /// @note meshShapeScale は位置にだけ掛ける。法線は向きしか表さないので、
-    /// @note ここで掛けると負のスケール指定で «内向き» に反転してしまう。
+    // meshShapeScale は位置にだけ掛ける。法線は向きしか表さないので、
+    // ここで掛けると負のスケール指定で «内向き» に反転してしまう。
     outPoint = outPoint * emitter.settings.meshShapeScale;
     return true;
 }
 
 GameObject* FindInSubtree(GameObject& root, const std::string& objectName)
 {
-    if (root.name == objectName) return &root;
+    if (root.name == objectName) {
+        return &root;
+    }
     for (int index = 0; index < root.GetChildCount(); ++index)
         if (GameObject* child = root.GetChild(index))
-            if (GameObject* found = FindInSubtree(*child, objectName)) return found;
+            if (GameObject* found = FindInSubtree(*child, objectName)) {
+                return found;
+            }
     return nullptr;
 }
 
@@ -448,22 +490,30 @@ void QueueSubEmitter(Scene& scene, const ParticleEmitter& emitter,
                      const std::string& objectName, int count,
                      const math::Vector3& origin, const math::Vector3& velocity)
 {
-    if (objectName.empty() || count <= 0) return;
-    GameObject* target = nullptr;
-    if (GameObject* scopeRoot = scene.GetGameObject(emitter.settings.subEmitterScopeRoot))
-        target = FindInSubtree(*scopeRoot, objectName);
-    else
-        /// @note シーン上の手置き Emitter は従来どおり全体から引く
-        target = scene.Find(objectName);
-    if (target == nullptr) return;
-    auto* targetEmitter = target->GetComponent<ParticleEmitter>();
-    if (targetEmitter == nullptr) return;
-    /// @note 受け側が一度も回らない構成 (GPU 縮退・非アクティブ・maxParticles = 0) では
-    /// @note 消費されないまま積まれ続ける。1 フレームで出せる上限を超えたら黙って捨てる
-    /// @note (出せない数を覚えておいても絵には出ず、リストだけが伸びる)。
-    if (static_cast<int>(targetEmitter->runtime.injectedSpawns.size())
-        >= (std::max)(targetEmitter->settings.maxParticles, 1))
+    if (objectName.empty() || count <= 0) {
         return;
+    }
+    GameObject* target = nullptr;
+    if (GameObject* scopeRoot = scene.GetGameObject(emitter.settings.subEmitterScopeRoot)) {
+        target = FindInSubtree(*scopeRoot, objectName);
+    }
+    else
+        // シーン上の手置き Emitter は従来どおり全体から引く
+        target = scene.Find(objectName);
+    if (target == nullptr) {
+        return;
+    }
+    auto* targetEmitter = target->GetComponent<ParticleEmitter>();
+    if (targetEmitter == nullptr) {
+        return;
+    }
+    // 受け側が一度も回らない構成 (GPU 縮退・非アクティブ・maxParticles = 0) では
+    // 消費されないまま積まれ続ける。1 フレームで出せる上限を超えたら黙って捨てる
+    // (出せない数を覚えておいても絵には出ず、リストだけが伸びる)。
+    if (static_cast<int>(targetEmitter->runtime.injectedSpawns.size())
+        >= (std::max)(targetEmitter->settings.maxParticles, 1)) {
+        return;
+    }
     targetEmitter->runtime.injectedSpawns.push_back({ origin, velocity, count });
 }
 
@@ -491,7 +541,9 @@ bool ResolveParticleCollision(ParticleEmitter& emitter, Particle& particle,
         const float distance = travel.Length();
         if (distance > 1.0e-5f) {
             const math::Vector3 direction = travel * (1.0f / distance);
-            if (!sphereCasts) sphereCasts.emplace(world.PrepareSphereCasts());
+            if (!sphereCasts) {
+                sphereCasts.emplace(world.PrepareSphereCasts());
+            }
             collided = sphereCasts->Cast(particle.position,
                 (std::max)(emitter.settings.collisionRadius, 0.0f), direction, distance, hit, filter);
             if (collided) {
@@ -507,12 +559,13 @@ bool ResolveParticleCollision(ParticleEmitter& emitter, Particle& particle,
     }
 
     ++emitter.runtime.collisionCountThisFrame;
-    /// @note 発火元は «当たった点» と «跳ね返る前の速度»。跳ね返り後を渡すと、火花が壁から
-    /// @note 離れる向きに寄って «削れて飛んだ» ように見えない。
+    // 発火元は «当たった点» と «跳ね返る前の速度»。跳ね返り後を渡すと、火花が壁から
+    // 離れる向きに寄って «削れて飛んだ» ように見えない。
     QueueSubEmitter(scene, emitter, emitter.settings.collisionSubEmitter,
                     emitter.settings.subEmitterBurstCount, hitPoint, particle.velocity);
-    if (emitter.settings.collisionResponse == ParticleCollisionResponse::Kill)
+    if (emitter.settings.collisionResponse == ParticleCollisionResponse::Kill) {
         return true;
+    }
 
     particle.position = hitPoint;
     if (emitter.settings.collisionResponse == ParticleCollisionResponse::Stop) {
@@ -543,8 +596,8 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
         return localSpace ? value : TransformEmitterVector(transform, value);
     };
     p.position = transformPoint(emitter.settings.emitPosition);
-    /// @note 発火元の位置を発生原点へ据える。«置き換え» を Shape より前に済ませるのは、
-    /// @note Shape のばらつきをこの点の周りに乗せるため (後で上書きすると 1 点から出る糸になる)。
+    // 発火元の位置を発生原点へ据える。«置き換え» を Shape より前に済ませるのは、
+    // Shape のばらつきをこの点の周りに乗せるため (後で上書きすると 1 点から出る糸になる)。
     if (injected != nullptr) {
         p.position = localSpace
             ? InverseTransformEmitterPoint(transform, injected->position)
@@ -603,10 +656,10 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
         break;
     }
 
-    /// @note 初速のばらつきは 3 軸へ等方に掛ける。1 軸でも欠けると、その向きへ出すエミッターで
-    /// @note 分散がゼロになり全粒子が同じ速度で進む硬い前線になる。
-    /// @note 方向そのものは Sphere/Cone の shapeVelocity が持つので、ここは揺らぎだけを担当する。
-    /// @note GPU 経路 (BuildGpuSpawnEntry) と必ず同じ式・同じ乱数消費順にすること。
+    // 初速のばらつきは 3 軸へ等方に掛ける。1 軸でも欠けると、その向きへ出すエミッターで
+    // 分散がゼロになり全粒子が同じ速度で進む硬い前線になる。
+    // 方向そのものは Sphere/Cone の shapeVelocity が持つので、ここは揺らぎだけを担当する。
+    // GPU 経路 (BuildGpuSpawnEntry) と必ず同じ式・同じ乱数消費順にすること。
     const float rx = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const float ry = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const float rz = RandomSigned01(emitter) * emitter.settings.velocitySpread;
@@ -617,14 +670,14 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     };
     p.velocity = transformVector(localVelocity);
     p.velocity = p.velocity + shapeVelocity;
-    /// @note エミッターの移動を初速へ引き継ぐ (移動する剣・ロケットの火花が置き去りにならない)。
-    /// @note Local では親の移動が描画時の変換で既に乗るので、World のときだけ加算する。
+    // エミッターの移動を初速へ引き継ぐ (移動する剣・ロケットの火花が置き去りにならない)。
+    // Local では親の移動が描画時の変換で既に乗るので、World のときだけ加算する。
     if (emitter.settings.inheritVelocity != 0.0f
         && emitter.settings.simulationSpace == ParticleSimulationSpace::World) {
         p.velocity = p.velocity + emitter.runtime.emitterVelocity * Clamp01(emitter.settings.inheritVelocity);
     }
-    /// @note 発火元の粒子の速度は «割合» で継ぐ。丸ごと継ぐと親と同じ向きへ流れるだけになり、
-    /// @note 火花が «弾けた» ように見えない (既定 0 = 継がない)。
+    // 発火元の粒子の速度は «割合» で継ぐ。丸ごと継ぐと親と同じ向きへ流れるだけになり、
+    // 火花が «弾けた» ように見えない (既定 0 = 継がない)。
     if (injected != nullptr && emitter.settings.subEmitterInheritVelocity != 0.0f) {
         const math::Vector3 inherited =
             injected->velocity * Clamp01(emitter.settings.subEmitterInheritVelocity);
@@ -640,8 +693,9 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
         + (emitter.settings.angularVelocityMax - emitter.settings.angularVelocityMin) * Random01(emitter);
     p.spriteSeed = Random01(emitter);
     p.lifetime = (std::max)(0.001f, emitter.settings.lifetime * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.settings.lifetimeRandom)));
-    if (injected && std::isfinite(injected->lifetime) && injected->lifetime > 0.0f)
+    if (injected && std::isfinite(injected->lifetime) && injected->lifetime > 0.0f) {
         p.lifetime = injected->lifetime;
+    }
     p.startSize = emitter.settings.sizeStart;
     p.endSize = emitter.settings.sizeEnd;
     p.startColor = emitter.settings.colorStart;
@@ -650,9 +704,9 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     p.color = EvaluateParticleColorLinear(emitter, p, 0.0f);
     p.age = (std::max)(0.0f, (std::min)(initialAge, p.lifetime * 0.999f));
     if (p.age > 0.0f) {
-        /// @note Prewarmは開始時点の寿命分布を作る。逐次更新を避け、重力下の解析解で初期状態を近似する。
-        /// @note 近似に使うのは内蔵の Wind 力 (＝重力) だけ。渦や速度場まで解析解にはできないので、
-        /// @note それらが主役のエミッターでは prewarm の分布が実際の流れとずれる。
+        // Prewarmは開始時点の寿命分布を作る。逐次更新を避け、重力下の解析解で初期状態を近似する。
+        // 近似に使うのは内蔵の Wind 力 (＝重力) だけ。渦や速度場まで解析解にはできないので、
+        // それらが主役のエミッターでは prewarm の分布が実際の流れとずれる。
         const math::Vector3 gravity = emitter.settings.GravityAcceleration();
         p.position = p.position + p.velocity * p.age + gravity * (0.5f * p.age * p.age);
         p.velocity = p.velocity + gravity * p.age;
@@ -730,8 +784,8 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
         break;
     }
 
-    /// @note SpawnParticle と同一の 3 軸等方ジッター。乱数の消費順まで揃えないと
-    /// @note CPU/GPU を切り替えただけで見た目が変わってしまう。
+    // SpawnParticle と同一の 3 軸等方ジッター。乱数の消費順まで揃えないと
+    // CPU/GPU を切り替えただけで見た目が変わってしまう。
     const float rx = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const float ry = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const float rz = RandomSigned01(emitter) * emitter.settings.velocitySpread;
@@ -742,8 +796,8 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
     };
     s.velocity        = TransformEmitterVector(tf, localVelocity);
     s.velocity        = s.velocity + shapeVelocity;
-    /// @note inheritVelocity は CPU 経路 (SpawnParticle) と同じ条件・同じ式でここに足す。
-    /// @note CS 側の変更は不要で、GpuSpawnEntry.velocity に加算済みの値が入る。
+    // inheritVelocity は CPU 経路 (SpawnParticle) と同じ条件・同じ式でここに足す。
+    // CS 側の変更は不要で、GpuSpawnEntry.velocity に加算済みの値が入る。
     if (emitter.settings.inheritVelocity != 0.0f
         && emitter.settings.simulationSpace == ParticleSimulationSpace::World) {
         s.velocity = s.velocity + emitter.runtime.emitterVelocity * Clamp01(emitter.settings.inheritVelocity);
@@ -752,8 +806,8 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
         * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.settings.lifetimeRandom)));
     s.size            = emitter.settings.sizeStart;
     s.colorStart      = emitter.settings.colorStart;
-    /// @note 乱数列上の位置は従来の ApplyColorVariation 呼び出しと同じに保つ
-    /// @note (動かすと同じ seed から出る粒子の並びが変わる)。
+    // 乱数列上の位置は従来の ApplyColorVariation 呼び出しと同じに保つ
+    // (動かすと同じ seed から出る粒子の並びが変わる)。
     const math::Vector3 variation = NextColorVariation(emitter);
     s.colorScale      = { variation.x, variation.y, variation.z, 0.0f };
     s.spriteSeed      = Random01(emitter);
@@ -774,7 +828,9 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
         return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
     };
     const auto finiteValue = [&](float value, double fallback = 0.0) {
-        if (std::isfinite(value)) return static_cast<double>(value);
+        if (std::isfinite(value)) {
+            return static_cast<double>(value);
+        }
         uncertain = true;
         return fallback;
     };
@@ -783,7 +839,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
             uncertain = true;
             return 0.0;
         }
-        /// @note 有限でも遠い座標は Vector3::LengthSq() でオーバーフローし得るため、倍精度で差を求める。
+        // 有限でも遠い座標は Vector3::LengthSq() でオーバーフローし得るため、倍精度で差を求める。
         const double x = static_cast<double>(first.x) - second.x;
         const double y = static_cast<double>(first.y) - second.y;
         const double z = static_cast<double>(first.z) - second.z;
@@ -804,9 +860,10 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
     const double stretchVelocity = (std::max)(finiteValue(settings.stretchedVelocityScale), 0.0);
     const auto cardRadius = [&](float size, double speed) {
         double stretch = 1.0;
-        if (settings.renderMode == ParticleRenderMode::StretchedBillboard && speed > 1.0e-4)
+        if (settings.renderMode == ParticleRenderMode::StretchedBillboard && speed > 1.0e-4) {
             stretch = stretchLength + speed * stretchVelocity;
-        /// @note ParticleCommon は正方形を回転してから軸別に拡大するため、最大軸長の √2 / 2 倍で全回転を覆う。
+        }
+        // ParticleCommon は正方形を回転してから軸別に拡大するため、最大軸長の √2 / 2 倍で全回転を覆う。
         return std::abs(finiteValue(size)) * 0.7071067811865476
             * (std::max)(axisX, axisY * stretch);
     };
@@ -816,8 +873,12 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
     };
     if (!emitter.runtime.particles.empty()) {
         const math::Vector3 first = worldPoint(emitter.runtime.particles.front().position);
-        if (finitePoint(first)) center = first;
-        else uncertain = true;
+        if (finitePoint(first)) {
+            center = first;
+        }
+        else {
+            uncertain = true;
+        }
         const double widthScale = settings.trail.trailEnabled
             ? (std::max)(1.0, std::abs(finiteValue(settings.trail.trailWidthScale))) : 1.0;
         const int historyLimit = std::clamp(settings.trail.trailPointCount, 1, kMaxParticleTrailPoints);
@@ -829,27 +890,37 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
             if (settings.trail.trailEnabled && settings.trail.trailRibbon) {
                 const double configuredWidth = finiteValue(settings.trail.trailRibbonWidth);
                 const double width = configuredWidth > 0.0 ? configuredWidth : std::abs(finiteValue(particle.size));
-                /// @note リボンの半幅にマイター上限 2 を掛ける。BuildRibbonMiterNormals は 1 / cos を 2 以下に制限する。
+                // リボンの半幅にマイター上限 2 を掛ける。BuildRibbonMiterNormals は 1 / cos を 2 以下に制限する。
                 historyRadius = width * widthScale;
             }
             include(worldPoint(particle.position), settings.trail.trailEnabled
                 ? (std::max)(bodyRadius, historyRadius) : bodyRadius);
-            if (!settings.trail.trailEnabled) continue;
+            if (!settings.trail.trailEnabled) {
+                continue;
+            }
             const int used = (std::min)(static_cast<int>(particle.trailCount), historyLimit);
-            for (int point = 0; point < used; ++point)
+            for (int point = 0; point < used; ++point) {
                 include(worldPoint(particle.trailPoints[static_cast<std::size_t>(point)]), historyRadius);
+            }
         }
     } else {
-        /// @note 空または CPU から読めない GPU プールには、負スケールも考慮した発生・移動範囲を使う。
+        // 空または CPU から読めない GPU プールには、負スケールも考慮した発生・移動範囲を使う。
         const double transformScale = (std::max)({std::abs(finiteValue(tf.worldScale.x)),
             std::abs(finiteValue(tf.worldScale.y)), std::abs(finiteValue(tf.worldScale.z))});
         double shapeRadius = 0.0;
-        if (settings.shape == ParticleEmitterShape::Sphere) shapeRadius = std::abs(finiteValue(settings.sphereRadius));
-        if (settings.shape == ParticleEmitterShape::Cone) shapeRadius = std::abs(finiteValue(settings.coneRadius));
-        if (settings.shape == ParticleEmitterShape::Box) shapeRadius = distance(settings.boxExtents, {});
+        if (settings.shape == ParticleEmitterShape::Sphere) {
+            shapeRadius = std::abs(finiteValue(settings.sphereRadius));
+        }
+        if (settings.shape == ParticleEmitterShape::Cone) {
+            shapeRadius = std::abs(finiteValue(settings.coneRadius));
+        }
+        if (settings.shape == ParticleEmitterShape::Box) {
+            shapeRadius = distance(settings.boxExtents, {});
+        }
         if (settings.shape == ParticleEmitterShape::MeshSurface) {
-            for (const auto& vertex : emitter.runtime.meshShapeVertices)
+            for (const auto& vertex : emitter.runtime.meshShapeVertices) {
                 shapeRadius = (std::max)(shapeRadius, distance(vertex.position, {}));
+            }
         }
         const double lifetime = (std::max)(finiteValue(settings.lifetime), 0.0)
             * (1.0 + std::clamp(finiteValue(settings.lifetimeRandom), 0.0, 1.0));
@@ -862,14 +933,15 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
             travelScale = 0.0;
             const auto count = (std::min)(settings.velocityCurve.keyCount,
                 static_cast<uint32_t>(settings.velocityCurve.keys.size()));
-            for (uint32_t key = 0; key < count; ++key)
+            for (uint32_t key = 0; key < count; ++key) {
                 travelScale = (std::max)(travelScale, finiteValue(settings.velocityCurve.keys[key].value));
+            }
         }
         const float size = static_cast<float>((std::max)(std::abs(finiteValue(settings.sizeStart)),
             std::abs(finiteValue(settings.sizeEnd))));
         const double positionScale = localSpace ? transformScale : 1.0;
         radius += shapeRadius * transformScale + speed * lifetime * travelScale * positionScale + cardRadius(size, speed) + padding;
-        /// @note GPU の流れは実際の発生・履歴の位置を読み戻しなしで囲んでいるため、その境界を保持する。
+        // GPU の流れは実際の発生・履歴の位置を読み戻しなしで囲んでいるため、その境界を保持する。
         if (emitter.runtime.gpuInitialized && !emitter.runtime.gpuClearPending
             && emitter.runtime.flowMinimumAge < emitter.runtime.flowMaxLifetime) {
             const double flowSpeed = (std::max)(finiteValue(emitter.runtime.flowSpeedBound), speed);
@@ -877,7 +949,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
                 + cardRadius(size, flowSpeed));
         }
     }
-    /// @note 不正な入力では有限の境界球を使い、NaN によりエミッター全体がカリングされるのを防ぐ。
+    // 不正な入力では有限の境界球を使い、NaN によりエミッター全体がカリングされるのを防ぐ。
     const double maximumRadius = (std::numeric_limits<float>::max)();
     const bool radiusOverflow = !std::isfinite(radius) || radius * 1.00001 + 1.0e-4 > maximumRadius;
     const bool unbounded = uncertain || radiusOverflow;
@@ -899,8 +971,8 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
     emitter.runtime.deathCountThisFrame = 0;
     const int particleCapacity = (std::max)(emitter.settings.maxParticles, 0);
     const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
-    /// @note 粒子 1 個のワールド位置・速度。SubEmitter へ «発火元» として渡すときに使う
-    /// @note (保持しているのはシミュレーション空間の値で、Local なら世界の値ではない)。
+    // 粒子 1 個のワールド位置・速度。SubEmitter へ «発火元» として渡すときに使う
+    // (保持しているのはシミュレーション空間の値で、Local なら世界の値ではない)。
     const auto particleWorldPosition = [&](const Particle& particle) {
         return localSpace ? TransformEmitterPoint(tf, particle.position) : particle.position;
     };
@@ -908,7 +980,9 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
         return localSpace ? TransformEmitterVector(tf, particle.velocity) : particle.velocity;
     };
     const auto queueBirth = [&] {
-        if (emitter.settings.birthSubEmitter.empty() || emitter.runtime.particles.empty()) return;
+        if (emitter.settings.birthSubEmitter.empty() || emitter.runtime.particles.empty()) {
+            return;
+        }
         const Particle& spawned = emitter.runtime.particles.back();
         QueueSubEmitter(scene, emitter, emitter.settings.birthSubEmitter,
                         emitter.settings.subEmitterBurstCount,
@@ -916,12 +990,12 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
     };
     const bool canEmit = emitter.runtime.emitThisFrame;
     if (canEmit || emitter.runtime.burstPending > 0 || !emitter.runtime.injectedSpawns.empty()) {
-        /// @note 注入されたスポーンはレート/バーストより先に消費する。後回しにすると「斬った
-        /// @note 位置の火花」が maxParticles 到達で黙って落ちる。イベントで 1 度だけ出る粒の
-        /// @note 欠落は、常時湧く粒より目立つため。
-        /// @note ループ中に injectedSpawns から消さない: SpawnParticle → queueBirth が自分自身を
-        /// @note birthSubEmitter として積み返すことがあり、走査中の push_back で参照が無効化
-        /// @note されるため、添字で回して最後にまとめて消す。
+        // 注入されたスポーンはレート/バーストより先に消費する。後回しにすると「斬った
+        // 位置の火花」が maxParticles 到達で黙って落ちる。イベントで 1 度だけ出る粒の
+        // 欠落は、常時湧く粒より目立つため。
+        // ループ中に injectedSpawns から消さない: SpawnParticle → queueBirth が自分自身を
+        // birthSubEmitter として積み返すことがあり、走査中の push_back で参照が無効化
+        // されるため、添字で回して最後にまとめて消す。
         for (std::size_t index = 0; index < emitter.runtime.injectedSpawns.size(); ++index) {
             const ParticleInjectedSpawn injected = emitter.runtime.injectedSpawns[index];
             for (int spawn = 0; spawn < injected.count
@@ -941,7 +1015,9 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
                     emitter.settings.lifetime)
                 : 0.0f;
             SpawnParticle(emitter, tf, animator, warmAge);
-            if (emitter.runtime.prewarmSpawnPending > 0) --emitter.runtime.prewarmSpawnPending;
+            if (emitter.runtime.prewarmSpawnPending > 0) {
+                --emitter.runtime.prewarmSpawnPending;
+            }
             queueBirth();
         }
         emitter.runtime.burstPending = 0;
@@ -958,26 +1034,31 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             SpawnParticle(emitter, tf, animator);
             queueBirth();
         }
-        if (static_cast<int>(emitter.runtime.particles.size()) >= particleCapacity)
+        if (static_cast<int>(emitter.runtime.particles.size()) >= particleCapacity) {
             emitter.runtime.emitAccum = 0.0f;
+        }
     } else {
         emitter.runtime.emitAccum = 0.0f;
         emitter.runtime.burstPending = 0;
     }
 
-    /// @note このエミッターに効く力をワールド空間で 1 回だけ解決する
-    /// @note (粒子ごとに解決すると同じ計算を粒子数ぶん繰り返すことになる)。
+    // このエミッターに効く力をワールド空間で 1 回だけ解決する
+    // (粒子ごとに解決すると同じ計算を粒子数ぶん繰り返すことになる)。
     std::vector<ActiveFlowField> emitterForces;
     ResolveEmitterForces(emitter, tf, flowFields, emitterForces);
 
-    /// @note Physics 衝突で見るコライダーの絞り込み。エミッター単位で 1 本作って粒子数ぶん回す。
+    // Physics 衝突で見るコライダーの絞り込み。エミッター単位で 1 本作って粒子数ぶん回す。
     const std::uint32_t collisionLayerMask = emitter.settings.collisionLayerMask;
     const physics::World::ColliderFilter collisionFilter =
         [collisionLayerMask](const physics::ColliderInstance& instance) {
-            /// @note トリガーは «通過を検知する体積» で、跳ね返る面ではない。素通しにしないと
-            /// @note 見えない判定ボリュームの表面で火花が止まる。
-            if (instance.isTrigger) return false;
-            if (instance.layer < 0 || instance.layer > 31) return true;
+            // トリガーは «通過を検知する体積» で、跳ね返る面ではない。素通しにしないと
+            // 見えない判定ボリュームの表面で火花が止まる。
+            if (instance.isTrigger) {
+                return false;
+            }
+            if (instance.layer < 0 || instance.layer > 31) {
+                return true;
+            }
             return (collisionLayerMask & (1u << static_cast<unsigned>(instance.layer))) != 0u;
         };
 
@@ -987,20 +1068,20 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
         it->age += dt;
         if (it->age >= it->lifetime) {
             ++emitter.runtime.deathCountThisFrame;
-            /// @note 消えた «その場所» と最後の速度。これが無いと煙が発生源へ戻って湧く。
+            // 消えた «その場所» と最後の速度。これが無いと煙が発生源へ戻って湧く。
             QueueSubEmitter(scene, emitter, emitter.settings.deathSubEmitter,
                             emitter.settings.subEmitterBurstCount,
                             particleWorldPosition(*it), particleWorldVelocity(*it));
             continue;
         }
         const float normalizedAge = Clamp01(it->age / (std::max)(it->lifetime, 0.001f));
-        /// @note Drag over Lifetime カーブは flowCoupling への時間倍率。
+        // Drag over Lifetime カーブは flowCoupling への時間倍率。
         const float dragScale = emitter.settings.useDragCurve
             ? (std::max)(emitter.settings.dragCurve.Evaluate(normalizedAge), 0.0f) : 1.0f;
         const float coupling = emitter.settings.flowCoupling * dragScale;
-        /// @note 流れはすべてワールドで効く。乱流・周回・放射・焼いた場・シーンの場が 1 本の
-        /// @note 評価器を通るので、種類ごとに «どの空間で効くか» を覚える必要が無い。
-        /// @note 順序は GPU (ParticleGpuSim.cs.hlsl) と同じ «重力 → 緩和»。
+        // 流れはすべてワールドで効く。乱流・周回・放射・焼いた場・シーンの場が 1 本の
+        // 評価器を通るので、種類ごとに «どの空間で効くか» を覚える必要が無い。
+        // 順序は GPU (ParticleGpuSim.cs.hlsl) と同じ «重力 → 緩和»。
         if (emitter.settings.simulationSpace == ParticleSimulationSpace::Local) {
             const math::Vector3 worldPosition = TransformEmitterPoint(tf, it->position);
             math::Vector3 worldVelocity = TransformEmitterVector(tf, it->velocity);
@@ -1031,8 +1112,10 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             killedByCollision = ResolveParticleCollision(emitter, *it, nextPosition, world, scene,
                                                          sphereCasts, collisionFilter);
         }
-        if (killedByCollision) continue;
-        /// @note 回転カーブは角速度への時間倍率。勢いよく回り始めて減速する破片が作れる。
+        if (killedByCollision) {
+            continue;
+        }
+        // 回転カーブは角速度への時間倍率。勢いよく回り始めて減速する破片が作れる。
         it->rotation += it->angularVelocity * dt
             * (emitter.settings.useRotationCurve
                    ? emitter.settings.rotationCurve.Evaluate(normalizedAge) : 1.0f);
@@ -1046,13 +1129,15 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             ? Clamp01(emitter.settings.sizeCurve.Evaluate(normalizedAge))
             : std::pow(normalizedAge, emitter.settings.sizeCurvePower);
         it->size = it->startSize + (it->endSize - it->startSize) * sizeT;
-        /// @note 速さによる大きさ。火花が «速いほど大きく (= 長く) 見える» を作る。
+        // 速さによる大きさ。火花が «速いほど大きく (= 長く) 見える» を作る。
         if (emitter.settings.useSpeedSizeCurve) {
             it->size *= (std::max)(emitter.settings.speedSizeCurve.Evaluate(
                 NormalizedParticleSpeed(emitter, *it)), 0.0f);
         }
         AppendParticleTrailPoint(emitter, *it, dt);
-        if (survivor != it) *survivor = std::move(*it);
+        if (survivor != it) {
+            *survivor = std::move(*it);
+        }
         ++survivor;
     }
     particles.erase(survivor, particles.end());
@@ -1062,8 +1147,8 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
 using namespace particle_simulation_detail;
 void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float deltaTime, float time)
 {
-    /// @note 場はカメラに属さない。Scene のフレームキャッシュを 3 経路 (CPU 更新・エディタの
-    /// @note スクラブ・描画パス) で共有し、simulationMode やビューで軌道が割れないようにする。
+    // 場はカメラに属さない。Scene のフレームキャッシュを 3 経路 (CPU 更新・エディタの
+    // スクラブ・描画パス) で共有し、simulationMode やビューで軌道が割れないようにする。
     const auto flowSnapshot = scene.FlowFrame().fields;
     const std::vector<ActiveFlowField>& flowFields = *flowSnapshot;
     std::optional<physics::World::SphereCastBatch> sphereCasts;
@@ -1072,16 +1157,23 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
         GameObject* gameObject = scene.GetGameObject(id);
         if (!emitter || !gameObject || !gameObject->activeInHierarchy()
             || !emitter->settings.enabled
-            || CanUseGpuSimulation(emitter->settings, &emitter->runtime.material)) continue;
-        /// @note GPU指定を一時的にCPUへ縮退した場合、制約解除後に古いGPU粒子が復活しないよう履歴を破棄する。
-        if (emitter->settings.simulationMode == ParticleSimulationMode::Gpu)
+            || CanUseGpuSimulation(emitter->settings, &emitter->runtime.material)) {
+            continue;
+        }
+        // GPU指定を一時的にCPUへ縮退した場合、制約解除後に古いGPU粒子が復活しないよう履歴を破棄する。
+        if (emitter->settings.simulationMode == ParticleSimulationMode::Gpu) {
             emitter->runtime.gpuClearPending = true;
-        /// @note 発生側は ParticleSimulationSystem が止めるが、粒子の更新はこちら。
-        /// @note 見ないと «発生は止まるのに既存の粒子は動き続ける» 中途半端な一時停止になる。
-        if (emitter->settings.culling.pauseWhenCulled && emitter->runtime.isCulledThisFrame) continue;
-        if (emitter->runtime.lastCpuSimulationFrame == Time::frameCount) continue;
+        }
+        // 発生側は ParticleSimulationSystem が止めるが、粒子の更新はこちら。
+        // 見ないと «発生は止まるのに既存の粒子は動き続ける» 中途半端な一時停止になる。
+        if (emitter->settings.culling.pauseWhenCulled && emitter->runtime.isCulledThisFrame) {
+            continue;
+        }
+        if (emitter->runtime.lastCpuSimulationFrame == Time::frameCount) {
+            continue;
+        }
         const auto* animator = FindParticleAnimator(*gameObject);
-        /// @note VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) をエミッター単位で dt へ注入する。
+        // VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) をエミッター単位で dt へ注入する。
         const float scaledDt = deltaTime * emitter->GetEditorTimeScale(Time::frameCount);
         SimulateCpuEmitter(*emitter, gameObject->transform, animator, scaledDt, time,
                            flowFields, world, scene, sphereCasts);
@@ -1095,8 +1187,9 @@ bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
 {
     out = {};
     if (fps <= 0 || cycles <= 0 || emitter.settings.duration <= 0.0f || !emitter.settings.loop
-        || emitter.settings.simulationMode != ParticleSimulationMode::Cpu)
+        || emitter.settings.simulationMode != ParticleSimulationMode::Cpu) {
         return false;
+    }
     out.fps = fps;
     const float dt = 1.0f / static_cast<float>(fps);
     const int cycleFrames = (std::max)(1, static_cast<int>(std::lround(emitter.settings.duration * fps)));
@@ -1116,7 +1209,9 @@ bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
         SimulateCpuEmitter(emitter, gameObject.transform, animator, dt, time, flowFields, world, scene, sphereCasts);
         bool visible = false;
         for (const Particle& particle : emitter.runtime.particles) {
-            if (particle.size <= 0.0f || particle.color.w <= 0.01f) continue;
+            if (particle.size <= 0.0f || particle.color.w <= 0.01f) {
+                continue;
+            }
             if (frameCoverage.empty()) { visible = true; break; }
             const auto coverageOf = [&](const math::Vector4& uvRect) {
                 const int column = std::clamp(static_cast<int>(std::lround(uvRect.x * columns)), 0, columns - 1);
@@ -1129,11 +1224,17 @@ bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
             if (coverage * particle.color.w > 0.001f) { visible = true; break; }
         }
         ++out.sampledFrames;
-        if (visible) continue;
+        if (visible) {
+            continue;
+        }
         ++out.emptyFrames;
-        if (out.firstEmptyFrame < 0) out.firstEmptyFrame = frame;
+        if (out.firstEmptyFrame < 0) {
+            out.firstEmptyFrame = frame;
+        }
         const int phase = frame % cycleFrames;
-        if (phase <= 1 || phase >= cycleFrames - 2) ++out.boundaryEmptyFrames;
+        if (phase <= 1 || phase >= cycleFrames - 2) {
+            ++out.boundaryEmptyFrames;
+        }
     }
     return true;
 }
@@ -1142,17 +1243,17 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
                                    GameObject& gameObject, ParticleEmitter& emitter,
                                    float targetTime, float time)
 {
-    /// @note 巻き戻し。randomState が randomSeed に戻るため、同じ targetTime へのスクラブは常に同じ結果になる。
+    // 巻き戻し。randomState が randomSeed に戻るため、同じ targetTime へのスクラブは常に同じ結果になる。
     emitter.ResetPlayback();
 
-    /// @note GPU 粒子は CS 側バッファの履歴を任意時刻へ巻き戻せないため、リスタートのみで返す。
+    // GPU 粒子は CS 側バッファの履歴を任意時刻へ巻き戻せないため、リスタートのみで返す。
     if (CanUseGpuSimulation(emitter.settings, &emitter.runtime.material)) {
-        /// @note 直後の Prewarm 一括投入でスクラブ結果が壊れないようにする
+        // 直後の Prewarm 一括投入でスクラブ結果が壊れないようにする
         emitter.runtime.prewarmed = true;
         return;
     }
 
-    /// @note 固定ステップで決定論的に早送りする。上限を設けて極端な値でエディターが固まるのを防ぐ。
+    // 固定ステップで決定論的に早送りする。上限を設けて極端な値でエディターが固まるのを防ぐ。
     constexpr int SCRUB_FPS = 60;
     constexpr float FIXED_STEP = 1.0f / static_cast<float>(SCRUB_FPS);
     constexpr float MAX_SCRUB_SECONDS = 60.0f;
@@ -1162,22 +1263,28 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
     const std::vector<ActiveFlowField>& flowFields = *flowSnapshot;
     const auto* animator = FindParticleAnimator(gameObject);
 
-    /// @note 累積 float 時刻から最後の刻みを切ると発生量の境界を取りこぼす。整数フレームと端数に分ける。
+    // 累積 float 時刻から最後の刻みを切ると発生量の境界を取りこぼす。整数フレームと端数に分ける。
     int wholeSteps = std::isfinite(target)
         ? static_cast<int>(static_cast<double>(target) * SCRUB_FPS) : 0;
-    /// @note 31/60 秒など float に丸めると境界の直前になる値も、同じ整数フレームへ戻す。
-    if (target == static_cast<float>(static_cast<double>(wholeSteps + 1) / SCRUB_FPS)) ++wholeSteps;
+    // 31/60 秒など float に丸めると境界の直前になる値も、同じ整数フレームへ戻す。
+    if (target == static_cast<float>(static_cast<double>(wholeSteps + 1) / SCRUB_FPS)) {
+        ++wholeSteps;
+    }
     std::optional<physics::World::SphereCastBatch> sphereCasts;
     const auto simulateStep = [&](float step) {
         (void)StepParticleEmitterPlayback(emitter, gameObject.transform, step);
         SimulateCpuEmitter(emitter, gameObject.transform, animator, step, time,
                            flowFields, world, scene, sphereCasts);
     };
-    for (int index = 0; index < wholeSteps; ++index) simulateStep(FIXED_STEP);
+    for (int index = 0; index < wholeSteps; ++index) {
+        simulateStep(FIXED_STEP);
+    }
     const float remainder = target - static_cast<float>(static_cast<double>(wholeSteps) / SCRUB_FPS);
-    if (remainder > 0.0f) simulateStep(remainder);
+    if (remainder > 0.0f) {
+        simulateStep(remainder);
+    }
 
-    /// @note スクラブ後に Prewarm の一括投入や同フレームの通常再生が重なって状態を壊さないようにする。
+    // スクラブ後に Prewarm の一括投入や同フレームの通常再生が重なって状態を壊さないようにする。
     emitter.runtime.prewarmed              = true;
     emitter.runtime.lastPlaybackFrame      = Time::frameCount;
     emitter.runtime.lastCpuSimulationFrame = Time::frameCount;

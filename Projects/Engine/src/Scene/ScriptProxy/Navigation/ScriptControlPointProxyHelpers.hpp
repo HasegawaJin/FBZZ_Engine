@@ -11,4 +11,4 @@ inline ControlPointReadContext ScriptControlPointReadContext()
     return Script::IsInPlayMode() ? ControlPointReadContext::RUNTIME
                                   : ControlPointReadContext::AUTHORING;
 }
-} /// @note namespace fbzz::scene::script_proxy_detail
+} // namespace fbzz::scene::script_proxy_detail

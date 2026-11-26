@@ -24,26 +24,20 @@ struct AudioSourceComponent {
     std::string clipPath;
     bool        playOnAwake = false;
     bool        loop        = false;
-    /// @brief 長尺音声を固定量のバッファで再生する。開始後のデコードは専用スレッドで行う。
-    bool        streaming   = false;
+    bool        streaming   = false; ///< 長尺音声を固定量のバッファで再生する。開始後のデコードは専用スレッドで行う。
     float       volume      = 1.0f;
     float       pitch       = 1.0f;
     /// @note 出力先ミキサーバス。ProjectSettings の [[audio.bus]] で定義した名前。
     /// @note 未知の名前は Master へ落ちる。
     std::string busName     = "SE";
-    /// @note 0 は 2D、1 は完全な 3D。中間値は距離減衰とパンを線形にブレンドする。
-    float       spatialBlend = 0.0f;
+    float       spatialBlend = 0.0f; ///< 0 は 2D、1 は完全な 3D。中間値は距離減衰とパンを線形にブレンドする。
     float       minDistance  = 1.0f;
     float       maxDistance  = 50.0f;
     float       rolloffFactor = 1.0f;
-    /// @note 遠ざかるほど高域を吸わせる量 (0 で無加工)。距離そのものは rolloffFactor が受け持つ。
-    float       airAbsorption = 0.0f;
-    /// @note 相対速度によるピッチ変化の強さ。0 で無効、1 で物理どおり。既定は 0。
-    float       dopplerLevel = 0.0f;
-    /// @brief 音源単位の正規化 low-pass。1 は無加工。共有バスを変えず水中などの音色を制御する。
-    float       lowPassCutoff = 1.0f;
-    /// @note 補間状態は保存しない。音量フェードとは独立して Sim 時間で進める。
-    float       m_lowPassFrom = 1.0f;
+    float       airAbsorption = 0.0f; ///< 遠ざかるほど高域を吸わせる量 (0 で無加工)。距離そのものは rolloffFactor が受け持つ。
+    float       dopplerLevel = 0.0f; ///< 相対速度によるピッチ変化の強さ。0 で無効、1 で物理どおり。既定は 0。
+    float       lowPassCutoff = 1.0f; ///< 音源単位の正規化 low-pass。1 は無加工。共有バスを変えず水中などの音色を制御する。
+    float       m_lowPassFrom = 1.0f; ///< 補間状態は保存しない。音量フェードとは独立して Sim 時間で進める。
     float       m_lowPassTarget = 1.0f;
     float       m_lowPassElapsed = 0.0f;
     float       m_lowPassDuration = 0.0f;
@@ -52,7 +46,9 @@ struct AudioSourceComponent {
     /// @return 不正・非有限入力では現在値と補間状態を変更しない。
     bool SetLowPassCutoff(float cutoff)
     {
-        if (!std::isfinite(cutoff) || cutoff < 0.0f || cutoff > 1.0f) return false;
+        if (!std::isfinite(cutoff) || cutoff < 0.0f || cutoff > 1.0f) {
+            return false;
+        }
         lowPassCutoff = cutoff;
         m_lowPassFading = false;
         return true;
@@ -61,8 +57,12 @@ struct AudioSourceComponent {
     bool FadeLowPassTo(float cutoff, float seconds)
     {
         if (!std::isfinite(cutoff) || cutoff < 0.0f || cutoff > 1.0f
-            || !std::isfinite(seconds) || seconds < 0.0f) return false;
-        if (seconds == 0.0f) return SetLowPassCutoff(cutoff);
+            || !std::isfinite(seconds) || seconds < 0.0f) {
+            return false;
+        }
+        if (seconds == 0.0f) {
+            return SetLowPassCutoff(cutoff);
+        }
         m_lowPassFrom = std::isfinite(lowPassCutoff) ? std::clamp(lowPassCutoff, 0.0f, 1.0f) : 1.0f;
         m_lowPassTarget = cutoff;
         m_lowPassElapsed = 0.0f;
@@ -70,19 +70,17 @@ struct AudioSourceComponent {
         m_lowPassFading = true;
         return true;
     }
-    /// @note 同時発音数が上限に達したとき、これが低い音から畳まれる。
-    int         priority = 0;
+    int         priority = 0; ///< 同時発音数が上限に達したとき、これが低い音から畳まれる。
     bool        enabled     = true;
-    bool        m_played       = false; ///< @note PlayOnAwake が発火済みかを追跡し、重複再生を防ぐ
-    bool        m_isPlaying    = false; ///< @note 現在再生中
-    bool        m_isPaused     = false; ///< @note 一時停止中
-    bool        m_pendingPlay  = false; ///< @note 次フレームに再生要求
-    bool        m_pendingStop  = false; ///< @note 次フレームに停止要求
-    bool        m_pendingPause = false; ///< @note 次フレームに一時停止要求
-    bool        m_pendingResume = false; ///< @note 次フレームに再開要求
-    /// @note Script 所有ループだけが設定する。保存しない。音源削除でも weak な voice の寿命が切れる。
-    std::shared_ptr<audio::VoiceLifetime> m_scriptLoopLifetime;
-    uint32_t    m_voiceId      = 0;     ///< @note AudioManager が返す非所有 voice ハンドル
+    bool        m_played       = false; ///< PlayOnAwake が発火済みかを追跡し、重複再生を防ぐ
+    bool        m_isPlaying    = false; ///< 現在再生中
+    bool        m_isPaused     = false; ///< 一時停止中
+    bool        m_pendingPlay  = false; ///< 次フレームに再生要求
+    bool        m_pendingStop  = false; ///< 次フレームに停止要求
+    bool        m_pendingPause = false; ///< 次フレームに一時停止要求
+    bool        m_pendingResume = false; ///< 次フレームに再開要求
+    std::shared_ptr<audio::VoiceLifetime> m_scriptLoopLifetime; ///< Script 所有ループだけが設定する。保存しない。音源削除でも weak な voice の寿命が切れる。
+    uint32_t    m_voiceId      = 0; ///< AudioManager が返す非所有 voice ハンドル
 
     /// @note 前フレームのワールド座標と、それが有効かどうか。Doppler の相対速度に使う。
     /// @note 物理の速度を見ないのは、音源が RigidBody を持たない飾りであることが多いため。
@@ -97,20 +95,18 @@ struct AudioSourceComponent {
 
     /// @note 主 voice に重ねて 1 度だけ鳴らす要求。
     struct OneShotRequest {
-        std::string path;              ///< @note 空なら clipId を使う
-        uint32_t    clipId      = 0;   ///< @note 生成クリップ。参照を 1 つ握る
+        std::string path; ///< 空なら clipId を使う
+        uint32_t    clipId      = 0; ///< 生成クリップ。参照を 1 つ握る
         float       volumeScale = 1.0f;
     };
-    /// @note 単一スロットだと同じフレームの 2 回目の要求が上書きで消えるため列で持つ。
-    std::vector<OneShotRequest> m_pendingOneShots;
+    std::vector<OneShotRequest> m_pendingOneShots; ///< 単一スロットだと同じフレームの 2 回目の要求が上書きで消えるため列で持つ。
     /// @note 1 フレームに積める上限。AudioSystem は SimOnly なので、Edit モードで
     /// @note 誰も引き取らないまま積み続けても膨らまないように蓋をする。
     static constexpr size_t MAX_PENDING_ONE_SHOTS = 16;
     /// @note 再生中の OneShot も所有音源を追従する。ハンドルと倍率のみを保持し PCM は保持しない。
     struct ActiveOneShot { uint32_t voiceId = 0; float volumeScale = 1.0f; };
     std::vector<ActiveOneShot> m_activeOneShots;
-    /// @note 上限に達した音源の追加要求は捨てる。既存 voice を再起動しない。
-    static constexpr size_t MAX_ACTIVE_ONE_SHOTS = 16;
+    static constexpr size_t MAX_ACTIVE_ONE_SHOTS = 16; ///< 上限に達した音源の追加要求は捨てる。既存 voice を再起動しない。
 
     const char* GetTypeName() const { return "Audio Source"; }
     void Reflect(IReflector& r)

@@ -103,9 +103,9 @@ using renderer::SubmitCountedShadow;
 
 
 struct RenderPassContext : renderer::RenderPassContext {
-    Scene& scene;
-    const physics::World* physicsWorld = nullptr;
-    const RenderSystemUIOptions* uiOptions = nullptr;
+    Scene& scene; ///< パスの実行中に抽出・参照する Scene の非所有参照。
+    const physics::World* physicsWorld = nullptr; ///< 物理の診断描画へ渡す非所有参照。物理表示が不要なビューでは null。
+    const RenderSystemUIOptions* uiOptions = nullptr; ///< UI 合成と入力に使う呼び出し元ビューの設定。UI を描かない場合は null。
     RenderPassContext(Scene& source, renderer::IRenderer& device, renderer::ResourceManager& manager,
                       const renderer::Camera& view, const renderer::RenderSettings& options,
                       renderer::ResourceHandle<renderer::RenderTargetTag> target,
@@ -124,8 +124,12 @@ inline renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveSkinningCB(
     const asset::Model* model,
     const renderer::ResourceHandle<renderer::ConstantBufferTag>& identityFallback)
 {
-    if (animatorPalette.IsValid()) return animatorPalette;
-    if (model && model->referencePoseCB.IsValid()) return model->referencePoseCB;
+    if (animatorPalette.IsValid()) {
+        return animatorPalette;
+    }
+    if (model && model->referencePoseCB.IsValid()) {
+        return model->referencePoseCB;
+    }
     return identityFallback;
 }
 

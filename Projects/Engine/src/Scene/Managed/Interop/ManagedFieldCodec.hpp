@@ -44,8 +44,7 @@ struct StructuredValue final : IScriptSerializable {
     std::string json;
     std::vector<std::string> objectGuids;
     std::vector<std::string> componentOwnerGuids;
-    /// @note 表示だけに使う寿命検証済み参照。保存時は既存 objectGuids の GUID 列のみ出力する。
-    std::vector<ScriptObjectReference> objectReferences;
+    std::vector<ScriptObjectReference> objectReferences; ///< 表示だけに使う寿命検証済み参照。保存時は既存 objectGuids の GUID 列のみ出力する。
 
     explicit StructuredValue(std::string value) : json(std::move(value))
     {
@@ -69,7 +68,9 @@ struct StructuredValue final : IScriptSerializable {
             reflector.ObjectReferenceListField("objectGuids", objectReferences);
             reflector.EndField();
             objectGuids.clear();
-            for (const auto& reference : objectReferences) objectGuids.push_back(reference.guid);
+            for (const auto& reference : objectReferences) {
+                objectGuids.push_back(reference.guid);
+            }
             reflector.BeginField("componentOwnerGuids", "componentOwnerGuids");
             reflector.ListField("componentOwnerGuids", componentOwnerGuids);
             reflector.EndField();
@@ -79,14 +80,20 @@ struct StructuredValue final : IScriptSerializable {
     bool ApplyReferences()
     {
         std::vector<std::string> previous;
-        if (!m_valid || !Extract(json, previous) || previous.size() != objectGuids.size()) return false;
+        if (!m_valid || !Extract(json, previous) || previous.size() != objectGuids.size()) {
+            return false;
+        }
         std::string output;
         size_t offset = 0;
         constexpr std::string_view prefix = "{\"$go\":\"";
         for (const auto& guid : objectGuids) {
-            if (!ValidGuid(guid)) return false;
+            if (!ValidGuid(guid)) {
+                return false;
+            }
             const size_t start = json.find(prefix, offset);
-            if (start == std::string::npos) return false;
+            if (start == std::string::npos) {
+                return false;
+            }
             const size_t end = json.find("\"}", start + prefix.size());
             output.append(json, offset, start + prefix.size() - offset);
             output.append(guid);
@@ -97,10 +104,14 @@ struct StructuredValue final : IScriptSerializable {
         json = std::move(output);
         std::vector<std::string> owners;
         std::vector<std::pair<size_t, size_t>> slots;
-        if (!ExtractOwners(json, owners, &slots) || owners.size() != componentOwnerGuids.size()) return false;
-        /// @note 後方から差し替え、可変長 GUID でも先行 slot の位置を壊さない。
+        if (!ExtractOwners(json, owners, &slots) || owners.size() != componentOwnerGuids.size()) {
+            return false;
+        }
+        // 後方から差し替え、可変長 GUID でも先行 slot の位置を壊さない。
         for (size_t index = slots.size(); index > 0; --index) {
-            if (!ValidGuid(componentOwnerGuids[index - 1])) return false;
+            if (!ValidGuid(componentOwnerGuids[index - 1])) {
+                return false;
+            }
             const auto [start, end] = slots[index - 1];
             json.replace(start, end - start, componentOwnerGuids[index - 1]);
         }
@@ -109,7 +120,9 @@ struct StructuredValue final : IScriptSerializable {
 private:
     static bool ValidGuid(std::string_view guid)
     {
-        if (guid.empty() || guid.size() > 4096) return false;
+        if (guid.empty() || guid.size() > 4096) {
+            return false;
+        }
         return std::all_of(guid.begin(), guid.end(), [](char value) {
             return value >= 32 && value <= 126 && value != '"' && value != '\\';
         });
@@ -121,7 +134,9 @@ private:
         while ((offset = json.find(prefix, offset)) != std::string_view::npos) {
             offset += prefix.size();
             const size_t end = json.find("\"}", offset);
-            if (end == std::string_view::npos || !ValidGuid(json.substr(offset, end - offset))) return false;
+            if (end == std::string_view::npos || !ValidGuid(json.substr(offset, end - offset))) {
+                return false;
+            }
             guids.emplace_back(json.substr(offset, end - offset));
             offset = end + 2;
         }
@@ -135,13 +150,21 @@ private:
         size_t offset = 0;
         while ((offset = json.find(prefix, offset)) != std::string_view::npos) {
             const size_t kindStart = offset + prefix.size(), kindEnd = json.find(owner, kindStart);
-            if (kindEnd == std::string_view::npos) return false;
+            if (kindEnd == std::string_view::npos) {
+                return false;
+            }
             const auto kind = json.substr(kindStart, kindEnd - kindStart);
-            if (kind != "native" && kind != "script") return false;
+            if (kind != "native" && kind != "script") {
+                return false;
+            }
             const size_t start = kindEnd + owner.size(), end = json.find('"', start);
-            if (end == std::string_view::npos || !ValidGuid(json.substr(start, end - start))) return false;
+            if (end == std::string_view::npos || !ValidGuid(json.substr(start, end - start))) {
+                return false;
+            }
             guids.emplace_back(json.substr(start, end - start));
-            if (slots) slots->emplace_back(start, end);
+            if (slots) {
+                slots->emplace_back(start, end);
+            }
             offset = end + 1;
         }
         return true;
@@ -154,38 +177,60 @@ bool DecodeArray(std::string_view bytes, std::vector<T>& values, uint32_t maximu
 {
     size_t offset = 0;
     uint32_t count = 0;
-    if (!Read(bytes, offset, count) || count > maximumElements) return false;
+    if (!Read(bytes, offset, count) || count > maximumElements) {
+        return false;
+    }
     constexpr size_t minimumBytes = std::is_same_v<T, bool> ? 1 : std::is_same_v<T, math::Vector3> ? 12 : sizeof(uint32_t);
-    if (static_cast<uint64_t>(count) * minimumBytes > bytes.size() - offset) return false;
+    if (static_cast<uint64_t>(count) * minimumBytes > bytes.size() - offset) {
+        return false;
+    }
     std::vector<T> decoded;
     decoded.reserve(count);
     for (uint32_t index = 0; index < count; ++index) {
         T value{};
         if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, ScriptObjectReference>) {
             uint32_t length = 0;
-            if (!Read(bytes, offset, length)) return false;
+            if (!Read(bytes, offset, length)) {
+                return false;
+            }
             if (length == std::numeric_limits<uint32_t>::max()) {
-                if constexpr (std::is_same_v<T, std::string>) return false;
+                if constexpr (std::is_same_v<T, std::string>) {
+                    return false;
+                }
             } else {
-                if (offset > bytes.size() || length > bytes.size() - offset) return false;
-                if constexpr (std::is_same_v<T, std::string>) value.assign(bytes.substr(offset, length));
-                else value.guid.assign(bytes.substr(offset, length));
+                if (offset > bytes.size() || length > bytes.size() - offset) {
+                    return false;
+                }
+                if constexpr (std::is_same_v<T, std::string>) {
+                    value.assign(bytes.substr(offset, length));
+                }
+                else {
+                    value.guid.assign(bytes.substr(offset, length));
+                }
                 offset += length;
             }
         } else if constexpr (std::is_same_v<T, bool>) {
             uint8_t number = 0;
-            if (!Read(bytes, offset, number) || number > 1) return false;
+            if (!Read(bytes, offset, number) || number > 1) {
+                return false;
+            }
             value = number != 0;
         } else if constexpr (std::is_same_v<T, math::Vector3>) {
             if (!Read(bytes, offset, value.x) || !Read(bytes, offset, value.y) || !Read(bytes, offset, value.z)
-                || !std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z)) return false;
+                || !std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z)) {
+                return false;
+            }
         } else {
-            if (!Read(bytes, offset, value)) return false;
+            if (!Read(bytes, offset, value)) {
+                return false;
+            }
             if constexpr (std::is_same_v<T, float>) if (!std::isfinite(value)) return false;
         }
         decoded.push_back(std::move(value));
     }
-    if (offset != bytes.size()) return false;
+    if (offset != bytes.size()) {
+        return false;
+    }
     values = std::move(decoded);
     return true;
 }
@@ -198,8 +243,12 @@ std::string EncodeArray(const std::vector<T>& values)
     for (size_t index = 0; index < values.size(); ++index) {
         if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, ScriptObjectReference>) {
             const std::string& text = [&]() -> const std::string& {
-                if constexpr (std::is_same_v<T, std::string>) return values[index];
-                else return values[index].guid;
+                if constexpr (std::is_same_v<T, std::string>) {
+                    return values[index];
+                }
+                else {
+                    return values[index].guid;
+                }
             }();
             if constexpr (std::is_same_v<T, ScriptObjectReference>) {
                 if (text.empty()) { Append(bytes, std::numeric_limits<uint32_t>::max()); continue; }
@@ -212,7 +261,9 @@ std::string EncodeArray(const std::vector<T>& values)
             Append(bytes, values[index].x);
             Append(bytes, values[index].y);
             Append(bytes, values[index].z);
-        } else Append(bytes, values[index]);
+        } else {
+            Append(bytes, values[index]);
+        }
     }
     return bytes;
 }
@@ -220,7 +271,9 @@ std::string EncodeArray(const std::vector<T>& values)
 inline bool FloatFromToml(const toml::node& node, float& result)
 {
     const auto value = node.value<double>();
-    if (!value || !std::isfinite(*value) || std::abs(*value) > std::numeric_limits<float>::max()) return false;
+    if (!value || !std::isfinite(*value) || std::abs(*value) > std::numeric_limits<float>::max()) {
+        return false;
+    }
     result = static_cast<float>(*value);
     return true;
 }
@@ -236,28 +289,44 @@ template<typename T>
 bool ArrayFromToml(const toml::node& node, std::string& bytes)
 {
     const auto* array = node.as_array();
-    if (!array || array->size() > kMaximumArrayElements) return false;
+    if (!array || array->size() > kMaximumArrayElements) {
+        return false;
+    }
     std::vector<T> values;
     values.reserve(array->size());
     for (const auto& element : *array) {
         T value{};
         if constexpr (std::is_same_v<T, float>) {
-            if (!FloatFromToml(element, value)) return false;
+            if (!FloatFromToml(element, value)) {
+                return false;
+            }
         } else if constexpr (std::is_same_v<T, int>) {
             const auto number = element.value<int64_t>();
-            if (!number || *number < std::numeric_limits<int32_t>::min() || *number > std::numeric_limits<int32_t>::max()) return false;
+            if (!number || *number < std::numeric_limits<int32_t>::min() || *number > std::numeric_limits<int32_t>::max()) {
+                return false;
+            }
             value = static_cast<int>(*number);
         } else if constexpr (std::is_same_v<T, bool>) {
             const auto number = element.value<bool>();
-            if (!number) return false;
+            if (!number) {
+                return false;
+            }
             value = *number;
         } else if constexpr (std::is_same_v<T, math::Vector3>) {
-            if (!VectorFromToml(element, value)) return false;
+            if (!VectorFromToml(element, value)) {
+                return false;
+            }
         } else {
             const auto text = element.value<std::string>();
-            if (!text) return false;
-            if constexpr (std::is_same_v<T, std::string>) value = *text;
-            else value.guid = *text;
+            if (!text) {
+                return false;
+            }
+            if constexpr (std::is_same_v<T, std::string>) {
+                value = *text;
+            }
+            else {
+                value.guid = *text;
+            }
         }
         values.push_back(std::move(value));
     }
@@ -271,13 +340,17 @@ inline bool ReadSavedField(const toml::node& node, ManagedFieldValue& field)
     case ManagedValueKind::FLOAT: return FloatFromToml(node, field.value.x);
     case ManagedValueKind::INT: {
         const auto value = node.value<int64_t>();
-        if (!value || *value < std::numeric_limits<int32_t>::min() || *value > std::numeric_limits<int32_t>::max()) return false;
+        if (!value || *value < std::numeric_limits<int32_t>::min() || *value > std::numeric_limits<int32_t>::max()) {
+            return false;
+        }
         field.value.integer = *value;
         return true;
     }
     case ManagedValueKind::BOOL: {
         const auto value = node.value<bool>();
-        if (!value) return false;
+        if (!value) {
+            return false;
+        }
         field.value.integer = *value ? 1 : 0;
         return true;
     }
@@ -285,14 +358,20 @@ inline bool ReadSavedField(const toml::node& node, ManagedFieldValue& field)
     case ManagedValueKind::ASSET_REFERENCE:
     case ManagedValueKind::GAME_OBJECT: {
         const auto value = node.value<std::string>();
-        if (!value) return false;
+        if (!value) {
+            return false;
+        }
         field.text = *value;
-        if (field.value.valueKind == ManagedValueKind::GAME_OBJECT && value->empty()) field.value.flags |= kManagedNullValue;
+        if (field.value.valueKind == ManagedValueKind::GAME_OBJECT && value->empty()) {
+            field.value.flags |= kManagedNullValue;
+        }
         return true;
     }
     case ManagedValueKind::VECTOR3: {
         math::Vector3 value;
-        if (!VectorFromToml(node, value)) return false;
+        if (!VectorFromToml(node, value)) {
+            return false;
+        }
         field.value.x = value.x;
         field.value.y = value.y;
         field.value.z = value.z;
@@ -306,12 +385,18 @@ inline bool ReadSavedField(const toml::node& node, ManagedFieldValue& field)
     }
     case ManagedValueKind::STRUCTURED: {
         const auto* table = node.as_table();
-        if (!table) return false;
+        if (!table) {
+            return false;
+        }
         const auto json = (*table)["json"].value<std::string>();
         const auto* references = (*table)["objectGuids"].as_array();
-            if (!json || !references) return false;
+            if (!json || !references) {
+                return false;
+            }
         StructuredValue value{*json};
-        if (!value.Valid()) return false;
+        if (!value.Valid()) {
+            return false;
+        }
         value.objectGuids.clear();
         if (const auto* owners = (*table)["componentOwnerGuids"].as_array()) {
             value.componentOwnerGuids.clear();
@@ -322,10 +407,14 @@ inline bool ReadSavedField(const toml::node& node, ManagedFieldValue& field)
         }
         for (const auto& reference : *references) {
             const auto guid = reference.value<std::string>();
-            if (!guid) return false;
+            if (!guid) {
+                return false;
+            }
             value.objectGuids.push_back(*guid);
         }
-        if (!value.ApplyReferences()) return false;
+        if (!value.ApplyReferences()) {
+            return false;
+        }
         field.text = std::move(value.json);
         return true;
     }
@@ -339,4 +428,4 @@ inline bool ReadSavedField(const toml::node& node, ManagedFieldValue& field)
     }
 }
 
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

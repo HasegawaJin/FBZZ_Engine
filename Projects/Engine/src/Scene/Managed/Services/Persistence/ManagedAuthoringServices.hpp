@@ -17,5 +17,5 @@ struct ManagedServiceResult;
 FBZZ_ENGINE_API ManagedBridgeStatus RunManagedAuthoringService(Scene& scene, Script& proxy, GameObject& target,
     const ManagedBridgeRequest& request, int64_t integer, std::span<const float> values,
     std::span<const std::string> text, ManagedServiceResult& result);
-} /// @note namespace managed_detail
-} /// @note namespace fbzz::scene
+} // namespace managed_detail
+} // namespace fbzz::scene

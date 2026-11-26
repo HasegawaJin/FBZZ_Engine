@@ -15,34 +15,28 @@
 namespace fbzz::scene {
 
 struct VFXBeamComponent {
-    bool enabled = true;
+    bool enabled = true; ///< このオブジェクトの Trail をビームとして毎フレーム更新する。
 
-    /// @note 始点・終点の実体。無効なら下の fallback 座標を使う。
-    EntityRef fromEntity;
-    EntityRef toEntity;
+    EntityRef fromEntity; ///< 始点・終点の実体。無効なら下の fallback 座標を使う。
+    EntityRef toEntity; ///< ビームの終点として追従するオブジェクト参照。
 
     /// @note 実体が無いときのワールド座標。片側だけ実体に繋ぐ使い方ができる
     /// @note (企画書 12.5 の「全員から起爆点へ」は、起爆点が実体を持たない)。
     math::Vector3 fromPoint = math::Vector3::ZERO;
-    math::Vector3 toPoint   = { 0.0f, 0.0f, 5.0f };
+    math::Vector3 toPoint   = { 0.0f, 0.0f, 5.0f }; ///< 終点の参照を使わない場合の、ビーム所有者ローカル座標。
 
-    /// @note 端点へのワールド オフセット。足元ではなく体の中心から出したいときに使う。
-    math::Vector3 fromOffset = math::Vector3::ZERO;
-    math::Vector3 toOffset   = math::Vector3::ZERO;
+    math::Vector3 fromOffset = math::Vector3::ZERO; ///< 端点へのワールド オフセット。足元ではなく体の中心から出したいときに使う。
+    math::Vector3 toOffset   = math::Vector3::ZERO; ///< 終点側のオブジェクト位置に加える追加変位。
 
-    /// @note 経路の分割数。1 で直線。sag / jitter を効かせるには 8 以上が要る。
-    int segments = 12;
+    int segments = 12; ///< 経路の分割数。1 で直線。sag / jitter を効かせるには 8 以上が要る。
 
     /// @note たるみ [m]。中点をこの距離だけ下げる。引力の線は張らずに «垂れる» 方が、
     /// @note 撃った線 (レーザー) と区別がつく。
     float sag = 0.0f;
 
-    /// @note 横ゆれの振幅 [m]。電弧らしさ。0 で滑らかな曲線。
-    float jitter = 0.0f;
-    /// @note 横ゆれの時間周波数 [Hz]。
-    float jitterFrequency = 12.0f;
-    /// @note 横ゆれの空間周波数。線に沿って何山できるか。
-    float jitterWaves = 3.0f;
+    float jitter = 0.0f; ///< 横ゆれの振幅 [m]。電弧らしさ。0 で滑らかな曲線。
+    float jitterFrequency = 12.0f; ///< 横ゆれの時間周波数 [Hz]。
+    float jitterWaves = 3.0f; ///< 横ゆれの空間周波数。線に沿って何山できるか。
 
     /// @note 端点の実体が消えたらビームを畳む。
     /// @note 既定 true: 敵が死んだ後も線が誰も居ない場所へ伸び続けると、盤面に無い関係を描くことになる。

@@ -11,30 +11,38 @@ namespace fbzz::asset {
 namespace {
 float Coefficient(float value)
 {
-    if (std::isnan(value) || value <= 0.0f) return 0.0f;
+    if (std::isnan(value) || value <= 0.0f) {
+        return 0.0f;
+    }
     return (std::min)(value, 1000.0f);
 }
 math::Vector3 ReadCoefficients(const MaterialAssetAuthoring* material, const char* key, math::Vector3 fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     const auto found = material->params.find(key);
-    if (found == material->params.end() || found->second.size() < 3) return fallback;
+    if (found == material->params.end() || found->second.size() < 3) {
+        return fallback;
+    }
     return {Coefficient(found->second[0]), Coefficient(found->second[1]), Coefficient(found->second[2])};
 }
 float ReadFinite(const MaterialAssetAuthoring* material, const char* key, float fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     const auto found = material->params.find(key);
     return found != material->params.end() && !found->second.empty() && std::isfinite(found->second[0])
         ? found->second[0] : fallback;
 }
-} /// @note namespace
+} // namespace
 void InitializeWaterAppearanceParameters(const MaterialAssetAuthoring& values,
     const renderer::ShaderDescriptor& descriptor, std::vector<uint8_t>& parameters)
 {
     parameters.assign(descriptor.cbufferSize, uint8_t{0});
     InitDefaultMaterialParams(descriptor, parameters);
-    /// @note ユーザー材質のバイトオフセットを決め打ちせず、名前で書き込むことでキー欠落時の従来の見た目を保つ。
+    // ユーザー材質のバイトオフセットを決め打ちせず、名前で書き込むことでキー欠落時の従来の見た目を保つ。
     static const std::unordered_map<std::string, std::vector<float>> defaults{
         {"rimGlowStrength", {0.40f}}, {"minShallowAlpha", {0.65f}}, {"specularStrength", {0.75f}},
         {"skyReflectTint", {0.45f, 0.82f, 1.0f}}, {"rippleRingColor", {0.88f, 0.97f, 1.0f}},
@@ -58,4 +66,4 @@ WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAsset* material)
     const auto snapshot = material ? material->ReadAuthoring() : MaterialAsset::AuthoringSnapshotPtr{};
     return snapshot ? ResolveWaterOpticalSettings(snapshot->Data()) : WaterOpticalSettings{};
 }
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

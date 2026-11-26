@@ -15,17 +15,22 @@ namespace fbzz::asset {
 void PostProcessProfile::ApplyTo(renderer::VolumeSettings& target, float weight) const
 {
     for (const auto& entry : overrides) {
-        if (!entry || !entry->active) continue;
+        if (!entry || !entry->active) {
+            continue;
+        }
         entry->Apply(target, weight);
     }
 }
 
 bool PostProcessProfile::Contains(const char* typeName) const
 {
-    if (!typeName) return false;
+    if (!typeName) {
+        return false;
+    }
     for (const auto& entry : overrides) {
-        if (entry && std::strcmp(entry->GetTypeName(), typeName) == 0)
+        if (entry && std::strcmp(entry->GetTypeName(), typeName) == 0) {
             return true;
+        }
     }
     return false;
 }
@@ -35,7 +40,9 @@ std::vector<std::unique_ptr<VolumeOverride>> PostProcessProfile::CloneOverrides(
     std::vector<std::unique_ptr<VolumeOverride>> copy;
     copy.reserve(overrides.size());
     for (const auto& entry : overrides)
-        if (entry) copy.push_back(entry->Clone());
+        if (entry) {
+            copy.push_back(entry->Clone());
+        }
     return copy;
 }
 
@@ -52,9 +59,11 @@ void PostProcessProfile::Reflect(scene::IReflector& r)
     r.BeginField("overrides", "Overrides");
     const std::size_t count = r.BeginObjectList("overrides", overrides.size());
 
-    /// @note 読み込み時は count がファイル側の要素数になる。既存要素より多ければ広げ、
-    ///       少なければ切り詰める。ここで作る空きスロットへ、型名を見てから実体を入れる。
-    if (count != overrides.size()) overrides.resize(count);
+    // 読み込み時は count がファイル側の要素数になる。既存要素より多ければ広げ、
+    //       少なければ切り詰める。ここで作る空きスロットへ、型名を見てから実体を入れる。
+    if (count != overrides.size()) {
+        overrides.resize(count);
+    }
 
     for (std::size_t i = 0; i < count; ++i) {
         r.BeginObjectElement(i);
@@ -63,10 +72,11 @@ void PostProcessProfile::Reflect(scene::IReflector& r)
         r.BeginField("type", "type");
         r.Field("type", typeName);
 
-        /// @note 既存実体が無い (= 読み込み) か、型名が食い違う (= ファイル側で差し替えられた)
-        ///       場合は作り直す。未登録の型名なら nullptr のまま残し、後で捨てる。
-        if (!overrides[i] || typeName != overrides[i]->GetTypeName())
+        // 既存実体が無い (= 読み込み) か、型名が食い違う (= ファイル側で差し替えられた)
+        //       場合は作り直す。未登録の型名なら nullptr のまま残し、後で捨てる。
+        if (!overrides[i] || typeName != overrides[i]->GetTypeName()) {
             overrides[i] = VolumeOverrideFactory::Create(typeName);
+        }
 
         if (overrides[i]) {
             r.BeginField("active", "Active");
@@ -78,12 +88,13 @@ void PostProcessProfile::Reflect(scene::IReflector& r)
     }
 
     const std::size_t removeIndex = r.EndObjectList();
-    if (removeIndex < overrides.size())
+    if (removeIndex < overrides.size()) {
         overrides.erase(overrides.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+    }
 
-    /// @note 復元できなかった要素 (未登録の型名) を落とす。nullptr が混ざったリストは
-    ///       以降のすべての利用側に null チェックを強いるため、読めなかったものは無かった
-    ///       ことにする方が単純 (.fzdata を開き直せば警告なしに元へ戻り、保存しなければ無傷)。
+    // 復元できなかった要素 (未登録の型名) を落とす。nullptr が混ざったリストは
+    //       以降のすべての利用側に null チェックを強いるため、読めなかったものは無かった
+    //       ことにする方が単純 (.fzdata を開き直せば警告なしに元へ戻り、保存しなければ無傷)。
     std::erase_if(overrides, [](const std::unique_ptr<VolumeOverride>& entry) {
         return entry == nullptr;
     });

@@ -54,21 +54,26 @@ inline std::string MakeDisplayName(const char* member)
     for (const char* p = member; p && *p; ++p) {
         char c = *p;
         if (c == '_') {
-            /// @note スネークケースの区切りは空白へ変換する。
-            if (!out.empty() && out.back() != ' ') out.push_back(' ');
+            // スネークケースの区切りは空白へ変換する。
+            if (!out.empty() && out.back() != ' ') {
+                out.push_back(' ');
+            }
             prevLower = false;
             prevDigit = false;
             continue;
         }
         const bool isUpper = (c >= 'A' && c <= 'Z');
         const bool isDigit = (c >= '0' && c <= '9');
-        /// @note 小文字→大文字 / 文字⇔数字 の境界で単語を区切る。
+        // 小文字→大文字 / 文字⇔数字 の境界で単語を区切る。
         if (!out.empty() && out.back() != ' ' &&
-            ((isUpper && prevLower) || (isDigit && !prevDigit) || (!isDigit && prevDigit)))
+            ((isUpper && prevLower) || (isDigit && !prevDigit) || (!isDigit && prevDigit))) {
             out.push_back(' ');
-        /// @note 各単語の先頭は大文字化する。
+        }
+        // 各単語の先頭は大文字化する。
         if (out.empty() || out.back() == ' ') {
-            if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 32);
+            if (c >= 'a' && c <= 'z') {
+                c = static_cast<char>(c - 32);
+            }
         }
         out.push_back(c);
         prevLower = (c >= 'a' && c <= 'z');
@@ -85,25 +90,27 @@ inline std::string DisplayOr(const char* explicitName, const char* member)
         : MakeDisplayName(member);
 }
 
-} /// @note namespace fbzz::scene::detail
+} // namespace fbzz::scene::detail
 
 namespace fbzz::scene {
 /// @brief `FBZZ_REF(T, ...)` が RefField へ渡す型名を解決する。
-/// @param declaredName 登録コンポーネントの型名 (FBZZ_REF に書いた型名そのもの)。GameObject / Script 参照では未使用。
+/// @param[in] declaredName 登録コンポーネントの型名 (FBZZ_REF に書いた型名そのもの)。GameObject / Script 参照では未使用。
 /// @return GameObject なら空文字、Script 派生・インターフェースなら T::TYPE_NAME、それ以外は declaredName。
 /// @note Inspector はこの型名でドロップを検証し、フィルタ付きピッカーを出す。
 /// @note コンポーネントだけマクロから名前を貰うのは TYPE_NAME を持たないため。名前の正本は ComponentRegistry の serializedName (中身は登録マクロの `#Type`) で、FBZZ_REF が持つ `#Type` から同じ文字列が作れる。名前空間付きで書くと食い違うため素の型名で書くこと。
 template<typename T>
 constexpr const char* RefTypeNameOf(const char* declaredName)
 {
-    /// @note GameObject / Script 参照では使わない。
+    // GameObject / Script 参照では使わない。
     (void)declaredName;
-    if constexpr (std::is_same_v<T, GameObject>)
+    if constexpr (std::is_same_v<T, GameObject>) {
         return "";
+    }
     else if constexpr (requires(const T& value) { value.FbzzAsType(std::string_view{}); })
         return T::TYPE_NAME;
-    else
+    else {
         return declaredName;
+    }
 }
 
 struct IReflector;
@@ -271,7 +278,7 @@ struct IReflector {
     }
     virtual void ObjectField(const char* name, IScriptSerializable& value)
     {
-        /// @note BeginObject / EndObject へ委譲する。BeginObject を実装したリフレクタは入れ子化も自動的に手に入る。
+        // BeginObject / EndObject へ委譲する。BeginObject を実装したリフレクタは入れ子化も自動的に手に入る。
         BeginObject(name);
         value.Reflect(*this);
         EndObject();
@@ -279,8 +286,9 @@ struct IReflector {
     virtual void ReferenceField(const char* name, ScriptSerializedReference& value)
     {
         (void)name;
-        if (value.value)
+        if (value.value) {
             value.value->Reflect(*this);
+        }
     }
 
     /// @name 非仮想ヘルパー
@@ -315,7 +323,9 @@ struct IReflector {
         BeginField(name, name);
         SetFieldVisible(visible);
         Field(name, v);
-        if (visible && tooltip) Tooltip(tooltip);
+        if (visible && tooltip) {
+            Tooltip(tooltip);
+        }
         EndField();
     }
 
@@ -327,7 +337,9 @@ struct IReflector {
         BeginField(name, name);
         SetFileExtensions(extensions);
         Field(name, v);
-        if (tooltip) Tooltip(tooltip);
+        if (tooltip) {
+            Tooltip(tooltip);
+        }
         EndField();
     }
     /// @}
@@ -433,7 +445,9 @@ struct IReflector {
     {
         std::vector<std::string> guids;
         guids.reserve(values.size());
-        for (const auto& value : values) guids.push_back(value.guid);
+        for (const auto& value : values) {
+            guids.push_back(value.guid);
+        }
         ListField(name, guids);
         values.resize(guids.size());
         for (size_t index = 0; index < guids.size(); ++index) {
@@ -497,10 +511,12 @@ inline constexpr bool kIsScriptQueryable<
 template<typename First, typename... Rest, typename Self>
 [[nodiscard]] inline void* TryBases(const Self* self, std::string_view typeName)
 {
-    if (void* found = static_cast<const First*>(self)->First::FbzzAsType(typeName))
+    if (void* found = static_cast<const First*>(self)->First::FbzzAsType(typeName)) {
         return found;
-    if constexpr (sizeof...(Rest) > 0)
+    }
+    if constexpr (sizeof...(Rest) > 0) {
         return TryBases<Rest...>(self, typeName);
+    }
     return nullptr;
 }
 
@@ -509,15 +525,21 @@ template<typename First, typename... Rest, typename Self>
 template<typename T>
 inline void MoveListElement(std::vector<T>& values, std::size_t from, std::size_t to)
 {
-    if (from >= values.size() || to >= values.size() || from == to) return;
+    if (from >= values.size() || to >= values.size() || from == to) {
+        return;
+    }
     const auto begin = values.begin();
     const auto source = begin + static_cast<std::ptrdiff_t>(from);
     const auto target = begin + static_cast<std::ptrdiff_t>(to);
-    if (from < to) std::rotate(source, source + 1, target + 1);
-    else           std::rotate(target, source, source + 1);
+    if (from < to) {
+        std::rotate(source, source + 1, target + 1);
+    }
+    else {
+        std::rotate(target, source, source + 1);
+    }
 }
 
-} /// @note namespace detail
+} // namespace detail
 
 /// @brief Script 以外のネスト値型へ同じ宣言式 Reflect を与える。
 #define FBZZ_SERIALIZABLE(T)                                                    \
@@ -539,16 +561,30 @@ constexpr const char* ObservationTypeName()
         std::is_same_v<T, math::Vector2> || std::is_same_v<T, math::Vector3> ||
         std::is_same_v<T, math::Vector4> || std::is_same_v<T, math::Quaternion>,
         "FBZZ_OBSERVE supports bool, int, float, string, vectors and quaternion");
-    if constexpr (std::is_same_v<T, bool>) return "bool";
-    if constexpr (std::is_same_v<T, int>) return "int";
-    if constexpr (std::is_same_v<T, float>) return "float";
-    if constexpr (std::is_same_v<T, std::string>) return "string";
-    if constexpr (std::is_same_v<T, math::Vector2>) return "vector2";
-    if constexpr (std::is_same_v<T, math::Vector3>) return "vector3";
-    if constexpr (std::is_same_v<T, math::Vector4>) return "vector4";
+    if constexpr (std::is_same_v<T, bool>) {
+        return "bool";
+    }
+    if constexpr (std::is_same_v<T, int>) {
+        return "int";
+    }
+    if constexpr (std::is_same_v<T, float>) {
+        return "float";
+    }
+    if constexpr (std::is_same_v<T, std::string>) {
+        return "string";
+    }
+    if constexpr (std::is_same_v<T, math::Vector2>) {
+        return "vector2";
+    }
+    if constexpr (std::is_same_v<T, math::Vector3>) {
+        return "vector3";
+    }
+    if constexpr (std::is_same_v<T, math::Vector4>) {
+        return "vector4";
+    }
     return "quaternion";
 }
-} /// @note namespace detail
+} // namespace detail
 
 /// @brief 1 エントリ分の登録。直前タグ (1 つ前のフィールド/グループ) を先に処理してから自分を反映することで宣言順を保つ。UniqueTok はメンバー名や行番号で一意化する。
 /// @note 可変長引数なのは、リフレクション文に含まれるトップレベルのカンマ (FBZZ_FIELD_ENUM のラベル配列など `()` で保護されないもの) を `__VA_ARGS__` で吸収するため。
@@ -975,4 +1011,4 @@ constexpr const char* ObservationTypeName()
     }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

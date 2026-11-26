@@ -31,7 +31,9 @@ struct FiberPlacementResources {
 };
 inline void ReleaseFiberPlacement(FiberPlacementResources& state, renderer::ResourceManager& resources)
 {
-    for (auto& [key,page] : state.pages) resources.Release(page.buffer);
+    for (auto& [key,page] : state.pages) {
+        resources.Release(page.buffer);
+    }
     state.pages.clear();
 }
 /// @note 同一個体を全ビュー・影パスで共有する。未変更なら CPU 三角形・マスクを走査しない。
@@ -52,17 +54,23 @@ inline void UpdateFiberPlacementResources(FiberPlacementResources& state, const 
         static_cast<uint32_t>(mesh.cpuVertices.size()),static_cast<uint32_t>(mesh.cpuIndices.size())};
     size_t cursor = 15;
     for (int row = 0; row < 3; ++row) for (int col = 0; col < 3; ++col) input[cursor++] = std::bit_cast<uint32_t>(world.m[row][col]);
-    if (input == state.input) return;
+    if (input == state.input) {
+        return;
+    }
     state.input = input;
     state.valid = false;
     fiber.m_placementFailed = true;
     fiber.m_placementRootCount = 0; fiber.m_placementChunkCount = 0;
-    if (!fiber.m_paintPath.empty() && !paint) return;
+    if (!fiber.m_paintPath.empty() && !paint) {
+        return;
+    }
     if (!paint) {
         const float scale = std::max({math::Vector3(world.m[0][0],world.m[1][0],world.m[2][0]).Length(),
             math::Vector3(world.m[0][1],world.m[1][1],world.m[2][1]).Length(),
             math::Vector3(world.m[0][2],world.m[1][2],world.m[2][2]).Length(),0.0001f});
-        if (!renderer::CreateFiberPaintData(mesh,std::clamp(0.5f/scale,0.0001f,16.0f),1.0f,state.fullSurface)) return;
+        if (!renderer::CreateFiberPaintData(mesh,std::clamp(0.5f/scale,0.0001f,16.0f),1.0f,state.fullSurface)) {
+            return;
+        }
     }
     renderer::FiberPlacementOptions options;
     options.density = fiber.m_bladeDensity; options.width = fiber.m_bladeWidth;
@@ -78,11 +86,15 @@ inline void UpdateFiberPlacementResources(FiberPlacementResources& state, const 
             const std::array<int,4> key{chunk.cell[0],chunk.cell[1],chunk.cell[2],static_cast<int>(pageIndex)};
             auto& page = state.pages[key];
             page.seen = state.cpu.revision;
-            if (!page.identity) page.identity = ++nextIdentity;
+            if (!page.identity) {
+                page.identity = ++nextIdentity;
+            }
             const auto count = static_cast<uint32_t>(std::min(chunk.roots.size()-first,static_cast<size_t>(renderer::FIBER_MAX_BLADES)));
             if (page.revision != chunk.revision || page.layout != state.cpu.layoutSignature || !page.buffer.IsValid()) {
                 auto fresh = resources.CreateGpuLocalStructuredBuffer(chunk.roots.data()+first,count,sizeof(renderer::FiberBladeRoot));
-                if (!fresh.IsValid()) return;
+                if (!fresh.IsValid()) {
+                    return;
+                }
                 resources.Release(page.buffer); page.buffer = fresh;
                 page.revision = chunk.revision; page.layout = state.cpu.layoutSignature;
             }
@@ -91,10 +103,12 @@ inline void UpdateFiberPlacementResources(FiberPlacementResources& state, const 
     }
     for (auto it = state.pages.begin(); it != state.pages.end();) {
         if (it->second.seen != state.cpu.revision) { resources.Release(it->second.buffer); it = state.pages.erase(it); }
-        else ++it;
+        else {
+            ++it;
+        }
     }
     state.valid = true; fiber.m_placementFailed = false;
     fiber.m_placementRootCount = state.cpu.bladeCount; fiber.m_placementChunkCount = static_cast<uint32_t>(state.pages.size());
 }
-} /// @note namespace fiber_extraction_detail
-} /// @note namespace fbzz::scene
+} // namespace fiber_extraction_detail
+} // namespace fbzz::scene

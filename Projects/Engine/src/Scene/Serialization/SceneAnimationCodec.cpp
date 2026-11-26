@@ -26,14 +26,15 @@ void WriteSkeletonAndAnimator(GameObject& go, toml::table& goTbl, Scene& scene)
         smrTbl.insert("enabled",     smr->enabled);
         smrTbl.insert("castShadows", smr->castShadows);
         smrTbl.insert("modelPath",   smr->modelPath);
-        /// @note サブメッシュの指定を省いた場合はモデル全体を描く。
+        // サブメッシュの指定を省いた場合はモデル全体を描く。
         if (!smr->submeshIndices.empty()) {
             toml::array submeshes;
-            for (const uint32_t index : smr->submeshIndices)
+            for (const uint32_t index : smr->submeshIndices) {
                 submeshes.push_back(static_cast<int64_t>(index));
+            }
             smrTbl.insert("submeshIndices", std::move(submeshes));
         }
-        /// @note 共有スケルトンが子孫の外にある構成に備え、起点の GUID と旧形式用の名前を残す。
+        // 共有スケルトンが子孫の外にある構成に備え、起点の GUID と旧形式用の名前を残す。
         if (smr->skeletonRootEntity.IsValid()) {
             if (auto* skeletonRoot = scene.GetGameObject(smr->skeletonRootEntity)) {
                 smrTbl.insert("skeletonRootGuid", skeletonRoot->instanceId);
@@ -49,7 +50,7 @@ void WriteSkeletonAndAnimator(GameObject& go, toml::table& goTbl, Scene& scene)
         boneTbl.insert("nodeIndex", (int64_t)bone->nodeIndex);
         boneTbl.insert("boneIndex", (int64_t)bone->boneIndex);
         boneTbl.insert("generated", bone->generated);
-        /// @note 改名後も参照を保つ GUID と、旧形式用の名前を保存する。
+        // 改名後も参照を保つ GUID と、旧形式用の名前を保存する。
         std::string ownerName;
         std::string ownerGuid;
         if (bone->skinnedMeshEntity.IsValid())
@@ -113,7 +114,9 @@ void WriteSkeletonAndAnimator(GameObject& go, toml::table& goTbl, Scene& scene)
                 trTbl.insert("exitTime",           (double)tr.exitTime);
                 trTbl.insert("fixedDuration",      tr.fixedDuration);
                 trTbl.insert("transitionDuration", (double)tr.transitionDuration);
-                if (tr.interruptActiveBlend) trTbl.insert("interruptActiveBlend", true);
+                if (tr.interruptActiveBlend) {
+                    trTbl.insert("interruptActiveBlend", true);
+                }
                 toml::array condArr;
                 for (const auto& c : tr.conditions) {
                     toml::table cTbl;
@@ -180,7 +183,9 @@ void WriteSkeletonAndAnimator(GameObject& go, toml::table& goTbl, Scene& scene)
             trTbl.insert("exitTime",           (double)tr.exitTime);
             trTbl.insert("fixedDuration",      tr.fixedDuration);
             trTbl.insert("transitionDuration", (double)tr.transitionDuration);
-            if (tr.interruptActiveBlend) trTbl.insert("interruptActiveBlend", true);
+            if (tr.interruptActiveBlend) {
+                trTbl.insert("interruptActiveBlend", true);
+            }
             toml::array condArr;
             for (const auto& c : tr.conditions) {
                 toml::table cTbl;
@@ -201,7 +206,7 @@ void WriteSkeletonAndAnimator(GameObject& go, toml::table& goTbl, Scene& scene)
             pTbl.insert("type",       (int64_t)p.type);
             pTbl.insert("floatValue", (double)p.floatValue);
             pTbl.insert("intValue",   (int64_t)p.intValue);
-            /// @note 読み込み直後の意図しない遷移を防ぐため、Trigger の発火状態は保存しない。
+            // 読み込み直後の意図しない遷移を防ぐため、Trigger の発火状態は保存しない。
             pTbl.insert(
                 "boolValue",
                 p.type == ParamType::Trigger ? false : p.boolValue);
@@ -216,7 +221,7 @@ void WriteSkeletonAndAnimator(GameObject& go, toml::table& goTbl, Scene& scene)
             layerTbl.insert("weight", (double)layer.weight);
             layerTbl.insert("mode", (int64_t)layer.mode);
             layerTbl.insert("enabled", layer.enabled);
-            /// @note レイヤーの遷移グラフは .animcontroller が保持する。
+            // レイヤーの遷移グラフは .animcontroller が保持する。
             layerTbl.insert("maskPath", layer.mask.path);
             toml::table additiveRef;
             additiveRef.insert("sourcePath", layer.additiveReference.sourcePath);
@@ -259,12 +264,13 @@ void ReadSkeletonComponents(GameObject& go, const toml::table& object, bool pass
             if (!smr.model)
                 FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
         }
-        /// @note 無い / 空なら submeshIndices は空のまま = モデル全体を描く。
+        // 無い / 空なら submeshIndices は空のまま = モデル全体を描く。
         if (auto* submeshes = (*smrTbl)["submeshIndices"].as_array()) {
             smr.submeshIndices.reserve(submeshes->size());
             for (const auto& node : *submeshes)
-                if (const auto value = node.value<int64_t>(); value && *value >= 0)
+                if (const auto value = node.value<int64_t>(); value && *value >= 0) {
                     smr.submeshIndices.push_back(static_cast<uint32_t>(*value));
+                }
         }
         go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
     }
@@ -295,8 +301,9 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
             (float)(*animTbl)["poseLodNearDistance"].value_or(20.0),
             (float)(*animTbl)["poseLodFarDistance"].value_or(60.0),
             (float)(*animTbl)["poseLodMidInterval"].value_or(1.0 / 30.0),
-            (float)(*animTbl)["poseLodFarInterval"].value_or(1.0 / 15.0)))
+            (float)(*animTbl)["poseLodFarInterval"].value_or(1.0 / 15.0))) {
             core::Logger::Warn("SceneSerializer: invalid Animator update LOD; using full-rate defaults");
+        }
 
         const auto readEnum = [&animTbl](const char* key, int fallback) {
             return (int)(*animTbl)[key].value_or((int64_t)fallback);
@@ -331,7 +338,9 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
         if (const auto* statesArr = (*animTbl)["states"].as_array()) {
             for (const auto& stElem : *statesArr) {
                 const auto* stTbl = stElem.as_table();
-                if (!stTbl) continue;
+                if (!stTbl) {
+                    continue;
+                }
                 AnimationState st{};
                 st.name      = (*stTbl)["name"].value_or(std::string{});
                 const int64_t stateMode = (*stTbl)["mode"].value_or((int64_t)0);
@@ -348,19 +357,23 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
                 if (const auto* transArr = (*stTbl)["transitions"].as_array()) {
                     for (const auto& trElem : *transArr) {
                         const auto* trTbl = trElem.as_table();
-                        if (!trTbl) continue;
+                        if (!trTbl) {
+                            continue;
+                        }
                         AnimationTransition tr{};
                         tr.toStateName        = (*trTbl)["toStateName"].value_or(std::string{});
                         tr.hasExitTime        = (*trTbl)["hasExitTime"].value_or(false);
                         tr.exitTime           = (float)(*trTbl)["exitTime"].value_or(1.0);
-                        /// @note 旧シーンは秒指定のみなので true として読み込む。
+                        // 旧シーンは秒指定のみなので true として読み込む。
                         tr.fixedDuration      = (*trTbl)["fixedDuration"].value_or(true);
                         tr.transitionDuration = (float)(*trTbl)["transitionDuration"].value_or(0.25);
                         tr.interruptActiveBlend = (*trTbl)["interruptActiveBlend"].value_or(false);
                         if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
                             for (const auto& cElem : *condArr) {
                                 const auto* cTbl = cElem.as_table();
-                                if (!cTbl) continue;
+                                if (!cTbl) {
+                                    continue;
+                                }
                                 AnimatorCondition cond{};
                                 cond.paramName = (*cTbl)["paramName"].value_or(std::string{});
                                 cond.op        = (ConditionOp)(*cTbl)["op"].value_or((int64_t)4);
@@ -374,10 +387,14 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
 
                 auto readMotions = [](const toml::array* motionsArr,
                                       std::vector<BlendTreeMotion>& motions) {
-                    if (!motionsArr) return;
+                    if (!motionsArr) {
+                        return;
+                    }
                     for (const auto& motionElem : *motionsArr) {
                         const auto* motionTbl = motionElem.as_table();
-                        if (!motionTbl) continue;
+                        if (!motionTbl) {
+                            continue;
+                        }
                         BlendTreeMotion motion{};
                         motion.threshold = (float)(*motionTbl)["threshold"].value_or(0.0);
                         motion.posX      = (float)(*motionTbl)["posX"].value_or(0.0);
@@ -425,7 +442,9 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
         if (const auto* anyStateArr = (*animTbl)["anyStateTransitions"].as_array()) {
             for (const auto& trElem : *anyStateArr) {
                 const auto* trTbl = trElem.as_table();
-                if (!trTbl) continue;
+                if (!trTbl) {
+                    continue;
+                }
                 AnimationTransition tr{};
                 tr.toStateName = (*trTbl)["toStateName"].value_or(std::string{});
                 tr.hasExitTime = (*trTbl)["hasExitTime"].value_or(false);
@@ -437,7 +456,9 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
                 if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
                     for (const auto& cElem : *condArr) {
                         const auto* cTbl = cElem.as_table();
-                        if (!cTbl) continue;
+                        if (!cTbl) {
+                            continue;
+                        }
                         AnimatorCondition cond{};
                         cond.paramName =
                             (*cTbl)["paramName"].value_or(std::string{});
@@ -455,23 +476,28 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
         if (const auto* paramsArr = (*animTbl)["parameters"].as_array()) {
             for (const auto& pElem : *paramsArr) {
                 const auto* pTbl = pElem.as_table();
-                if (!pTbl) continue;
+                if (!pTbl) {
+                    continue;
+                }
                 AnimatorParameter p{};
                 p.name       = (*pTbl)["name"].value_or(std::string{});
                 p.type       = (ParamType)(*pTbl)["type"].value_or((int64_t)0);
                 p.floatValue = (float)(*pTbl)["floatValue"].value_or(0.0);
                 p.intValue   = (int)(*pTbl)["intValue"].value_or((int64_t)0);
                 p.boolValue  = (*pTbl)["boolValue"].value_or(false);
-                /// @note 旧 Scene に残った Trigger=true もランタイム初期値にはしない。
-                if (p.type == ParamType::Trigger)
+                // 旧 Scene に残った Trigger=true もランタイム初期値にはしない。
+                if (p.type == ParamType::Trigger) {
                     p.boolValue = false;
+                }
                 anim.parameters.push_back(std::move(p));
             }
         }
         if (const auto* layersArr = (*animTbl)["layers"].as_array()) {
             for (const auto& layerElem : *layersArr) {
                 const auto* layerTbl = layerElem.as_table();
-                if (!layerTbl) continue;
+                if (!layerTbl) {
+                    continue;
+                }
                 AnimationLayer layer{};
                 layer.name = (*layerTbl)["name"].value_or(std::string{"Layer"});
                 layer.weight = (float)(*layerTbl)["weight"].value_or(1.0);
@@ -489,7 +515,9 @@ void ReadAnimatorComponent(GameObject& go, const toml::table& object)
                 if (const auto* mappings = (*layerTbl)["retargetMappings"].as_array()) {
                     for (const auto& mappingElem : *mappings) {
                         const auto* mappingTbl = mappingElem.as_table();
-                        if (!mappingTbl) continue;
+                        if (!mappingTbl) {
+                            continue;
+                        }
                         RetargetBoneMapping mapping{};
                         mapping.sourcePath =
                             (*mappingTbl)["sourcePath"].value_or(std::string{});

@@ -80,7 +80,7 @@ TEST_F(RenderPipelineFingerprintTest, EveryResourceDescFieldChangesTheKey)
     format.format = renderer::Format::RGBA8;
     EXPECT_NE(ResourceKey(format), base);
 
-    /// @note colorCount と withDepth は «実体の形» を決める。抜けていた 2 項目なので必ず押さえる。
+    // colorCount と withDepth は «実体の形» を決める。抜けていた 2 項目なので必ず押さえる。
     auto colorCount = BaseDesc();
     colorCount.colorCount = 2;
     EXPECT_NE(ResourceKey(colorCount), base);
@@ -126,7 +126,7 @@ TEST_F(RenderPipelineFingerprintTest, PassAccessesAndCullingChangeTheKey)
     Pipeline::GraphFingerprint base;
     base.MixPass("SSR", true, Accesses({ "GBuffer" }));
 
-    /// @note 設定トグルで reads が増減するフレームを、パス集合が同じでも別物として見分ける。
+    // 設定トグルで reads が増減するフレームを、パス集合が同じでも別物として見分ける。
     Pipeline::GraphFingerprint extraRead;
     extraRead.MixPass("SSR", true, Accesses({ "GBuffer", "GTAOResult" }));
     EXPECT_NE(extraRead.Value(), base.Value());
@@ -143,7 +143,7 @@ TEST_F(RenderPipelineFingerprintTest, PassAccessesAndCullingChangeTheKey)
 /// @brief Concatenation cannot collide.
 TEST_F(RenderPipelineFingerprintTest, ConcatenationCannotCollide)
 {
-    /// @note 区切りが無いと "ab"+"c" と "a"+"bc" が同じ鍵になる。
+    // 区切りが無いと "ab"+"c" と "a"+"bc" が同じ鍵になる。
     Pipeline::GraphFingerprint split;
     split.MixOutput("ab");
     split.MixOutput("c");
@@ -304,7 +304,7 @@ TEST_F(RenderPipelineOverrideTest, ExtraReadsAreAppendedAsReads)
 /// @brief Already declared names are not duplicated.
 TEST_F(RenderPipelineOverrideTest, AlreadyDeclaredNamesAreNotDuplicated)
 {
-    /// @note 同じ名前を二重に申告しても辺は増えないが、鍵が変わって Plan を無駄にやり直す。
+    // 同じ名前を二重に申告しても辺は増えないが、鍵が変わって Plan を無駄にやり直す。
     renderer::RenderPassOverride over;
     over.extraReads = { "HDR", "ShadowMap" };
 
@@ -320,7 +320,7 @@ TEST_F(RenderPipelineOverrideTest, AlreadyDeclaredNamesAreNotDuplicated)
 /// @brief Write declaration blocks the same extra read.
 TEST_F(RenderPipelineOverrideTest, WriteDeclarationBlocksTheSameExtraRead)
 {
-    /// @note 書いている名前を «追加で読む» と申告しても、自分自身への辺になるだけ。
+    // 書いている名前を «追加で読む» と申告しても、自分自身への辺になるだけ。
     renderer::RenderPassOverride over;
     over.extraReads = { "HDR" };
 
@@ -337,14 +337,14 @@ TEST_F(RenderPipelineOverrideTest, CullingOnlyEverBecomesStricter)
 {
     std::vector<RG::ResourceAccess> accesses;
 
-    /// @note 刈ってよいパスを «残す» へ倒せる。
+    // 刈ってよいパスを «残す» へ倒せる。
     renderer::RenderPassOverride keep;
     keep.allowCulling = false;
     bool cullable = true;
     Pipeline::ApplyOverride(keep, accesses, cullable);
     EXPECT_FALSE(cullable);
 
-    /// @note パス自身のカリング禁止は UI の既定値から解除できない。
+    // パス自身のカリング禁止は UI の既定値から解除できない。
     renderer::RenderPassOverride release;
     release.allowCulling = true;
     bool mustRun = false;
@@ -355,7 +355,7 @@ TEST_F(RenderPipelineOverrideTest, CullingOnlyEverBecomesStricter)
 /// @brief Default override is recognised and changes nothing.
 TEST_F(RenderPipelineOverrideTest, DefaultOverrideIsRecognisedAndChangesNothing)
 {
-    /// @note 既定に戻った行は保存も適用もしない。無害な行がプロジェクトに溜まるのを避ける。
+    // 既定に戻った行は保存も適用もしない。無害な行がプロジェクトに溜まるのを避ける。
     renderer::RenderPassOverride over;
     over.name = "Sky";
     EXPECT_TRUE(over.IsDefault());

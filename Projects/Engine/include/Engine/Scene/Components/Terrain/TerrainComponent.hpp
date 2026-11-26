@@ -24,12 +24,17 @@ namespace fbzz::scene {
 
 /// @brief ハイトマップ頂点の両端を含む矩形。
 struct TerrainHeightRegion {
-    int minX = 0, minZ = 0, maxX = -1, maxZ = -1;
+    int minX = 0; ///< 矩形の最小 X 頂点添字。この頂点を範囲に含める。
+    int minZ = 0; ///< 矩形の最小 Z 頂点添字。この頂点を範囲に含める。
+    int maxX = -1; ///< 矩形の最大 X 頂点添字。この頂点を範囲に含める。
+    int maxZ = -1; ///< 矩形の最大 Z 頂点添字。この頂点を範囲に含める。
 
     [[nodiscard]] bool Empty() const { return minX > maxX || minZ > maxZ; }
     void Include(const TerrainHeightRegion& region)
     {
-        if (region.Empty()) return;
+        if (region.Empty()) {
+            return;
+        }
         if (Empty()) {
             *this = region;
             return;
@@ -47,77 +52,72 @@ struct TerrainComponent {
     /// @{
     /// @brief row-major: index = z * columns + x。値域 [-1, 1] → ワールド高さ = value * maxHeight。
     /// @note 0 を «フラットな基準面» とし、Lower ブラシで基準面より下へ掘れるようにする。
-    std::vector<float> heightData;
+    std::vector<float> heightData; ///< Z 行・X 列の高さサンプル。maxHeight を掛けてローカル高さ（m）にする。
 
-    int   columns   = 65;    ///< @note X 方向の頂点数 (2^n + 1 推奨)。
-    int   rows      = 65;    ///< @note Z 方向の頂点数。
-    float cellSize  = 2.0f;  ///< @note ローカル 1 マスの幅 [m]。
-    float maxHeight = 20.0f; ///< @note heightData=1 のときのローカル高さ [m]。
+    int   columns   = 65; ///< X 方向の頂点数 (2^n + 1 推奨)。
+    int   rows      = 65; ///< Z 方向の頂点数。
+    float cellSize  = 2.0f; ///< ローカル 1 マスの幅 [m]。
+    float maxHeight = 20.0f; ///< heightData=1 のときのローカル高さ [m]。
     /// @}
 
     /// @name スプラット (頂点ごとに上位 4 層の番号と重み)
     /// @{
     /// @brief index = (z * columns + x) * 4 + slot。値は layerMaterials の添字。
     /// @note 書き込みは terrain_splat の関数を通して正準形 (合計 255・重み降順) を保つこと。
-    std::vector<std::uint8_t> splatIndices;
-    /// @brief splatIndices と同じ並びの重み [0, 255]。
-    std::vector<std::uint8_t> splatWeights;
+    std::vector<std::uint8_t> splatIndices; ///< 各頂点の上位 4 層が参照する layerMaterials の添字を、重みの降順に格納する。
+    std::vector<std::uint8_t> splatWeights; ///< splatIndices と同じ並びの重み [0, 255]。
     /// @}
 
     /// @brief セルの穴。index = cz * (columns - 1) + cx、1 = 穴。空なら穴なし。
     /// @note 穴は三角形を作らないことで表す。描画・物理・NavMesh・Fiber が同じ配列を見る。
-    std::vector<std::uint8_t> holeData;
+    std::vector<std::uint8_t> holeData; ///< Z 行・X 列の地形セルの穴フラグ。1 は穴。空なら穴なし。
 
     /// @note 地形ローカルの追加三角形は、地形の Transform、コライダーと永続化を共有する。
     /// @note 三角形の巻き順は空間側を向ける。洞窟の床は上、天井は下。穴で入口の高さ場を除く。
-    std::vector<math::Vector3> surfacePositions;
-    std::vector<uint32_t> surfaceIndices;
-    /// @note 空の場合は地形レイヤーを使い、.mat を指定すると追加面を単一のトライプラナー層で上書きする。
-    std::string surfaceMaterial;
+    std::vector<math::Vector3> surfacePositions; ///< 洞窟などの追加面を構成する地形ローカルの頂点座標。
+    std::vector<uint32_t> surfaceIndices; ///< 追加三角形を 3 要素ずつ指定する surfacePositions の添字列。
+    std::string surfaceMaterial; ///< 空の場合は地形レイヤーを使い、.mat を指定すると追加面を単一のトライプラナー層で上書きする。
 
-    /// @brief Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
-    std::string terrainAssetPath;
+    std::string terrainAssetPath; ///< Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
 
     /// @brief 層ごとの .mat。添字がスプラットの番号になる。
     /// @note fzmat のキーは diffuse/normal/ao_roughness/height/tilingX/tilingZ/normalStrength/roughness/
     /// @note ambientOcclusion/heightBlend/triplanar/triplanarSharpness/macroScale/macroStrength/
     /// @note autoBlendEnabled/autoBlendStrength/autoMinHeight/autoMaxHeight/autoHeightFade/
     /// @note autoMinSlope/autoMaxSlope/autoSlopeFade
-    std::vector<std::string> layerMaterials = std::vector<std::string>(4);
+    std::vector<std::string> layerMaterials = std::vector<std::string>(4); ///< splatIndices の層番号に対応する .mat の参照列。
 
     /// @brief 高さブレンドで «高い層が境界を押し広げる» 幅。重み [0, 1] と同じ単位。
     /// @see https://www.gamedeveloper.com/programming/advanced-terrain-texture-splatting
-    float heightBlendDepth = 0.2f;
+    float heightBlendDepth = 0.2f; ///< 高さブレンドの境界幅。スプラット重みと同じ 0〜1 の尺度。
 
-    /// @brief chunkSize × chunkSize マスのブロックごとにカリング・LOD を掛ける。
-    int chunkSize = 32;
+    int chunkSize = 32; ///< chunkSize × chunkSize マスのブロックごとにカリング・LOD を掛ける。
 
-    /// @note 正値で描画専用の 8 セル間隔 LOD を有効にする。距離はワールド m、0 で従来の 3 段階。
-    float farLodDistance = 0.0f;
+    float farLodDistance = 0.0f; ///< 正値で描画専用の 8 セル間隔 LOD を有効にする。距離はワールド m、0 で従来の 3 段階。
 
-    bool enabled            = true;
-    bool heightDirty        = false; ///< @note true → TerrainRenderPass がメッシュを再構築する (穴の変更も含む)。
-    bool splatDirty         = false; ///< @note true → スプラットと層テクスチャを再アップロードする。
-    bool materialParamDirty = false; ///< @note true → 層パラメーターだけ再構築する。
-    bool colliderDirty      = true;  ///< @note true → PhysicsSystem がコライダーを再構築する。
-    /// @note 高さ・穴の派生データを失効させる実行時世代。保存せず、編集口か dirty 消費で進める。
-    uint64_t surfaceRevision = 1;
+    bool enabled            = true; ///< この地形を有効なコンポーネントとして扱う。
+    bool heightDirty        = false; ///< true → TerrainRenderPass がメッシュを再構築する (穴の変更も含む)。
+    bool splatDirty         = false; ///< true → スプラットと層テクスチャを再アップロードする。
+    bool materialParamDirty = false; ///< true → 層パラメーターだけ再構築する。
+    bool colliderDirty      = true; ///< true → PhysicsSystem がコライダーを再構築する。
+    uint64_t surfaceRevision = 1; ///< 高さ・穴の派生データを失効させる実行時世代。保存せず、編集口か dirty 消費で進める。
     /// @note 複数の描画キャッシュが同じ更新を読めるように、抽出後も直近の変更範囲と適用可能な世代を保持する。
     struct HeightPreview {
-        TerrainHeightRegion region;
-        uint64_t baseRevision = 0, revision = 0;
-        bool pending = false;
-        bool heightChanged = true;
-        bool topologyChanged = false;
-    } heightPreview;
-    /// @note レイヤー・穴の編集は、水深やコライダーの版とは独立して草のキャッシュを無効化する。
-    uint64_t vegetationRevision = 1;
+        TerrainHeightRegion region; ///< 高さまたは穴が変わった XZ 頂点範囲。
+        uint64_t baseRevision = 0; ///< 差分を適用できる更新前の surfaceRevision。
+        uint64_t revision = 0; ///< 最後に公開した高さ差分に対応する surfaceRevision。
+        bool pending = false; ///< 描画抽出に向けて高さ・穴の変更範囲を集約している場合に true。
+        bool heightChanged = true; ///< 頂点高さを更新する必要がある場合に true。
+        bool topologyChanged = false; ///< 穴の編集などで三角形の接続を更新する必要がある場合に true。
+    } heightPreview; ///< 最後に公開した高さ差分と、次の抽出に向けた更新範囲。
+    uint64_t vegetationRevision = 1; ///< レイヤー・穴の編集は、水深やコライダーの版とは独立して草のキャッシュを無効化する。
     /// @note 最後に公開した矩形を保持し、同じ基準版の他の描画キャッシュからも利用できるようにする。
     struct SplatPreview {
-        TerrainHeightRegion region;
-        uint64_t baseRevision = 0, revision = 0;
-        bool pending = false;
-    } splatPreview;
+        TerrainHeightRegion region; ///< スプラットの層番号または重みが変わった XZ 頂点範囲。
+        uint64_t baseRevision = 0; ///< スプラット差分を適用できる更新前の vegetationRevision。
+        uint64_t revision = 0; ///< 最後に公開したスプラット差分に対応する vegetationRevision。
+        bool pending = false; ///< 描画抽出に向けてスプラットの範囲を集約している場合に true。
+    } splatPreview; ///< 層の塗り替えを矩形単位で再転送するために保持する差分。
 
     /// @name Reflection (Inspector / Serializer 対応)
     /// @{
@@ -133,8 +133,8 @@ struct TerrainComponent {
         r.Field("farLodDistance", farLodDistance);
         r.Field("terrainAssetPath", terrainAssetPath);
         r.FloatRange("heightBlendDepth", heightBlendDepth, 0.01f, 1.0f);
-        /// @note layerMaterials / heightData / splat / holeData は IReflector の対応型に収まらず、
-        /// @note TerrainAssetSerializer と SceneSerializer が専用コードで読み書きする。
+        // layerMaterials / heightData / splat / holeData は IReflector の対応型に収まらず、
+        // TerrainAssetSerializer と SceneSerializer が専用コードで読み書きする。
     }
     /// @}
 
@@ -168,8 +168,8 @@ struct TerrainComponent {
     /// @}
 
     /// @brief 描画メッシュ・MeshCollider と同じ 2 三角形分割で高さを補間する。
-    /// @param localX テレインローカル座標 X (Transform 適用前)。
-    /// @param localZ テレインローカル座標 Z (Transform 適用前)。
+    /// @param[in] localX テレインローカル座標 X (Transform 適用前)。
+    /// @param[in] localZ テレインローカル座標 Z (Transform 適用前)。
     /// @note 範囲外はクランプして継続する (Physics・足 IK から呼ばれるため assert しない)。穴でも高さを返す。
     /// @note 従来の高さ場の編集用サンプル。穴と追加面を含む占有判定には TerrainSurfaceQuery を使う。
     FBZZ_ENGINE_API float GetHeightAt(float localX, float localZ) const;
@@ -220,15 +220,23 @@ struct TerrainComponent {
     /// @pre 現在の格子範囲内のセル矩形で、両端を含むこと。ストロークの確定時に衝突データを無効化する。
     void RequestHolePreview(const TerrainHeightRegion& cells)
     {
-        if (!cells.Empty()) RequestSurfacePreview({cells.minX, cells.minZ, cells.maxX + 1, cells.maxZ + 1}, false, true);
+        if (!cells.Empty()) {
+            RequestSurfacePreview({cells.minX, cells.minZ, cells.maxX + 1, cells.maxZ + 1}, false, true);
+        }
     }
     void RequestSplatRebuild() { splatDirty = true; splatPreview = {}; }
     /// @note 両端を含む頂点 XZ 矩形。プレビューとの統合を含め、格子全体を更新する場合は RequestSplatRebuild を使う。
     void RequestSplatPreview(const TerrainHeightRegion& region)
     {
-        if (splatDirty || region.Empty()) return;
-        if (splatPreview.pending) splatPreview.region.Include(region);
-        else splatPreview = {region, vegetationRevision, 0, true};
+        if (splatDirty || region.Empty()) {
+            return;
+        }
+        if (splatPreview.pending) {
+            splatPreview.region.Include(region);
+        }
+        else {
+            splatPreview = {region, vegetationRevision, 0, true};
+        }
     }
     [[nodiscard]] bool HasPendingSplatUpdate() const { return splatDirty || splatPreview.pending; }
     void RequestMaterialRebuild() { materialParamDirty = true; }
@@ -249,7 +257,9 @@ struct TerrainComponent {
 private:
     void RequestSurfacePreview(const TerrainHeightRegion& region, bool heights, bool topology)
     {
-        if (region.Empty()) return;
+        if (region.Empty()) {
+            return;
+        }
         if (heightPreview.pending && heightPreview.revision == surfaceRevision) {
             heightPreview.region.Include(region);
             heightPreview.heightChanged |= heights;

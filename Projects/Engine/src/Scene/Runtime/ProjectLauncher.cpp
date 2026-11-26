@@ -33,7 +33,9 @@ void ProjectLauncher::RegisterScenesFromDirectory(SceneManager& sceneManager,
                                                     renderer::ResourceManager& resources)
 {
     std::error_code ec;
-    if (!std::filesystem::exists(scenesDir, ec)) return;
+    if (!std::filesystem::exists(scenesDir, ec)) {
+        return;
+    }
 
     std::filesystem::recursive_directory_iterator it(
         scenesDir,
@@ -51,4 +53,4 @@ void ProjectLauncher::RegisterScenesFromDirectory(SceneManager& sceneManager,
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

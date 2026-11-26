@@ -16,4 +16,4 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API static bool Save(const std::string& path, const std::string& text);
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

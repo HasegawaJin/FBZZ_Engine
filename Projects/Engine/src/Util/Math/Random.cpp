@@ -20,8 +20,9 @@ math::Vector2 SampleInsideUnitCircle(const SampleRange& sampleRange)
     while (true) {
         float x = sampleRange(-1.0f, 1.0f);
         float y = sampleRange(-1.0f, 1.0f);
-        if (x * x + y * y <= 1.0f)
+        if (x * x + y * y <= 1.0f) {
             return { x, y };
+        }
     }
 }
 
@@ -39,8 +40,9 @@ math::Vector3 SampleInsideUnitSphere(const SampleRange& sampleRange)
         float x = sampleRange(-1.0f, 1.0f);
         float y = sampleRange(-1.0f, 1.0f);
         float z = sampleRange(-1.0f, 1.0f);
-        if (x * x + y * y + z * z <= 1.0f)
+        if (x * x + y * y + z * z <= 1.0f) {
             return { x, y, z };
+        }
     }
 }
 
@@ -57,7 +59,7 @@ math::Vector3 SampleOnUnitSphere(const SampleValue& sampleValue)
     };
 }
 
-} /// @note namespace
+} // namespace
 
 float Random::Value()
 {
@@ -119,4 +121,4 @@ math::Vector3 RandomStream::OnUnitSphere()
     return SampleOnUnitSphere([this] { return Value(); });
 }
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

@@ -139,7 +139,9 @@ TEST_F(InstanceBatchTest, DifferentShaderOrPipelineStateBreaksTheBatch)
 TEST_F(InstanceBatchTest, AnyOtherConstantBufferBreaksTheBatch)
 {
     for (std::size_t slot = 0; slot < renderer::DrawCall{}.constantBuffers.size(); ++slot) {
-        if (slot == 1) continue;
+        if (slot == 1) {
+            continue;
+        }
         renderer::DrawCall other = MakeCall();
         other.constantBuffers[slot].id = 900 + static_cast<std::uint32_t>(slot);
         EXPECT_FALSE(renderer::IsSameInstanceBatch(MakeCall(), other))
@@ -177,12 +179,12 @@ TEST_F(InstanceBatchTest, PassSpecificObjectConstantMeaningDoesNotAffectTheCondi
 {
     renderer::DrawCall a = MakeCall();
     renderer::DrawCall b = MakeCall();
-    /// @note 同じハンドルの共有 CB を指したまま、中身だけがパスごとに違う状況を表す。
+    // 同じハンドルの共有 CB を指したまま、中身だけがパスごとに違う状況を表す。
     a.constantBuffers[1].id = 22;
     b.constantBuffers[1].id = 22;
     EXPECT_TRUE(renderer::IsSameInstanceBatch(a, b));
 
-    /// @note b2 は ObjectMask の申告ペイロード。ここが違えば別のシルエットなので束ねない。
+    // b2 は ObjectMask の申告ペイロード。ここが違えば別のシルエットなので束ねない。
     b.constantBuffers[2].id = 555;
     EXPECT_FALSE(renderer::IsSameInstanceBatch(a, b));
 }

@@ -20,8 +20,7 @@ namespace fbzz::scene {
 /// @pre OnDrawGizmos / OnDrawGizmosSelected の中でだけ呼ぶ (それ以外は assert)。
 /// @note 深度テストの指定はコールバック 1 回ごとに既定 (off) へ戻る。
 struct GizmoProxy {
-    /// @note エンジンがコールバックの前に注入し、後で nullptr へ戻す。スクリプトは触らない。
-    renderer::IRenderer* renderer = nullptr;
+    renderer::IRenderer* renderer = nullptr; ///< エンジンがコールバックの前に注入し、後で nullptr へ戻す。スクリプトは触らない。
 
     /// @note 以降の線をシーン深度で遮蔽させるか。
     FBZZ_ENGINE_API void SetDepthTest(bool enabled) const;
@@ -48,7 +47,7 @@ struct GizmoProxy {
                  const math::Quaternion& rotation,
                  const math::Vector4& color = { 0.0f, 1.0f, 0.0f, 1.0f }) const;
 
-    /// @param halfHeight 半球中心までの距離 (半球を含まない)。軸は rotation のローカル Y。
+    /// @param[in] halfHeight 半球中心までの距離 (半球を含まない)。軸は rotation のローカル Y。
     FBZZ_ENGINE_API void DrawCapsule(const math::Vector3& center, float radius, float halfHeight,
                      const math::Quaternion& rotation,
                      const math::Vector4& color = { 0.0f, 1.0f, 0.0f, 1.0f }) const;
@@ -60,7 +59,7 @@ struct GizmoProxy {
     FBZZ_ENGINE_API void DrawCircle(const math::Vector3& center, const math::Vector3& normal, float radius,
                     const math::Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f }) const;
 
-    /// @param angleDegrees fromDirection から normal まわりに回る角度 (右手系)。
+    /// @param[in] angleDegrees fromDirection から normal まわりに回る角度 (右手系)。
     FBZZ_ENGINE_API void DrawArc(const math::Vector3& center, const math::Vector3& normal,
                  const math::Vector3& fromDirection, float radius, float angleDegrees,
                  const math::Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f }) const;
@@ -92,4 +91,4 @@ struct GizmoProxy {
                         const math::Vector4& color = { 1.0f, 0.2f, 0.2f, 1.0f }) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

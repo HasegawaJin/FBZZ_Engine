@@ -31,7 +31,9 @@ void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visi
             reference.entity = resolved->GetID();
         }
     }
-    if (!scene.IsValid(reference.entity)) return;
+    if (!scene.IsValid(reference.entity)) {
+        return;
+    }
     if (auto* mesh = scene.GetComponent<MeshRenderer>(reference.entity)) {
         mesh->lodVisible = visible;
         mesh->lodDither  = dither;
@@ -42,7 +44,7 @@ void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visi
     }
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess LODSystem::GetAccess() const
 {
@@ -58,9 +60,10 @@ OrderingHints LODSystem::GetOrder() const
 
 void LODSystem::Update(SystemContext& ctx)
 {
-    if (!ctx.scene.GetEntities<LODGroupComponent>().empty())
+    if (!ctx.scene.GetEntities<LODGroupComponent>().empty()) {
         FlushWorldTransforms(ctx.scene);
-    /// @note LODGroup が削除・無効化された直後も、前フレームの非表示状態を Renderer に残さない。
+    }
+    // LODGroup が削除・無効化された直後も、前フレームの非表示状態を Renderer に残さない。
     for (EntityID id : ctx.scene.GetEntities<MeshRenderer>())
         if (auto* renderer = ctx.scene.GetComponent<MeshRenderer>(id)) {
             renderer->lodVisible = true;
@@ -88,17 +91,21 @@ void LODSystem::Update(SystemContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<LODGroupComponent>()) {
         auto* group = ctx.scene.GetComponent<LODGroupComponent>(id);
         const auto* go = ctx.scene.GetGameObject(id);
-        if (!group || !go) continue;
+        if (!group || !go) {
+            continue;
+        }
 
         for (auto& level : group->levels)
-            for (auto& renderer : level.renderers)
+            for (auto& renderer : level.renderers) {
                 SetRendererVisible(ctx.scene, renderer, false);
+            }
 
-        /// @note 親ごと無効化された LOD も «無効» と同じく全段を戻す。描画側は activeInHierarchy で子ごと落とすので、戻しておけば再有効化で元の見た目から始まる。
+        // 親ごと無効化された LOD も «無効» と同じく全段を戻す。描画側は activeInHierarchy で子ごと落とすので、戻しておけば再有効化で元の見た目から始まる。
         if (!group->enabled || !go->activeInHierarchy() || !camera || !cameraTransform || group->levels.empty()) {
             for (auto& level : group->levels)
-                for (auto& renderer : level.renderers)
+                for (auto& renderer : level.renderers) {
                     SetRendererVisible(ctx.scene, renderer, true);
+                }
             group->activeLevel = -1;
             group->fadingLevel = -1;
             group->fadeElapsed = 0.0f;
@@ -127,7 +134,9 @@ void LODSystem::Update(SystemContext& ctx)
             group->runtimeCenterValid = false;
             group->runtimeCenterDiagnosticGuid = group->centerTarget.guid;
             for (auto& level : group->levels)
-                for (auto& renderer : level.renderers) SetRendererVisible(ctx.scene, renderer, true);
+                for (auto& renderer : level.renderers) {
+                    SetRendererVisible(ctx.scene, renderer, true);
+                }
             group->activeLevel = -1; group->fadingLevel = -1; group->fadeElapsed = 0.0f;
             continue;
         }
@@ -151,16 +160,17 @@ void LODSystem::Update(SystemContext& ctx)
                 break;
             }
         }
-        if (selected == group->levels.size() && !group->cullBelowLastLevel)
+        if (selected == group->levels.size() && !group->cullBelowLastLevel) {
             selected = group->levels.size() - 1;
+        }
 
-        /// @note selected == levels.size() は「最後のレベルより遠い = カリング」を意味する。
-        /// @note 遷移状態も同じ番号で持ち、-1 は「まだ一度も決まっていない」だけに使う。
+        // selected == levels.size() は「最後のレベルより遠い = カリング」を意味する。
+        // 遷移状態も同じ番号で持ち、-1 は「まだ一度も決まっていない」だけに使う。
         const int selectedLevel = static_cast<int>(selected);
 
         if (group->activeLevel != selectedLevel) {
-            /// @note 遷移中にさらに切り替わったら、退場中だったレベルは即座に消す。3 レベルを
-            /// @note 同時にディザすると市松が噛み合わず穴が開く。速く動くカメラでは 1 段飛ばしが普通に起きる。
+            // 遷移中にさらに切り替わったら、退場中だったレベルは即座に消す。3 レベルを
+            // 同時にディザすると市松が噛み合わず穴が開く。速く動くカメラでは 1 段飛ばしが普通に起きる。
             group->fadingLevel = (group->activeLevel >= 0) ? group->activeLevel : -1;
             group->activeLevel = selectedLevel;
             group->fadeElapsed = 0.0f;
@@ -172,23 +182,26 @@ void LODSystem::Update(SystemContext& ctx)
             group->fadeElapsed += ctx.dt;
             fadeT = (std::min)(group->fadeElapsed / fadeDuration, 1.0f);
         }
-        if (fadeT >= 1.0f)
+        if (fadeT >= 1.0f) {
             group->fadingLevel = -1;
+        }
 
         const bool fading = group->fadingLevel >= 0;
 
         if (selected < group->levels.size()) {
-            /// @note 出現中は正のしきい値。遷移していなければ 0 (全画素)。
+            // 出現中は正のしきい値。遷移していなければ 0 (全画素)。
             const float dither = fading ? fadeT : 0.0f;
-            for (auto& renderer : group->levels[selected].renderers)
+            for (auto& renderer : group->levels[selected].renderers) {
                 SetRendererVisible(ctx.scene, renderer, true, dither);
+            }
         }
         if (fading && static_cast<size_t>(group->fadingLevel) < group->levels.size()) {
-            /// @note 退場中は負のしきい値。出現側と判定の向きが逆になり、2 つで画面が埋まる。
-            for (auto& renderer : group->levels[group->fadingLevel].renderers)
+            // 退場中は負のしきい値。出現側と判定の向きが逆になり、2 つで画面が埋まる。
+            for (auto& renderer : group->levels[group->fadingLevel].renderers) {
                 SetRendererVisible(ctx.scene, renderer, true, -fadeT);
+            }
         }
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

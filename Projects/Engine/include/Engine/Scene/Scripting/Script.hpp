@@ -60,7 +60,7 @@ class GameObject;
 class Scene;
 struct IReflector;
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene
 
 namespace fbzz::physics {
 class World;
@@ -78,47 +78,47 @@ class RenderPipeline;
 
 /// @brief AnimationClip の Event Track から Script へ渡す DLL 安全な値型。
 struct AnimationEventInfo {
-    const char* name = "";
-    int32_t intParam = 0;
-    float floatParam = 0.0f;
-    float clipTime = 0.0f;
+    const char* name = ""; ///< イベントを受け手で振り分ける名前の非所有文字列。
+    int32_t intParam = 0; ///< イベントと一緒に渡す整数の値。
+    float floatParam = 0.0f; ///< イベントと一緒に渡す浮動小数点の値。
+    float clipTime = 0.0f; ///< クリップ開始からイベントが配置された時刻 [s]。
 };
 
 /// @brief `.sequence` の EventTrack から Script へ渡す DLL 安全な値型。
 /// @note AnimationEventInfo と同じ形にするのは、受け手が覚えることを増やさないため。どちらも時間軸上の点で飛んでくる名前付きの合図で扱いは変わらない。
 struct SequenceEventInfo {
-    const char* name         = "";
-    int32_t     intParam     = 0;
-    float       floatParam   = 0.0f;
-    float       sequenceTime = 0.0f;
-    const char* sequenceName = "";
+    const char* name         = ""; ///< イベントを受け手で振り分ける名前の非所有文字列。
+    int32_t     intParam     = 0; ///< イベントと一緒に渡す整数の値。
+    float       floatParam   = 0.0f; ///< イベントと一緒に渡す浮動小数点の値。
+    float       sequenceTime = 0.0f; ///< シーケンス開始からイベントが配置された時刻 [s]。
+    const char* sequenceName = ""; ///< 発火元シーケンスの名前の非所有文字列。
 };
 
 /// @brief binding を持たない EventTrack が ScriptEventBus へ流す合図。
 /// @note 「ボス自身に効く合図」はターゲットへ直接届けたいが、「盤面全体に効く合図」の受け手は演出の当事者ではない。binding で縛ると演出のたびに全シーケンスへバインドして回る。
 struct SequenceEvent {
     FBZZ_EVENT(SequenceEvent);
-    const char* name         = "";
-    int32_t     intParam     = 0;
-    float       floatParam   = 0.0f;
-    float       sequenceTime = 0.0f;
-    const char* sequenceName = "";
+    const char* name         = ""; ///< イベントを受け手で振り分ける名前の非所有文字列。
+    int32_t     intParam     = 0; ///< イベントと一緒に渡す整数の値。
+    float       floatParam   = 0.0f; ///< イベントと一緒に渡す浮動小数点の値。
+    float       sequenceTime = 0.0f; ///< シーケンス開始からイベントが配置された時刻 [s]。
+    const char* sequenceName = ""; ///< 発火元シーケンスの名前の非所有文字列。
 };
 
 /// @brief OnAnimatorMove へ渡すルートモーション 1 フレーム分の移動量。
 /// @note AnimatorSystem は Phase::LateUpdate なので、ポーリングだと Phase::Script は常に 1 フレーム遅れた delta を読む。抽出直後に同期コールバックを飛ばす。
 struct RootMotionInfo {
-    math::Vector3    deltaPosition = math::Vector3::ZERO; ///< @note Animator 所有 GameObject のローカル空間 (親回転を掛ける前) での移動量。
-    math::Quaternion deltaRotation = math::Quaternion::Identity();
-    math::Vector3    worldDeltaPosition = math::Vector3::ZERO; ///< @note deltaPosition をワールド空間へ変換した値。速度制御へそのまま渡せる。
-    math::Vector3    worldVelocity = math::Vector3::ZERO; ///< @note worldDeltaPosition / deltaTime。dt が 0 のフレームではゼロ。
-    float            deltaTime = 0.0f; ///< @note この delta を生成したフレーム時間。Time::deltaTime では Animator が実際に進めた時間とずれるため明示的に渡す。
-    bool             appliedByEngine = false; ///< @note エンジンが既に Transform / RigidBody へ適用済みなら true。ExtractOnly のときだけ false になり、移動の適用は Script の責任になる。
+    math::Vector3    deltaPosition = math::Vector3::ZERO; ///< Animator 所有 GameObject のローカル空間 (親回転を掛ける前) での移動量。
+    math::Quaternion deltaRotation = math::Quaternion::Identity(); ///< Animator のローカル空間で抽出した 1 フレーム分の回転差。
+    math::Vector3    worldDeltaPosition = math::Vector3::ZERO; ///< deltaPosition をワールド空間へ変換した値。速度制御へそのまま渡せる。
+    math::Vector3    worldVelocity = math::Vector3::ZERO; ///< worldDeltaPosition / deltaTime。dt が 0 のフレームではゼロ。
+    float            deltaTime = 0.0f; ///< この delta を生成したフレーム時間。Time::deltaTime では Animator が実際に進めた時間とずれるため明示的に渡す。
+    bool             appliedByEngine = false; ///< エンジンが既に Transform / RigidBody へ適用済みなら true。ExtractOnly のときだけ false になり、移動の適用は Script の責任になる。
 };
 
 /// @brief Invoke / InvokeRepeating が返す軽量値型。CancelInvoke(handle) で個別キャンセルする。
 struct InvokeHandle {
-    uint32_t id = 0;
+    uint32_t id = 0; ///< この予約だけを取り消すための識別子。0 は無効。
     bool IsValid() const { return id != 0; }
 };
 
@@ -127,7 +127,7 @@ struct ScriptInspectionIdentity {
     FBZZ_ENGINE_API ScriptInspectionIdentity();
     FBZZ_ENGINE_API ScriptInspectionIdentity(const ScriptInspectionIdentity&);
     ScriptInspectionIdentity& operator=(const ScriptInspectionIdentity&) { return *this; }
-    std::string value;
+    std::string value; ///< この Script 個体の生存期間にだけ有効な観測識別子。
 };
 
 class Script {
@@ -240,7 +240,7 @@ public:
     /// @note 小さい値を先に配送し、同値は従来の個体順を保つ。teardown や物理通知の順序は変えない。
     virtual int ExecutionOrder() const { return 0; }
 
-    bool enabled = true;
+    bool enabled = true; ///< Script を実行してよいか。
 
     /// @note Proxy はカテゴリごとに責務を分け、Script.hpp の肥大化を避ける。新プロキシを追加する際は ScriptProxyMembers.inl を編集すること (このファイルは触らなくてよい)。
 #define FBZZ_PROXY_MEMBER(Type, Name)     Type Name { this };
@@ -336,10 +336,9 @@ protected:
     FBZZ_ENGINE_API void SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings);
     FBZZ_ENGINE_API void ClearRuntimePostProcessSettings();
 
-    Scene*      m_scene      = nullptr;
-    GameObject* m_gameObject = nullptr;
-    /// @note アクセス違反後は同じ Script を毎フレーム呼ばず、Play を継続できるようにする。
-    bool        m_runtimeFaulted = false;
+    Scene*      m_scene      = nullptr; ///< 実行中の Script が操作するシーンの非所有参照。
+    GameObject* m_gameObject = nullptr; ///< この Script を所有する GameObject の非所有参照。
+    bool        m_runtimeFaulted = false; ///< アクセス違反後は同じ Script を毎フレーム呼ばず、Play を継続できるようにする。
 
 private:
     FBZZ_ENGINE_API void ReleaseOwnedAudioLoops();
@@ -347,9 +346,9 @@ private:
     template<typename Argument, typename Callback>
     bool ExecuteProfiledCallbackWithArgument(Callback callback, const Argument& argument,
                                              ScriptCallbackKind kind, const char* callbackName);
-    std::vector<std::weak_ptr<audio::VoiceLifetime>> m_ownedAudioLoops;
-    ScriptInspectionIdentity m_inspectionIdentity;
-    bool m_requirementsBlocked = false;
+    std::vector<std::weak_ptr<audio::VoiceLifetime>> m_ownedAudioLoops; ///< Script の停止時に解除するループ音声の生存状態への弱参照列。
+    ScriptInspectionIdentity m_inspectionIdentity; ///< Script の生存期間に一致する Inspector・診断用の識別子。
+    bool m_requirementsBlocked = false; ///< 前提コンポーネント等が不足し、実行の開始を止めているか。
     friend struct ScriptTransformProxy;
     friend class ScriptProfiler;
     friend struct ScriptInputProxy;
@@ -399,35 +398,34 @@ private:
     friend struct ScriptJointProxy;
 
     struct InvokeEntry {
-        std::function<void()> fn;
-        float remaining = 0.0f;
-        float interval  = 0.0f;
-        bool repeating  = false;
-        bool canceled   = false;
-        uint32_t id     = 0;
+        std::function<void()> fn; ///< 待機時間を消費したときに呼び出す関数。
+        float remaining = 0.0f; ///< 次回の呼び出しまでの残り時間 [s]。
+        float interval  = 0.0f; ///< 繰り返し時に次の呼び出しまで待つ間隔 [s]。
+        bool repeating  = false; ///< 呼び出した後も同じ関数を再予約するか。
+        bool canceled   = false; ///< 走査中に予約の取り消しを要求されたか。
+        uint32_t id     = 0; ///< この予約を個別に取り消すための ID。
     };
 
     struct FrameDelayEntry {
-        std::function<void()> fn;
-        uint32_t remainingFrames = 0;
-        bool canceled = false;
+        std::function<void()> fn; ///< 必要なフレーム数が経過したときに呼び出す関数。
+        uint32_t remainingFrames = 0; ///< 次回の呼び出しまでの残りフレーム数。
+        bool canceled = false; ///< 走査中に予約の取り消しを要求されたか。
     };
 
-    uint32_t m_nextInvokeId = 1;
-    std::vector<InvokeEntry>     m_invokes;
-    std::vector<FrameDelayEntry> m_frameDelays;
-    std::vector<std::function<void(Script*)>> m_eventUnsubscribers;
-    /// @note Tick 中に開始されたコルーチンは m_coroutines を再確保し実行中ハンドルを移動させてしまうため、ティック中は m_pendingCoroutines に積み、ループ後に取り込む。
-    std::vector<Coroutine> m_coroutines;
-    std::vector<Coroutine> m_pendingCoroutines;
-    bool m_isTickingCoroutines = false;
-    bool m_stopAllCoroutinesRequested = false;
-    bool m_enableStateInitialized = false;
-    bool m_lastEnabled = true;
-    bool m_isTickingInvokes = false;
-    static physics::World*     s_physicsWorld;
-    FBZZ_ENGINE_API static bool                s_inPlayMode;
-    FBZZ_ENGINE_API static PrefabInstantiateFn s_instantiateFn;
+    uint32_t m_nextInvokeId = 1; ///< 次の呼び出し予約に割り当てる ID。
+    std::vector<InvokeEntry>     m_invokes; ///< 時間指定による呼び出し予約の列。
+    std::vector<FrameDelayEntry> m_frameDelays; ///< フレーム数指定による呼び出し予約の列。
+    std::vector<std::function<void(Script*)>> m_eventUnsubscribers; ///< Script 停止時にイベント接続を解除する関数の列。
+    std::vector<Coroutine> m_coroutines; ///< Tick 中に開始されたコルーチンは m_coroutines を再確保し実行中ハンドルを移動させてしまうため、ティック中は m_pendingCoroutines に積み、ループ後に取り込む。
+    std::vector<Coroutine> m_pendingCoroutines; ///< 走査終了後に更新列へ追加するコルーチン。
+    bool m_isTickingCoroutines = false; ///< 現在コルーチンの更新列を走査しているか。
+    bool m_stopAllCoroutinesRequested = false; ///< 走査終了後にすべてのコルーチンを止める要求。
+    bool m_enableStateInitialized = false; ///< 有効状態の最初の通知または記録を済ませたか。
+    bool m_lastEnabled = true; ///< 前回の有効状態。状態の変化を検出するために保持する。
+    bool m_isTickingInvokes = false; ///< 現在呼び出し予約を走査しているか。
+    static physics::World*     s_physicsWorld; ///< 物理クエリーなどが使う現在の World の非所有参照。
+    FBZZ_ENGINE_API static bool                s_inPlayMode; ///< Script が Play セッションで実行中か。
+    FBZZ_ENGINE_API static PrefabInstantiateFn s_instantiateFn; ///< 現在のホストから登録されたプレファブ生成処理。
 };
 
 /// @brief Script / ScriptSceneProxy が完全型になったここで定義する。
@@ -435,8 +433,10 @@ private:
 template<typename T>
 inline GameObject* Ref<T>::object() const
 {
-    if (!owner) return nullptr;
-    /// @note EntityRef::Resolve(const ScriptSceneProxy&)
+    if (!owner) {
+        return nullptr;
+    }
+    // EntityRef::Resolve(const ScriptSceneProxy&)
     return ref.Resolve(owner->scene);
 }
 
@@ -444,16 +444,19 @@ template<typename T>
 inline T* Ref<T>::Get() const
 {
     GameObject* go = object();
-    if (!go) return nullptr;
-    if constexpr (std::is_same_v<T, GameObject>)
+    if (!go) {
+        return nullptr;
+    }
+    if constexpr (std::is_same_v<T, GameObject>) {
         return go;
+    }
     else if constexpr (detail::kIsScriptQueryable<T>)
-        /// @note Script 派生と横断インターフェースは同じ取得経路を使う。
+        // Script 派生と横断インターフェースは同じ取得経路を使う。
         return owner->scene.template GetScript<T>(go);
     else
-        /// @note それ以外はコンポーネント。GameObject を完全型にしないで済むよう
-        /// @note        プロキシ経由で引く (Script.hpp は GameObject.hpp を include していない)。
+        // それ以外はコンポーネント。GameObject を完全型にしないで済むよう
+        // プロキシ経由で引く (Script.hpp は GameObject.hpp を include していない)。
         return owner->scene.template GetComponent<T>(go);
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

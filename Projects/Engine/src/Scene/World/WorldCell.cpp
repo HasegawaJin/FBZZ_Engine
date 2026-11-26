@@ -33,11 +33,15 @@ bool ValidateWorldCellGrid(const WorldCellGrid& grid, std::string& diagnostic)
 bool TryLocateWorldCell(const WorldCellGrid& grid, const math::Vector3& p, WorldCellId& out)
 {
     std::string diagnostic;
-    if (!ValidateWorldCellGrid(grid, diagnostic) || !Finite(p)) return false;
+    if (!ValidateWorldCellGrid(grid, diagnostic) || !Finite(p)) {
+        return false;
+    }
     const double x = std::floor((static_cast<double>(p.x) - grid.origin.x) / grid.cellSize);
     const double z = std::floor((static_cast<double>(p.z) - grid.origin.z) / grid.cellSize);
     if (x < (std::numeric_limits<int32_t>::min)() || x > (std::numeric_limits<int32_t>::max)()
-        || z < (std::numeric_limits<int32_t>::min)() || z > (std::numeric_limits<int32_t>::max)()) return false;
+        || z < (std::numeric_limits<int32_t>::min)() || z > (std::numeric_limits<int32_t>::max)()) {
+        return false;
+    }
     out = {static_cast<int32_t>(x), static_cast<int32_t>(z)};
     return true;
 }

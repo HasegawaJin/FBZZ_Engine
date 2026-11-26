@@ -20,7 +20,9 @@ void RagdollRig::ResetDriveTargetHistory(const std::vector<RagdollBonePose>& bon
 
 void RagdollRig::SampleDriveTargets(double simulationTime)
 {
-    if (!m_driveTargetHistory.HasSamples() || (!m_driveEnabled && !m_standingGuard)) return;
+    if (!m_driveTargetHistory.HasSamples() || (!m_driveEnabled && !m_standingGuard)) {
+        return;
+    }
     FBZZ_PROFILE_SCOPE("RagdollRig::SampleDriveTargets");
     const auto sample = m_driveTargetHistory.Sample(simulationTime);
     ApplyTargetPose(sample.bones, nullptr, nullptr, 0.0f, sample.hasVelocities);
@@ -29,7 +31,9 @@ void RagdollRig::SampleDriveTargets(double simulationTime)
 void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones, float sampleDt,
     const RagdollOwnerPose* ownerPose)
 {
-    if (!std::isfinite(sampleDt) || sampleDt < 0.0f) return;
+    if (!std::isfinite(sampleDt) || sampleDt < 0.0f) {
+        return;
+    }
     const auto& previousPose = m_driveTargetHistory.LatestPose();
     if (previousPose.size() == bones.size() && m_driveTargetHistory.NeedsRebase(m_simulationTime)) {
         ResetDriveTargetHistory(previousPose);
@@ -37,15 +41,19 @@ void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones, f
 
     TransportStandingTargets(bones, ownerPose);
     m_hasPreviousOwnerPose = ownerPose != nullptr;
-    if (ownerPose) m_previousOwnerPose = *ownerPose;
+    if (ownerPose) {
+        m_previousOwnerPose = *ownerPose;
+    }
 
     if (sampleDt == 0.0f) {
-        /// @note 即時編集とActive再開は現在の物理時刻から始め、過去の停止時間を速度へ変換しない。
+        // 即時編集とActive再開は現在の物理時刻から始め、過去の停止時間を速度へ変換しない。
         ResetDriveTargetHistory(bones);
         ApplyTargetPose(bones, nullptr, nullptr, 0.0f);
         return;
     }
-    if (previousPose.size() != bones.size()) ResetDriveTargetHistory(bones);
+    if (previousPose.size() != bones.size()) {
+        ResetDriveTargetHistory(bones);
+    }
     const auto interval = m_driveTargetHistory.Append(bones, sampleDt);
     ApplyTargetPose(bones, &interval.before, &interval.after, sampleDt);
 }
@@ -54,7 +62,9 @@ void RagdollRig::TransportStandingTargets(const std::vector<RagdollBonePose>& bo
     const RagdollOwnerPose* ownerPose)
 {
     const auto& previousPose = m_driveTargetHistory.LatestPose();
-    if (!m_standingGuard || previousPose.size() != bones.size()) return;
+    if (!m_standingGuard || previousPose.size() != bones.size()) {
+        return;
+    }
 
     const auto transportBody = [](physics::RigidBody& body, const math::Vector3& previousOrigin,
         const math::Vector3& currentOrigin, const math::Quaternion& rotationDelta) {
@@ -63,10 +73,12 @@ void RagdollRig::TransportStandingTargets(const std::vector<RagdollBonePose>& bo
         body.SetVelocity(rotationDelta * body.GetVelocity());
         body.SetAngularVelocity(rotationDelta * body.GetAngularVelocity());
     };
-    /// @note 腰アニメーションを所有者の移動と混同すると、接地中の足まで毎フレーム動かしてしまう。
+    // 腰アニメーションを所有者の移動と混同すると、接地中の足まで毎フレーム動かしてしまう。
     /// @see Docs/design/active-ragdoll.md
     if (ownerPose) {
-        if (!m_hasPreviousOwnerPose) return;
+        if (!m_hasPreviousOwnerPose) {
+            return;
+        }
         const auto rotationDelta = (ownerPose->rotation * m_previousOwnerPose.rotation.Inverse()).Normalized();
         for (auto& link : m_bodies) {
             transportBody(*link.body, m_previousOwnerPose.position, ownerPose->position, rotationDelta);
@@ -94,7 +106,9 @@ void RagdollRig::TransportStandingTargets(const std::vector<RagdollBonePose>& bo
     }
     for (std::size_t boneIndex = 0; boneIndex < bones.size(); ++boneIndex) {
         const auto& currentRoot = bones[boneIndex];
-        if (currentRoot.parent >= 0) continue;
+        if (currentRoot.parent >= 0) {
+            continue;
+        }
         const auto& previousRoot = previousPose[boneIndex];
         const auto rotationDelta = (currentRoot.rotation * previousRoot.rotation.Inverse()).Normalized();
         m_driveTargetHistory.TransportRoot(boneIndex, previousRoot.position, currentRoot.position, rotationDelta);
@@ -127,7 +141,7 @@ void RagdollRig::ApplyBodyDriveTargets(const std::vector<RagdollBonePose>& bones
         BodyPoseFromBone(bodyIndex, pose[boneIndex], position, rotation);
         if (linearVelocity && angularVelocity) {
             *angularVelocity = m_driveTargetHistory.SampledAngularVelocity(boneIndex);
-            /// @note 骨原点から重心へ移した速度には、固定オフセットの回転速度を差し引く。
+            // 骨原点から重心へ移した速度には、固定オフセットの回転速度を差し引く。
             *linearVelocity = m_driveTargetHistory.SampledLinearVelocity(boneIndex)
                 - math::Vector3::Cross(*angularVelocity, rotation * link.boneOffset);
         }
@@ -143,7 +157,7 @@ void RagdollRig::ApplyBodyDriveTargets(const std::vector<RagdollBonePose>& bones
                 const auto parentAngularVelocity = m_driveTargetHistory.SampledAngularVelocity(parentBoneIndex);
                 const auto parentLinearVelocity = m_driveTargetHistory.SampledLinearVelocity(parentBoneIndex)
                     - math::Vector3::Cross(parentAngularVelocity, parentRotation * parent.boneOffset);
-                /// @note 親重心の移動と回転が運ぶ速度を除いてから、親の剛体空間へ変換する。
+                // 親重心の移動と回転が運ぶ速度を除いてから、親の剛体空間へ変換する。
                 *linearVelocity = inverseParentRotation * (*linearVelocity - parentLinearVelocity
                     - math::Vector3::Cross(parentAngularVelocity, position - parentPosition));
                 *angularVelocity = inverseParentRotation * (*angularVelocity - parentAngularVelocity);
@@ -154,7 +168,9 @@ void RagdollRig::ApplyBodyDriveTargets(const std::vector<RagdollBonePose>& bones
     };
     for (std::size_t bodyIndex = 0; bodyIndex < m_bodies.size(); ++bodyIndex) {
         auto& link = m_bodies[bodyIndex];
-        if (!link.drive || link.boneIndex < 0 || link.boneIndex >= static_cast<int>(bones.size())) continue;
+        if (!link.drive || link.boneIndex < 0 || link.boneIndex >= static_cast<int>(bones.size())) {
+            continue;
+        }
         math::Vector3 position;
         math::Quaternion rotation;
         auto linearVelocity = math::Vector3::ZERO;
@@ -178,11 +194,13 @@ void RagdollRig::ApplyBodyDriveTargets(const std::vector<RagdollBonePose>& bones
 
 void RagdollRig::ApplyRootAnchorTargets(const std::vector<RagdollBonePose>& bones)
 {
-    /// @note 根には親との関節が無いため、アンカーでワールドのアニメーション姿勢へつなぎ止める。
+    // 根には親との関節が無いため、アンカーでワールドのアニメーション姿勢へつなぎ止める。
     for (std::size_t anchorIndex = 0; anchorIndex < m_anchors.size(); ++anchorIndex) {
         const int bodyIndex = m_anchorBody[anchorIndex];
         const int boneIndex = m_bodies[static_cast<std::size_t>(bodyIndex)].boneIndex;
-        if (boneIndex < 0 || boneIndex >= static_cast<int>(bones.size())) continue;
+        if (boneIndex < 0 || boneIndex >= static_cast<int>(bones.size())) {
+            continue;
+        }
 
         math::Vector3 position;
         math::Quaternion rotation;
@@ -193,13 +211,17 @@ void RagdollRig::ApplyRootAnchorTargets(const std::vector<RagdollBonePose>& bone
 
 void RagdollRig::ApplyJointDriveTargets(const std::vector<RagdollBonePose>& bones)
 {
-    /// @note 目標は «この骨の姿勢なら関節はどれだけ曲がっているか»。剛体の «あるべき» 姿勢を
-    /// @note 骨から作り、関節フレームへ落として相対を取る。捕獲した姿勢と同じなら Identity に
-    /// @note なるので、無負荷での釣り合い点がそのままアニメーションになる。
+    // 目標は «この骨の姿勢なら関節はどれだけ曲がっているか»。剛体の «あるべき» 姿勢を
+    // 骨から作り、関節フレームへ落として相対を取る。捕獲した姿勢と同じなら Identity に
+    // なるので、無負荷での釣り合い点がそのままアニメーションになる。
     const auto rotationFromBone = [this, &bones](int bodyIndex, math::Quaternion& bodyRotation) {
-        if (bodyIndex < 0 || bodyIndex >= static_cast<int>(m_bodies.size())) return false;
+        if (bodyIndex < 0 || bodyIndex >= static_cast<int>(m_bodies.size())) {
+            return false;
+        }
         const int boneIndex = m_bodies[static_cast<std::size_t>(bodyIndex)].boneIndex;
-        if (boneIndex < 0 || boneIndex >= static_cast<int>(bones.size())) return false;
+        if (boneIndex < 0 || boneIndex >= static_cast<int>(bones.size())) {
+            return false;
+        }
 
         math::Vector3 position;
         BodyPoseFromBone(bodyIndex, bones[static_cast<std::size_t>(boneIndex)], position, bodyRotation);
@@ -209,8 +231,12 @@ void RagdollRig::ApplyJointDriveTargets(const std::vector<RagdollBonePose>& bone
     for (JointLink& link : m_joints) {
         math::Quaternion parentRotation;
         math::Quaternion childRotation;
-        if (!rotationFromBone(link.parentBody, parentRotation)) continue;
-        if (!rotationFromBone(link.childBody, childRotation)) continue;
+        if (!rotationFromBone(link.parentBody, parentRotation)) {
+            continue;
+        }
+        if (!rotationFromBone(link.childBody, childRotation)) {
+            continue;
+        }
 
         const math::Quaternion parentFrame =
             (parentRotation * link.joint->GetFrameParent()).Normalized();
@@ -219,13 +245,15 @@ void RagdollRig::ApplyJointDriveTargets(const std::vector<RagdollBonePose>& bone
         const math::Quaternion target = (parentFrame.Inverse() * childFrame).Normalized();
         link.joint->Drive().target = target;
 
-        if (!m_learnLimits) continue;
+        if (!m_learnLimits) {
+            continue;
+        }
 
-        /// @note 角の測り方は関節側 (押し戻しに使うのと同じ分解) に任せる。学習側と検査側で
-        /// @note 分解や符号の扱いが 1 つでも違うと «広げたはずなのに押し戻される» という形でしか
-        /// @note 表面化しないため、測る関数を 1 つにして食い違いようが無い状態にする。
+        // 角の測り方は関節側 (押し戻しに使うのと同じ分解) に任せる。学習側と検査側で
+        // 分解や符号の扱いが 1 つでも違うと «広げたはずなのに押し戻される» という形でしか
+        // 表面化しないため、測る関数を 1 つにして食い違いようが無い状態にする。
         link.joint->LearnLimits(target, m_limitMargin);
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -38,7 +38,7 @@ public:
     float waveSpread = 0.0f;
 
     /// @brief アセットの設定から基底波を生成する。設定が無効な場合は出力を変更しない。
-    /// @param out 最大 16 本の基底波の出力先。
+    /// @param[out] out 最大 16 本の基底波の出力先。
     /// @return アルゴリズムの版、数値の範囲、波の本数のいずれかが無効なら false。
     [[nodiscard]] FBZZ_ENGINE_API bool GenerateWaves(
         std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& out) const;
@@ -47,4 +47,4 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API fluid::GerstnerWaveGenerationSettings GenerationSettings() const;
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

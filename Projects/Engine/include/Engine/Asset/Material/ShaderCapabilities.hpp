@@ -13,4 +13,4 @@ namespace fbzz::asset {
 /// @note .meta の更新時刻を見て再読込する。GPU で使用中の版は ResourceManager の成功した reload でのみ変わる。
 [[nodiscard]] FBZZ_ENGINE_API renderer::ShaderCapabilities ResolveShaderCapabilities(std::string_view shaderReference);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

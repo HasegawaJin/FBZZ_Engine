@@ -28,12 +28,18 @@ enum class MaterialAuthoringCommitResult : uint8_t { COMMITTED, UNCHANGED, CONFL
     const std::unordered_map<std::string, std::vector<float>>& lhs,
     const std::unordered_map<std::string, std::vector<float>>& rhs)
 {
-    if (lhs.size() != rhs.size()) return false;
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
     for (const auto& [key, values] : lhs) {
         const auto found = rhs.find(key);
-        if (found == rhs.end() || values.size() != found->second.size()) return false;
+        if (found == rhs.end() || values.size() != found->second.size()) {
+            return false;
+        }
         for (size_t index = 0; index < values.size(); ++index)
-            if (!MaterialAuthoringFloatEqual(values[index], found->second[index])) return false;
+            if (!MaterialAuthoringFloatEqual(values[index], found->second[index])) {
+                return false;
+            }
     }
     return true;
 }
@@ -64,9 +70,9 @@ public:
         [[nodiscard]] const void* OwnerToken() const { return m_owner.get(); }
 
     private:
-        std::shared_ptr<const OwnerIdentity> m_owner;
-        uint64_t m_revision = 1;
-        Values m_values;
+        std::shared_ptr<const OwnerIdentity> m_owner; ///< スナップショットが由来する制作状態を照合する所有者識別子。
+        uint64_t m_revision = 1; ///< この制作値が公開された版番号。
+        Values m_values; ///< この版で公開された不変の制作値。
         friend class MaterialAuthoringState;
     };
     using SnapshotPtr = std::shared_ptr<const Snapshot>;
@@ -91,9 +97,9 @@ public:
     private:
         explicit Edit(SnapshotPtr base) : m_base(std::move(base)),
             m_draft(m_base ? m_base->Data() : Values{}) {}
-        SnapshotPtr m_base;
-        Values m_draft;
-        bool m_terminal = false;
+        SnapshotPtr m_base; ///< 編集開始時の制作値。確定時に競合を照合するため保持する。
+        Values m_draft; ///< 確定前の変更を蓄える編集用の値のコピー。
+        bool m_terminal = false; ///< 編集が確定または取り消され、操作を終えたか。
         friend class MaterialAuthoringState;
     };
 
@@ -121,7 +127,9 @@ public:
     [[nodiscard]] const Snapshot* View() const { return m_snapshot.get(); }
     [[nodiscard]] Edit BeginEdit()
     {
-        if (!m_snapshot) m_snapshot = MakeInitial(Values{});
+        if (!m_snapshot) {
+            m_snapshot = MakeInitial(Values{});
+        }
         return Edit(m_snapshot);
     }
 
@@ -129,17 +137,20 @@ public:
     /// @pre メンバー呼び出し中は所有者が生存していること。通常の値コピーやアロケータから所有者を破棄しないこと。
     [[nodiscard]] MaterialAuthoringCommitResult Commit(Edit& edit)
     {
-        if (edit.m_terminal || !edit.m_base || m_snapshot != edit.m_base)
+        if (edit.m_terminal || !edit.m_base || m_snapshot != edit.m_base) {
             return MaterialAuthoringCommitResult::CONFLICT;
+        }
         edit.m_terminal = true;
         if constexpr (requires(const Values& lhs, const Values& rhs) { lhs == rhs; }) {
-            if (m_snapshot->Data() == edit.m_draft)
+            if (m_snapshot->Data() == edit.m_draft) {
                 return MaterialAuthoringCommitResult::UNCHANGED;
+            }
         }
         const auto base = edit.m_base;
         auto next = Prepare(base, edit.m_draft);
-        if (m_snapshot != base)
+        if (m_snapshot != base) {
             return MaterialAuthoringCommitResult::CONFLICT;
+        }
         m_snapshot = std::move(next);
         return MaterialAuthoringCommitResult::COMMITTED;
     }
@@ -159,8 +170,9 @@ private:
     }
     static SnapshotPtr Prepare(const SnapshotPtr& base, const Values& values)
     {
-        if (!base || base->Revision() == (std::numeric_limits<uint64_t>::max)())
+        if (!base || base->Revision() == (std::numeric_limits<uint64_t>::max)()) {
             return MakeInitial(values);
+        }
         return std::make_shared<const Snapshot>(CreationTag{}, base->m_owner, base->Revision() + 1u, values);
     }
     static SnapshotPtr MakeInitial(const Values& values)
@@ -168,7 +180,7 @@ private:
         auto owner = std::make_shared<const OwnerIdentity>();
         return std::make_shared<const Snapshot>(CreationTag{}, std::move(owner), 1u, values);
     }
-    SnapshotPtr m_snapshot;
+    SnapshotPtr m_snapshot; ///< 現在公開中の不変制作値を保持する共有参照。
 };
 
-} /// @note namespace fbzz::asset::detail
+} // namespace fbzz::asset::detail

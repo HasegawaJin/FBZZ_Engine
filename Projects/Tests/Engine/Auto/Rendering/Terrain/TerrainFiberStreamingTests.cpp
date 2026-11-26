@@ -274,7 +274,9 @@ protected:
         std::vector<core::AllocationInfo> after;
         m_resources->CollectLiveDebugResources(after);
         for (const auto& allocation : after) {
-            if (previous.contains({allocation.allocatorName, allocation.allocationId})) continue;
+            if (previous.contains({allocation.allocatorName, allocation.allocationId})) {
+                continue;
+            }
             ++result.createdResources;
             result.createdResourceBytes += allocation.size;
         }
@@ -284,7 +286,7 @@ protected:
     void LogMeasurement(const char* phase, const TerrainFiberMeasurement& value, float density)
     {
         m_measurements.push_back({phase, density, value});
-        /// @note CPU backend measures real extraction/root generation, not driver upload or GPU execution; bytes are ResourceManager's declared resource sizes.
+        // CPU バックエンドでは抽出と根元生成を計測する。バイト数には ResourceManager の宣言サイズを使い、ドライバー転送や GPU 実行は計測外とする。
         std::printf("TERRAIN_FIBER phase=%s density=%.2f terrain_ms=%.6f fiber_ms=%.6f patches=%zu roots=%zu root_bytes=%zu live_buffers=%zu live_structured=%zu live_resources=%zu live_bytes=%zu created_resources=%zu created_bytes=%zu\n",
             phase, density, value.terrainMilliseconds, value.fiberMilliseconds, value.patches, value.roots,
             value.rootBufferBytes, value.liveBuffers, value.liveStructured, value.liveResources,
@@ -294,13 +296,15 @@ protected:
     void SaveMeasurements()
     {
         const char* configured = std::getenv("FBZZ_TERRAIN_FIBER_BENCH_OUTPUT");
-        if (!configured || !configured[0]) return;
+        if (!configured || !configured[0]) {
+            return;
+        }
         const std::filesystem::path path(configured);
         ASSERT_TRUE(path.is_absolute()) << "FBZZ_TERRAIN_FIBER_BENCH_OUTPUT must be an absolute path";
         std::error_code error;
         std::filesystem::create_directories(path.parent_path(), error);
         ASSERT_FALSE(error) << error.message();
-        /// @note One process may run both densities; retain both in one valid JSON document instead of overwriting the first test.
+        // 同じプロセスで2種類の密度を測る場合も、最初の結果を残して1つの JSON に両方を書き出す。
         static std::vector<TerrainFiberMeasurementRecord> processMeasurements;
         processMeasurements.insert(processMeasurements.end(), m_measurements.begin(), m_measurements.end());
         std::ofstream output(path, std::ios::trunc);
@@ -1157,7 +1161,9 @@ TEST_F(TerrainFiberStreamingTest, TerrainRuntimeMaterialHandlesKeepCurrentAuthor
         renderer::RenderScene output; scene::ExtractRenderTerrains(context, output);
         EXPECT_EQ(output.terrains.size(), 1u);
         for (const auto& [buffer, bytes] : m_renderer.m_structuredBytes) {
-            if (buffer->GetStride() != sizeof(renderer::TerrainLayerGpu) || buffer->GetElementCount() != 2) continue;
+            if (buffer->GetStride() != sizeof(renderer::TerrainLayerGpu) || buffer->GetElementCount() != 2) {
+                continue;
+            }
             renderer::TerrainLayerGpu layer{}; std::memcpy(&layer, bytes.data(), sizeof(layer)); return layer.roughness;
         }
         ADD_FAILURE() << "Terrain layer GPU payload is missing"; return -1.0f;

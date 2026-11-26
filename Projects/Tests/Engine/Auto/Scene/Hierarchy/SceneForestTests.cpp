@@ -51,9 +51,20 @@ public:
     void OnAfterDeserialize() override
     {
         ++afterDeserialize;
-        if (m_scene && m_gameObject && m_scene->GameObjectCount() == 3 && m_scene->FindByGuid(peer)
-            && std::abs(m_gameObject->transform.worldPosition.x - expectedWorldX) < 0.00001f)
+
+        // 他のオブジェクトが公開済みか、スクリプトの復元コールバック内で観察する。
+        if (!m_scene || !m_gameObject) {
+            return;
+        }
+        if (m_scene->GameObjectCount() != 3 || !m_scene->FindByGuid(peer)) {
+            return;
+        }
+
+        // 親子の座標もすでにワールドへ反映されていれば、公開が完了している。
+        const float worldXDifference = std::abs(m_gameObject->transform.worldPosition.x - expectedWorldX);
+        if (worldXDifference < 0.00001f) {
             ++completeForests;
+        }
     }
 };
 
@@ -397,7 +408,7 @@ TEST_F(SceneForestTest, ProjectRelativeTerrainAssetsUseTheCellSourcePath)
     EXPECT_EQ(loaded->rows, 2);
     EXPECT_EQ(loaded->terrainAssetPath, "Assets/Terrain/Cell.terrain");
     ASSERT_EQ(loaded->heightData.size(), terrain.heightData.size());
-    /// @note The Terrain TOML writer rounds normalized heights to six decimal places.
+    // Terrain の TOML 保存では、正規化した高さを小数点以下6桁に丸める。
     for (size_t i = 0; i < terrain.heightData.size(); ++i)
         EXPECT_NEAR(loaded->heightData[i], terrain.heightData[i], 0.000001f);
     EXPECT_FLOAT_EQ(loaded->cellSize, 3.0f);

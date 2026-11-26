@@ -47,7 +47,7 @@ TEST_F(ParticleCurveTest, ReturnsTheEndpointsAtBothEnds)
 /// @brief Clamps outside the key range.
 TEST_F(ParticleCurveTest, ClampsOutsideTheKeyRange)
 {
-    /// @note 寿命 0..1 の外へ出る呼び方は普通に起きる (寿命が伸びる演出)。外挿しない。
+    // 寿命 0..1 の外へ出る呼び方は普通に起きる (寿命が伸びる演出)。外挿しない。
     const scene::ParticleCurve curve = Ramp();
 
     EXPECT_NEAR(curve.Evaluate(-1.0f), 0.0f, testkit::kTolerance);
@@ -68,7 +68,7 @@ TEST_F(ParticleCurveTest, ASingleKeyIsConstant)
 /// @brief Treats a zero key count as one.
 TEST_F(ParticleCurveTest, TreatsAZeroKeyCountAsOne)
 {
-    /// @note 壊れたアセットや初期化途中で 0 が来る。0 除算や範囲外参照へ落ちないこと。
+    // 壊れたアセットや初期化途中で 0 が来る。0 除算や範囲外参照へ落ちないこと。
     scene::ParticleCurve curve;
     curve.keyCount = 0;
 
@@ -99,7 +99,7 @@ TEST_F(ParticleCurveTest, LinearInterpolatesEvenly)
 /// @brief Step holds the previous value.
 TEST_F(ParticleCurveTest, StepHoldsThePreviousValue)
 {
-    /// @note フリップブックの段階切替や点滅。区間の途中で中間値を作ってはいけない。
+    // フリップブックの段階切替や点滅。区間の途中で中間値を作ってはいけない。
     const scene::ParticleCurve curve = Ramp(scene::ParticleCurveInterpolation::Step);
 
     EXPECT_NEAR(curve.Evaluate(0.5f), 0.0f, testkit::kTolerance);
@@ -109,10 +109,10 @@ TEST_F(ParticleCurveTest, StepHoldsThePreviousValue)
 /// @brief Checks step switches exactly on the next key.
 TEST_F(ParticleCurveTest, StepSwitchesExactlyOnTheNextKey)
 {
-    /// @note 区間は [前のキー, 次のキー)。次のキーへ到達した時点で切り替わる。
-    /// @note 越えたときにしか切り替わらないと、寿命 0..1 のカーブでは t=1.0 が
-    /// @note 最後のフレームなので、最終キー (フリップブックの最終コマ・消え際の点滅) が
-    /// @note 一度も表示されないまま粒子が死ぬ。
+    // 区間は [前のキー, 次のキー)。次のキーへ到達した時点で切り替わる。
+    // 越えたときにしか切り替わらないと、寿命 0..1 のカーブでは t=1.0 が
+    // 最後のフレームなので、最終キー (フリップブックの最終コマ・消え際の点滅) が
+    // 一度も表示されないまま粒子が死ぬ。
     const scene::ParticleCurve curve = Ramp(scene::ParticleCurveInterpolation::Step);
 
     EXPECT_NEAR(curve.Evaluate(0.999f), 0.0f, testkit::kTolerance);
@@ -122,7 +122,7 @@ TEST_F(ParticleCurveTest, StepSwitchesExactlyOnTheNextKey)
 /// @brief Step shows every key of a flipbook.
 TEST_F(ParticleCurveTest, StepShowsEveryKeyOfAFlipbook)
 {
-    /// @note 4 コマのフリップブック。どのコマも «自分のキー時刻ちょうど» で出ること。
+    // 4 コマのフリップブック。どのコマも «自分のキー時刻ちょうど» で出ること。
     scene::ParticleCurve curve;
     curve.keys[0]       = { 0.0f, 0.0f };
     curve.keys[1]       = { 0.25f, 1.0f };
@@ -135,7 +135,7 @@ TEST_F(ParticleCurveTest, StepShowsEveryKeyOfAFlipbook)
     EXPECT_NEAR(curve.Evaluate(0.25f), 1.0f, testkit::kTolerance);
     EXPECT_NEAR(curve.Evaluate(0.5f), 2.0f, testkit::kTolerance);
     EXPECT_NEAR(curve.Evaluate(1.0f), 3.0f, testkit::kTolerance);
-    /// @note 区間の途中では前のコマのまま。中間値は作らない。
+    // 区間の途中では前のコマのまま。中間値は作らない。
     EXPECT_NEAR(curve.Evaluate(0.4f), 1.0f, testkit::kTolerance);
 }
 
@@ -145,16 +145,16 @@ TEST_F(ParticleCurveTest, SmoothEasesInAndOutButKeepsTheMidpoint)
     const scene::ParticleCurve curve = Ramp(scene::ParticleCurveInterpolation::Smooth);
 
     EXPECT_NEAR(curve.Evaluate(0.5f), 0.5f, testkit::kTolerance);
-    /// @note 立ち上がりは遅い
+    // 立ち上がりは遅い
     EXPECT_LT(curve.Evaluate(0.25f), 0.25f);
-    /// @note 終わりは速く詰める
+    // 終わりは速く詰める
     EXPECT_GT(curve.Evaluate(0.75f), 0.75f);
 }
 
 /// @brief Smooth stays inside the key values.
 TEST_F(ParticleCurveTest, SmoothStaysInsideTheKeyValues)
 {
-    /// @note smoothstep は行き過ぎない。1 を超えると加算パーティクルが白飛びする。
+    // smoothstep は行き過ぎない。1 を超えると加算パーティクルが白飛びする。
     const scene::ParticleCurve curve = Ramp(scene::ParticleCurveInterpolation::Smooth);
 
     for (int step = 0; step <= 20; ++step) {
@@ -168,14 +168,14 @@ TEST_F(ParticleCurveTest, SmoothStaysInsideTheKeyValues)
 /// @brief Interpolation helper matches each mode.
 TEST_F(ParticleCurveTest, InterpolationHelperMatchesEachMode)
 {
-    /// @note GPU 側 (ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation) と同じ式であることを、
-    /// @note 係数そのもので固定する。片方だけ直すと «CPU では正しいが GPU では違う» になる。
+    // GPU 側 (ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation) と同じ式であることを、
+    // 係数そのもので固定する。片方だけ直すと «CPU では正しいが GPU では違う» になる。
     EXPECT_NEAR(scene::ApplyCurveInterpolation(0.3f, scene::ParticleCurveInterpolation::Linear),
                 0.3f, testkit::kTolerance);
     EXPECT_NEAR(scene::ApplyCurveInterpolation(0.5f, scene::ParticleCurveInterpolation::Smooth),
                 0.5f, testkit::kTolerance);
 
-    /// @note Step は区間の途中では 0、次のキーへ到達した時点で 1。
+    // Step は区間の途中では 0、次のキーへ到達した時点で 1。
     EXPECT_NEAR(scene::ApplyCurveInterpolation(0.0f, scene::ParticleCurveInterpolation::Step),
                 0.0f, testkit::kTolerance);
     EXPECT_NEAR(scene::ApplyCurveInterpolation(0.3f, scene::ParticleCurveInterpolation::Step),
@@ -191,7 +191,7 @@ TEST_F(ParticleCurveTest, InterpolationHelperMatchesEachMode)
 /// @brief Picks the right segment among many keys.
 TEST_F(ParticleCurveTest, PicksTheRightSegmentAmongManyKeys)
 {
-    /// @note 「立ち上がり → 保持 → 減衰」。区間の選び方が 1 つずれると保持が消える。
+    // 「立ち上がり → 保持 → 減衰」。区間の選び方が 1 つずれると保持が消える。
     scene::ParticleCurve curve;
     curve.keys[0]  = { 0.0f, 0.0f };
     curve.keys[1]  = { 0.2f, 1.0f };
@@ -207,7 +207,7 @@ TEST_F(ParticleCurveTest, PicksTheRightSegmentAmongManyKeys)
 /// @brief Survives two keys at the same time.
 TEST_F(ParticleCurveTest, SurvivesTwoKeysAtTheSameTime)
 {
-    /// @note Editor でキーを重ねると起きる。0 除算で NaN を出さないこと。
+    // Editor でキーを重ねると起きる。0 除算で NaN を出さないこと。
     scene::ParticleCurve curve;
     curve.keys[0]  = { 0.0f, 0.0f };
     curve.keys[1]  = { 0.5f, 1.0f };
@@ -252,8 +252,8 @@ TEST_F(ParticleCurveTest, GradientClampsOutsideTheKeyRange)
 /// @brief Gradient step switches exactly on the next key.
 TEST_F(ParticleCurveTest, GradientStepSwitchesExactlyOnTheNextKey)
 {
-    /// @note 色も同じ規則。「炎から煙へ切り替わる瞬間」を作るのが Step の用途なので、
-    /// @note 切り替え先の色がその時刻に出ないと意味が無い。
+    // 色も同じ規則。「炎から煙へ切り替わる瞬間」を作るのが Step の用途なので、
+    // 切り替え先の色がその時刻に出ないと意味が無い。
     scene::ParticleGradient gradient;
     gradient.keys[0]       = { 0.0f, { 1.0f, 0.0f, 0.0f, 1.0f } };
     gradient.keys[1]       = { 0.5f, { 0.0f, 1.0f, 0.0f, 1.0f } };
@@ -269,8 +269,8 @@ TEST_F(ParticleCurveTest, GradientStepSwitchesExactlyOnTheNextKey)
 /// @brief Linearised gradient is darker than the authored colour.
 TEST_F(ParticleCurveTest, LinearisedGradientIsDarkerThanTheAuthoredColour)
 {
-    /// @note キーは «カラーピッカーに見える値» (sRGB)。シェーダーへ渡る直前に一度だけ
-    /// @note リニアへ落とす。二重に掛けても掛け忘れても、絵の明るさが変わる。
+    // キーは «カラーピッカーに見える値» (sRGB)。シェーダーへ渡る直前に一度だけ
+    // リニアへ落とす。二重に掛けても掛け忘れても、絵の明るさが変わる。
     scene::ParticleGradient gradient;
     gradient.keys[0]  = { 0.0f, { 0.5f, 0.5f, 0.5f, 1.0f } };
     gradient.keys[1]  = { 1.0f, { 0.5f, 0.5f, 0.5f, 1.0f } };
@@ -280,7 +280,7 @@ TEST_F(ParticleCurveTest, LinearisedGradientIsDarkerThanTheAuthoredColour)
     const math::Vector4 linear = gradient.EvaluateLinear(0.5f);
 
     EXPECT_LT(linear.x, gamma.x);
-    /// @note アルファは変換しない
+    // アルファは変換しない
     EXPECT_NEAR(linear.w, gamma.w, testkit::kTolerance);
 }
 
@@ -344,7 +344,7 @@ TEST_F(ParticleCurveTest, BlackbodyConstantTemperatureKeepsBrightnessAcrossColor
     const math::Vector4 gamma = emitter.runtime.runtimeGradient.EvaluateLinear(0.5f);
     emitter.settings.colorGradient.colorSpace = scene::ParticleColorSpace::Linear;
     emitter.RefreshRuntimeGradient();
-    /// @note Constant physical temperature must retain luminance when only the interpolation color space changes.
+    // 物理温度を固定し、補間する色空間を変えても輝度が保たれることを確かめる。
     EXPECT_VEC4_NEAR(emitter.runtime.runtimeGradient.EvaluateLinear(0.5f), gamma, testkit::kLooseTolerance);
 }
 

@@ -21,17 +21,15 @@ enum class IblSource : uint8_t {
 /// @note シーンの最初の有効な環境光を採用する。
 struct EnvironmentLightComponent {
     bool        enabled       = true;
-    /// @note DynamicSky は RenderSystem の空連動ベイク経路を使う。
-    IblSource   source        = IblSource::StaticDDS;
-    std::string irradiancePath;           ///< @note 拡散 IBL cube、StaticDDS のみ。
-    std::string prefilterPath;            ///< @note 鏡面畳み込み IBL cube、StaticDDS のみ。
+    IblSource   source        = IblSource::StaticDDS; ///< DynamicSky は RenderSystem の空連動ベイク経路を使う。
+    std::string irradiancePath; ///< 拡散 IBL cube、StaticDDS のみ。
+    std::string prefilterPath; ///< 鏡面畳み込み IBL cube、StaticDDS のみ。
     float       intensity     = 1.0f;
     float       diffuseScale  = 1.0f;
     float       specularScale = 1.0f;
-    int         maxMipLevel   = 4;        ///< @note prefilter の最大 mip インデックス。
-    /// @note Ray transport の未畳み込み線形 HDR DDS cube。irradiance/prefilter を代用しない。
-    std::string rawEnvironmentPath;
-    float rotationY = 0.0f;               ///< @note Raw cube の右手系 Y 回転 [deg]。
+    int         maxMipLevel   = 4; ///< prefilter の最大 mip インデックス。
+    std::string rawEnvironmentPath; ///< Ray transport の未畳み込み線形 HDR DDS cube。irradiance/prefilter を代用しない。
+    float rotationY = 0.0f; ///< Raw cube の右手系 Y 回転 [deg]。
 
     const char* GetTypeName() const { return "EnvironmentLight"; }
 
@@ -39,8 +37,8 @@ struct EnvironmentLightComponent {
     {
         r.Field("enabled",        enabled);
 
-        /// @note enum は IReflector が直接扱わないため int 経由で反映する。
-        /// @note 範囲外値は StaticDDS にクランプして後方互換を保つ。
+        // enum は IReflector が直接扱わないため int 経由で反映する。
+        // 範囲外値は StaticDDS にクランプして後方互換を保つ。
         static constexpr const char* kSourceLabels[] = { "StaticDDS", "DynamicSky" };
         int sourceValue = static_cast<int>(source);
         r.Enum("source", sourceValue, kSourceLabels);

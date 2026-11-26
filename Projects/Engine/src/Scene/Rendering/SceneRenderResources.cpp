@@ -30,9 +30,13 @@ void ReleaseParticleSimulationGpuResources(ParticleEmitter& component)
 void UnlinkRuntimeMesh(Scene& scene, EntityID id, const DoubleBufferedMesh& target)
 {
     auto* renderer = scene.GetComponent<MeshRenderer>(id);
-    if (!renderer) return;
+    if (!renderer) {
+        return;
+    }
     for (const auto& slot : target.slots)
-        if (slot && renderer->mesh == slot.get()) renderer->mesh = nullptr;
+        if (slot && renderer->mesh == slot.get()) {
+            renderer->mesh = nullptr;
+        }
 }
 void ReleaseComponentGpuResources(Scene& scene, EntityID id, TerrainComponent&)
 { ReleaseTerrainRenderResources(scene, id); }
@@ -48,14 +52,18 @@ void ReleaseSceneOwnedGpuResources(Scene& scene)
     ForEachRegisteredComponent([&]<class T, class Registration>() {
         for (const auto id : scene.GetEntities<T>()) {
             auto* component = scene.GetComponent<T>(id);
-            if (component) ReleaseComponentGpuResources(scene, id, *component);
+            if (component) {
+                ReleaseComponentGpuResources(scene, id, *component);
+            }
         }
     });
 }
 void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id)
 {
     ForEachRegisteredComponent([&]<class T, class Registration>() {
-        if (auto* component = scene.GetComponent<T>(id)) ReleaseComponentGpuResources(scene, id, *component);
+        if (auto* component = scene.GetComponent<T>(id)) {
+            ReleaseComponentGpuResources(scene, id, *component);
+        }
     });
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

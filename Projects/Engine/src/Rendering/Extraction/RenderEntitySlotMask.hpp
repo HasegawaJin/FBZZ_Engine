@@ -23,12 +23,16 @@ public:
         std::span<const EntityID> second = {}) noexcept
     {
         auto& scratch = ScratchForThread();
-        if (scratch.busy) return;
+        if (scratch.busy) {
+            return;
+        }
         scratch.busy = true;
         size_t usedWords = 0;
         const auto measure = [&usedWords](std::span<const EntityID> entities) {
             for (const EntityID id : entities) {
-                if (!id.IsValid() || id.index >= kSlotCapacity) return false;
+                if (!id.IsValid() || id.index >= kSlotCapacity) {
+                    return false;
+                }
                 usedWords = (std::max)(usedWords, static_cast<size_t>(id.index / 64u) + 1u);
             }
             return true;
@@ -37,11 +41,12 @@ public:
             scratch.busy = false;
             return;
         }
-        /// @note 返却時にビットを消去しないため、貸出時に参照可能な全ワードを初期化する。
+        // 返却時にビットを消去しないため、貸出時に参照可能な全ワードを初期化する。
         std::fill_n(scratch.words.begin(), usedWords, uint64_t{0});
         const auto insert = [&scratch](std::span<const EntityID> entities) {
-            for (const EntityID id : entities)
+            for (const EntityID id : entities) {
                 scratch.words[id.index / 64u] |= uint64_t{1} << (id.index % 64u);
+            }
         };
         insert(first);
         insert(second);
@@ -51,7 +56,9 @@ public:
 
     ~RenderEntitySlotMask()
     {
-        if (!m_scratch) return;
+        if (!m_scratch) {
+            return;
+        }
         m_scratch->usedWords = 0;
         m_scratch->busy = false;
     }
@@ -65,7 +72,9 @@ public:
     /// @note 世代の照合は後段の GetComponent が完全な EntityID を使って行う。
     bool MayContain(EntityID id) const noexcept
     {
-        if (!m_scratch || !id.IsValid() || id.index >= kSlotCapacity) return true;
+        if (!m_scratch || !id.IsValid() || id.index >= kSlotCapacity) {
+            return true;
+        }
         const size_t word = id.index / 64u;
         return word < m_scratch->usedWords
             && (m_scratch->words[word] & (uint64_t{1} << (id.index % 64u))) != 0;

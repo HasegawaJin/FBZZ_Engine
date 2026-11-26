@@ -34,7 +34,7 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API static StreamedTextureResolver& Engine();
 
     /// @brief 参照 (パス・guid 参照・Sprite 参照) の GPU 実体を返す。
-    /// @param screenPixels このテクスチャを貼って描く物体の画面上の直径 [px]。0 以下は «不明» (最高品質を保つ)。
+    /// @param[in] screenPixels このテクスチャを貼って描く物体の画面上の直径 [px]。0 以下は «不明» (最高品質を保つ)。
     /// @return 非同期経路が未完成なら代替テクスチャを返す。同期ロードは MissPolicy::Synchronous のみ行う。
     [[nodiscard]] FBZZ_ENGINE_API renderer::ResourceHandle<renderer::TextureTag> ResolveGpu(
         renderer::ResourceManager& resources, std::string_view reference, float screenPixels = 0.0f);
@@ -74,25 +74,23 @@ public:
 
 private:
     struct Entry {
-        AssetLease<TextureAsset> lease;
-        std::uint64_t            lastUsedFrame = 0;
-        /// @note 同期ロードに一度失敗した。非同期の結果を待ち、毎フレーム読み直さない。
-        bool                     syncFailed = false;
-        /// @note このフレームで引かれた中で最も大きい画面上の直径 [px]。0 は不明。
-        float                    maxScreenPixels = 0.0f;
-        bool                     screenSizeKnown = true;
-        AssetQuality             appliedQuality = 0;
+        AssetLease<TextureAsset> lease; ///< 対象テクスチャの非同期要求と常駐を保持する利用権。
+        std::uint64_t            lastUsedFrame = 0; ///< このテクスチャが最後に描画で要求されたフレーム番号。
+        bool                     syncFailed = false; ///< 同期ロードに一度失敗した。非同期の結果を待ち、毎フレーム読み直さない。
+        float                    maxScreenPixels = 0.0f; ///< このフレームで引かれた中で最も大きい画面上の直径 [px]。0 は不明。
+        bool                     screenSizeKnown = true; ///< 現在の品質要求の根拠となる投影サイズを得られたか。
+        AssetQuality             appliedQuality = 0; ///< 台帳の利用権に最後に渡した要求品質段。
     };
 
     /// @return 非同期経路で扱えないなら nullptr。
     FBZZ_ENGINE_API Entry* Acquire(std::string_view reference);
     FBZZ_ENGINE_API const TextureAsset* Complete(Entry& entry);
 
-    std::unordered_map<std::string, Entry> m_entries;
-    std::uint64_t m_frame = 0;
-    std::uint32_t m_releaseAfterFrames = 300;
-    MissPolicy    m_missPolicy = MissPolicy::Placeholder;
-    bool          m_autoQuality = true;
+    std::unordered_map<std::string, Entry> m_entries; ///< 正規化したテクスチャ参照から常駐要求を引くキャッシュ。
+    std::uint64_t m_frame = 0; ///< 利用されていないテクスチャを判定する現在のビュー更新番号。
+    std::uint32_t m_releaseAfterFrames = 300; ///< 最後の参照後に利用権を維持するフレーム数。
+    MissPolicy    m_missPolicy = MissPolicy::Placeholder; ///< 非同期テクスチャを取得できないときの代替表示方式。
+    bool          m_autoQuality = true; ///< 投影サイズからテクスチャの要求品質を自動選択するか。
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

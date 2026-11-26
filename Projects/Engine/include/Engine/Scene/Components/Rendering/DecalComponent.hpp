@@ -15,8 +15,8 @@
 namespace fbzz::scene {
 
 struct DecalComponent {
-    bool enabled = true;
-    uint64_t lastExtractionFrame = UINT64_MAX;
+    bool enabled = true; ///< このデカールをビューの描画抽出対象に含める。
+    uint64_t lastExtractionFrame = UINT64_MAX; ///< 最後に age を更新したリソースフレームの番号。未抽出は UINT64_MAX。
 
     /// @name マテリアル
     /// @{
@@ -25,20 +25,20 @@ struct DecalComponent {
     /// @note 着弾痕・血痕は「テクスチャを 1 枚貼って薄める」用途が大半なので、.mat を必須に
     /// @note せず組み込みで描ける。.mat はメッシュ材質と同じ形式を使い回し、
     /// @note render_path = "decal" で用途だけ区別する (専用形式にすると二重管理になる)。
-    std::string materialPath;
+    std::string materialPath; ///< デカール用 .mat の参照。空なら組み込みシェーダーを使う。
     /// @}
 
     /// @name テクスチャ (materialPath が空のときだけ使う)
     /// @{
-    std::string albedoTexPath;      ///< @note t0
-    std::string normalTexPath;      ///< @note t1
-    std::string emissiveTexPath;    ///< @note t3
+    std::string albedoTexPath;      ///< ベースカラーと不透明度のテクスチャ参照。組み込み描画の t0 に結合する。
+    std::string normalTexPath;      ///< 投影する法線テクスチャの参照。組み込み描画の t1 に結合する。
+    std::string emissiveTexPath;    ///< 投影する発光テクスチャの参照。組み込み描画の t3 に結合する。
     /// @}
 
     /// @name サーフェスパラメータ (materialPath が空のときだけ使う)
     /// @{
-    float albedoColor[4]   = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float normalStrength   = 1.0f;
+    float albedoColor[4]   = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< 組み込み描画のテクスチャに掛ける RGBA 色。
+    float normalStrength   = 1.0f; ///< 組み込みの法線テクスチャが受け面の法線を変える強さ。
     /// @}
 
     /// @name 角度フェード
@@ -47,35 +47,35 @@ struct DecalComponent {
     /// @note OBB 投影は斜めな面でテクスチャが伸び、壁と床の角をまたぐ痕として露見する
     /// @note (最も目立つ破綻)。投影ボリュームと一体で決まる値なので .mat 側には置かず、
     /// @note 壁用・床用で別々に調整できるようにする。
-    float angleFadeStrength = 1.0f;  ///< @note 0 = フェードなし
-    float angleFadeDegrees  = 70.0f; ///< @note これ以上寝た面では完全に消える [0, 89]
+    float angleFadeStrength = 1.0f; ///< 0 = フェードなし
+    float angleFadeDegrees  = 70.0f; ///< これ以上寝た面では完全に消える [0, 89]
     /// @}
 
     /// @name エミッシブ (materialPath が空のときだけ使う)
     /// @{
-    float emissiveColor[3] = { 1.0f, 1.0f, 1.0f };
-    float emissiveScale    = 0.0f;
+    float emissiveColor[3] = { 1.0f, 1.0f, 1.0f }; ///< 組み込み描画の発光に掛ける RGB 色。
+    float emissiveScale    = 0.0f; ///< 組み込み描画の発光強度。0 で発光を加えない。
     /// @}
 
     /// @name ライフタイム
     /// @{
-    float lifetime = -1.0f;  ///< @note < 0 で永続
-    float fadeTime = 1.0f;   ///< @note 消える前のフェード時間 (秒)
-    float age      = 0.0f;   ///< @note DecalPass が毎フレーム加算する
+    float lifetime = -1.0f; ///< < 0 で永続
+    float fadeTime = 1.0f; ///< 消える前のフェード時間 (秒)
+    float age      = 0.0f; ///< DecalPass が毎フレーム加算する
 
     /// @note 出現時のフェード時間 [秒]。0 で «いきなり全濃度» (既定 = 従来の挙動)。
     ///
     /// @note 永続デカール (lifetime < 0) でも効く。DecalPass は fadeInTime > 0 か
     /// @note フリップブックが有効な永続デカールに限り age を進める (常に進めると
     /// @note 編集中に age がシーン差分として増え続ける)。
-    float fadeInTime = 0.0f;
+    float fadeInTime = 0.0f; ///< 出現時のフェード時間（秒）。0 で即座に設定濃度を適用する。
 
     /// @note 不透明度の倍率 [0, 1]。ライフタイムフェードと同じ場所 (DecalCB::alpha) へ掛かる。
     ///
     /// @note albedoColor は .mat 割り当て時に効かなくなるため、VFX カーブやスクリプトが
     /// @note 毎フレーム書く先として投影側 (DecalCB) にこの倍率を持つ。毎フレーム動く量なので
     /// @note シーンへは保存しない (オーサリング時の濃さは albedoColor / .mat の tint が正本)。
-    float opacity  = 1.0f;
+    float opacity  = 1.0f; ///< 材質とライフタイムフェードに掛ける実行時の不透明度倍率（0〜1）。
     /// @}
 
     /// @name フリップブック (コマ送り)
@@ -84,17 +84,16 @@ struct DecalComponent {
     /// @note コマ番号は共有実体の .mat ではなく投影側 (DecalCB) に置く
     /// @note (.mat に置くと同じ .mat の痕が全部同じコマになる)。
     /// @note frameCount <= 1 で無効 (UV は素通し = 従来と同じ絵)。
-    int   frameCount   = 0;
-    /// @note アトラスの横方向のコマ数。縦の段数は frameCount から切り上げで決まる。
-    int   framesPerRow = 1;
+    int   frameCount   = 0; ///< アトラス内のコマ総数。1 以下でコマ送りを無効にする。
+    int   framesPerRow = 1; ///< アトラスの横方向のコマ数。縦の段数は frameCount から切り上げで決まる。
     /// @note [fps]。0 なら «寿命いっぱいで 1 周» する (lifetime < 0 では進まない)。
     ///
     /// @note 0 は「消えるまでに終わる」動きを表す。秒数指定だと lifetime を触るたびに
     /// @note fps を計算し直すことになる。
-    float frameRate    = 0.0f;
+    float frameRate    = 0.0f; ///< コマ送り速度（fps）。0 なら有限の寿命内で 1 周する。
     /// @note 最後のコマまで行ったあと先頭へ戻る。false なら最後のコマで止まる (既定)。
     /// @note 焦げ・傷は «進んで止まる»、電気の走る痕は «回り続ける»。
-    bool  frameLoop    = false;
+    bool  frameLoop    = false; ///< 最後のコマの次に先頭へ戻る。false では最後のコマを保つ。
     /// @}
 
     /// @name 重なりの前後
@@ -103,13 +102,13 @@ struct DecalComponent {
     ///
     /// @note デカールは深度を書かず順番どおり合成するだけなので、これが無いと重なる痕の
     /// @note 前後が Hierarchy の並び順でしか決まらず「血だまりの上に足跡」を作れなかった。
-    int sortOrder = 0;
+    int sortOrder = 0; ///< デカールの合成順。小さい値から描く。
     /// @}
 
     /// @name レイヤーフィルタ
     /// @{
     /// @note デカールを受け取るレイヤーマスク。このマスクに含まれない GameObject には投影しない。
-    fbzz::LayerMask receiverLayerMask = fbzz::Layer::Everything;
+    fbzz::LayerMask receiverLayerMask = fbzz::Layer::Everything; ///< 投影を受けるオブジェクトのレイヤーマスク。
     /// @}
 
     /// @name マテリアルのこのデカールだけの上書き (ランタイム専用)
@@ -117,8 +116,8 @@ struct DecalComponent {
     /// @note .mat は全デカールが共有する実体なので、個体差分はここに持つ (共有は .mat、
     /// @note 差分はここ)。着弾ごとに変わる量なのでシーンへは保存しない。
     /// @note スクリプトからは decal.SetMaterialFloat() などで書く。
-    std::unordered_map<std::string, std::vector<float>> materialParamOverrides;
-    std::unordered_map<std::string, std::string>        materialTextureOverrides;
+    std::unordered_map<std::string, std::vector<float>> materialParamOverrides; ///< このデカールだけで上書きする材質パラメータ名と数値列。
+    std::unordered_map<std::string, std::string>        materialTextureOverrides; ///< このデカールだけで上書きするテクスチャスロット名とアセット参照。
 
     const char* GetTypeName() const { return "Decal"; }
     void Reflect(IReflector& r)
@@ -150,8 +149,8 @@ struct DecalComponent {
         r.Field("frameRate",    frameRate);
         r.Field("frameLoop",    frameLoop);
         r.Field("sortOrder",    sortOrder);
-        /// @note IReflector は uint32_t 非対応のため int 経由でシリアライズする。
-        /// @note ~0u (-1) も含め正しくラウンドトリップする。
+        // IReflector は uint32_t 非対応のため int 経由でシリアライズする。
+        // ~0u (-1) も含め正しくラウンドトリップする。
         { int v = static_cast<int>(receiverLayerMask);
           r.Field("receiverLayerMask", v);
           receiverLayerMask = static_cast<fbzz::LayerMask>(static_cast<uint32_t>(v)); }

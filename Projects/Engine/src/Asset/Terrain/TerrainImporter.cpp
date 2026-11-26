@@ -14,8 +14,9 @@ std::unique_ptr<TerrainAsset> TerrainImporter::Import(
     renderer::ResourceManager* /*resources*/)
 {
     auto terrain = std::make_unique<TerrainAsset>();
-    if (!FzTerrainSerializer{}.Load(absPath, *terrain))
+    if (!FzTerrainSerializer{}.Load(absPath, *terrain)) {
         return nullptr;
+    }
     return terrain;
 }
 

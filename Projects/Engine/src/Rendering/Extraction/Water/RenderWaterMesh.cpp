@@ -38,7 +38,9 @@ std::shared_ptr<WaterPatchGrid> AcquireWaterPatchGrid(uint32_t cellsPerPatch, Wa
 {
     assert(cellsPerPatch >= 2u && cellsPerPatch <= 64u && std::has_single_bit(cellsPerPatch));
     auto& cachedGrid = patchGridSlots[std::bit_width(cellsPerPatch) - 2u];
-    if (auto grid = cachedGrid.lock()) return grid;
+    if (auto grid = cachedGrid.lock()) {
+        return grid;
+    }
     auto grid = std::make_shared<WaterPatchGrid>(resources);
     std::vector<renderer::WaterVertex> vertices;
     vertices.reserve(static_cast<size_t>(cellsPerPatch + 1u) * (cellsPerPatch + 1u));
@@ -50,16 +52,22 @@ std::shared_ptr<WaterPatchGrid> AcquireWaterPatchGrid(uint32_t cellsPerPatch, Wa
     }
     grid->vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::WaterVertex),
         static_cast<uint32_t>(sizeof(renderer::WaterVertex)));
-    if (!grid->vertexBuffer.IsValid()) return grid;
+    if (!grid->vertexBuffer.IsValid()) {
+        return grid;
+    }
     std::vector<uint32_t> indices;
     for (uint8_t coarseEdgeMask = 0; coarseEdgeMask < grid->indexBuffers.size(); ++coarseEdgeMask) {
-        if (!renderer::BuildSurfacePatchIndices(cellsPerPatch, coarseEdgeMask, indices)) continue;
+        if (!renderer::BuildSurfacePatchIndices(cellsPerPatch, coarseEdgeMask, indices)) {
+            continue;
+        }
         grid->indexCounts[coarseEdgeMask] = static_cast<uint32_t>(indices.size());
         grid->indexBuffers[coarseEdgeMask] = resources.CreateIndexBuffer(indices.data(), grid->indexCounts[coarseEdgeMask]);
     }
-    /// @note 生成に失敗したグリッドは、他の水面の生成や後続の再構築で再試行できる。
+    // 生成に失敗したグリッドは、他の水面の生成や後続の再構築で再試行できる。
     if (std::all_of(grid->indexBuffers.begin(), grid->indexBuffers.end(),
-            [](auto buffer) { return buffer.IsValid(); })) cachedGrid = grid;
+            [](auto buffer) { return buffer.IsValid(); })) {
+        cachedGrid = grid;
+    }
     return grid;
 }
 
@@ -67,14 +75,18 @@ void BuildSplineWaterMesh(const WaterComponent& water, WaterMesh& mesh,
     renderer::ResourceManager& resources, bool buildSurfaceClusters)
 {
     const WaterSplineSnapshot* spline = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
-    if (!spline) return;
+    if (!spline) {
+        return;
+    }
     const auto& splineData = *spline;
     mesh.aabbMin = splineData.localBoundsMin;
     mesh.aabbMax = splineData.localBoundsMax;
     const math::Vector2 localExtent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
     if (splineData.vertices.empty() || splineData.triangles.empty()
         || !std::isfinite(localExtent.x) || !std::isfinite(localExtent.y)
-        || localExtent.x <= 0.0f || localExtent.y <= 0.0f) return;
+        || localExtent.x <= 0.0f || localExtent.y <= 0.0f) {
+        return;
+    }
 
     const auto* zoneSnapshot = water.simulationZoneSnapshot.get();
     const bool blendMaterials = zoneSnapshot && zoneSnapshot->materials.size() == splineData.vertices.size();
@@ -118,9 +130,12 @@ void BuildSplineWaterMesh(const WaterComponent& water, WaterMesh& mesh,
             appendZoneTriangle(triangle.indices, vertices);
         }
     } else {
-        for (const auto& source : splineData.vertices) vertices.push_back(makeVertex(source));
-        for (const auto& triangle : splineData.triangles)
+        for (const auto& source : splineData.vertices) {
+            vertices.push_back(makeVertex(source));
+        }
+        for (const auto& triangle : splineData.triangles) {
             indices.insert(indices.end(), triangle.indices.begin(), triangle.indices.end());
+        }
     }
 
     renderer::RenderWaterPatch chunk;
@@ -131,16 +146,21 @@ void BuildSplineWaterMesh(const WaterComponent& water, WaterMesh& mesh,
     chunk.aabbMin = splineData.localBoundsMin;
     chunk.aabbMax = splineData.localBoundsMax;
     mesh.chunks.push_back(std::move(chunk));
-    if (!buildSurfaceClusters) return;
+    if (!buildSurfaceClusters) {
+        return;
+    }
 
     std::vector<renderer::WaterVertex> sharedVertices;
     std::vector<uint32_t> sharedIndices;
     if (blendMaterials) {
         sharedVertices.reserve(splineData.vertices.size());
-        for (const auto& source : splineData.vertices) sharedVertices.push_back(makeVertex(source));
+        for (const auto& source : splineData.vertices) {
+            sharedVertices.push_back(makeVertex(source));
+        }
         sharedIndices.reserve(indices.size());
-        for (const auto& triangle : splineData.triangles)
+        for (const auto& triangle : splineData.triangles) {
             sharedIndices.insert(sharedIndices.end(), triangle.indices.begin(), triangle.indices.end());
+        }
     }
     std::vector<uint8_t> protectedVertices(splineData.vertices.size());
     for (const auto& triangle : splineData.triangles) {
@@ -159,30 +179,39 @@ void BuildSplineWaterMesh(const WaterComponent& water, WaterMesh& mesh,
             }
         }
         if (preserveTriangle || (underDepthCap && overDepthCap))
-            for (uint32_t index : triangle.indices) protectedVertices[index] = 1u;
+            for (uint32_t index : triangle.indices) {
+                protectedVertices[index] = 1u;
+            }
     }
     auto surfaceClusters = std::make_shared<std::vector<renderer::WaterSurfaceCluster>>();
     std::vector<uint32_t> clusterIndices;
     if (!renderer::BuildWaterSurfaceClusters(
             blendMaterials ? sharedVertices : vertices, blendMaterials ? sharedIndices : indices,
-            protectedVertices, *surfaceClusters, clusterIndices)) return;
+            protectedVertices, *surfaceClusters, clusterIndices)) {
+        return;
+    }
     if (blendMaterials) {
-        /// @note 複数の材質を含む元の三角形は 3 頂点すべての属性を使う。均一な材質領域に追加する三角形でも頂点ごとの補間は必要。
+        // 複数の材質を含む元の三角形は 3 頂点すべての属性を使う。均一な材質領域に追加する三角形でも頂点ごとの補間は必要。
         std::vector<renderer::WaterVertex> clusterVertices;
         clusterVertices.reserve(clusterIndices.size());
         for (size_t triangleOffset = 0; triangleOffset < clusterIndices.size(); triangleOffset += 3) {
             const std::span<uint32_t, 3> triangle(clusterIndices.data() + triangleOffset, 3u);
             appendZoneTriangle(triangle, clusterVertices);
-            for (uint32_t corner = 0; corner < 3u; ++corner)
+            for (uint32_t corner = 0; corner < 3u; ++corner) {
                 triangle[corner] = static_cast<uint32_t>(triangleOffset) + corner;
+            }
         }
         mesh.surfaceClusterVertices = resources.CreateVertexBuffer(clusterVertices.data(),
             clusterVertices.size() * sizeof(renderer::WaterVertex), static_cast<uint32_t>(sizeof(renderer::WaterVertex)));
-        if (!mesh.surfaceClusterVertices.IsValid()) return;
+        if (!mesh.surfaceClusterVertices.IsValid()) {
+            return;
+        }
     }
     mesh.surfaceClusterIndices = resources.CreateIndexBuffer(clusterIndices.data(),
         static_cast<uint32_t>(clusterIndices.size()));
-    if (mesh.surfaceClusterIndices.IsValid()) mesh.surfaceClusters = std::move(surfaceClusters);
+    if (mesh.surfaceClusterIndices.IsValid()) {
+        mesh.surfaceClusters = std::move(surfaceClusters);
+    }
 }
 
 void BuildRectangularWaterMesh(const WaterComponent& water, WaterMesh& mesh,
@@ -202,7 +231,7 @@ void BuildRectangularWaterMesh(const WaterComponent& water, WaterMesh& mesh,
     const float localOriginX = -water.extentX * 0.5f;
     const float localOriginZ = -water.extentZ * 0.5f;
 
-    /// @note 境界を按分して、割り切れない解像度でも最後のチャンクがセル総数を超えないようにする。
+    // 境界を按分して、割り切れない解像度でも最後のチャンクがセル総数を超えないようにする。
     const uint32_t chunksPerAxis = WaterChunkCount(water);
 
     for (uint32_t chunkZ = 0; chunkZ < chunksPerAxis; ++chunkZ) {
@@ -211,7 +240,9 @@ void BuildRectangularWaterMesh(const WaterComponent& water, WaterMesh& mesh,
             const uint32_t endCellX   = WaterChunkCellOffset(water.resolutionX, chunkX + 1u, chunksPerAxis);
             const uint32_t firstCellZ = WaterChunkCellOffset(water.resolutionZ, chunkZ, chunksPerAxis);
             const uint32_t endCellZ   = WaterChunkCellOffset(water.resolutionZ, chunkZ + 1u, chunksPerAxis);
-            if (endCellX <= firstCellX || endCellZ <= firstCellZ) continue;
+            if (endCellX <= firstCellX || endCellZ <= firstCellZ) {
+                continue;
+            }
 
             const uint32_t vertexColumns = endCellX - firstCellX + 1;
             const uint32_t vertexRows = endCellZ - firstCellZ + 1;
@@ -288,7 +319,9 @@ WaterMeshGeometry ResolveWaterMeshGeometry(const WaterComponent& water)
     geometryKey.extentX = water.extentX;
     geometryKey.extentZ = water.extentZ;
     geometryKey.sharedPatchGrid = water.adaptivePatchLod || water.farOceanEnabled;
-    if (geometryKey.sharedPatchGrid) geometryKey.patchResolution = water.lodPatchResolution;
+    if (geometryKey.sharedPatchGrid) {
+        geometryKey.patchResolution = water.lodPatchResolution;
+    }
     else {
         geometryKey.resolutionX = water.resolutionX;
         geometryKey.resolutionZ = water.resolutionZ;
@@ -302,8 +335,8 @@ renderer::WaterWaveMargin ComputeWaveMargin(const WaterComponent& water, bool ho
 {
     renderer::WaterWaveMargin margin;
     if (water.enableGerstnerWaves) {
-        /// @note 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
-        /// @note ここに入れ忘れると、山に当たったチャンクだけが «AABB からはみ出した» 扱いで消える。
+        // 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
+        // ここに入れ忘れると、山に当たったチャンクだけが «AABB からはみ出した» 扱いで消える。
         const float amplitudeMultiplier = (1.0f + math::Clamp01(water.waveGrouping))
                          * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
         for (size_t waveIndex = 0; waveIndex < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++waveIndex) {
@@ -312,21 +345,23 @@ renderer::WaterWaveMargin ComputeWaveMargin(const WaterComponent& water, bool ho
             margin.vertical   += amplitude;
             margin.horizontal += amplitude * math::Clamp01(wave.steepness);
         }
-        /// @note 水平海面との交差補正は高さだけを加え、水平方向の境界は変えない。
-        if (horizonSurface) margin.vertical += margin.vertical * WATER_CROSSING_CREST_STRENGTH;
+        // 水平海面との交差補正は高さだけを加え、水平方向の境界は変えない。
+        if (horizonSurface) {
+            margin.vertical += margin.vertical * WATER_CROSSING_CREST_STRENGTH;
+        }
     }
-    /// @note 流れの場が作る形と着水の輪も «平面から出る量»。入れないと穴や山や輪の上のチャンク
-    /// @note だけが «AABB からはみ出した» 扱いで消える。盛り上がりも穴と同じ枠で測る。
+    // 流れの場が作る形と着水の輪も «平面から出る量»。入れないと穴や山や輪の上のチャンク
+    // だけが «AABB からはみ出した» 扱いで消える。盛り上がりも穴と同じ枠で測る。
     float flowDisplacement = 0.0f;
     for (int flowIndex = 0; flowIndex < (std::min)(water.surfaceFlowCount, kWaterSurfaceFlowCount); ++flowIndex) {
-        /// @note 重複する場の変位は加算されるため、各場の変位幅を水面の上下限に含める。
+        // 重複する場の変位は加算されるため、各場の変位幅を水面の上下限に含める。
         flowDisplacement += std::abs(water.surfaceFlows[static_cast<size_t>(flowIndex)].height);
     }
-    /// @note 輪の合成断面の上限は本体 + 後続 2 本 = 1.58 倍。
+    // 輪の合成断面の上限は本体 + 後続 2 本 = 1.58 倍。
     margin.vertical += flowDisplacement
                      + (water.ripples.empty() ? 0.0f : kWaterRippleHeightAmplitude * 1.6f);
 
-    /// @note さざ波と描画専用の河川波頭（上下 0.15 m 以下）を既存の余裕に収める。
+    // さざ波と描画専用の河川波頭（上下 0.15 m 以下）を既存の余裕に収める。
     margin.horizontal += 0.5f;
     margin.vertical   += 0.5f;
     return margin;
@@ -339,7 +374,7 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterPatchGrid
     assert(water.resolutionZ > 0);
 
     const WaterMeshGeometry geometryKey = ResolveWaterMeshGeometry(water);
-    /// @note 同じ分割数のまま外形を編集したときも、差し替えまで既存グリッドを保持する。
+    // 同じ分割数のまま外形を編集したときも、差し替えまで既存グリッドを保持する。
     auto patchGrid = geometryKey.sharedPatchGrid ? AcquireWaterPatchGrid(geometryKey.patchResolution, patchGridSlots, resources)
         : nullptr;
     ReleaseWaterMesh(mesh, resources);
@@ -362,6 +397,9 @@ void PopulateWaterGeometry(renderer::RenderWaterInput& input, const WaterCompone
         input.surfaceClusters = mesh.surfaceClusters;
         input.surfaceClusterIndices = mesh.surfaceClusterIndices;
         input.surfaceClusterVertices = mesh.surfaceClusterVertices;
+        if (water.adaptivePatchLod && std::isfinite(water.lodTargetPixels)) {
+            input.surfaceClusterErrorPixels = std::clamp(water.lodTargetPixels, 1.0f, 8.0f);
+        }
     }
     input.adaptivePatchLod = !splineSurface && (water.adaptivePatchLod || water.farOceanEnabled);
     input.patchMorphEnabled = !splineSurface && water.lodMorphEnabled;
@@ -397,7 +435,9 @@ void PrepareWaterStripBuffers(const WaterComponent& water, WaterMesh& mesh, rend
         auto& grid = *mesh.patchGrid;
         for (uint8_t coarseEdgeMask = 0; coarseEdgeMask < grid.strips.size(); ++coarseEdgeMask) {
             auto& strip = grid.strips[coarseEdgeMask];
-            if (strip.buffer.IsValid()) continue;
+            if (strip.buffer.IsValid()) {
+                continue;
+            }
             if (!renderer::BuildSurfacePatchStripIndices(water.lodPatchResolution, coarseEdgeMask, indices)) {
                 stripsReady = false;
                 continue;
@@ -408,13 +448,17 @@ void PrepareWaterStripBuffers(const WaterComponent& water, WaterMesh& mesh, rend
         return;
     } else {
         const uint32_t chunksPerAxis = WaterChunkCount(water);
-        if (mesh.chunks.size() != static_cast<size_t>(chunksPerAxis) * chunksPerAxis) return;
+        if (mesh.chunks.size() != static_cast<size_t>(chunksPerAxis) * chunksPerAxis) {
+            return;
+        }
         for (uint32_t chunkZ = 0; chunkZ < chunksPerAxis; ++chunkZ) {
             const uint32_t cellsZ = WaterChunkCellOffset(water.resolutionZ, chunkZ + 1u, chunksPerAxis)
                 - WaterChunkCellOffset(water.resolutionZ, chunkZ, chunksPerAxis);
             for (uint32_t chunkX = 0; chunkX < chunksPerAxis; ++chunkX) {
                 auto& strip = mesh.chunks[chunkZ * chunksPerAxis + chunkX].strip;
-                if (strip.buffer.IsValid()) continue;
+                if (strip.buffer.IsValid()) {
+                    continue;
+                }
                 const uint32_t cellsX = WaterChunkCellOffset(water.resolutionX, chunkX + 1u, chunksPerAxis)
                     - WaterChunkCellOffset(water.resolutionX, chunkX, chunksPerAxis);
                 if (!renderer::BuildRegularSurfaceStripIndices(cellsX, cellsZ, indices)) {

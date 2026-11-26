@@ -27,4 +27,4 @@ public:
         std::string_view texturePath, std::string& outSourcePath);
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

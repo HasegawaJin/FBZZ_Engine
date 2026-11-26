@@ -38,4 +38,4 @@ FBZZ_ENGINE_API void DeserializeParticleGradient(const toml::table& table, const
 FBZZ_ENGINE_API void DeserializeParticleEmitterSettings(const toml::table& table,
                                         scene::ParticleEmitterSettings& outEmitter);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

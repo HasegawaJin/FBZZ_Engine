@@ -25,7 +25,9 @@ float SkinClusterDisplacement(const renderer::RenderObject& object, const Skinne
     float maximum = 0.0f;
     for (size_t slot = 0; slot < skin.SubmeshCount(); ++slot) {
         const auto* mesh = skin.SubmeshMesh(slot);
-        if (!mesh || !mesh->ClusterLod()) continue;
+        if (!mesh || !mesh->ClusterLod()) {
+            continue;
+        }
         const auto measure = [&](const math::Matrix4& bone) {
             for (unsigned corner = 0; corner < 8; ++corner) {
                 const math::Vector3 sign{corner & 1u ? 1.0f : -1.0f, corner & 2u ? 1.0f : -1.0f,
@@ -40,14 +42,20 @@ float SkinClusterDisplacement(const renderer::RenderObject& object, const Skinne
                 const float length = math::Vector3{delta.x, delta.y, delta.z}.Length()
                     + mesh->ClusterLod()->maximumSkinWeightError
                     * math::Vector3{transformed.x, transformed.y, transformed.z}.Length();
-                if (!std::isfinite(length)) return false;
+                if (!std::isfinite(length)) {
+                    return false;
+                }
                 maximum = (std::max)(maximum, length);
             }
             return true;
         };
-        if (!measure(math::Matrix4::Identity())) return -1.0f;
+        if (!measure(math::Matrix4::Identity())) {
+            return -1.0f;
+        }
         for (const auto& bone : palette)
-            if (!measure(bone)) return -1.0f;
+            if (!measure(bone)) {
+                return -1.0f;
+            }
     }
     return maximum + 1.0e-4f;
 }
@@ -55,19 +63,24 @@ float SkinClusterDisplacement(const renderer::RenderObject& object, const Skinne
 /// @note ベイク済みクリップやブレンドの境界は、モデル空間原点を中心とする球。
 float BakedSkinClusterDisplacement(const SkinnedMeshRenderer& skin, float poseRadius, const math::Matrix4& world)
 {
-    if (!(poseRadius > 0.0f) || !std::isfinite(poseRadius)) return -1.0f;
+    if (!(poseRadius > 0.0f) || !std::isfinite(poseRadius)) {
+        return -1.0f;
+    }
     float bindRadius = 0.0f;
     for (size_t slot = 0; slot < skin.SubmeshCount(); ++slot) {
         const auto* mesh = skin.SubmeshMesh(slot);
         if (mesh && mesh->ClusterLod()) {
             const float radius = mesh->boundsCenter.Length() + mesh->boundsExtents.Length();
-            if (!std::isfinite(radius)) return -1.0f;
+            if (!std::isfinite(radius)) {
+                return -1.0f;
+            }
             bindRadius = (std::max)(bindRadius, radius);
         }
     }
     float scaleSquared = 0.0f;
-    for (size_t row = 0; row < 3; ++row)
+    for (size_t row = 0; row < 3; ++row) {
         scaleSquared += math::Vector3{world.m[row][0], world.m[row][1], world.m[row][2]}.LengthSq();
+    }
     const float displacement = (poseRadius + bindRadius) * std::sqrt(scaleSquared) + 1.0e-4f;
     return std::isfinite(displacement) ? displacement : -1.0f;
 }
@@ -96,7 +109,7 @@ void ExtractSkinnedPose(GameObject& owner, const SkinnedMeshRenderer& skin,
             && bake.gpuOwner == resources->GetInstanceId() && bake.gpuEpoch == resources->GetResetVersion()) {
             object.gpuBones = {bake.gpuPalette, bake.gpuPreviousPalette, bake.gpuOffset, bake.gpuPreviousOffset};
         }
-        /// @note リソースのコールバックで退役した入力では、保留中の CPU 姿勢を描画に渡さない。
+        // リソースのコールバックで退役した入力では、保留中の CPU 姿勢を描画に渡さない。
         if (bake.cpuDeferred && !object.gpuBones.current.IsValid()) { object.lodVisible = false; object.rayVisible = false; }
     }
     if (object.gpuBones.current.IsValid()) {

@@ -20,14 +20,12 @@ struct Skeleton;
 struct AvatarMaskEntry {
     /// @brief スケルトンノードのパス (`"Hips/Spine/Spine1"`) または末端ボーン名 (`"Spine1"`)。
     /// @note パス指定は同名ボーン骨格でも一意、名前指定は手書きが楽。AnimationClip のトラックは両形式を持ちうるため、どちらでも一致させる。
-    std::string bonePath;
-    /// @brief このボーンに適用する最終ウェイト。0 = このレイヤーを効かせない。
-    float       weight          = 1.0f;
-    /// @brief 子孫ボーンにも同じエントリを適用するか。
-    bool        includeChildren = true;
+    std::string bonePath; ///< マスクの規則を適用する骨の相対階層パス。
+    float       weight          = 1.0f; ///< このボーンに適用する最終ウェイト。0 = このレイヤーを効かせない。
+    bool        includeChildren = true; ///< 子孫ボーンにも同じエントリを適用するか。
     /// @brief 子孫方向へ weight を立ち上げる階層数。0 なら減衰なし (従来の 0/1 マスク相当)。
     /// @note 1 以上ならこのボーンで weight/(blendDepth+1)、深さ blendDepth で weight に到達する。Spine 等の分岐点をまたぐ継ぎ目が滑らかになる。
-    int         blendDepth      = 0;
+    int         blendDepth      = 0; ///< 境界の重みをならす対象の子階層の深さ。
 
     bool operator==(const AvatarMaskEntry&) const = default;
 };
@@ -47,16 +45,15 @@ enum class HumanoidBodyPart : int {
 };
 
 struct AvatarMaskAsset {
-    std::string name;
+    std::string name; ///< エディターで識別するアバターマスクの名前。
     /// @brief entries に一致しないボーンの既定ウェイト。
     /// @note false (既定) は不一致ボーン=0 (加算的にパーツを選ぶ)。true は不一致ボーン=1 で entries に「除外」を書く。同じ構造で「上半身だけ有効」も「下半身だけ無効」も書ける。
-    bool defaultInclude = false;
-    std::vector<AvatarMaskEntry> entries;
+    bool defaultInclude = false; ///< 個別規則が骨に一致しない場合の既定の採否。
+    std::vector<AvatarMaskEntry> entries; ///< 骨と子階層に適用する個別マスク規則。
     /// @brief このマスクを作った元スケルトン。Editor がボーンツリーを再表示するために覚えておく。
     /// @note ランタイムの評価には使わない。
-    std::string skeletonSourcePath;
-    /// @brief 元 FBX の更新検知用署名。空文字は旧形式または未保存状態を表す。
-    std::string skeletonSourceSignature;
+    std::string skeletonSourcePath; ///< 骨のパスを編集・照合する基準となる骨格アセットの参照。
+    std::string skeletonSourceSignature; ///< 元 FBX の更新検知用署名。空文字は旧形式または未保存状態を表す。
 
     bool operator==(const AvatarMaskAsset&) const = default;
 };
@@ -75,10 +72,10 @@ struct AvatarMaskAsset {
 
 /// @brief EvaluateAvatarMaskWeight が内部で行う一致判定の結果。勝者だけでなく全候補を返す。
 struct AvatarMaskMatch {
-    int   entryIndex  = -1;
-    int   depth       = 0;    ///< @note エントリのルート骨からの階層差。
-    float weight      = 0.0f; ///< @note このエントリ単独で採用された場合の実効ウェイト。
-    int   specificity = -1;   ///< @note 大きいほど優先。同点は先に書かれた方が勝つ。
+    int   entryIndex  = -1; ///< 一致した規則の entries 内の添字。-1 は既定値を使う。
+    int   depth       = 0; ///< エントリのルート骨からの階層差。
+    float weight      = 0.0f; ///< このエントリ単独で採用された場合の実効ウェイト。
+    int   specificity = -1; ///< 大きいほど優先。同点は先に書かれた方が勝つ。
 };
 
 /// @brief bonePath / boneName に一致するエントリを、勝つ順 (specificity 降順) に返す。Editor が「負け続けているエントリ」を見せるために使う。
@@ -108,4 +105,4 @@ struct AvatarMaskMatch {
 /// @note ツリーで大量のボーンを選択しても、.mask は最小限の階層ルールとして保つ。
 FBZZ_ENGINE_API void CompressAvatarMaskEntries(AvatarMaskAsset& mask);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

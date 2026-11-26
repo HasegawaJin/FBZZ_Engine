@@ -204,7 +204,9 @@ TEST_F(RagdollControlsTest, PreservesCircularWorldDriveMotionAcrossAnimationSamp
             m_rig.Step(1.0f / 120.0f);
             const auto state = m_rig.Controls().BodyState("Child");
             ASSERT_TRUE(state.valid);
-            if (tick < 60) continue;
+            if (tick < 60) {
+                continue;
+            }
             if (fps == 60) baseline.push_back(state);
             else {
                 const auto& expected = baseline[static_cast<std::size_t>(tick - 60)];

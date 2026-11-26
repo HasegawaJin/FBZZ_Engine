@@ -60,8 +60,8 @@ struct NavMeshOffMeshLinkSnapshot {
 };
 
 /// @brief 選択中のランタイムポリシーにかかわらず、制作時の入力値を解決する。
-/// @param patrol 制作時の巡回入力。
-/// @param signatureRuntimeMode 作成するベイク署名に含めるランタイムモード。
+/// @param[in] patrol 制作時の巡回入力。
+/// @param[in] signatureRuntimeMode 作成するベイク署名に含めるランタイムモード。
 /// @pre Scene の所有者と参照先のワールド変換は同期済みであること。
 /// @return 数値経路、または非ゼロの元入力署名を持つ無効なスナップショット。
 /// @see Docs/design/control-point-usage-audit.md
@@ -71,7 +71,7 @@ struct NavMeshOffMeshLinkSnapshot {
 
 /// @brief 制作時またはランタイムの境界で、選択中の巡回入力元を解決する。
 /// @note ランタイムの BAKED_STATIC は検証済みの数値ベイクだけを読む。
-/// @param context AUTHORING は参照を解決してベイクの鮮度を確認し、RUNTIME は選択中の現在値またはベイク値を読む。
+/// @param[in] context AUTHORING は参照を解決してベイクの鮮度を確認し、RUNTIME は選択中の現在値またはベイク値を読む。
 /// @pre LIVE または AUTHORING で点の個体参照を解決する前に、所有者と参照先のワールド変換を同期する。
 /// @return 順序付きの全経由点、または無効なスナップショット。部分的な経路は返さない。
 /// @see Docs/design/control-point-authoring.md
@@ -80,9 +80,9 @@ struct NavMeshOffMeshLinkSnapshot {
     ControlPointReadContext context = ControlPointReadContext::AUTHORING);
 
 /// @brief ハッシュとベイク採取に使う Off-Mesh Link の端点を数値ワールド座標に解決する。
-/// @param scene リンク所有者と TargetPoint 参照を含む Scene。
-/// @param ownerId リンクコンポーネントを持つ GameObject。
-/// @param link 制作時の数値端点または個体参照による端点。
+/// @param[in] scene リンク所有者と TargetPoint 参照を含む Scene。
+/// @param[in] ownerId リンクコンポーネントを持つ GameObject。
+/// @param[in] link 制作時の数値端点または個体参照による端点。
 /// @pre POINT_OBJECTS では Scene の所有者と参照先のワールド変換が同期済みであること。
 /// @return 数値端点、または非ゼロの元入力署名を持つ無効なスナップショット。
 /// @see Docs/design/control-point-usage-audit.md
@@ -90,7 +90,7 @@ struct NavMeshOffMeshLinkSnapshot {
     Scene& scene, EntityID ownerId, const NavMeshOffMeshLinkComponent& link);
 
 /// @brief 古い、または不正な Patrol の静的ベイクをランタイム開始前に拒否する。
-/// @param scene 現在の制作時巡回点を検証する対象。
+/// @param[in,out] scene 現在の制作時巡回点を検証する対象。
 /// @return 静的 Patrol が保存済みの数値から実行できない場合は false。
 [[nodiscard]] FBZZ_ENGINE_API bool ValidateStaticNavMeshPatrolBakes(Scene& scene);
 

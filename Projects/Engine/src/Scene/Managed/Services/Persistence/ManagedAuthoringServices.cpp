@@ -27,44 +27,70 @@ bool Text(std::string_view text) { return !text.empty() && text.find('\0') == st
 
 bool ResolveTypedAsset(std::string_view reference, bool material, std::string& path)
 {
-    if (!reference.starts_with("guid:") || !Text(reference.substr(5))) return false;
+    if (!reference.starts_with("guid:") || !Text(reference.substr(5))) {
+        return false;
+    }
     path = asset::AssetDatabase::PathFromGuid(std::string(reference.substr(5)));
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
     std::string extension = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).extension());
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (material) return extension == ".mat" && asset::AssetManager::Load<asset::MaterialAsset>(path).IsValid();
+    if (material) {
+        return extension == ".mat" && asset::AssetManager::Load<asset::MaterialAsset>(path).IsValid();
+    }
     return extension != ".mat" && asset::AssetManager::Load<asset::TextureAsset>(path).IsValid();
 }
 bool RegisteredGuid(const std::string& path, std::string& reference)
 {
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
     const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
-    if (resolved.empty()) return false;
+    if (resolved.empty()) {
+        return false;
+    }
     const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(resolved);
-    if (guid.empty()) return false;
+    if (guid.empty()) {
+        return false;
+    }
     reference = "guid:" + guid;
     return true;
 }
 ManagedBridgeStatus MaterialOperation(Script& proxy, GameObject& target, const ManagedBridgeRequest& request,
     int64_t integer, std::span<const float> p, std::span<const std::string> t, ManagedServiceResult& out)
 {
-    if (request.flags > 1 || request.index > 41 || (request.index >= 30 && request.index <= 35)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (request.flags > 1 || request.index > 41 || (request.index >= 30 && request.index <= 35)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const bool read = request.flags == 1;
     const bool expectedRead = request.index == 0 || request.index == 1 || request.index == 3 || request.index == 5
         || (request.index >= 6 && request.index <= 20 && !(request.index & 1U)) || request.index == 25 || request.index == 27
         || request.index == 29 || request.index == 37 || request.index == 39 || request.index == 41;
-    if (read != expectedRead) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (read != expectedRead) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     auto* component = target.GetComponent<MaterialComponent>();
-    if (!component || ManagedObjectControls::IsPendingComponentRemoval(target, static_cast<uint32_t>(ManagedNativeComponentKind::MATERIAL))) return ManagedBridgeStatus::NOT_FOUND;
+    if (!component || ManagedObjectControls::IsPendingComponentRemoval(target, static_cast<uint32_t>(ManagedNativeComponentKind::MATERIAL))) {
+        return ManagedBridgeStatus::NOT_FOUND;
+    }
     if (request.index <= 2) {
-        if (!p.empty() || !t.empty() || (request.index < 2 ? integer != 0 : integer < 0 || integer > 1)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        if (request.index == 0) out.integer = static_cast<int64_t>(component->SlotCount());
+        if (!p.empty() || !t.empty() || (request.index < 2 ? integer != 0 : integer < 0 || integer > 1)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        if (request.index == 0) {
+            out.integer = static_cast<int64_t>(component->SlotCount());
+        }
         else if (request.index == 1) out.integer = component->enabled;
-        else component->enabled = integer != 0;
+        else {
+            component->enabled = integer != 0;
+        }
         return ManagedBridgeStatus::OK;
     }
-    /// @note RawSlotAt と proxy の fallback/auto-resize を許す前に、既存 slot のみと確定する。
-    if (integer < 0 || static_cast<uint64_t>(integer) >= component->SlotCount()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    // RawSlotAt と proxy の fallback/auto-resize を許す前に、既存 slot のみと確定する。
+    if (integer < 0 || static_cast<uint64_t>(integer) >= component->SlotCount()) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const uint32_t slot = static_cast<uint32_t>(integer);
     auto& row = component->RawSlotAt(slot);
     const MaterialInstance instance = proxy.material.Instance(slot);
@@ -72,49 +98,75 @@ ManagedBridgeStatus MaterialOperation(Script& proxy, GameObject& target, const M
         const bool needsShared = read && ((request.index == 37 && !row.Authoring().hasBlendModeOverride)
             || (request.index == 39 && !row.Authoring().hasDoubleSidedOverride && !row.Authoring().hasPresentationDefaults)
             || (request.index == 41 && !row.Authoring().hasRenderQueueOverride && !row.Authoring().hasPresentationDefaults));
-        if (needsShared && !row.GetMaterialPath().empty() && !component->EnsureRawMaterialAsset(slot)) return ManagedBridgeStatus::NOT_FOUND;
+        if (needsShared && !row.GetMaterialPath().empty() && !component->EnsureRawMaterialAsset(slot)) {
+            return ManagedBridgeStatus::NOT_FOUND;
+        }
         auto& currentRow = component->RawSlotAt(slot);
         if (request.index == 40) {
             int queue = 0;
-            if (!p.empty() || t.size() != 1 || !ParseInteger(t[0], queue)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!p.empty() || t.size() != 1 || !ParseInteger(t[0], queue)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             out.integer = instance.SetRenderQueue(queue);
         } else {
-            if (!t.empty() || p.size() != (read ? 0U : 1U)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            if (!t.empty() || p.size() != (read ? 0U : 1U)) {
+                return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
             if (request.index == 36) {
-                if (p[0] < 0 || p[0] > 3 || std::trunc(p[0]) != p[0]) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                if (p[0] < 0 || p[0] > 3 || std::trunc(p[0]) != p[0]) {
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
                 auto edit = currentRow.BeginAuthoringEdit();
                 edit.Draft().blendModeOverride = static_cast<renderer::BlendMode>(static_cast<int>(p[0]));
                 edit.Draft().hasBlendModeOverride = true;
                 out.integer = edit.Commit(currentRow) != asset::detail::MaterialAuthoringCommitResult::CONFLICT;
             } else if (request.index == 38) {
-                if (p[0] != 0 && p[0] != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                if (p[0] != 0 && p[0] != 1) {
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                }
                 out.integer = instance.SetDoubleSided(p[0] != 0);
             } else if (request.index == 37) {
                 const auto mode = currentRow.Authoring().hasBlendModeOverride ? currentRow.Authoring().blendModeOverride
                     : currentRow.GetMaterialAsset().IsValid() ? currentRow.GetBlendMode() : renderer::BlendMode::OPAQUE_BLEND;
-                if (mode == renderer::BlendMode::OPAQUE_BLEND) out.integer = 0;
+                if (mode == renderer::BlendMode::OPAQUE_BLEND) {
+                    out.integer = 0;
+                }
                 else if (mode == renderer::BlendMode::ALPHA_BLEND) out.integer = 1;
                 else if (mode == renderer::BlendMode::ADDITIVE) out.integer = 2;
                 else if (mode == renderer::BlendMode::PREMULTIPLIED) out.integer = 3;
-                else return ManagedBridgeStatus::UNSUPPORTED;
+                else {
+                    return ManagedBridgeStatus::UNSUPPORTED;
+                }
             } else if (request.index == 39) out.integer = currentRow.IsDoubleSided();
-            else out.integer = currentRow.GetRenderQueue();
+            else {
+                out.integer = currentRow.GetRenderQueue();
+            }
         }
         return ManagedBridgeStatus::OK;
     }
     if (request.index == 3 || request.index == 4) {
-        if (!t.empty() || p.size() != (read ? 0U : 1U) || (!read && p[0] != 0 && p[0] != 1)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        if (read) out.integer = row.visible; else row.visible = p[0] != 0;
+        if (!t.empty() || p.size() != (read ? 0U : 1U) || (!read && p[0] != 0 && p[0] != 1)) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        if (read) {
+            out.integer = row.visible;
+        } else row.visible = p[0] != 0;
         return ManagedBridgeStatus::OK;
     }
     if (request.index == 23 || request.index == 25) {
-        if (!p.empty() || !t.empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
-        if (request.index == 23) out.integer = instance.ClearAllOverrides();
+        if (!p.empty() || !t.empty()) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        if (request.index == 23) {
+            out.integer = instance.ClearAllOverrides();
+        }
         else { std::string reference; out.integer = RegisteredGuid(row.GetMaterialPath(), reference); if (out.integer) out.text.push_back(std::move(reference)); }
         return ManagedBridgeStatus::OK;
     }
     if (request.index == 24) {
-        if (!p.empty() || t.size() != 1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!p.empty() || t.size() != 1) {
+            return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
         std::string path;
         if (!t[0].empty() && !ResolveTypedAsset(t[0], true, path)) { out.integer = 0; return ManagedBridgeStatus::OK; }
         MaterialRef reference;
@@ -125,7 +177,9 @@ ManagedBridgeStatus MaterialOperation(Script& proxy, GameObject& target, const M
     const size_t strings = request.index == 9 || request.index == 11 || request.index == 26 ? 2U : 1U;
     const size_t floats = request.index == 28 ? 16U : request.index == 7 || request.index == 13 ? 1U : request.index == 15 ? 2U
         : request.index == 17 ? 3U : request.index == 19 || request.index == 21 ? 4U : 0U;
-    if (t.size() != strings || !Text(t[0]) || p.size() != floats) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (t.size() != strings || !Text(t[0]) || p.size() != floats) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const MaterialPropertyId property(t[0]);
     switch (request.index) {
     case 5: out.integer = instance.HasProperty(property); break;
@@ -173,17 +227,25 @@ ManagedBridgeStatus MaterialOperation(Script& proxy, GameObject& target, const M
 ManagedBridgeStatus StoreOperation(const ManagedBridgeRequest& request, int64_t integer,
     std::span<const float> p, std::span<const std::string> t, ManagedServiceResult& out)
 {
-    if (!Script::IsInPlayMode()) return ManagedBridgeStatus::INVALID_SCOPE;
-    if (request.flags > 1 || (request.index > 21 && request.index != 27)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (!Script::IsInPlayMode()) {
+        return ManagedBridgeStatus::INVALID_SCOPE;
+    }
+    if (request.flags > 1 || (request.index > 21 && request.index != 27)) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const bool read = request.flags == 1;
     const bool expectedRead = request.index == 0 || request.index == 2 || request.index == 3
         || (request.index >= 8 && request.index <= 20 && !(request.index & 1U)) || request.index == 27;
-    if (read != expectedRead) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (read != expectedRead) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     const size_t strings = request.index == 1 ? 1U : request.index >= 3 && request.index <= 4 ? 1U
         : request.index >= 8 ? request.index == 15 ? 2U : 1U : 0U;
     const size_t floats = request.index == 27 ? 0U : request.index >= 12 && request.index <= 13 ? 1U : request.index >= 16 && request.index <= 17 ? 2U
         : request.index >= 18 && request.index <= 19 ? 3U : request.index >= 20 ? 4U : 0U;
-    if (t.size() != strings || p.size() != floats || (strings && !Text(t[0]))) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    if (t.size() != strings || p.size() != floats || (strings && !Text(t[0]))) {
+        return ManagedBridgeStatus::INVALID_ARGUMENT;
+    }
     if (request.index == 8 || request.index == 9) { if (integer < 0 || integer > 1) return ManagedBridgeStatus::INVALID_ARGUMENT; }
     else if (request.index == 10 || request.index == 11) { if (integer < INT32_MIN || integer > INT32_MAX) return ManagedBridgeStatus::INVALID_ARGUMENT; }
     else if (integer) return ManagedBridgeStatus::INVALID_ARGUMENT;
@@ -218,13 +280,15 @@ ManagedBridgeStatus StoreOperation(const ManagedBridgeRequest& request, int64_t 
     case 27: {
         std::string_view type, schema;
         out.hasBorrowedText = store.TryGetDocumentView(t[0], type, schema, out.borrowedText); out.integer = out.hasBorrowedText;
-        if (out.hasBorrowedText) out.text = {std::string(type), std::string(schema)};
+        if (out.hasBorrowedText) {
+            out.text = {std::string(type), std::string(schema)};
+        }
         break;
     }
     }
     return ManagedBridgeStatus::OK;
 }
-} /// @note namespace
+} // namespace
 ManagedBridgeStatus RunManagedAuthoringService(Scene&, Script& proxy, GameObject& target,
     const ManagedBridgeRequest& request, int64_t integer, std::span<const float> values,
     std::span<const std::string> text, ManagedServiceResult& result)
@@ -233,7 +297,9 @@ ManagedBridgeStatus RunManagedAuthoringService(Scene&, Script& proxy, GameObject
     const auto status = request.op == ManagedBridgeOp::SERVICE_MATERIAL
         ? MaterialOperation(proxy, target, request, integer, values, text, output)
         : StoreOperation(request, integer, values, text, output);
-    if (status == ManagedBridgeStatus::OK) result = std::move(output);
+    if (status == ManagedBridgeStatus::OK) {
+        result = std::move(output);
+    }
     return status;
 }
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

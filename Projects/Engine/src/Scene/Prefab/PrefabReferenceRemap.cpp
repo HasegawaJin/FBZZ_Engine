@@ -35,8 +35,9 @@ public:
         , m_clearExternalReferences(clearExternalReferences)
     {
         m_entityMap.reserve(replacements.size());
-        for (const auto& [source, destination] : replacements)
+        for (const auto& [source, destination] : replacements) {
             m_entityMap.emplace(Key(source), destination);
+        }
     }
 
     using IReflector::Field;
@@ -60,7 +61,9 @@ public:
 
     void ListField(const char*, std::vector<EntityRef>& values) override
     {
-        for (EntityRef& value : values) Remap(value);
+        for (EntityRef& value : values) {
+            Remap(value);
+        }
     }
 
     void ObjectReferenceField(const char*, ObjectReference& value) override
@@ -70,15 +73,21 @@ public:
 
     void ObjectReferenceListField(const char*, std::vector<ObjectReference>& values) override
     {
-        for (ObjectReference& value : values) Remap(value);
+        for (ObjectReference& value : values) {
+            Remap(value);
+        }
     }
 
     /// @note INVALID への対応は、アセットから削除された実体への参照を解除する。
     void Remap(EntityID& value) const
     {
-        if (!value.IsValid()) return;
+        if (!value.IsValid()) {
+            return;
+        }
         const auto found = m_entityMap.find(Key(value));
-        if (found != m_entityMap.end()) value = found->second;
+        if (found != m_entityMap.end()) {
+            value = found->second;
+        }
         else if (m_clearExternalReferences) value = EntityID::INVALID;
     }
 
@@ -90,14 +99,20 @@ public:
                 ? m_destinationScene->GetRenderSceneGeneration() : 0;
             return;
         }
-        if (!m_sourceScene || !m_destinationScene) return;
+        if (!m_sourceScene || !m_destinationScene) {
+            return;
+        }
         GameObject* sourceObject = nullptr;
         if (value.sceneGeneration == m_sourceScene->GetRenderSceneGeneration()
             && m_sourceScene->IsValid(value.id)) {
             GameObject* cached = m_sourceScene->GetGameObject(value.id);
-            if (cached && cached->instanceId == value.guid) sourceObject = cached;
+            if (cached && cached->instanceId == value.guid) {
+                sourceObject = cached;
+            }
         }
-        if (!sourceObject) sourceObject = m_sourceScene->FindByGuid(value.guid);
+        if (!sourceObject) {
+            sourceObject = m_sourceScene->FindByGuid(value.guid);
+        }
 
         const auto mapped = sourceObject ? m_entityMap.find(Key(sourceObject->GetID())) : m_entityMap.end();
         if (mapped != m_entityMap.end()) {
@@ -106,7 +121,9 @@ public:
                 ? m_destinationScene->GetGameObject(destinationId) : nullptr;
             value.id = destinationObject ? destinationId : EntityID::INVALID;
             value.sceneGeneration = m_destinationScene->GetRenderSceneGeneration();
-            if (destinationObject) value.guid = destinationObject->instanceId;
+            if (destinationObject) {
+                value.guid = destinationObject->instanceId;
+            }
             return;
         }
 
@@ -118,14 +135,18 @@ public:
 
         value.id = sourceObject ? sourceObject->GetID() : EntityID::INVALID;
         value.sceneGeneration = m_destinationScene->GetRenderSceneGeneration();
-        if (sourceObject) value.guid = sourceObject->instanceId;
+        if (sourceObject) {
+            value.guid = sourceObject->instanceId;
+        }
     }
 
     void Remap(EntityRef& value) const
     {
         if (value.guid.empty() && m_sourceScene && value.id.IsValid()) {
             const GameObject* original = m_sourceScene->GetGameObject(value.id);
-            if (original) value.guid = original->instanceId;
+            if (original) {
+                value.guid = original->instanceId;
+            }
         }
         if (value.guid.empty()) { Remap(value.id); value.sceneGeneration = 0; return; }
         ObjectReference reference{value.guid, value.id, value.sceneGeneration};
@@ -139,21 +160,31 @@ public:
     {
         const auto migrate = [&](ObjectReference& reference, EntityID legacy,
                                  const std::string& legacyGuid, const std::string& name, bool pending) {
-            if (!pending || !reference.guid.empty()) return;
+            if (!pending || !reference.guid.empty()) {
+                return;
+            }
             reference.guid = legacyGuid;
             const GameObject* original = nullptr;
-            if (reference.guid.empty() && m_sourceScene && legacy.IsValid()) original = m_sourceScene->GetGameObject(legacy);
+            if (reference.guid.empty() && m_sourceScene && legacy.IsValid()) {
+                original = m_sourceScene->GetGameObject(legacy);
+            }
             if (reference.guid.empty() && !original && m_sourceScene && !name.empty()) {
                 auto candidates = m_sourceScene->GetRootGameObjects();
                 while (!candidates.empty()) {
                     const GameObject* object = candidates.back(); candidates.pop_back();
-                    for (int i = 0; i < object->GetChildCount(); ++i) candidates.push_back(object->GetChild(i));
-                    if (object->name != name) continue;
+                    for (int i = 0; i < object->GetChildCount(); ++i) {
+                        candidates.push_back(object->GetChild(i));
+                    }
+                    if (object->name != name) {
+                        continue;
+                    }
                     if (original) { original = nullptr; break; }
                     original = object;
                 }
             }
-            if (original) reference.guid = original->instanceId;
+            if (original) {
+                reference.guid = original->instanceId;
+            }
             reference.id = legacy;
             reference.sceneGeneration = m_sourceScene ? m_sourceScene->GetRenderSceneGeneration() : 0;
         };
@@ -180,7 +211,9 @@ private:
 void RemapScriptReferences(ScriptComponent& component, PrefabReferenceReflector& reflector)
 {
     for (auto& entry : component.scripts) {
-        if (!entry.script || entry.script->IsRuntimeFaulted()) continue;
+        if (!entry.script || entry.script->IsRuntimeFaulted()) {
+            continue;
+        }
         entry.script->ExecuteCallback([&] { entry.script->Reflect(reflector); }, "ObjectReferenceRemap");
     }
 }
@@ -190,39 +223,53 @@ template<typename T>
 void RemapCustomComponentReferences(T& component, const PrefabReferenceReflector& reflector)
 {
     if constexpr (std::is_same_v<T, IKSolverComponent>) {
-        for (auto& chain : component.chains) reflector.RemapIKChain(chain);
+        for (auto& chain : component.chains) {
+            reflector.RemapIKChain(chain);
+        }
     }
-    if constexpr (std::is_same_v<T, BoneComponent>)
+    if constexpr (std::is_same_v<T, BoneComponent>) {
         reflector.Remap(component.skinnedMeshEntity);
+    }
     if constexpr (std::is_same_v<T, SkinnedMeshRenderer>) {
         reflector.Remap(component.skeletonRootEntity);
-        for (EntityID& node : component.nodeEntities) reflector.Remap(node);
+        for (EntityID& node : component.nodeEntities) {
+            reflector.Remap(node);
+        }
     }
     if constexpr (std::is_same_v<T, TerrainGridComponent>)
-        for (EntityID& cell : component.cells) reflector.Remap(cell);
+        for (EntityID& cell : component.cells) {
+            reflector.Remap(cell);
+        }
     if constexpr (std::is_same_v<T, LODGroupComponent>)
         for (auto& level : component.levels)
-            for (auto& renderer : level.renderers) reflector.Remap(renderer.entity);
+            for (auto& renderer : level.renderers) {
+                reflector.Remap(renderer.entity);
+            }
 }
 
 template<typename T, typename Registration>
 void RemapComponentReferences(T& component, PrefabReferenceReflector& reflector)
 {
-    if constexpr (Registration::hasReflect) component.Reflect(reflector);
+    if constexpr (Registration::hasReflect) {
+        component.Reflect(reflector);
+    }
     RemapCustomComponentReferences(component, reflector);
 }
 
-} /// @note namespace
+} // namespace
 
 void RemapScenePrefabEntityReferences(Scene& scene, const EntityReplacements& replacements)
 {
-    if (replacements.empty()) return;
+    if (replacements.empty()) {
+        return;
+    }
 
     PrefabReferenceReflector reflector(replacements, &scene, &scene);
     for (GameObject& gameObject : scene.GameObjects()) {
         ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-            if (auto* component = gameObject.GetComponent<T>())
+            if (auto* component = gameObject.GetComponent<T>()) {
                 RemapComponentReferences<T, Registration>(*component, reflector);
+            }
         });
 
         if (auto* scripts = gameObject.GetComponent<ScriptComponent>()) {
@@ -238,7 +285,9 @@ void CopyPreparedPrefabComponents(Scene& source, Scene& destination,
     for (const auto& [sourceId, destinationId] : replacements) {
         GameObject* sourceObject = source.GetGameObject(sourceId);
         GameObject* destinationObject = destination.GetGameObject(destinationId);
-        if (!sourceObject || !destinationObject) continue;
+        if (!sourceObject || !destinationObject) {
+            continue;
+        }
 
         std::vector<bool> missingComponents;
         ForEachRegisteredComponent([&]<typename T, typename Registration>() {
@@ -247,16 +296,18 @@ void CopyPreparedPrefabComponents(Scene& source, Scene& destination,
         });
         destination.CopyComponentsFrom(source, sourceId, destinationId);
 
-        /// @note 準備 Scene の ID は既存 Scene と重なるため、新規コピー分だけへ適用する。
+        // 準備 Scene の ID は既存 Scene と重なるため、新規コピー分だけへ適用する。
         std::size_t componentIndex = 0;
         ForEachRegisteredComponent([&]<typename T, typename Registration>() {
             const bool wasMissing = missingComponents[componentIndex++];
             if (wasMissing)
-                if (auto* component = destinationObject->GetComponent<T>())
+                if (auto* component = destinationObject->GetComponent<T>()) {
                     RemapComponentReferences<T, Registration>(*component, reflector);
+                }
         });
-        if (auto* scripts = destinationObject->GetComponent<ScriptComponent>())
+        if (auto* scripts = destinationObject->GetComponent<ScriptComponent>()) {
             RemapScriptReferences(*scripts, reflector);
+        }
     }
 }
 
@@ -267,14 +318,18 @@ void RemapCopiedObjectReferences(Scene& source, Scene& destination,
     PrefabReferenceReflector reflector(replacements, &source, &destination, &source != &destination);
     for (EntityID ownerId : copiedOwners) {
         GameObject* owner = destination.GetGameObject(ownerId);
-        if (!owner) continue;
+        if (!owner) {
+            continue;
+        }
         ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-            if (auto* component = owner->GetComponent<T>())
+            if (auto* component = owner->GetComponent<T>()) {
                 RemapComponentReferences<T, Registration>(*component, reflector);
+            }
         });
-        if (auto* scripts = owner->GetComponent<ScriptComponent>())
+        if (auto* scripts = owner->GetComponent<ScriptComponent>()) {
             RemapScriptReferences(*scripts, reflector);
+        }
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

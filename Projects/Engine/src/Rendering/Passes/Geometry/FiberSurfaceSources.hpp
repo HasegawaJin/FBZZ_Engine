@@ -49,10 +49,14 @@ void SweepFiberTerrain(FiberTerrainCache& cache, uint64_t frame, ReleaseMesh&& r
         if (FiberTerrainExpired(frame, it->second.m_seen)) {
             releaseMesh(it->second.m_mesh);
             it = cache.m_patches.erase(it);
-        } else ++it;
+        } else {
+            ++it;
+        }
     }
     std::erase_if(cache.m_retired, [&](auto& retired) {
-        if (!FiberTerrainExpired(frame, retired.m_frame)) return false;
+        if (!FiberTerrainExpired(frame, retired.m_frame)) {
+            return false;
+        }
         releaseMesh(retired.m_mesh);
         return true;
     });
@@ -76,17 +80,30 @@ inline bool FiberTerrainWindow(const TerrainComponent& terrain, const Transform&
 {
     const auto scale = transform.worldScale;
     const float rotationLength = transform.worldRotation.Length();
-    if (!FiberTerrainFinite(camera) || !FiberTerrainFinite(transform.worldPosition) || !FiberTerrainFinite(scale)
-        || scale.x == 0 || scale.y == 0 || scale.z == 0 || !std::isfinite(rotationLength)
-        || std::abs(rotationLength - 1.0f) > 0.001f || !std::isfinite(farDistance) || farDistance <= 0) return false;
+    if (!FiberTerrainFinite(camera) || !FiberTerrainFinite(transform.worldPosition)) {
+        return false;
+    }
+    const bool invertibleScale = FiberTerrainFinite(scale) && scale.x != 0 && scale.y != 0 && scale.z != 0;
+    if (!invertibleScale || !std::isfinite(rotationLength) || std::abs(rotationLength - 1.0f) > 0.001f) {
+        return false;
+    }
+    if (!std::isfinite(farDistance) || farDistance <= 0) {
+        return false;
+    }
+
+    // カメラを地形のローカル空間に移し、距離の範囲が重なるパッチだけを求める。
     const auto rotated = transform.worldRotation.Inverse() * (camera - transform.worldPosition);
     const double localX = static_cast<double>(rotated.x) / scale.x;
     const double localZ = static_cast<double>(rotated.z) / scale.z;
-    if (!std::isfinite(localX) || !std::isfinite(localZ)) return false;
+    if (!std::isfinite(localX) || !std::isfinite(localZ)) {
+        return false;
+    }
     const auto axis = [&](double center, float worldScale, int cells, int& first, int& last) {
         const double radius = static_cast<double>(farDistance) / std::abs(static_cast<double>(worldScale));
         const double extent = static_cast<double>(cells) * terrain.cellSize;
-        if (center + radius < 0 || center - radius > extent) return false;
+        if (center + radius < 0 || center - radius > extent) {
+            return false;
+        }
         const double step = static_cast<double>(patch) * terrain.cellSize;
         const double maximum = static_cast<double>((cells - 1) / patch);
         first = static_cast<int>(std::clamp(std::floor((center - radius) / step), 0.0, maximum));
@@ -103,17 +120,23 @@ inline bool ReadFiberTerrainPatch(const TerrainComponent& terrain, int x, int z,
 {
     signature = 1469598103934665603ull;
     const auto add = [&](uint64_t value) { signature = (std::rotl(signature, 29) ^ value) * 1099511628211ull; };
-    for (const auto value : metadata) add(value);
+    for (const auto value : metadata) {
+        add(value);
+    }
     add(static_cast<uint32_t>(x)); add(static_cast<uint32_t>(z));
     float minHeight = std::numeric_limits<float>::max(), maxHeight = -std::numeric_limits<float>::max();
     for (int gz = std::max(0, z - 1); gz <= std::min(terrain.rows - 1, z + nz + 1); ++gz) {
         for (int gx = std::max(0, x - 1); gx <= std::min(terrain.columns - 1, x + nx + 1); ++gx) {
             const float height = terrain.heightData[static_cast<size_t>(gz) * terrain.columns + gx] * terrain.maxHeight;
-            if (!std::isfinite(height)) return false;
+            if (!std::isfinite(height)) {
+                return false;
+            }
             add(std::bit_cast<uint32_t>(height));
             if (gx >= x && gx <= x + nx && gz >= z && gz <= z + nz) {
                 minHeight = std::min(minHeight, height); maxHeight = std::max(maxHeight, height);
-                if (layer >= 0) add(std::bit_cast<uint32_t>(terrain.GetLayerWeightAtGrid(gx, gz, layer)));
+                if (layer >= 0) {
+                    add(std::bit_cast<uint32_t>(terrain.GetLayerWeightAtGrid(gx, gz, layer)));
+                }
             }
         }
     }
@@ -133,12 +156,18 @@ inline void GenerateFiberTerrainPatch(renderer::Mesh& mesh, const TerrainCompone
     const auto weightAt = [&](int gx, int gz) { return layer < 0 ? 1.0f : terrain.GetLayerWeightAtGrid(gx, gz, layer); };
     for (int iz = 0; iz < nz; ++iz) for (int ix = 0; ix < nx; ++ix) {
         const int cx = x + ix, cz = z + iz;
-        if (holes && terrain.IsHoleCell(cx, cz)) continue;
-        if (layer >= 0 && std::max({weightAt(cx, cz), weightAt(cx + 1, cz), weightAt(cx, cz + 1), weightAt(cx + 1, cz + 1)}) < threshold) continue;
+        if (holes && terrain.IsHoleCell(cx, cz)) {
+            continue;
+        }
+        if (layer >= 0 && std::max({weightAt(cx, cz), weightAt(cx + 1, cz), weightAt(cx, cz + 1), weightAt(cx + 1, cz + 1)}) < threshold) {
+            continue;
+        }
         const uint32_t a = static_cast<uint32_t>(iz * (nx + 1) + ix), b = a + static_cast<uint32_t>(nx + 1);
         mesh.cpuIndices.insert(mesh.cpuIndices.end(), {a, b, a + 1, a + 1, b, b + 1});
     }
-    if (mesh.cpuIndices.empty()) return;
+    if (mesh.cpuIndices.empty()) {
+        return;
+    }
     mesh.cpuVertices.reserve(static_cast<size_t>(nx + 1) * (nz + 1));
     for (int iz = 0; iz <= nz; ++iz) for (int ix = 0; ix <= nx; ++ix) {
         renderer::Vertex vertex;
@@ -172,9 +201,15 @@ inline void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent&
     const uint64_t frame = resources.FrameStamp();
     cache.m_seen = frame;
     cache.m_visible.clear();
-    if (terrain.columns < 2 || terrain.rows < 2 || terrain.columns > 4097 || terrain.rows > 4097
-        || terrain.heightData.size() != static_cast<size_t>(terrain.columns) * terrain.rows
-        || !std::isfinite(terrain.cellSize) || terrain.cellSize <= 0 || !std::isfinite(terrain.maxHeight)) return;
+    const bool validGridSize = terrain.columns >= 2 && terrain.rows >= 2
+        && terrain.columns <= 4097 && terrain.rows <= 4097;
+    if (!validGridSize || terrain.heightData.size() != static_cast<size_t>(terrain.columns) * terrain.rows) {
+        return;
+    }
+    if (!std::isfinite(terrain.cellSize) || terrain.cellSize <= 0 || !std::isfinite(terrain.maxHeight)) {
+        return;
+    }
+
     const int patch = std::clamp(patchCells, 1, 32);
     const int layer = terrainLayer < 0 ? -1 : terrainLayer;
     const float threshold = std::isfinite(layerThreshold) ? std::clamp(layerThreshold, 0.0f, 1.0f) : 0.0f;
@@ -184,9 +219,13 @@ inline void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent&
     if (metadata != cache.m_metadata) { cache.m_metadata = metadata; ++cache.m_metadataRevision; }
     std::array<int, 4> window{0, (terrain.columns - 2) / patch, 0, (terrain.rows - 2) / patch};
     if (distanceLod) {
-        if (!std::isfinite(nearDistance) || !std::isfinite(farDistance)) return;
+        if (!std::isfinite(nearDistance) || !std::isfinite(farDistance)) {
+            return;
+        }
         farDistance = std::max(farDistance, std::max(nearDistance, 0.0f) + 0.1f);
-        if (!FiberTerrainWindow(terrain, transform, camera, farDistance, patch, window)) return;
+        if (!FiberTerrainWindow(terrain, transform, camera, farDistance, patch, window)) {
+            return;
+        }
     }
     const auto world = transform.GetWorldMatrix();
     for (int pz = window[2]; pz <= window[3]; ++pz) for (int px = window[0]; px <= window[1]; ++px) {
@@ -199,7 +238,7 @@ inline void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent&
         const bool newFrame = entry.m_checkedFrame != frame;
         const auto& heightEdit = terrain.heightPreview;
         const auto& splatEdit = terrain.splatPreview;
-        /// @note 版を飛ばすと過去の変更を見落とすため、基準版が一致する場合だけ矩形差分を適用する。
+        // 版を飛ばすと過去の変更を見落とすため、基準版が一致する場合だけ矩形差分を適用する。
         const bool heightOutside = heightChanged && !terrain.heightDirty && heightEdit.revision == terrain.surfaceRevision
             && heightEdit.baseRevision == entry.m_surfaceRevision
             && FiberTerrainEditMissesPatch(heightEdit.region, x, z, nx, nz, heightEdit.heightChanged ? 1 : 0);
@@ -209,14 +248,17 @@ inline void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent&
             && (splatEdit.pending ? splatEdit.baseRevision == terrain.vegetationRevision : splatEdit.revision == terrain.vegetationRevision)
             && FiberTerrainEditMissesPatch(splatEdit.region, x, z, nx, nz, 0);
         const bool fullDirty = newFrame && (terrain.heightDirty || (layer >= 0 && terrain.splatDirty));
-        if (entry.m_metadataRevision != cache.m_metadataRevision || fullDirty
-            || (heightChanged && !heightOutside) || ((splatChanged || pendingSplat) && !splatOutside)) {
+        // 描画設定の差、全域編集、またはこのパッチに影響する部分編集で生成元を読み直す。
+        const bool patchHeightChanged = heightChanged && !heightOutside;
+        const bool patchSplatChanged = (splatChanged || pendingSplat) && !splatOutside;
+        if (entry.m_metadataRevision != cache.m_metadataRevision || fullDirty || patchHeightChanged || patchSplatChanged) {
             uint64_t signature = 0;
             math::Vector3 center{};
             const bool valid = ReadFiberTerrainPatch(terrain, x, z, nx, nz, layer, metadata, signature, center);
             if (signature != entry.m_signature || valid != entry.m_valid) {
-                if (entry.m_mesh.vertexBuffer.IsValid() || entry.m_mesh.indexBuffer.IsValid())
+                if (entry.m_mesh.vertexBuffer.IsValid() || entry.m_mesh.indexBuffer.IsValid()) {
                     cache.m_retired.push_back({std::move(entry.m_mesh), frame});
+                }
                 entry.m_mesh = {};
                 entry.m_generated = false;
             }
@@ -224,21 +266,31 @@ inline void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent&
             entry.m_checkedFrame = frame; entry.m_metadataRevision = cache.m_metadataRevision;
             entry.m_surfaceRevision = terrain.surfaceRevision; entry.m_vegetationRevision = terrain.vegetationRevision;
         } else {
-            if (heightOutside) entry.m_surfaceRevision = terrain.surfaceRevision;
-            if (splatOutside) entry.m_vegetationRevision = terrain.vegetationRevision;
+            if (heightOutside) {
+                entry.m_surfaceRevision = terrain.surfaceRevision;
+            }
+            if (splatOutside) {
+                entry.m_vegetationRevision = terrain.vegetationRevision;
+            }
         }
-        if (!entry.m_valid) continue;
+        if (!entry.m_valid) {
+            continue;
+        }
         if (distanceLod) {
             const auto center = world * math::Vector4{entry.m_center.x, entry.m_center.y, entry.m_center.z, 1};
             const math::Vector3 worldCenter{center.x, center.y, center.z};
-            if (!FiberTerrainFinite(worldCenter) || (worldCenter - camera).Length() >= farDistance) continue;
+            if (!FiberTerrainFinite(worldCenter) || (worldCenter - camera).Length() >= farDistance) {
+                continue;
+            }
         }
         if (!entry.m_generated) {
             GenerateFiberTerrainPatch(entry.m_mesh, terrain, x, z, nx, nz, layer, threshold, resources);
             entry.m_generated = true;
         }
-        if (entry.m_mesh.vertexBuffer.IsValid() && entry.m_mesh.indexBuffer.IsValid()) cache.m_visible.push_back(&entry.m_mesh);
+        if (entry.m_mesh.vertexBuffer.IsValid() && entry.m_mesh.indexBuffer.IsValid()) {
+            cache.m_visible.push_back(&entry.m_mesh);
+        }
     }
 }
-} /// @note namespace fiber_extraction_detail
-} /// @note namespace fbzz::scene
+} // namespace fiber_extraction_detail
+} // namespace fbzz::scene

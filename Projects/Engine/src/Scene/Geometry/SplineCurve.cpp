@@ -32,8 +32,9 @@ struct CurveSegment {
 CurveSegment GetSegment(std::span<const math::Vector3> points, bool closed, float normalizedPosition)
 {
     const int count = static_cast<int>(points.size());
-    if (count < 2)
+    if (count < 2) {
         return {};
+    }
 
     const int segmentCount = closed ? count : count - 1;
     const float scaled = Clamp01(normalizedPosition) * static_cast<float>(segmentCount);
@@ -55,10 +56,12 @@ CurveSegment GetSegment(std::span<const math::Vector3> points, bool closed, floa
 math::Vector3 EvaluateSplineCurve(std::span<const math::Vector3> points, bool closed,
     float normalizedPosition)
 {
-    if (points.empty())
+    if (points.empty()) {
         return math::Vector3::ZERO;
-    if (points.size() == 1)
+    }
+    if (points.size() == 1) {
         return points.front();
+    }
 
     const CurveSegment segment = GetSegment(points, closed, normalizedPosition);
     const math::Vector3& p0 = *segment.p0;
@@ -76,8 +79,9 @@ math::Vector3 EvaluateSplineCurve(std::span<const math::Vector3> points, bool cl
 math::Vector3 EvaluateSplineCurveTangent(std::span<const math::Vector3> points, bool closed,
     float normalizedPosition)
 {
-    if (points.size() < 2)
+    if (points.size() < 2) {
         return math::Vector3::ZERO;
+    }
 
     const CurveSegment segment = GetSegment(points, closed, normalizedPosition);
     const math::Vector3& p0 = *segment.p0;

@@ -19,7 +19,7 @@ enum class LineShape : int;
 
 struct ScriptGameplayProxy {
     explicit ScriptGameplayProxy(Script* owner) : script(owner) {}
-    Script* script = nullptr;
+    Script* script = nullptr; ///< ゲーム実行操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API bool SetSprite(std::string_view assetPath) const;
     FBZZ_ENGINE_API bool SetSpriteColor(float r, float g, float b, float a) const;
@@ -44,7 +44,7 @@ struct ScriptGameplayProxy {
     FBZZ_ENGINE_API bool SetLineRadialSegments(int segments) const;
     FBZZ_ENGINE_API bool SetLineSorting(int layer, int order) const;
     /// @brief 2 点だけの線を張る。
-    /// @param worldSpace true なら引数と幅を world の m として扱う。false は local の m。
+    /// @param[in] worldSpace true なら引数と幅を world の m として扱う。false は local の m。
     FBZZ_ENGINE_API bool SetLine(const math::Vector3& start,
                  const math::Vector3& end,
                  bool worldSpace = true) const;

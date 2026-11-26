@@ -36,14 +36,16 @@ bool BTNodeIsDecorator(BTNodeType type) noexcept
 
 bool BTNodeIsLeaf(BTNodeType type) noexcept
 {
-    if (type >= BTNodeType::Count) return false;
+    if (type >= BTNodeType::Count) {
+        return false;
+    }
     return !BTNodeIsComposite(type) && !BTNodeIsDecorator(type);
 }
 
 bool BTNodeIsPureCondition(BTNodeType type) noexcept
 {
     switch (type) {
-    /// @note Blackboard と知覚結果を読むだけで、何も書き換えない。
+    // Blackboard と知覚結果を読むだけで、何も書き換えない。
     case BTNodeType::BlackboardCondition:
     case BTNodeType::BlackboardCompare:
     case BTNodeType::HasTarget:
@@ -52,8 +54,8 @@ bool BTNodeIsPureCondition(BTNodeType type) noexcept
     case BTNodeType::HasLineOfSight:
         return true;
 
-    /// @note AlwaysSucceed/AlwaysFail は状態を読み書きしないため純粋条件に含める。
-    ///       AlwaysRunning は「実行中である」こと自体が状態なので除外する。
+    // AlwaysSucceed/AlwaysFail は状態を読み書きしないため純粋条件に含める。
+    //       AlwaysRunning は「実行中である」こと自体が状態なので除外する。
     case BTNodeType::AlwaysSucceed:
     case BTNodeType::AlwaysFail:
         return true;
@@ -98,10 +100,14 @@ const char* BTNodeTypeName(BTNodeType type) noexcept
 
 int BTNodeMaxChildren(BTNodeType type) noexcept
 {
-    /// @note 無制限
-    if (BTNodeIsComposite(type)) return -1;
-    if (BTNodeIsDecorator(type)) return 1;
-    /// @note リーフ
+    // 無制限
+    if (BTNodeIsComposite(type)) {
+        return -1;
+    }
+    if (BTNodeIsDecorator(type)) {
+        return 1;
+    }
+    // リーフ
     return 0;
 }
 

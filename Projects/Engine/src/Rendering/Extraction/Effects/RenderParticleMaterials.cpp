@@ -84,29 +84,33 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialPar
     const asset::MaterialAssetAuthoring& material,
     renderer::ResourceHandle<renderer::ShaderTag> shader)
 {
-    if (!shader.IsValid()) return {};
+    if (!shader.IsValid()) {
+        return {};
+    }
 
     ParticleMaterialBinding& binding = cache.m_materials[materialPath];
-    if (binding.resolvedPass == cache.m_passSerial)
+    if (binding.resolvedPass == cache.m_passSerial) {
         return binding.resolvedOk ? binding.paramsCB.Get() : renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+    }
     binding.resolvedPass = cache.m_passSerial;
     binding.resolvedOk   = false;
 
-    /// @note 記述子は値で持つ。シェーダーはホットリロードで差し替わりうるので、
-    /// @note ポインタで持つと解決時の中身と食い違う瞬間ができる。
+    // 記述子は値で持つ。シェーダーはホットリロードで差し替わりうるので、
+    // ポインタで持つと解決時の中身と食い違う瞬間ができる。
     binding.descriptor = {};
-    if (auto* compiled = resources.Get(shader))
+    if (auto* compiled = resources.Get(shader)) {
         binding.descriptor = compiled->GetDescriptor();
-    /// @note MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
-    /// @note その場合 b2 は何も束縛しない — 組み込み Particle.hlsl がこれに当たる。
+    }
+    // MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
+    // その場合 b2 は何も束縛しない — 組み込み Particle.hlsl がこれに当たる。
     if (!binding.descriptor.IsValid()) { binding.paramsCB.Reset(); binding.paramsCBSize = 0; return {}; }
 
     binding.paramData.assign(binding.descriptor.cbufferSize, uint8_t{ 0 });
     asset::InitDefaultMaterialParams(binding.descriptor, binding.paramData);
     asset::ApplyMaterialAssetParams(material, binding.descriptor, binding.paramData);
 
-    /// @note IsValid() だけでは判定できない: このキャッシュはシーンの寿命もデバイスリセットも跨ぎ、
-    /// @note ハンドルの体裁は残るため、実体が居るかどうかで作り直しを判断する。
+    // IsValid() だけでは判定できない: このキャッシュはシーンの寿命もデバイスリセットも跨ぎ、
+    // ハンドルの体裁は残るため、実体が居るかどうかで作り直しを判断する。
     const bool cbLive = resources.Get(binding.paramsCB) != nullptr;
     if (!cbLive) {
         binding.paramsCB = {};
@@ -117,7 +121,9 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialPar
         binding.paramsCB = resources.CreateConstantBuffer(binding.descriptor.cbufferSize);
         binding.paramsCBSize = binding.descriptor.cbufferSize;
     }
-    if (!binding.paramsCB.IsValid()) return {};
+    if (!binding.paramsCB.IsValid()) {
+        return {};
+    }
     resources.Update(binding.paramsCB, binding.paramData.data(),
                      static_cast<uint32_t>(binding.paramData.size()));
 
@@ -129,16 +135,17 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
     renderer::ResourceManager& resources,
     const std::string& texturePath)
 {
-    /// @note Particle は色カーブだけでも成立する VFX なので、参照先テクスチャの欠落で
-    /// @note DrawCall 全体を無効化せず、白テクスチャにフォールバックして色だけは表示する。
+    // Particle は色カーブだけでも成立する VFX なので、参照先テクスチャの欠落で
+    // DrawCall 全体を無効化せず、白テクスチャにフォールバックして色だけは表示する。
     if (!texturePath.empty()) {
         auto texture = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePath);
-        if (texture.IsValid())
+        if (texture.IsValid()) {
             return texture;
+        }
     }
 
-    /// @note 白テクスチャは共有の 1 枚を返す。エミッターごとに作ると Despawn / Stop で
-    /// @note 返却されないまま漏れる (LoadTexture 由来のハンドルを返すと共有キャッシュを壊すため)。
+    // 白テクスチャは共有の 1 枚を返す。エミッターごとに作ると Despawn / Stop で
+    // 返却されないまま漏れる (LoadTexture 由来のハンドルを返すと共有キャッシュを壊すため)。
     return resources.GetWhiteTexture();
 }
 
@@ -150,7 +157,7 @@ const std::string& ParticleMaterialTexture(const asset::MaterialAssetAuthoring& 
     return (it != material.textures.end()) ? it->second : kEmpty;
 }
 
-} /// @note namespace
+} // namespace
 
 ParticleMaterialCache& BeginParticleMaterialPass(Scene& scene, renderer::ResourceManager& resources)
 {
@@ -165,11 +172,11 @@ ParticleMaterialCache& BeginParticleMaterialPass(Scene& scene, renderer::Resourc
 void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManager& resources, ParticleMaterialCache& cache)
 {
     PrepareParticleSimulationInputs(emitter);
-    /// @note 見た目のテクスチャは 3 枚とも .mat の [textures] から来る。
-    /// @note albedo = 素材 / normal = 歪みベクトル専用マップ / tex5 = Motion Vector アトラス
-    /// @note 未設定なら既定 .mat へ落とす。1x1 白は alpha=1 なので、そのまま描くと粒子が
-    /// @note 「不透明な四角」になり、素材の付け忘れが最も分かりにくい形で表に出る。
-    /// @note 既定 .mat が無いプロジェクトでは `Load<MaterialAsset>` が失敗し、従来どおり白へ落ちる。
+    // 見た目のテクスチャは 3 枚とも .mat の [textures] から来る。
+    // albedo = 素材 / normal = 歪みベクトル専用マップ / tex5 = Motion Vector アトラス
+    // 未設定なら既定 .mat へ落とす。1x1 白は alpha=1 なので、そのまま描くと粒子が
+    // 「不透明な四角」になり、素材の付け忘れが最も分かりにくい形で表に出る。
+    // 既定 .mat が無いプロジェクトでは `Load<MaterialAsset>` が失敗し、従来どおり白へ落ちる。
     const bool usingFallback = emitter.settings.materialPath.empty();
     const std::string materialPath =
         usingFallback ? std::string(PARTICLE_FALLBACK_MATERIAL) : emitter.settings.materialPath;
@@ -177,7 +184,7 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
         const bool materialChanged = (emitter.runtime.loadedMaterialPath != materialPath);
         if (materialChanged) {
             emitter.runtime.loadedMaterialPath = materialPath;
-            /// @note .mat の変更でテクスチャも再ロードさせる
+            // .mat の変更でテクスチャも再ロードさせる
             emitter.runtime.loadedTexturePath.clear();
         }
         const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
@@ -189,8 +196,8 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
                 emitter.runtime.loadedTexturePath = albedoPath;
                 emitter.runtime.textureIsSrgb = IsEffectTextureSrgb(albedoPath);
             }
-            /// @note 歪みベクトル専用マップ (normal)。未設定なら無効ハンドルのままにして、
-            /// @note シェーダー側は effectsFlags を見て albedo の RG へ縮退する。
+            // 歪みベクトル専用マップ (normal)。未設定なら無効ハンドルのままにして、
+            // シェーダー側は effectsFlags を見て albedo の RG へ縮退する。
             const std::string& distortionPath = ParticleMaterialTexture(*authoring, "normal");
             {
                 emitter.runtime.distortionTexture = distortionPath.empty()
@@ -198,7 +205,7 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
                     : LoadParticleTextureOrWhite(resources, distortionPath);
                 emitter.runtime.loadedDistortionTexturePath = distortionPath;
             }
-            /// @note Motion Vector アトラス (tex5)。
+            // Motion Vector アトラス (tex5)。
             const std::string& motionVectorPath = ParticleMaterialTexture(*authoring, "tex5");
             {
                 emitter.runtime.motionVectorTexture = motionVectorPath.empty()
@@ -206,7 +213,7 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
                     : LoadParticleTextureOrWhite(resources, motionVectorPath);
                 emitter.runtime.loadedMotionVectorTexturePath = motionVectorPath;
             }
-            /// @note 6 方向ライトマップの Negative (emissive)。sixWayMaps のときだけ読む。
+            // 6 方向ライトマップの Negative (emissive)。sixWayMaps のときだけ読む。
             static const std::string kNoTexture;
             const std::string& sixWayTex = authoring->particle.sixWayMaps ? ParticleMaterialTexture(*authoring, "emissive")
                                                                     : kNoTexture;
@@ -228,11 +235,11 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
                 ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                 : LoadParticleTextureOrWhite(resources, sixWayEmissionTex);
             emitter.runtime.loadedSixWayEmissionColorTexturePath = sixWayEmissionTex;
-            /// @note .mat が shader を指定していれば描画シェーダーを差し替える。
-            /// @note 既定 .mat では見ない — 未設定にした瞬間に描画が化けるのは避ける (blendMode と同じ)。
-            /// @note render_path を要求するのは、頂点が ParticleVertex (92B)・b2 が
-            /// @note ParticleRenderConstants で、メッシュ用シェーダーを割り当てると
-            /// @note «クラッシュせず静かに壊れた絵» になるため。UI / Decal と同じ判断。
+            // .mat が shader を指定していれば描画シェーダーを差し替える。
+            // 既定 .mat では見ない — 未設定にした瞬間に描画が化けるのは避ける (blendMode と同じ)。
+            // render_path を要求するのは、頂点が ParticleVertex (92B)・b2 が
+            // ParticleRenderConstants で、メッシュ用シェーダーを割り当てると
+            // «クラッシュせず静かに壊れた絵» になるため。UI / Decal と同じ判断。
             const bool declaredForParticles = (authoring->renderPath == asset::RenderPath::Particle);
             if (!usingFallback && !declaredForParticles && !authoring->shaderPath.empty()
                 && WarnParticleMaterialOnce(materialPath)) {
@@ -249,9 +256,9 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
                 emitter.runtime.customShader = shaderPath.empty()
                     ? renderer::ResourceHandle<renderer::ShaderTag>{}
                     : resources.LoadShader(shaderPath);
-                /// @note 黙って組み込みへ落ちると、テクスチャを持たない .mat では «白い四角» が並ぶ。
-                /// @note 手続きシェーダーほどテクスチャを持たないので、一番起きやすい失敗が
-                /// @note 一番分かりにくい絵になる。
+                // 黙って組み込みへ落ちると、テクスチャを持たない .mat では «白い四角» が並ぶ。
+                // 手続きシェーダーほどテクスチャを持たないので、一番起きやすい失敗が
+                // 一番分かりにくい絵になる。
                 if (!shaderPath.empty() && !emitter.runtime.customShader.IsValid()
                     && WarnParticleMaterialOnce(materialPath + "|shader|" + shaderPath)) {
                     FBZZ_LOG_WARN("Particle material '%s' references shader '%s' but it failed to "
@@ -261,20 +268,20 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
                                   materialPath.c_str(), shaderPath.c_str());
                 }
             }
-            /// @note カスタムシェーダーが MaterialConstants を宣言していれば .mat の [params] を流す。
-            /// @note 毎フレーム引き直すのは編集結果を即座に絵へ出すため (解決は .mat 単位で 1 回)。
+            // カスタムシェーダーが MaterialConstants を宣言していれば .mat の [params] を流す。
+            // 毎フレーム引き直すのは編集結果を即座に絵へ出すため (解決は .mat 単位で 1 回)。
             emitter.runtime.materialParamsCB = ResolveParticleMaterialParams(
                 cache, resources, materialPath, *authoring, emitter.runtime.customShader);
             return;
         }
     }
 
-    /// @note .mat を解決できなかった。1x1 白 + 既定の見た目で描き続ける
-    /// @note (エフェクトが丸ごと消えるより、素材が付いていないと分かる方がよい)。
+    // .mat を解決できなかった。1x1 白 + 既定の見た目で描き続ける
+    // (エフェクトが丸ごと消えるより、素材が付いていないと分かる方がよい)。
     emitter.runtime.distortionTexture = {};
     emitter.runtime.motionVectorTexture = {};
     emitter.runtime.sixWayNegativeTexture = {};
-    /// @note 正常材質から読込失敗へ移った場合も、前材質のシェーダー・色・補助画像を残さない。
+    // 正常材質から読込失敗へ移った場合も、前材質のシェーダー・色・補助画像を残さない。
     emitter.runtime.customShader = {};
     emitter.runtime.loadedShaderPath.clear();
     emitter.runtime.materialParamsCB = {};
@@ -288,7 +295,7 @@ void PrepareParticleAppearance(ParticleEmitter& emitter, renderer::ResourceManag
     {
         emitter.runtime.texture = LoadParticleTextureOrWhite(resources, {});
         emitter.runtime.loadedTexturePath.clear();
-        /// @note 1x1 白フォールバック。リニアでも sRGB でも 1.0 は 1.0 なので変換しない。
+        // 1x1 白フォールバック。リニアでも sRGB でも 1.0 は 1.0 なので変換しない。
         emitter.runtime.textureIsSrgb = false;
     }
 }
@@ -298,7 +305,7 @@ void ReleaseParticleMaterialCaches(Scene& scene)
     s_particleMaterialCaches.erase(scene.GetRenderSceneGeneration());
 }
 
-} /// @note namespace fbzz::scene::particle_extraction_detail
+} // namespace fbzz::scene::particle_extraction_detail
 
 namespace fbzz::scene {
 
@@ -307,4 +314,4 @@ void ReleaseParticleRenderResources(Scene& scene)
     particle_extraction_detail::ReleaseParticleMaterialCaches(scene);
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

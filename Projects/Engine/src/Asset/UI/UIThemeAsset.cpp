@@ -20,15 +20,19 @@ namespace {
 std::string EncodeFontReference(const std::string& reference)
 {
     const std::string encoded = EncodeGuidRef(reference);
-    if (reference.empty() || AssetDatabase::IsGuidRef(encoded)) return encoded;
+    if (reference.empty() || AssetDatabase::IsGuidRef(encoded)) {
+        return encoded;
+    }
     const std::string lower = util::StringUtils::ToLowerCopy(reference);
     if (lower.ends_with(".fnt") || lower.ends_with(".ttf")
-        || lower.ends_with(".ttc") || lower.ends_with(".otf")) return encoded;
+        || lower.ends_with(".ttc") || lower.ends_with(".otf")) {
+        return encoded;
+    }
     const std::string atlas = EncodeGuidRef(reference + ".fnt");
     return AssetDatabase::IsGuidRef(atlas) ? atlas : encoded;
 }
 
-} /// @note namespace
+} // namespace
 
 void UIThemeAsset::Reflect(scene::IReflector& r)
 {
@@ -45,7 +49,7 @@ void UIThemeAsset::Reflect(scene::IReflector& r)
     std::string fontPath = EncodeFontReference(style.fontPath);
     r.FileField("fontPath", fontPath, ".fnt,.ttf,.ttc,.otf",
         "Font GUID, font file, or legacy atlas base path. Empty uses the project default font.");
-    /// @note 汎用の DataAsset 保存は反射で公開する文字列を直接書く。名前変更に追従するため、ここで登録済みフォントを GUID へ変換する。
+    // 汎用の DataAsset 保存は反射で公開する文字列を直接書く。名前変更に追従するため、ここで登録済みフォントを GUID へ変換する。
     style.fontPath = EncodeFontReference(fontPath);
     r.FloatRange("fontSize", style.fontSize, 1.0f, 512.0f);
     r.FloatRange("letterSpacing", style.letterSpacing, 0.0f, 128.0f);
@@ -81,16 +85,22 @@ bool IsUIThemeStyleValid(const UIThemeStyle& style)
 
 bool ResolveUIThemeStyle(const std::string& reference, UIThemeStyle& out)
 {
-    if (reference.empty()) return false;
+    if (reference.empty()) {
+        return false;
+    }
     const std::string absolute = AssetManager::ResolveAssetPath(reference);
-    /// @note 再読込に失敗すると最後に正常だった値がレジストリに残る。ファイルが削除済みの場合はインラインの代替値を選ぶ。
-    if (absolute.empty() || !util::FileSystem::Exists(absolute)) return false;
+    // 再読込に失敗すると最後に正常だった値がレジストリに残る。ファイルが削除済みの場合はインラインの代替値を選ぶ。
+    if (absolute.empty() || !util::FileSystem::Exists(absolute)) {
+        return false;
+    }
     const auto* theme = TryAsExactDataAsset<UIThemeAsset>(DataAssetRegistry::Resolve(reference));
-    if (!theme || !IsUIThemeStyleValid(theme->style)) return false;
+    if (!theme || !IsUIThemeStyleValid(theme->style)) {
+        return false;
+    }
     out = theme->style;
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset
 
 FBZZ_REGISTER_BUILTIN_DATA_ASSET(::fbzz::asset::UIThemeAsset);

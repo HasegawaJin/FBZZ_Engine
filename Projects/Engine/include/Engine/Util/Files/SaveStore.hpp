@@ -24,7 +24,7 @@ namespace fbzz::util {
 
 class SaveStore {
 public:
-    /// @param defaultPath 保存先。相対パスは実行ファイルのディレクトリ基準で解決する。
+    /// @param[in] defaultPath 保存先。相対パスは実行ファイルのディレクトリ基準で解決する。
     FBZZ_ENGINE_API explicit SaveStore(std::string defaultPath);
     FBZZ_ENGINE_API ~SaveStore();
 
@@ -112,4 +112,4 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

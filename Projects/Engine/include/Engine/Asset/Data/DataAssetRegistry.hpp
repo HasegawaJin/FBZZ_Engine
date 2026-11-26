@@ -49,7 +49,7 @@ public:
     FBZZ_ENGINE_API static bool RestoreSnapshot(const std::string& path, const std::string& snapshot);
 
     /// @brief 指定ファイルを参照しているキャッシュ済み実体を、ディスクから読み直す。
-    /// @param absPath ファイル監視が返す絶対パス
+    /// @param[in] absPath ファイル監視が返す絶対パス
     /// @return 読み直した件数。0 ならこのファイルはキャッシュに載っていない
     /// @note RestoreSnapshot と同じ理由で、型が変わらない限りアドレスを維持し中身だけ差し替える。
     FBZZ_ENGINE_API static int ReloadFile(const std::string& absPath);
@@ -64,7 +64,7 @@ private:
     template<typename T> friend struct Asset;
 
     /// @note 型付き factory が生成した場合は requestedType の部分オブジェクトを返す。
-    /// @param legacy 型付き情報のない実体だけを受け取る。型付き実体、または解決不能なら nullptr。
+    /// @param[out] legacy 型付き情報のない実体だけを受け取る。型付き実体、または解決不能なら nullptr。
     [[nodiscard]] FBZZ_ENGINE_API static void* ResolveNative(
         const std::string& path, const std::type_info& requestedType, DataAsset*& legacy);
 };

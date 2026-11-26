@@ -14,7 +14,7 @@ class Script;
 enum class UIEasingType;
 
 struct ScriptUIAnimatorProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< UI アニメーション操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void PlayColor(const math::Vector4& from, const math::Vector4& to, float duration) const;
     FBZZ_ENGINE_API void PlayColor(const math::Vector4& from, const math::Vector4& to,
@@ -35,4 +35,4 @@ struct ScriptUIAnimatorProxy {
     FBZZ_ENGINE_API bool IsPlaying() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -22,17 +22,41 @@ const char* TerrainPaintCategoryName(TerrainPaintCategory category)
 
 bool ValidateTerrainPaintAsset(const TerrainPaintAsset& asset)
 {
-    const auto& p = asset.placement;
-    const auto range = [](float value, float low, float high) { return std::isfinite(value) && value >= low && value <= high; };
-    return !asset.name.empty() && asset.name.size() <= 256
-        && asset.category >= TerrainPaintCategory::GRASS && asset.category <= TerrainPaintCategory::OTHER
-        && asset.definition.Snapshot() && asset.definition.Snapshot()->placements.empty()
-        && range(p.spacing, 0.25f, 10000.0f) && range(p.density, 0.0f, 1.0f)
-        && range(p.minScale, 0.01f, 100.0f) && range(p.maxScale, p.minScale, 100.0f)
-        && range(p.minYaw, -360.0f, 360.0f) && range(p.maxYaw, p.minYaw, 360.0f)
-        && range(p.minSlope, 0.0f, 90.0f) && range(p.maxSlope, p.minSlope, 90.0f)
-        && range(p.downslopeJitter, 0.0f, 180.0f) && range(p.embedDepth, 0.0f, 100.0f)
-        && range(p.waterClearance, 0.0f, 1000.0f) && range(p.pathClearance, 0.0f, 1000.0f);
+    constexpr size_t MAX_NAME_BYTES = 256;
+    if (asset.name.empty() || asset.name.size() > MAX_NAME_BYTES) {
+        return false;
+    }
+    if (asset.category < TerrainPaintCategory::GRASS || asset.category > TerrainPaintCategory::OTHER) {
+        return false;
+    }
+
+    // 配置素材はモデルの定義だけを保持する。配置済みの個体は別のアセットに保存する。
+    const auto definition = asset.definition.Snapshot();
+    if (!definition || !definition->placements.empty()) {
+        return false;
+    }
+
+    // 範囲の下限に別フィールドを使う設定では、その下限を先に検証する。
+    const auto& placement = asset.placement;
+    const auto inRange = [](float value, float low, float high) {
+        return std::isfinite(value) && value >= low && value <= high;
+    };
+    if (!inRange(placement.spacing, 0.25f, 10000.0f) || !inRange(placement.density, 0.0f, 1.0f)) {
+        return false;
+    }
+    if (!inRange(placement.minScale, 0.01f, 100.0f) || !inRange(placement.maxScale, placement.minScale, 100.0f)) {
+        return false;
+    }
+    if (!inRange(placement.minYaw, -360.0f, 360.0f) || !inRange(placement.maxYaw, placement.minYaw, 360.0f)) {
+        return false;
+    }
+    if (!inRange(placement.minSlope, 0.0f, 90.0f) || !inRange(placement.maxSlope, placement.minSlope, 90.0f)) {
+        return false;
+    }
+    if (!inRange(placement.downslopeJitter, 0.0f, 180.0f) || !inRange(placement.embedDepth, 0.0f, 100.0f)) {
+        return false;
+    }
+    return inRange(placement.waterClearance, 0.0f, 1000.0f) && inRange(placement.pathClearance, 0.0f, 1000.0f);
 }
 
 bool TerrainPaintAssetsEqual(const TerrainPaintAsset& first, const TerrainPaintAsset& second)
@@ -45,45 +69,91 @@ bool LoadTerrainPaintAsset(std::string_view path, TerrainPaintAsset& out)
 {
     using namespace mesh_instances_serialization;
     std::string text;
-    if (!ReadFile(path, text, 1024 * 1024)) return false;
+    if (!ReadFile(path, text, 1024 * 1024)) {
+        return false;
+    }
     const auto parsed = toml::parse(text, std::string(path));
-    if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainpaint") return false;
+    if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainpaint") {
+        return false;
+    }
     const auto version = parsed["version"].value<int64_t>();
-    if (!version || (*version != 1 && *version != 2)) return false;
+    if (!version || (*version != 1 && *version != 2)) {
+        return false;
+    }
     TerrainPaintAsset candidate;
     const auto name = parsed["name"].value<std::string>(), category = parsed["category"].value<std::string>();
-    if (!name || !category) return false;
+    if (!name || !category) {
+        return false;
+    }
     candidate.name = *name;
-    if (*category == "grass") candidate.category = TerrainPaintCategory::GRASS;
-    else if (*category == "tree") candidate.category = TerrainPaintCategory::TREE;
-    else if (*category == "rock") candidate.category = TerrainPaintCategory::ROCK;
-    else if (*category != "other") return false;
+    // 素材のモデルと配置規則を候補へ読み、検証が完了してから出力に渡す。
+    if (*category == "grass") {
+        candidate.category = TerrainPaintCategory::GRASS;
+    } else if (*category == "tree") {
+        candidate.category = TerrainPaintCategory::TREE;
+    } else if (*category == "rock") {
+        candidate.category = TerrainPaintCategory::ROCK;
+    } else if (*category != "other") {
+        return false;
+    }
+
     std::vector<InstanceMeshPart> parts;
     std::vector<float> heights;
-    if (!ReadDefinition(parsed.table(), parts, heights) || !candidate.definition.Replace(parts, heights, {})) return false;
-    const auto* placement = parsed["placement"].as_table();
-    if (!placement) return false;
-    auto& p = candidate.placement;
-    const auto number = [&](const char* key, float& value) {
-        const auto item = (*placement)[key].value<float>();
-        if (!item) return false;
-        value = *item; return true;
+    if (!ReadDefinition(parsed.table(), parts, heights)) {
+        return false;
+    }
+    if (!candidate.definition.Replace(parts, heights, {})) {
+        return false;
+    }
+
+    const auto* placementTable = parsed["placement"].as_table();
+    if (!placementTable) {
+        return false;
+    }
+    auto& placement = candidate.placement;
+    const auto readNumber = [placementTable](const char* key, float& value) {
+        const auto item = (*placementTable)[key].value<float>();
+        if (!item) {
+            return false;
+        }
+        value = *item;
+        return true;
     };
-    const auto normal = (*placement)["alignToNormal"].value<bool>(), downslope = (*placement)["alignDownslope"].value<bool>();
-    if (!number("spacing", p.spacing) || !number("density", p.density) || !number("minScale", p.minScale)
-        || !number("maxScale", p.maxScale) || !number("minYaw", p.minYaw) || !number("maxYaw", p.maxYaw)
-        || !number("minSlope", p.minSlope) || !number("maxSlope", p.maxSlope)
-        || !number("downslopeJitter", p.downslopeJitter) || !number("embedDepth", p.embedDepth) || !normal || !downslope) return false;
-    p.alignToNormal = *normal; p.alignDownslope = *downslope;
-    if (*version == 2 && (!number("waterClearance", p.waterClearance) || !number("pathClearance", p.pathClearance))) return false;
-    if (!ValidateTerrainPaintAsset(candidate)) return false;
+    const auto alignToNormal = (*placementTable)["alignToNormal"].value<bool>();
+    const auto alignDownslope = (*placementTable)["alignDownslope"].value<bool>();
+    if (!readNumber("spacing", placement.spacing) || !readNumber("density", placement.density)) {
+        return false;
+    }
+    if (!readNumber("minScale", placement.minScale) || !readNumber("maxScale", placement.maxScale)
+        || !readNumber("minYaw", placement.minYaw) || !readNumber("maxYaw", placement.maxYaw)) {
+        return false;
+    }
+    if (!readNumber("minSlope", placement.minSlope) || !readNumber("maxSlope", placement.maxSlope)
+        || !readNumber("downslopeJitter", placement.downslopeJitter) || !readNumber("embedDepth", placement.embedDepth)) {
+        return false;
+    }
+    if (!alignToNormal || !alignDownslope) {
+        return false;
+    }
+    placement.alignToNormal = *alignToNormal;
+    placement.alignDownslope = *alignDownslope;
+
+    // 版 1 には水面や道からの離隔がないため、候補の既定値を使う。
+    if (*version == 2 && (!readNumber("waterClearance", placement.waterClearance) || !readNumber("pathClearance", placement.pathClearance))) {
+        return false;
+    }
+    if (!ValidateTerrainPaintAsset(candidate)) {
+        return false;
+    }
     out = std::move(candidate);
     return true;
 }
 
 bool SaveTerrainPaintAsset(std::string_view path, const TerrainPaintAsset& asset)
 {
-    if (!ValidateTerrainPaintAsset(asset)) return false;
+    if (!ValidateTerrainPaintAsset(asset)) {
+        return false;
+    }
     static constexpr const char* CATEGORIES[]{"grass", "tree", "rock", "other"};
     toml::table table{{"format", "fbzz.terrainpaint"}, {"version", 2}, {"name", asset.name},
         {"category", CATEGORIES[static_cast<int>(asset.category)]}};
@@ -95,4 +165,4 @@ bool SaveTerrainPaintAsset(std::string_view path, const TerrainPaintAsset& asset
         {"waterClearance", p.waterClearance}, {"pathClearance", p.pathClearance}});
     return mesh_instances_serialization::WriteFile(path, table);
 }
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -14,7 +14,7 @@ namespace fbzz::asset {
 /// @brief 完成物 1 つを持つだけの候補。CPU だけの型はそのまま使える。
 template<typename T>
 struct AssetCandidate : IAssetCandidate {
-    std::unique_ptr<T> asset;
+    std::unique_ptr<T> asset; ///< 公開前の候補実体を所有するポインター。公開時にストアへ引き渡す。
 };
 
 /// @brief AssetStore<T> を使うストア操作の共通実装。
@@ -34,7 +34,9 @@ public:
     {
         const auto& cache = AssetStore<T>::Get().cache;
         const auto it = cache.find(key);
-        if (it == cache.end()) return {};
+        if (it == cache.end()) {
+            return {};
+        }
         return { it->second.id, it->second.gen };
     }
 
@@ -65,15 +67,21 @@ public:
     {
         AssetStore<T>& store = AssetStore<T>::Get();
         const auto it = store.cache.find(key);
-        if (it != store.cache.end() && it->second == Typed(handle)) store.cache.erase(it);
+        if (it != store.cache.end() && it->second == Typed(handle)) {
+            store.cache.erase(it);
+        }
         store.Free(Typed(handle));
     }
 
     /// @note 同期 Load<T> が固定したスロットは外さない (明示的な Unload まで常駐する契約)。
     [[nodiscard]] bool Evict(RawAssetHandle handle, const std::string& key) override
     {
-        if (AssetStore<T>::Get().IsPinned(Typed(handle))) return false;
-        if (!ReleaseResident(handle)) return false;
+        if (AssetStore<T>::Get().IsPinned(Typed(handle))) {
+            return false;
+        }
+        if (!ReleaseResident(handle)) {
+            return false;
+        }
         Free(handle, key);
         return true;
     }
@@ -86,7 +94,9 @@ public:
     [[nodiscard]] bool Publish(RawAssetHandle handle, IAssetCandidate& candidate) override
     {
         auto& typed = static_cast<AssetCandidate<T>&>(candidate);
-        if (!typed.asset) return false;
+        if (!typed.asset) {
+            return false;
+        }
         return AssetStore<T>::Get().Replace(Typed(handle), std::move(typed.asset));
     }
 

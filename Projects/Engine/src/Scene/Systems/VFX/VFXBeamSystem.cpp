@@ -28,10 +28,14 @@ namespace {
                                             const math::Vector3& offset,
                                             bool& outMissing)
 {
-    if (!ref.IsAssigned()) return fallback + offset;
+    if (!ref.IsAssigned()) {
+        return fallback + offset;
+    }
     if (GameObject* target = ref.Resolve(scene); target && target->activeInHierarchy()) {
         const auto position = target->transform.worldPosition + offset;
-        if (std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)) return position;
+        if (std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)) {
+            return position;
+        }
     }
     outMissing = true;
     return fallback + offset;
@@ -48,7 +52,7 @@ void BuildBasis(const math::Vector3& direction, math::Vector3& outRight, math::V
     outUp = math::Vector3::Cross(outRight, direction).NormalizedOr(math::Vector3::UP);
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess VFXBeamSystem::GetAccess() const
 {
@@ -57,26 +61,34 @@ ComponentAccess VFXBeamSystem::GetAccess() const
 
 OrderingHints VFXBeamSystem::GetOrder() const
 {
-    /// @note 端点は «今フレームのワールド位置»。VFXSystem が生存窓で Trail を
-    /// @note 起こした後に経路を書かないと、開いた最初のフレームだけ前回の形が出る。
+    // 端点は «今フレームのワールド位置»。VFXSystem が生存窓で Trail を
+    // 起こした後に経路を書かないと、開いた最初のフレームだけ前回の形が出る。
     return OrderingHints{}.After<VFXSystem>().After<AnimatorSystem>().After<TransformLateUpdate>();
 }
 
 void VFXBeamSystem::Update(SystemContext& ctx)
 {
-    if (ctx.scene.GetEntities<VFXBeamComponent>().empty()) return;
+    if (ctx.scene.GetEntities<VFXBeamComponent>().empty()) {
+        return;
+    }
     FlushWorldTransforms(ctx.scene);
     for (const EntityID id : ctx.scene.GetEntities<VFXBeamComponent>()) {
         GameObject* owner = ctx.scene.GetGameObject(id);
         VFXBeamComponent* beamPtr = ctx.scene.GetComponent<VFXBeamComponent>(id);
-        if (owner == nullptr || beamPtr == nullptr) continue;
-        if (!owner->activeInHierarchy()) continue;
+        if (owner == nullptr || beamPtr == nullptr) {
+            continue;
+        }
+        if (!owner->activeInHierarchy()) {
+            continue;
+        }
         VFXBeamComponent& beam = *beamPtr;
 
-        /// @note 見た目は同じ GameObject の Trail が持つ。片方だけ置いても «何も出ない» で済み、
-        /// @note 描画側を書き換える必要がない。
+        // 見た目は同じ GameObject の Trail が持つ。片方だけ置いても «何も出ない» で済み、
+        // 描画側を書き換える必要がない。
         auto* trail = owner->GetComponent<TrailComponent>();
-        if (trail == nullptr) continue;
+        if (trail == nullptr) {
+            continue;
+        }
 
         if (!beam.enabled) {
             trail->beamPoints.clear();
@@ -119,12 +131,13 @@ void VFXBeamSystem::Update(SystemContext& ctx)
             const float t = static_cast<float>(index) / static_cast<float>(segments);
             math::Vector3 point = from + delta * t;
 
-            /// @note たるみは両端で 0、中央で最大。sin では «張った紐» に見えないので
-            /// @note 放物線 (4t(1-t)) を使う。
-            if (beam.sag != 0.0f)
+            // たるみは両端で 0、中央で最大。sin では «張った紐» に見えないので
+            // 放物線 (4t(1-t)) を使う。
+            if (beam.sag != 0.0f) {
                 point.y -= beam.sag * 4.0f * t * (1.0f - t);
+            }
 
-            /// @note 横ゆれも両端を固定する。端が揺れると «繋がっていない» に見える。
+            // 横ゆれも両端を固定する。端が揺れると «繋がっていない» に見える。
             if (beam.jitter != 0.0f) {
                 const float taper = 4.0f * t * (1.0f - t);
                 const float wave = t * beam.jitterWaves * 6.2831853f;
@@ -136,4 +149,4 @@ void VFXBeamSystem::Update(SystemContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

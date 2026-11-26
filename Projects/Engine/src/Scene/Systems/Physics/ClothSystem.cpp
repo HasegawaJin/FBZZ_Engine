@@ -58,10 +58,20 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
         cloth.surfaceDensity, static_cast<float>((cloth.pinTop ? 1 : 0) | (cloth.pinLeft ? 2 : 0)),
         t.worldScale.x, t.worldScale.y, t.worldScale.z, cloth.teleportDistance};
     for (float v : shape) if (!std::isfinite(v)) { Fail(cloth); return false; }
+    // メッシュを生成する寸法・分割数と、粒子の質量に使う面密度を確認する。
     if (cloth.width < 0.01f || cloth.height < 0.01f || cloth.width > 100.0f || cloth.height > 100.0f
-        || cloth.segments < 2 || cloth.segments > 64 || cloth.surfaceDensity < 0.001f
-        || cloth.surfaceDensity > 100.0f || t.worldScale.x <= 0.0001f || t.worldScale.y <= 0.0001f
-        || t.worldScale.z <= 0.0001f || cloth.teleportDistance <= 0.0f) { Fail(cloth); return false; }
+        || cloth.segments < 2 || cloth.segments > 64 || cloth.surfaceDensity < 0.001f || cloth.surfaceDensity > 100.0f) {
+        Fail(cloth);
+        return false;
+    }
+
+    // シミュレーションを配置するワールド変換と、移動の再初期化距離を確認する。
+    if (t.worldScale.x <= 0.0001f || t.worldScale.y <= 0.0001f || t.worldScale.z <= 0.0001f
+        || cloth.teleportDistance <= 0.0f) {
+        Fail(cloth);
+        return false;
+    }
+
     if (!state.solver.SetSettings(cloth.settings)) { Fail(cloth); return false; }
     const asset::ClothAsset* source = nullptr;
     if (!cloth.clothAssetPath.empty()) {
@@ -69,11 +79,15 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
         if (!source) { state.initialized = false; Fail(cloth); return false; }
     }
     const uint64_t revision = source ? source->revision : 0;
-    if (outSource) *outSource = source;
+    if (outSource) {
+        *outSource = source;
+    }
     const bool authoringChanged = state.appliedAsset != cloth.clothAssetPath || state.assetRevision != revision
         || state.appliedOverridePins != cloth.overridePins || state.appliedPins != cloth.pinnedParticles;
     const bool teleported = (t.worldPosition - state.lastOrigin).LengthSq() > cloth.teleportDistance * cloth.teleportDistance;
-    if (state.initialized && state.shape == shape && !force && !teleported && !authoringChanged) return true;
+    if (state.initialized && state.shape == shape && !force && !teleported && !authoringChanged) {
+        return true;
+    }
     const int row = cloth.segments + 1;
     state.mesh.Clear();
     state.restLocal.clear();
@@ -89,8 +103,12 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
         state.renderToParticle = source->renderToParticle;
         state.renderBindings = source->renderBindings;
         state.pins = source->pins;
-        for (const auto& local : state.restLocal) positions.push_back(ToWorld(t, local));
-        if (!source->renderBindings.empty()) indices = source->simulationIndices;
+        for (const auto& local : state.restLocal) {
+            positions.push_back(ToWorld(t, local));
+        }
+        if (!source->renderBindings.empty()) {
+            indices = source->simulationIndices;
+        }
         else for (uint32_t index : source->indices) indices.push_back(source->renderToParticle[index]);
     } else {
         for (int y = 0; y < row; ++y) {
@@ -101,8 +119,9 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
                 state.restLocal.push_back(local);
                 positions.push_back(ToWorld(t, local));
                 state.mesh.AddVertex(local, Vector3::FORWARD, {u, v});
-                if ((cloth.pinTop && y == 0) || (cloth.pinLeft && x == 0))
+                if ((cloth.pinTop && y == 0) || (cloth.pinLeft && x == 0)) {
                     state.pins.push_back(static_cast<uint32_t>(y * row + x));
+                }
             }
         }
         for (int y = 0; y < cloth.segments; ++y) {
@@ -113,7 +132,9 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
             }
         }
             indices = state.mesh.Indices();
-        for (uint32_t i = 0; i < positions.size(); ++i) state.renderToParticle.push_back(i);
+        for (uint32_t i = 0; i < positions.size(); ++i) {
+            state.renderToParticle.push_back(i);
+        }
     }
     if (cloth.overridePins) {
         state.pins.clear();
@@ -132,8 +153,12 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
         const float mass = Vector3::Cross(positions[b] - positions[a], positions[c] - positions[a]).Length() * cloth.surfaceDensity / 6.0f;
         masses[a] += mass; masses[b] += mass; masses[c] += mass;
     }
-    for (float& mass : masses) mass = mass > 0.0f ? 1.0f / mass : 0.0f;
-    for (uint32_t pin : state.pins) masses[pin] = 0.0f;
+    for (float& mass : masses) {
+        mass = mass > 0.0f ? 1.0f / mass : 0.0f;
+    }
+    for (uint32_t pin : state.pins) {
+        masses[pin] = 0.0f;
+    }
     if (!state.solver.Initialize(positions, indices, masses)) { state.initialized = false; Fail(cloth); return false; }
     state.previous = positions;
     state.appliedAttachments.clear();
@@ -156,12 +181,16 @@ bool EnsureCloth(ClothComponent& cloth, const Transform& t, bool force, const as
 bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<physics::ClothMotionConstraint>& result,
                        std::vector<Vector3>& skinCenters, const asset::ClothAsset* source)
 {
-    if (cloth.attachments.empty() && !cloth.useSkinning && cloth.maxDistances.empty()) return true;
+    if (cloth.attachments.empty() && !cloth.useSkinning && cloth.maxDistances.empty()) {
+        return true;
+    }
     const auto& state = cloth.runtime;
     std::vector<float> distances(state.restLocal.size(), -1.0f);
     for (const auto& entry : cloth.maxDistances) {
         if (entry.particle < 0 || static_cast<size_t>(entry.particle) >= distances.size()
-            || !std::isfinite(entry.distance) || entry.distance < 0 || distances[entry.particle] >= 0) return false;
+            || !std::isfinite(entry.distance) || entry.distance < 0 || distances[entry.particle] >= 0) {
+            return false;
+        }
         distances[entry.particle] = entry.distance;
     }
     const bool reuse = state.appliedAttachments == cloth.attachments
@@ -175,10 +204,16 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
     for (size_t i = 0; i < cloth.attachments.size(); ++i) {
         const auto& attachment = cloth.attachments[i];
         if (attachment.particle < 0 || static_cast<size_t>(attachment.particle) >= used.size()
-            || !std::isfinite(attachment.maxDistance) || attachment.maxDistance < 0.0f) return false;
-        if (attachment.bindingId != 0 && !stableBindingIds.insert(attachment.bindingId).second) return false;
+            || !std::isfinite(attachment.maxDistance) || attachment.maxDistance < 0.0f) {
+            return false;
+        }
+        if (attachment.bindingId != 0 && !stableBindingIds.insert(attachment.bindingId).second) {
+            return false;
+        }
         const uint32_t particle = static_cast<uint32_t>(attachment.particle);
-        if (used[particle]) return false;
+        if (used[particle]) {
+            return false;
+        }
         used[particle] = 1;
         std::uint64_t topologySignature = 0;
         std::uint32_t topologyParticleCount = 0;
@@ -186,10 +221,12 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
                 attachment.particle, topologySignature, topologyParticleCount)
             || topologyParticleCount != state.restLocal.size()
             || (attachment.topologySignature != 0
-                && attachment.topologySignature != topologySignature)) return false;
+                && attachment.topologySignature != topologySignature)) {
+            return false;
+        }
         ObjectReference reference = attachment.targetReference;
         if (reference.guid.empty() && attachment.target.IsValid()) {
-            /// @note EntityID だけを保存した旧 Cloth の取り付けには、元データを変更せず標準形式の一時参照を組み立てる。
+            // EntityID だけを保存した旧 Cloth の取り付けには、元データを変更せず標準形式の一時参照を組み立てる。
             if (const GameObject* legacyTarget = scene.GetGameObject(attachment.target)) {
                 reference.guid = legacyTarget->instanceId;
                 reference.id = legacyTarget->GetID();
@@ -203,7 +240,9 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
     ControlPointResolveStatus resolveStatus = ControlPointResolveStatus::SUCCESS;
     std::uint64_t resolveSignature = 0;
     if (!ResolveControlPointBindings(scene, state.owner, targetBindings, false,
-            resolvedTargets, resolveStatus, resolveSignature)) return false;
+            resolvedTargets, resolveStatus, resolveSignature)) {
+        return false;
+    }
 
     for (size_t i = 0; i < cloth.attachments.size(); ++i) {
         const auto& attachment = cloth.attachments[i];
@@ -214,12 +253,16 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
         for (float value : values) if (!std::isfinite(value)) return false;
         if (std::abs(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w - 1.0f) > 0.01f
             || target.worldScale.x <= 0.0001f || target.worldScale.y <= 0.0001f
-            || target.worldScale.z <= 0.0001f) return false;
+            || target.worldScale.z <= 0.0001f) {
+            return false;
+        }
         const Vector3 scaledOffset{attachment.localPosition.x * target.worldScale.x,
             attachment.localPosition.y * target.worldScale.y,
             attachment.localPosition.z * target.worldScale.z};
         const Vector3 center = target.worldPosition + target.worldRotation * scaledOffset;
-        if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) return false;
+        if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) {
+            return false;
+        }
         const uint32_t particle = static_cast<uint32_t>(attachment.particle);
         const Vector3 previous = reuse ? state.attachmentCenters[i]
             : (attachment.maxDistance == 0.0f ? state.solver.Positions()[particle] : center);
@@ -227,51 +270,77 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
     }
     if (cloth.useSkinning) {
         if (!source || source->skinWeights.size() != state.restLocal.size()
-            || !std::isfinite(cloth.skinMaxDistance) || cloth.skinMaxDistance < 0.0f) return false;
+            || !std::isfinite(cloth.skinMaxDistance) || cloth.skinMaxDistance < 0.0f) {
+            return false;
+        }
         const auto* owner = scene.GetGameObject(cloth.skinTarget);
         const auto* renderer = scene.GetComponent<SkinnedMeshRenderer>(cloth.skinTarget);
-        if (!owner || !owner->activeInHierarchy() || !renderer || !renderer->model || !renderer->model->skeleton) return false;
+        if (!owner || !owner->activeInHierarchy() || !renderer || !renderer->model || !renderer->model->skeleton) {
+            return false;
+        }
         const auto& skeleton = *renderer->model->skeleton;
         std::vector<math::Matrix4> boneWorld;
         for (const auto& sourceBone : source->skinBones) {
             int node = -1;
             bool found = false;
             for (const auto& bone : skeleton.bones) {
-                if (bone.name != sourceBone.name) continue;
-                if (found) return false;
+                if (bone.name != sourceBone.name) {
+                    continue;
+                }
+                if (found) {
+                    return false;
+                }
                 found = true;
                 node = bone.nodeIndex;
             }
-            if (!found || node < 0 || static_cast<size_t>(node) >= renderer->nodeEntities.size()) return false;
+            if (!found || node < 0 || static_cast<size_t>(node) >= renderer->nodeEntities.size()) {
+                return false;
+            }
             const auto* bone = scene.GetGameObject(renderer->nodeEntities[node]);
-            if (!bone || !bone->activeInHierarchy()) return false;
+            if (!bone || !bone->activeInHierarchy()) {
+                return false;
+            }
             const auto& t = bone->transform;
             const auto& q = t.worldRotation;
             const float norm = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
             if (!std::isfinite(norm) || std::abs(norm - 1.0f) > 0.01f
-                || t.worldScale.x <= 0.0001f || t.worldScale.y <= 0.0001f || t.worldScale.z <= 0.0001f) return false;
+                || t.worldScale.x <= 0.0001f || t.worldScale.y <= 0.0001f || t.worldScale.z <= 0.0001f) {
+                return false;
+            }
             boneWorld.push_back(math::Matrix4::TRS(t.worldPosition, t.worldRotation, t.worldScale));
         }
-        if (!asset::EvaluateClothSkinning(*source, boneWorld, skinCenters)) return false;
+        if (!asset::EvaluateClothSkinning(*source, boneWorld, skinCenters)) {
+            return false;
+        }
         std::vector<bool> pinned(state.restLocal.size(), false);
-        for (uint32_t pin : state.pins) pinned[pin] = true;
+        for (uint32_t pin : state.pins) {
+            pinned[pin] = true;
+        }
         const bool reuseSkin = state.appliedSkinTarget == cloth.skinTarget
             && state.appliedSkinMaxDistance == cloth.skinMaxDistance && state.skinCenters.size() == skinCenters.size()
             && state.appliedMaxDistances == cloth.maxDistances;
         for (uint32_t particle = 0; particle < skinCenters.size(); ++particle) {
-            if (used[particle]) continue;
+            if (used[particle]) {
+                continue;
+            }
             const float radius = pinned[particle] ? 0.0f : (distances[particle] >= 0 ? distances[particle] : cloth.skinMaxDistance);
-            /// @note 明示 attachment から戻る固定点も、古いスキン中心ではなく実際の位置から補間する。
+            // 明示 attachment から戻る固定点も、古いスキン中心ではなく実際の位置から補間する。
             const Vector3 previous = radius == 0.0f ? state.solver.Positions()[particle]
                 : (reuseSkin ? state.skinCenters[particle] : skinCenters[particle]);
             result.push_back({particle, previous, skinCenters[particle], radius});
         }
     } else if (!cloth.maxDistances.empty()) {
         const auto* owner = scene.GetGameObject(state.owner);
-        if (!owner) return false;
-        for (uint32_t pin : state.pins) used[pin] = 1;
+        if (!owner) {
+            return false;
+        }
+        for (uint32_t pin : state.pins) {
+            used[pin] = 1;
+        }
         for (uint32_t particle = 0; particle < distances.size(); ++particle) {
-            if (used[particle] || distances[particle] < 0) continue;
+            if (used[particle] || distances[particle] < 0) {
+                continue;
+            }
             const auto center = ToWorld(owner->transform,state.restLocal[particle]);
             const auto previous = distances[particle] == 0 ? state.solver.Positions()[particle] : center;
             result.push_back({particle,previous,center,distances[particle]});
@@ -296,7 +365,9 @@ ClothContacts Contacts(Scene& scene, const ClothComponent& cloth, EntityID owner
     };
     const auto append = [&](physics::ClothContact contact, GameObject& go, bool attachToParentBody) {
         physics::RigidBody* body = nullptr;
-        if (const auto* rb = go.GetComponent<RigidBodyComponent>(); rb && rb->enabled) body = rb->rigidBody.get();
+        if (const auto* rb = go.GetComponent<RigidBodyComponent>(); rb && rb->enabled) {
+            body = rb->rigidBody.get();
+        }
         if (!body && attachToParentBody)
             for (auto* parent = go.GetParent(); parent; parent = parent->GetParent()) {
                 const auto* rb = parent->GetComponent<RigidBodyComponent>();
@@ -326,7 +397,9 @@ ClothContacts Contacts(Scene& scene, const ClothComponent& cloth, EntityID owner
                 if (rotation.w < 0) { rotation.x = -rotation.x; rotation.y = -rotation.y; rotation.z = -rotation.z; rotation.w = -rotation.w; }
                 const Vector3 axis{rotation.x,rotation.y,rotation.z};
                 const float length = axis.Length();
-                if (length > 1.0e-6f) contact.angularVelocity = axis*(2.0f*std::atan2(length,rotation.w)/(length*dt));
+                if (length > 1.0e-6f) {
+                    contact.angularVelocity = axis*(2.0f*std::atan2(length,rotation.w)/(length*dt));
+                }
             }
         }
         result.poses.push_back({go.GetID(),go.transform.worldPosition,go.transform.worldRotation});
@@ -344,7 +417,9 @@ ClothContacts Contacts(Scene& scene, const ClothComponent& cloth, EntityID owner
         for (EntityID id : scene.GetEntities<SphereColliderComponent>()) {
             auto* go = scene.GetGameObject(id);
             const auto* col = scene.GetComponent<SphereColliderComponent>(id);
-            if (id == owner || !go || !go->activeInHierarchy() || !col->enabled || col->isTrigger || !accepts(*go)) continue;
+            if (id == owner || !go || !go->activeInHierarchy() || !col->enabled || col->isTrigger || !accepts(*go)) {
+                continue;
+            }
             physics::ClothContact contact;
             contact.a = ColliderWorldCenter(*go, *col);
             const Vector3 scale = go->transform.worldScale;
@@ -356,7 +431,9 @@ ClothContacts Contacts(Scene& scene, const ClothComponent& cloth, EntityID owner
         for (EntityID id : scene.GetEntities<CapsuleColliderComponent>()) {
             auto* go = scene.GetGameObject(id);
             const auto* col = scene.GetComponent<CapsuleColliderComponent>(id);
-            if (id == owner || !go || !go->activeInHierarchy() || !col->enabled || col->isTrigger || !accepts(*go)) continue;
+            if (id == owner || !go || !go->activeInHierarchy() || !col->enabled || col->isTrigger || !accepts(*go)) {
+                continue;
+            }
             physics::ClothContact contact;
             contact.type = physics::ClothContactType::CAPSULE;
             const Vector3 scale = go->transform.worldScale;
@@ -371,7 +448,7 @@ ClothContacts Contacts(Scene& scene, const ClothComponent& cloth, EntityID owner
     return result;
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess ClothSystem::GetAccess() const
 {
@@ -380,8 +457,12 @@ ComponentAccess ClothSystem::GetAccess() const
 OrderingHints ClothSystem::GetOrder() const { return OrderingHints{}.After<PhysicsSystem>(); }
 void ClothSystem::Update(SystemContext& ctx)
 {
-    if (!ctx.simulating) return;
-    if (!std::isfinite(ctx.fixedDt) || ctx.fixedDt <= 0 || ctx.fixedDt > 0.1f) return;
+    if (!ctx.simulating) {
+        return;
+    }
+    if (!std::isfinite(ctx.fixedDt) || ctx.fixedDt <= 0 || ctx.fixedDt > 0.1f) {
+        return;
+    }
     std::vector<physics::ClothInteraction> participants;
     std::vector<std::vector<physics::ClothMotionConstraint>> participantMotion;
     const auto entities = ctx.scene.GetEntities<ClothComponent>();
@@ -389,12 +470,16 @@ void ClothSystem::Update(SystemContext& ctx)
     for (EntityID id : entities) {
         auto* go = ctx.scene.GetGameObject(id);
         auto* cloth = ctx.scene.GetComponent<ClothComponent>(id);
-        if (!go || !go->activeInHierarchy() || !cloth->enabled) continue;
+        if (!go || !go->activeInHierarchy() || !cloth->enabled) {
+            continue;
+        }
         if (go->layer < 0 || go->layer >= 32 || !std::isfinite(cloth->interCollisionDistance)
             || cloth->interCollisionDistance < 0 || cloth->interCollisionDistance > 100
             || (cloth->interCollisionDistance > 0 && cloth->interCollisionDistance < 1.0e-6f)) { Fail(*cloth); continue; }
         const asset::ClothAsset* source = nullptr;
-        if (!EnsureCloth(*cloth, go->transform, false, &source)) continue;
+        if (!EnsureCloth(*cloth, go->transform, false, &source)) {
+            continue;
+        }
         auto& state = cloth->runtime;
         state.owner = id;
         state.ownerScene = &ctx.scene;
@@ -403,16 +488,22 @@ void ClothSystem::Update(SystemContext& ctx)
         if (!MotionConstraints(ctx.scene, *cloth, motion, skinCenters, source)) { Fail(*cloth); continue; }
         state.previous = state.solver.Positions();
         for (uint32_t pin : state.pins)
-            if (!state.solver.SetPinTarget(pin, ToWorld(go->transform, state.restLocal[pin]))) Fail(*cloth);
+            if (!state.solver.SetPinTarget(pin, ToWorld(go->transform, state.restLocal[pin]))) {
+                Fail(*cloth);
+            }
         const auto contacts = Contacts(ctx.scene, *cloth, id, ctx.world, ctx.fixedDt);
         const auto wind = MakeFlowSampler(ctx.scene.FlowFrame(),
             {cloth->receiveFlowFields, cloth->flowFieldChannels}, Time::time);
-        if (!state.solver.Step(ctx.fixedDt, contacts.shapes, motion, wind)) Fail(*cloth);
+        if (!state.solver.Step(ctx.fixedDt, contacts.shapes, motion, wind)) {
+            Fail(*cloth);
+        }
         else {
             state.failed = false;
             state.appliedAttachments = cloth->attachments;
             state.attachmentCenters.clear();
-            for (size_t i = 0; i < cloth->attachments.size(); ++i) state.attachmentCenters.push_back(motion[i].center);
+            for (size_t i = 0; i < cloth->attachments.size(); ++i) {
+                state.attachmentCenters.push_back(motion[i].center);
+            }
             state.skinCenters = std::move(skinCenters);
             state.appliedSkinTarget = cloth->skinTarget;
             state.appliedSkinMaxDistance = cloth->skinMaxDistance;
@@ -420,13 +511,19 @@ void ClothSystem::Update(SystemContext& ctx)
             state.colliderPoses = contacts.poses;
             const auto& responses = state.solver.ContactResponses();
             for (size_t i = 0; i < contacts.bodies.size(); ++i) if (auto* body = contacts.bodies[i]) {
-                if (responses[i].impulse.LengthSq() > 0) body->ApplyImpulse(responses[i].impulse);
-                if (responses[i].angularImpulse.LengthSq() > 0) body->ApplyAngularImpulse(responses[i].angularImpulse);
+                if (responses[i].impulse.LengthSq() > 0) {
+                    body->ApplyImpulse(responses[i].impulse);
+                }
+                if (responses[i].angularImpulse.LengthSq() > 0) {
+                    body->ApplyAngularImpulse(responses[i].angularImpulse);
+                }
             }
             if (cloth->interCollisionDistance != 0) {
                 uint32_t mask = cloth->collisionMask;
                 for (int layer = 0; layer < 32; ++layer)
-                    if (!ctx.world.LayersCollide(go->layer,layer)) mask &= ~(1u<<layer);
+                    if (!ctx.world.LayersCollide(go->layer,layer)) {
+                        mask &= ~(1u<<layer);
+                    }
                 participantMotion.push_back(std::move(motion));
                 participants.push_back({&state.solver,cloth->interCollisionDistance,static_cast<uint32_t>(go->layer),mask,
                     participantMotion.back(),cloth->interCollisionFaces,cloth->interContinuousCollision});
@@ -437,7 +534,9 @@ void ClothSystem::Update(SystemContext& ctx)
     if (!physics::ClothSolver::SolveInterCollision(participants,ctx.fixedDt))
         for (EntityID id : entities) {
             auto* cloth = ctx.scene.GetComponent<ClothComponent>(id);
-            if (cloth && cloth->interCollisionDistance != 0) Fail(*cloth);
+            if (cloth && cloth->interCollisionDistance != 0) {
+                Fail(*cloth);
+            }
         }
 }
 
@@ -448,20 +547,28 @@ OrderingHints ClothRenderSystem::GetOrder() const
 }
 void ClothRenderSystem::Update(SystemContext& ctx)
 {
-    if (!ctx.resources) return;
+    if (!ctx.resources) {
+        return;
+    }
     for (EntityID id : ctx.scene.GetEntities<ClothComponent>()) {
         auto* go = ctx.scene.GetGameObject(id);
         auto* cloth = ctx.scene.GetComponent<ClothComponent>(id);
-        if (!go || !cloth) continue;
+        if (!go || !cloth) {
+            continue;
+        }
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
         if (!go->activeInHierarchy() || !cloth->enabled) {
-            if (meshRenderer && meshRenderer->mesh == cloth->runtimeMesh.Current()) meshRenderer->enabled = false;
+            if (meshRenderer && meshRenderer->mesh == cloth->runtimeMesh.Current()) {
+                meshRenderer->enabled = false;
+            }
             cloth->runtime.initialized = false;
             continue;
         }
         (void)PrepareRuntimeMesh(ctx.scene, id, cloth->runtimeMesh, *ctx.resources);
         if (!EnsureCloth(*cloth, go->transform, !ctx.playing && !ctx.simulating)) {
-            if (meshRenderer && meshRenderer->mesh == cloth->runtimeMesh.Current()) meshRenderer->enabled = false;
+            if (meshRenderer && meshRenderer->mesh == cloth->runtimeMesh.Current()) {
+                meshRenderer->enabled = false;
+            }
             continue;
         }
         auto& state = cloth->runtime;
@@ -471,24 +578,33 @@ void ClothRenderSystem::Update(SystemContext& ctx)
         const float alpha = ctx.simulating ? std::clamp(ctx.interpolationAlpha, 0.0f, 1.0f) : 1.0f;
         if (!state.renderBindings.empty()) {
             std::vector<Vector3> local(positions.size()), rendered;
-            for (size_t i = 0; i < local.size(); ++i)
+            for (size_t i = 0; i < local.size(); ++i) {
                 local[i] = ToLocal(go->transform,Vector3::Lerp(state.previous[i],positions[i],alpha));
+            }
             if (!asset::EvaluateClothRenderBindings(state.renderBindings,state.restLocal,local,rendered)) { Fail(*cloth); continue; }
-            for (size_t i = 0; i < rendered.size(); ++i) state.mesh.Vertices()[i].position = rendered[i];
+            for (size_t i = 0; i < rendered.size(); ++i) {
+                state.mesh.Vertices()[i].position = rendered[i];
+            }
         } else for (size_t i = 0; i < state.renderToParticle.size(); ++i) {
             const uint32_t particle = state.renderToParticle[i];
             state.mesh.Vertices()[i].position = ToLocal(go->transform, Vector3::Lerp(state.previous[particle], positions[particle], alpha));
         }
         state.mesh.RecalculateNormals();
         state.mesh.RecalculateTangents();
-        if (!UploadRuntimeMesh(cloth->runtimeMesh, *ctx.resources, state.mesh.Vertices(), state.mesh.Indices())) continue;
-        if (!meshRenderer) meshRenderer = &go->AddComponent<MeshRenderer>();
+        if (!UploadRuntimeMesh(cloth->runtimeMesh, *ctx.resources, state.mesh.Vertices(), state.mesh.Indices())) {
+            continue;
+        }
+        if (!meshRenderer) {
+            meshRenderer = &go->AddComponent<MeshRenderer>();
+        }
         meshRenderer->mesh = cloth->runtimeMesh.Current();
         meshRenderer->enabled = true;
-        /// @note 空の参照なら同じ GameObject の既存 Material を使用する。
+        // 空の参照なら同じ GameObject の既存 Material を使用する。
         if (!cloth->materialPath.empty() && state.appliedMaterial != cloth->materialPath) {
             auto* material = go->GetComponent<MaterialComponent>();
-            if (!material) material = &go->AddComponent<MaterialComponent>();
+            if (!material) {
+                material = &go->AddComponent<MaterialComponent>();
+            }
             material->SetMaterialPath(cloth->materialPath);
             state.appliedMaterial = cloth->materialPath;
         }

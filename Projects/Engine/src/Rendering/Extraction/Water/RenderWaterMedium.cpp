@@ -44,7 +44,7 @@ float MediumSetting(const asset::MaterialAssetAuthoring* material, const char* n
     return std::isfinite(value) ? std::clamp(value, minimum, maximum) : fallback;
 }
 
-} /// @note namespace
+} // namespace
 
 renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const Transform& transform,
     EntityID owner, const asset::MaterialAssetAuthoring* material, const WaterMesh& mesh,
@@ -94,23 +94,30 @@ renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const T
         for (const auto& box : exclusions->boxes) {
             medium.exclusions.push_back({WorldToLocalRows(box.worldPosition, box.inverseWorldRotation,
                 box.inverseWorldScale), box.halfExtent});
-            if (constants.riverWaveParams.x <= 0.0f || waveRockCount >= renderer::WATER_RIVER_WAVE_ROCK_COUNT)
+            if (constants.riverWaveParams.x <= 0.0f || waveRockCount >= renderer::WATER_RIVER_WAVE_ROCK_COUNT) {
                 continue;
+            }
             const auto rotatedUp = box.inverseWorldRotation * math::Vector3::UP;
-            if (rotatedUp.x * rotatedUp.x + rotatedUp.z * rotatedUp.z > 1.0e-6f) continue;
+            if (rotatedUp.x * rotatedUp.x + rotatedUp.z * rotatedUp.z > 1.0e-6f) {
+                continue;
+            }
             const float halfX = box.halfExtent.x / std::abs(box.inverseWorldScale.x);
             const float halfY = box.halfExtent.y / std::abs(box.inverseWorldScale.y);
             const float halfZ = box.halfExtent.z / std::abs(box.inverseWorldScale.z);
             const float minimumWidth = (std::min)(halfX, halfZ);
             const float maximumWidth = (std::max)(halfX, halfZ);
             if (minimumWidth < 0.12f || maximumWidth > 3.0f || maximumWidth > 2.0f * minimumWidth
-                || !std::isfinite(halfY)) continue;
+                || !std::isfinite(halfY)) {
+                continue;
+            }
             const auto& center = box.worldPosition;
             const float radius = std::sqrt((4.0f / math::PI) * halfX * halfZ);
             const float reach = 3.7f * radius;
             if (center.y + halfY < minimumY || center.y - halfY > maximumY
                 || center.x + reach < minimumX || center.x - reach > maximumX
-                || center.z + reach < minimumZ || center.z - reach > maximumZ) continue;
+                || center.z + reach < minimumZ || center.z - reach > maximumZ) {
+                continue;
+            }
             constants.riverWaveRocks[2u * waveRockCount] = {center.x, center.y, center.z, radius};
             constants.riverWaveRocks[2u * waveRockCount + 1u].x = halfY;
             ++waveRockCount;
@@ -122,7 +129,9 @@ renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const T
         for (const auto& plume : interactionSnapshot->plumes) {
             if (plume.density <= 0.0f || plume.radius <= 0.0f
                 || (plume.scattering.x <= 0.0f && plume.scattering.y <= 0.0f
-                    && plume.scattering.z <= 0.0f)) continue;
+                    && plume.scattering.z <= 0.0f)) {
+                continue;
+            }
             medium.plumes.push_back({{plume.worldPosition.x, plume.worldPosition.y, plume.worldPosition.z, plume.radius},
                                     {plume.scattering.x, plume.scattering.y, plume.scattering.z, plume.density}});
         }
@@ -130,4 +139,4 @@ renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const T
     return medium;
 }
 
-} /// @note namespace fbzz::scene::water_render_detail
+} // namespace fbzz::scene::water_render_detail

@@ -20,7 +20,7 @@ class GameObject;
 class Script;
 
 struct ScriptMeshProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< メッシュ操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief MeshRenderer または SkinnedMeshRenderer の enabled を切り替える。両方あれば両方を変更する。
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
@@ -76,4 +76,4 @@ struct ScriptMeshProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -22,8 +22,7 @@ struct SplineComponent {
     std::uint64_t bakedInputSignature = 0;
     ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
     std::uint32_t bakedAdapterVersion = 0;
-    /// @brief 保持した点列の末尾を先頭につないで閉じるか。
-    bool bakedClosed = false;
+    bool bakedClosed = false; ///< 保持した点列の末尾を先頭につないで閉じるか。
     bool bakeValid = false;
     bool closed = false;
 
@@ -33,8 +32,9 @@ struct SplineComponent {
         r.Field("enabled", enabled);
         ReflectControlPointSourceMode(r, "pointSourceMode", pointSourceMode);
         ReflectControlPointRuntimeMode(r, "pointRuntimeMode", pointRuntimeMode);
-        if (pointSourceMode == ControlPointSourceMode::INLINE)
+        if (pointSourceMode == ControlPointSourceMode::INLINE) {
             r.ListField("points", points);
+        }
         ReflectSplineControlPointBindings(r, pointBindings);
         ReflectSplineControlPointValues(r, "bakedPoints", bakedPoints);
         ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);

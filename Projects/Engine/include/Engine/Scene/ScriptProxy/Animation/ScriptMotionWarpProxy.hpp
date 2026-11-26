@@ -17,7 +17,7 @@ class GameObject;
 enum class MotionWarpPointMode : std::uint8_t;
 
 struct ScriptMotionWarpProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< モーションワープ操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note duration秒でworld位置へ寄せる。配置点のLIVE追従から数値入力へ切り替える。
     FBZZ_ENGINE_API void WarpTo(const math::Vector3& position, float duration) const;
@@ -54,4 +54,4 @@ struct ScriptMotionWarpProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetRemainingDistance() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

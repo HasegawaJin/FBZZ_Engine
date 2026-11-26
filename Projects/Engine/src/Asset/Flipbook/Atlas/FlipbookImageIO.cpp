@@ -42,7 +42,9 @@ std::filesystem::path FindAvailableBase(const std::filesystem::path& directory,
                 break;
             }
         }
-        if (!occupied) return base;
+        if (!occupied) {
+            return base;
+        }
     }
     return {};
 }
@@ -72,14 +74,15 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
     }
 
     std::error_code directoryError;
-    if (const std::filesystem::path parent = path.parent_path(); !parent.empty())
+    if (const std::filesystem::path parent = path.parent_path(); !parent.empty()) {
         std::filesystem::create_directories(parent, directoryError);
+    }
     if (directoryError) {
         outError = "出力ディレクトリを作成できません: " + directoryError.message();
         return false;
     }
 
-    /// @note 既存 PNG を直接切り詰めず、隣の一時ファイルを完成してから置き換える。
+    // 既存 PNG を直接切り詰めず、隣の一時ファイルを完成してから置き換える。
     static std::atomic<unsigned long long> temporarySerial{ 0 };
     std::filesystem::path temporaryPath;
     std::error_code temporaryError;
@@ -94,7 +97,9 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
                 + util::FileSystem::PathToUtf8(temporaryPath) + " (" + temporaryError.message() + ")";
             return false;
         }
-        if (temporaryExists) continue;
+        if (temporaryExists) {
+            continue;
+        }
         break;
     } while (true);
 
@@ -107,7 +112,9 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
         outError = "PNG を書き出せません: " + util::FileSystem::PathToUtf8(path) + " (HRESULT " + code + ")";
         std::error_code cleanupError;
         std::filesystem::remove(temporaryPath, cleanupError);
-        if (cleanupError) outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
+        if (cleanupError) {
+            outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
+        }
         return false;
     }
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw MoveFileExW, MOVEFILE_REPLACE_EXISTING
@@ -118,7 +125,9 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
         outError = "PNG を置き換えられません: " + util::FileSystem::PathToUtf8(path) + " (Win32 " + code + ")";
         std::error_code cleanupError;
         std::filesystem::remove(temporaryPath, cleanupError);
-        if (cleanupError) outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
+        if (cleanupError) {
+            outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
+        }
         return false;
     }
     return true;
@@ -137,7 +146,9 @@ bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
     const bool hasExistingSettings = util::FileSystem::Exists(metaPath) && serializer.Load(metaPath, existing);
     texture.settings = hasExistingSettings ? existing.settings : DefaultSettingsForType(type);
     texture.settings.type = type;
-    if (!hasExistingSettings) texture.settings.compression = compression;
+    if (!hasExistingSettings) {
+        texture.settings.compression = compression;
+    }
     texture.settings.alphaMode = alphaMode;
     texture.settings.mipmaps = mipmaps;
     if (!mipmaps) {
@@ -177,14 +188,17 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
         const DirectX::Image* image = chain.GetImage(level, 0, 0);
         const FlipbookMipLevel& source = levels[level];
         const std::size_t sourcePitch = static_cast<std::size_t>(source.width) * 4;
-        for (std::uint32_t y = 0; y < source.height; ++y)
+        for (std::uint32_t y = 0; y < source.height; ++y) {
             std::memcpy(image->pixels + static_cast<std::size_t>(y) * image->rowPitch,
                         source.rgba.data() + static_cast<std::size_t>(y) * sourcePitch, sourcePitch);
+        }
     }
 
     const DirectX::ScratchImage* output = &chain;
     DirectX::ScratchImage compressed;
-    if (width % 4 != 0 || height % 4 != 0) compression = FlipbookDdsCompression::None;
+    if (width % 4 != 0 || height % 4 != 0) {
+        compression = FlipbookDdsCompression::None;
+    }
     if (compression != FlipbookDdsCompression::None) {
         const DXGI_FORMAT format =
             compression == FlipbookDdsCompression::BC5 ? DXGI_FORMAT_BC5_UNORM : DXGI_FORMAT_BC7_UNORM;
@@ -202,8 +216,8 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
                 outError = "DDS の圧縮バッファを確保できません";
                 return false;
             }
-            /// @note BC の各 4x4 ブロックは独立している。タイル単位に圧縮するとキャンセルを
-            /// @note 1 枚の巨大な DirectXTex::Compress が終わる前に受け付けられる。
+            // BC の各 4x4 ブロックは独立している。タイル単位に圧縮するとキャンセルを
+            // 1 枚の巨大な DirectXTex::Compress が終わる前に受け付けられる。
             for (std::size_t level = 0; level < levels.size(); ++level) {
                 const DirectX::Image* source = chain.GetImage(level, 0, 0);
                 const DirectX::Image* destination = compressed.GetImage(level, 0, 0);
@@ -228,10 +242,11 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
                         const DirectX::Image* tileOutput = tileCompressed.GetImage(0, 0, 0);
                         const std::size_t blockRows = mipTileHeight / 4;
                         const std::size_t rowBytes = static_cast<std::size_t>(mipTileWidth / 4) * 16;
-                        for (std::size_t row = 0; row < blockRows; ++row)
+                        for (std::size_t row = 0; row < blockRows; ++row) {
                             std::memcpy(destination->pixels + (y / 4 + row) * destination->rowPitch
                                             + static_cast<std::size_t>(x / 4) * 16,
                                         tileOutput->pixels + row * tileOutput->rowPitch, rowBytes);
+                        }
                     }
                 }
             }
@@ -260,8 +275,9 @@ bool SaveFlipbookMeta(const std::filesystem::path& sourcePath, TextureType type,
     texture.settings.wrapU = TextureWrap::Clamp;
     texture.settings.wrapV = TextureWrap::Clamp;
     texture.settings.filter = TextureFilter::Trilinear;
-    if (type == TextureType::Data || type == TextureType::Normal)
+    if (type == TextureType::Data || type == TextureType::Normal) {
         texture.settings.srgb = false;
+    }
 
     const std::string metaPath = sourcePath.string() + ".meta";
     TexDescSerializer serializer;

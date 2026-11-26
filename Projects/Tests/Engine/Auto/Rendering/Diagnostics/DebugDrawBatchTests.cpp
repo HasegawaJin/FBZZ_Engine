@@ -55,7 +55,7 @@ TEST_F(DebugDrawBatchTest, FlushesBeforeAppendingWhenFull)
 /// @brief Keeps primitive whole across flush.
 TEST_F(DebugDrawBatchTest, KeepsPrimitiveWholeAcrossFlush)
 {
-    /// @note 3 頂点残っている上限 4 のバッチへ線 (2 頂点) を積むと、1 頂点だけ前の Flush へ入ってはいけない。
+    // 3 頂点残っている上限 4 のバッチへ線 (2 頂点) を積むと、1 頂点だけ前の Flush へ入ってはいけない。
     std::vector<int> batch = { 9, 9, 9 };
     std::vector<std::size_t> flushedSizes;
     AppendDebugPrimitive(batch, 4, kLine, 2, false, [&] {

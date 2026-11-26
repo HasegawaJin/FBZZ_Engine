@@ -16,7 +16,7 @@ class GameObject;
 /// @note 別オブジェクトを回したいときだけ *On 系を使う。
 struct ScriptSequenceProxy {
     explicit ScriptSequenceProxy(Script* owner) : script(owner) {}
-    Script* script = nullptr;
+    Script* script = nullptr; ///< シーケンス操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note path を差し替えて先頭から再生する。SequencePlayerComponent が無ければ追加する。
     FBZZ_ENGINE_API void Play(std::string_view path) const;
@@ -42,4 +42,4 @@ struct ScriptSequenceProxy {
     FBZZ_ENGINE_API void BindOn(GameObject& owner, std::string_view key, GameObject* target) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

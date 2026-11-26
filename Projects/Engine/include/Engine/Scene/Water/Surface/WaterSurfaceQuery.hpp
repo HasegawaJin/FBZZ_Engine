@@ -16,14 +16,14 @@ struct WaterComponent;
 
 struct WaterSurfaceHeightSample {
     math::Vector3 position;
-    float depth = 0.0f; ///< @note 表面から入力位置までの鉛直距離 [m]。水面より上なら負。
+    float depth = 0.0f; ///< 表面から入力位置までの鉛直距離 [m]。水面より上なら負。
     bool insideSurface = false;
-    bool underwater = false; ///< @note footprint 内かつ 0 < depth <= waterDepthLimit。
-    float displacement = 0.0f; ///< @note Component の worldY に加える基準高さ差と表面変位 [world m]。
-    float waterDepthLimit = 0.0f; ///< @note この XZ で浮力が届く表面下の深さ [world m]。
-    float baseHeightOffset = 0.0f; ///< @note Spline 三角形の基準 worldY 差。絶対 worldY から分離して精度を保つ。
-    math::Vector2 baseHeightGradient = math::Vector2::ZERO; ///< @note Spline の基準面 dY/d(worldX,worldZ)。
-    bool excluded = false; ///< @note 除外ボックスがワールド座標を含むか、スナップショットが無効。
+    bool underwater = false; ///< footprint 内かつ 0 < depth <= waterDepthLimit。
+    float displacement = 0.0f; ///< Component の worldY に加える基準高さ差と表面変位 [world m]。
+    float waterDepthLimit = 0.0f; ///< この XZ で浮力が届く表面下の深さ [world m]。
+    float baseHeightOffset = 0.0f; ///< Spline 三角形の基準 worldY 差。絶対 worldY から分離して精度を保つ。
+    math::Vector2 baseHeightGradient = math::Vector2::ZERO; ///< Spline の基準面 dY/d(worldX,worldZ)。
+    bool excluded = false; ///< 除外ボックスがワールド座標を含むか、スナップショットが無効。
 };
 
 struct WaterSurfaceSample {

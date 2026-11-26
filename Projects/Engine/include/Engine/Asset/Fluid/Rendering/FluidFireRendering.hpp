@@ -59,8 +59,8 @@ public:
     }
 
 private:
-    float m_maxKelvin = 1.0f;
-    std::array<math::Vector3, kFluidFireColorLutSamples> m_chroma{};
+    float m_maxKelvin = 1.0f; ///< 黒体色参照表の最終サンプルに対応する温度 [K]。
+    std::array<math::Vector3, kFluidFireColorLutSamples> m_chroma{}; ///< 温度サンプル順に格納した黒体の発光 RGB 色度。
 };
 
 /// @brief 2D Fire と VolumeRaymarch.hlsl が使う黒体放射密度 q(T)。

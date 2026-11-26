@@ -18,16 +18,14 @@ namespace fbzz::ai {
 
 /// @brief エージェント 1 体ぶんの実行状態。木そのものは共有なので、可変なのはここだけ。
 struct BTInstanceState {
-    std::vector<std::uint8_t> flags;    ///< @note ノードごとのビットフラグ (BTNodeFlag)
-    std::vector<std::uint16_t> cursor;  ///< @note Composite の現在の子スロット / Repeat の完了回数 / RandomSelector の選択結果
-    std::vector<float> timers;          ///< @note Wait の経過 / TimeLimit の経過。中断でクリアされる。
-    /// @note Cooldown の残り時間。中断でクリアしない。timers と分けるのは、中断で消すと「中断→即再突入」でクールダウンが無効化され連打できてしまうため。
-    std::vector<float> cooldowns;
+    std::vector<std::uint8_t> flags; ///< ノードごとのビットフラグ (BTNodeFlag)
+    std::vector<std::uint16_t> cursor; ///< Composite の現在の子スロット / Repeat の完了回数 / RandomSelector の選択結果
+    std::vector<float> timers; ///< Wait の経過 / TimeLimit の経過。中断でクリアされる。
+    std::vector<float> cooldowns; ///< Cooldown の残り時間。中断でクリアしない。timers と分けるのは、中断で消すと「中断→即再突入」でクールダウンが無効化され連打できてしまうため。
 
-    std::uint16_t runningLeaf = kInvalidNode;   ///< @note デバッグ用の代表 Running リーフ。Parallel の全実行状態は flags に保持する。
+    std::uint16_t runningLeaf = kInvalidNode; ///< デバッグ用の代表 Running リーフ。Parallel の全実行状態は flags に保持する。
 
-    /// @note RandomSelector 用の決定的 RNG 状態。インスタンスごとに持つのは、同じ木を使う敵が全員同じ選択をすると群れが機械的に見え、テストでは種を固定して再現する必要があるため。
-    std::uint32_t rngState = 0x9E3779B9u;
+    std::uint32_t rngState = 0x9E3779B9u; ///< RandomSelector 用の決定的 RNG 状態。インスタンスごとに持つのは、同じ木を使う敵が全員同じ選択をすると群れが機械的に見え、テストでは種を固定して再現する必要があるため。
 
     FBZZ_ENGINE_API void Resize(std::size_t nodeCount);
     /// @brief 全状態を初期化する (木の差し替え / Restart)。
@@ -42,7 +40,7 @@ inline constexpr std::uint8_t Running     = 1 << 0;  ///< @note 前回 Running �
 inline constexpr std::uint8_t Done        = 1 << 1;  ///< @note Parallel の子: 完了済み
 inline constexpr std::uint8_t DoneSuccess = 1 << 2;  ///< @note Parallel の子: 完了結果が Success
 inline constexpr std::uint8_t Entered     = 1 << 3;  ///< @note 一度でも実行に入った (Wait の初期化用)
-} /// @note namespace BTNodeFlag
+} // namespace BTNodeFlag
 
 class IBTActionHandler;
 
@@ -57,8 +55,7 @@ struct BTTickContext {
 
     IBTActionHandler* actions = nullptr;
 
-    /// @brief エディタの実行中ハイライト用。null なら記録しない。nodes.size() 分の配列で、0=未評価/1=Success/2=Failure/3=Running。
-    std::vector<std::uint8_t>* outNodeStatus = nullptr;
+    std::vector<std::uint8_t>* outNodeStatus = nullptr; ///< エディタの実行中ハイライト用。null なら記録しない。nodes.size() 分の配列で、0=未評価/1=Success/2=Failure/3=Running。
 };
 
 /// @brief Scene に触るノード (MoveTo / Patrol / PlayAnimation ...) の実行を外へ委ねるフック。
@@ -114,4 +111,4 @@ FBZZ_ENGINE_API void AbortBehaviorTree(const BehaviorTreeRuntime& tree,
                                        const Blackboard& blackboard,
                                        const BTTickContext& ctx);
 
-} /// @note namespace fbzz::ai
+} // namespace fbzz::ai

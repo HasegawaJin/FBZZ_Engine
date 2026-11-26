@@ -41,8 +41,9 @@ template<typename T>
 void HashValue(std::uint64_t& hash, const T& value)
 {
     static_assert(std::is_trivially_copyable_v<T>);
-    for (const std::byte valueByte : std::as_bytes(std::span{&value, std::size_t{1}}))
+    for (const std::byte valueByte : std::as_bytes(std::span{&value, std::size_t{1}})) {
         HashByte(hash, std::to_integer<std::uint8_t>(valueByte));
+    }
 }
 
 void HashFloat(std::uint64_t& hash, float value)
@@ -141,14 +142,18 @@ void ReflectRows(IReflector& reflector, const char* fieldName,
     std::vector<T>& values, std::size_t maximum, ReflectRow reflectRow)
 {
     const std::size_t requested = reflector.BeginObjectList(fieldName, values.size());
-    if (requested != values.size()) values.resize((std::min)(requested, maximum + 1));
+    if (requested != values.size()) {
+        values.resize((std::min)(requested, maximum + 1));
+    }
     for (std::size_t index = 0; index < values.size(); ++index) {
         reflector.BeginObjectElement(index);
         reflectRow(values[index]);
         reflector.EndObjectElement();
     }
     const std::size_t removed = reflector.EndObjectList();
-    if (removed < values.size()) values.erase(values.begin() + static_cast<std::ptrdiff_t>(removed));
+    if (removed < values.size()) {
+        values.erase(values.begin() + static_cast<std::ptrdiff_t>(removed));
+    }
     std::size_t from = 0;
     std::size_t to = 0;
     if (reflector.ObjectListMove(from, to) && from < values.size() && to < values.size() && from != to) {
@@ -164,7 +169,9 @@ void ReflectSignature(IReflector& reflector, const char* fieldName, std::uint64_
     reflector.Field(fieldName, text);
     std::uint64_t parsed = 0;
     const auto result = std::from_chars(text.data(), text.data() + text.size(), parsed);
-    if (result.ec == std::errc{} && result.ptr == text.data() + text.size()) signature = parsed;
+    if (result.ec == std::errc{} && result.ptr == text.data() + text.size()) {
+        signature = parsed;
+    }
 }
 
 void ReflectVersion(IReflector& reflector, const char* fieldName, std::uint32_t& version)
@@ -172,7 +179,9 @@ void ReflectVersion(IReflector& reflector, const char* fieldName, std::uint32_t&
     int value = static_cast<int>((std::min)(version,
         static_cast<std::uint32_t>((std::numeric_limits<int>::max)())));
     reflector.Field(fieldName, value);
-    if (value >= 0) version = static_cast<std::uint32_t>(value);
+    if (value >= 0) {
+        version = static_cast<std::uint32_t>(value);
+    }
 }
 
 void ReflectPointSourceMode(IReflector& reflector, const char* fieldName,
@@ -264,10 +273,14 @@ std::uint64_t ComputeClothTopologySignature(const asset::ClothAsset* source,
 {
     std::uint64_t hash = FNV_OFFSET;
     if (!source) {
-        if (generatedSegments < 2 || generatedSegments > 64) return 0;
+        if (generatedSegments < 2 || generatedSegments > 64) {
+            return 0;
+        }
         const std::uint64_t side = static_cast<std::uint64_t>(generatedSegments) + 1;
         const std::uint64_t count = side * side;
-        if (count > (std::numeric_limits<std::uint32_t>::max)()) return 0;
+        if (count > (std::numeric_limits<std::uint32_t>::max)()) {
+            return 0;
+        }
         particleCount = static_cast<std::uint32_t>(count);
         HashByte(hash, 0u);
         HashValue(hash, generatedSegments);
@@ -290,27 +303,37 @@ std::uint64_t ComputeClothTopologySignature(const asset::ClothAsset* source,
     }
 
     if (source->particles.empty()
-        || source->particles.size() > (std::numeric_limits<std::uint32_t>::max)()) return 0;
+        || source->particles.size() > (std::numeric_limits<std::uint32_t>::max)()) {
+        return 0;
+    }
     particleCount = static_cast<std::uint32_t>(source->particles.size());
     const std::vector<std::uint32_t>& simulationIndices = source->simulationIndices.empty()
         ? source->indices : source->simulationIndices;
-    if (simulationIndices.size() % 3 != 0) return 0;
+    if (simulationIndices.size() % 3 != 0) {
+        return 0;
+    }
     HashByte(hash, source->simulationIndices.empty() ? 1u : 2u);
     HashValue(hash, particleCount);
     HashValue(hash, static_cast<std::uint64_t>(simulationIndices.size()));
     for (const std::uint32_t index : simulationIndices) {
-        if (index >= particleCount) return 0;
+        if (index >= particleCount) {
+            return 0;
+        }
         HashValue(hash, index);
     }
     HashValue(hash, static_cast<std::uint64_t>(source->renderToParticle.size()));
     for (const std::uint32_t particle : source->renderToParticle) {
-        if (particle >= particleCount) return 0;
+        if (particle >= particleCount) {
+            return 0;
+        }
         HashValue(hash, particle);
     }
     HashValue(hash, static_cast<std::uint64_t>(source->renderBindings.size()));
     for (const asset::ClothRenderBinding& binding : source->renderBindings) {
         for (const std::uint32_t particle : binding.particles) {
-            if (particle >= particleCount) return 0;
+            if (particle >= particleCount) {
+                return 0;
+            }
             HashValue(hash, particle);
         }
     }
@@ -338,7 +361,7 @@ std::uint64_t HashSplineValues(std::uint64_t hash, std::span<const SplineControl
     return hash == 0 ? 1 : hash;
 }
 
-} /// @note namespace
+} // namespace
 
 void WaterControlPointBinding::Reflect(IReflector& reflector)
 {
@@ -448,7 +471,9 @@ bool ResolveClothTopologyForParticle(const asset::ClothAsset* source,
     const std::uint64_t currentSignature = ComputeClothTopologySignature(
         source, generatedSegments, currentCount);
     if (currentSignature == 0 || particle < 0
-        || static_cast<std::uint32_t>(particle) >= currentCount) return false;
+        || static_cast<std::uint32_t>(particle) >= currentCount) {
+        return false;
+    }
     signature = currentSignature;
     particleCount = currentCount;
     return true;
@@ -481,8 +506,9 @@ WaterControlPointSnapshot ResolveWaterControlPointAuthoring(
         }
         std::vector<ControlPointBinding> bindings;
         bindings.reserve(water.pointBindings.size());
-        for (WaterControlPointBinding& binding : water.pointBindings)
+        for (WaterControlPointBinding& binding : water.pointBindings) {
             bindings.push_back({binding.id, &binding.target});
+        }
         std::vector<ResolvedControlPoint> resolved;
         std::uint64_t resolverSignature = 0;
         if (!ResolveControlPointBindings(scene, ownerId, bindings, true,
@@ -490,7 +516,9 @@ WaterControlPointSnapshot ResolveWaterControlPointAuthoring(
             snapshot.status = ControlPointAdapterStatus::RESOLUTION_FAILED;
             snapshot.inputSignature = WaterRawSignature(water, signatureRuntimeMode);
             HashValue(snapshot.inputSignature, snapshot.resolveStatus);
-            if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+            if (snapshot.inputSignature == 0) {
+                snapshot.inputSignature = 1;
+            }
             return snapshot;
         }
         snapshot.points.reserve(resolved.size());
@@ -503,8 +531,9 @@ WaterControlPointSnapshot ResolveWaterControlPointAuthoring(
     }
 
     if (snapshot.surfaceShape == WaterSurfaceShape::SPLINE_LAKE
-        && water.pointSourceMode == ControlPointSourceMode::INLINE && !snapshot.points.empty())
+        && water.pointSourceMode == ControlPointSourceMode::INLINE && !snapshot.points.empty()) {
         snapshot.lakePlaneHeight = snapshot.points.front().localPosition.y;
+    }
     if (!ValidateWaterPoints(snapshot.surfaceShape, snapshot.lakePlaneHeight, true,
             snapshot.points, snapshot.status)) {
         snapshot.inputSignature = HashWaterValues(snapshot.inputSignature, snapshot.points);
@@ -520,8 +549,9 @@ WaterControlPointSnapshot ResolveWaterControlPointAuthoring(
 WaterControlPointSnapshot ResolveWaterControlPoints(
     Scene& scene, EntityID ownerId, WaterComponent& water, ControlPointReadContext context)
 {
-    if (water.pointRuntimeMode == ControlPointRuntimeMode::LIVE)
+    if (water.pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
         return ResolveWaterControlPointAuthoring(scene, ownerId, water, ControlPointRuntimeMode::LIVE);
+    }
 
     WaterControlPointSnapshot current;
     if (!IsKnownRuntimeMode(water.pointRuntimeMode)) {
@@ -529,11 +559,13 @@ WaterControlPointSnapshot ResolveWaterControlPoints(
         current.valid = false;
         return current;
     }
-    if (context == ControlPointReadContext::AUTHORING)
+    if (context == ControlPointReadContext::AUTHORING) {
         current = ResolveWaterControlPointAuthoring(
             scene, ownerId, water, ControlPointRuntimeMode::BAKED_STATIC);
-    else
+    }
+    else {
         current.inputSignature = water.bakedInputSignature;
+    }
     if (!water.bakeValid || water.bakedSplinePoints.empty()) {
         current.points.clear();
         current.status = ControlPointAdapterStatus::MISSING_BAKE;
@@ -541,12 +573,13 @@ WaterControlPointSnapshot ResolveWaterControlPoints(
         return current;
     }
 
-    if (context == ControlPointReadContext::AUTHORING)
+    if (context == ControlPointReadContext::AUTHORING) {
         current.bakeStale = !current.valid || current.inputSignature != water.bakedInputSignature
             || water.bakedSourceMode != water.pointSourceMode
             || current.points != water.bakedSplinePoints
             || current.surfaceShape != water.bakedSurfaceShape
             || current.lakePlaneHeight != water.bakedLakePlaneHeight;
+    }
     if (water.bakedInputSignature == 0 || !IsKnownSourceMode(water.bakedSourceMode)
         || water.bakedAdapterVersion != CONTROL_POINT_ADAPTER_VERSION) {
         current.bakeStale = true;
@@ -588,8 +621,9 @@ SplineControlPointSnapshot ResolveSplinePointAuthoring(
 
     if (spline.pointSourceMode == ControlPointSourceMode::INLINE) {
         snapshot.points.reserve(spline.points.size());
-        for (std::size_t index = 0; index < spline.points.size(); ++index)
+        for (std::size_t index = 0; index < spline.points.size(); ++index) {
             snapshot.points.push_back({static_cast<std::uint32_t>(index + 1), spline.points[index]});
+        }
     } else {
         if (spline.pointBindings.size() > MAX_CONTROL_POINT_BINDINGS) {
             snapshot.status = ControlPointAdapterStatus::INVALID_NUMERIC_DATA;
@@ -598,8 +632,9 @@ SplineControlPointSnapshot ResolveSplinePointAuthoring(
         }
         std::vector<ControlPointBinding> bindings;
         bindings.reserve(spline.pointBindings.size());
-        for (SplineControlPointBinding& binding : spline.pointBindings)
+        for (SplineControlPointBinding& binding : spline.pointBindings) {
             bindings.push_back({binding.id, &binding.target});
+        }
         std::vector<ResolvedControlPoint> resolved;
         std::uint64_t resolverSignature = 0;
         if (!ResolveControlPointBindings(scene, ownerId, bindings, true,
@@ -607,12 +642,15 @@ SplineControlPointSnapshot ResolveSplinePointAuthoring(
             snapshot.status = ControlPointAdapterStatus::RESOLUTION_FAILED;
             snapshot.inputSignature = SplineRawSignature(spline, signatureRuntimeMode);
             HashValue(snapshot.inputSignature, snapshot.resolveStatus);
-            if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
+            if (snapshot.inputSignature == 0) {
+                snapshot.inputSignature = 1;
+            }
             return snapshot;
         }
         snapshot.points.reserve(resolved.size());
-        for (const ResolvedControlPoint& point : resolved)
+        for (const ResolvedControlPoint& point : resolved) {
             snapshot.points.push_back({point.stableId, point.ownerLocalPosition});
+        }
         snapshot.inputSignature = SplineRawSignature(spline, signatureRuntimeMode);
     }
 
@@ -630,8 +668,9 @@ SplineControlPointSnapshot ResolveSplinePointAuthoring(
 SplineControlPointSnapshot ResolveSplinePoints(
     Scene& scene, EntityID ownerId, SplineComponent& spline, ControlPointReadContext context)
 {
-    if (spline.pointRuntimeMode == ControlPointRuntimeMode::LIVE)
+    if (spline.pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
         return ResolveSplinePointAuthoring(scene, ownerId, spline, ControlPointRuntimeMode::LIVE);
+    }
 
     SplineControlPointSnapshot current;
     if (!IsKnownRuntimeMode(spline.pointRuntimeMode)) {
@@ -639,11 +678,13 @@ SplineControlPointSnapshot ResolveSplinePoints(
         current.valid = false;
         return current;
     }
-    if (context == ControlPointReadContext::AUTHORING)
+    if (context == ControlPointReadContext::AUTHORING) {
         current = ResolveSplinePointAuthoring(
             scene, ownerId, spline, ControlPointRuntimeMode::BAKED_STATIC);
-    else
+    }
+    else {
         current.inputSignature = spline.bakedInputSignature;
+    }
     if (!spline.bakeValid || spline.bakedPoints.empty()) {
         current.points.clear();
         current.status = ControlPointAdapterStatus::MISSING_BAKE;
@@ -651,10 +692,11 @@ SplineControlPointSnapshot ResolveSplinePoints(
         return current;
     }
 
-    if (context == ControlPointReadContext::AUTHORING)
+    if (context == ControlPointReadContext::AUTHORING) {
         current.bakeStale = !current.valid || current.inputSignature != spline.bakedInputSignature
             || spline.bakedSourceMode != spline.pointSourceMode
             || current.points != spline.bakedPoints || current.closed != spline.bakedClosed;
+    }
     if (spline.bakedInputSignature == 0 || !IsKnownSourceMode(spline.bakedSourceMode)
         || spline.bakedAdapterVersion != CONTROL_POINT_ADAPTER_VERSION) {
         current.bakeStale = true;
@@ -679,10 +721,14 @@ bool ValidateStaticControlPointBakes(Scene& scene)
     bool valid = ValidateStaticNavMeshPatrolBakes(scene);
     for (const EntityID id : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(id);
-        if (!water || water->pointRuntimeMode == ControlPointRuntimeMode::LIVE) continue;
+        if (!water || water->pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
+            continue;
+        }
         const WaterControlPointSnapshot snapshot = ResolveWaterControlPoints(scene, id, *water);
         if (snapshot.valid && !snapshot.bakeStale
-            && snapshot.status == ControlPointAdapterStatus::SUCCESS) continue;
+            && snapshot.status == ControlPointAdapterStatus::SUCCESS) {
+            continue;
+        }
         FBZZ_LOG_ERROR("ControlPointAdapters: Water static bake is not ready on entity %u:%u (status=%u, resolve=%u).",
             id.index, id.generation, static_cast<unsigned>(snapshot.status),
             static_cast<unsigned>(snapshot.resolveStatus));
@@ -690,10 +736,14 @@ bool ValidateStaticControlPointBakes(Scene& scene)
     }
     for (const EntityID id : scene.GetEntities<SplineComponent>()) {
         SplineComponent* spline = scene.GetComponent<SplineComponent>(id);
-        if (!spline || spline->pointRuntimeMode == ControlPointRuntimeMode::LIVE) continue;
+        if (!spline || spline->pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
+            continue;
+        }
         const SplineControlPointSnapshot snapshot = ResolveSplinePoints(scene, id, *spline);
         if (snapshot.valid && !snapshot.bakeStale
-            && snapshot.status == ControlPointAdapterStatus::SUCCESS) continue;
+            && snapshot.status == ControlPointAdapterStatus::SUCCESS) {
+            continue;
+        }
         FBZZ_LOG_ERROR("ControlPointAdapters: Spline static bake is not ready on entity %u:%u (status=%u, resolve=%u).",
             id.index, id.generation, static_cast<unsigned>(snapshot.status),
             static_cast<unsigned>(snapshot.resolveStatus));
@@ -701,13 +751,17 @@ bool ValidateStaticControlPointBakes(Scene& scene)
     }
     for (const EntityID id : scene.GetEntities<LineRendererComponent>()) {
         auto* line = scene.GetComponent<LineRendererComponent>(id);
-        if (!line || line->pointRuntimeMode == ControlPointRuntimeMode::LIVE) continue;
+        if (!line || line->pointRuntimeMode == ControlPointRuntimeMode::LIVE) {
+            continue;
+        }
         const auto snapshot = ResolveLineControlPoints(scene, id, *line);
-        if (snapshot.valid && !snapshot.bakeStale) continue;
+        if (snapshot.valid && !snapshot.bakeStale) {
+            continue;
+        }
         FBZZ_LOG_ERROR("ControlPointAdapters: Line static bake is not ready on entity %u:%u.", id.index, id.generation);
         valid = false;
     }
     return valid;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

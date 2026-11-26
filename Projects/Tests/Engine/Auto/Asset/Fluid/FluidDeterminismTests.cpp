@@ -58,7 +58,9 @@ std::vector<std::string> BakeFingerprints(const fluid::FluidRecipe& recipe, cons
     constexpr int FRAME_SIZE = 32;
     constexpr size_t PIXEL_COUNT = FRAME_SIZE * FRAME_SIZE;
     std::vector<asset::FluidFrameImage> images;
-    if (!asset::RenderFluidBakeFrames(recipe, frames, FRAME_SIZE, images)) return {};
+    if (!asset::RenderFluidBakeFrames(recipe, frames, FRAME_SIZE, images)) {
+        return {};
+    }
     std::vector<std::string> out;
     out.reserve(images.size());
     for (const asset::FluidFrameImage& image : images) {
@@ -87,7 +89,7 @@ TEST(FluidSteppingTest, WarmupIsCountedInWholeFrames)
 {
     fluid::FluidRecipe recipe = SmallGasRecipe();
     const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(recipe);
-    /// @note 0.5 秒を 4 コマ = 1 コマ 0.125 秒。warmup 0.2 秒は 2 コマ (切り上げ)。
+    // 0.5 秒を 4 コマ = 1 コマ 0.125 秒。warmup 0.2 秒は 2 コマ (切り上げ)。
     EXPECT_FLOAT_EQ(plan.frameDt, 0.125f);
     EXPECT_EQ(plan.frameCount, 4);
     EXPECT_EQ(plan.warmupFrames, 2);
@@ -97,7 +99,7 @@ TEST(FluidSteppingTest, WarmupIsCountedInWholeFrames)
 /// @brief Exact warmup does not gain an extra frame.
 TEST(FluidSteppingTest, ExactWarmupDoesNotGainAnExtraFrame)
 {
-    /// @note ちょうど割り切れる warmup で 1 コマ余分に数えると、GPU と CPU で焼き始めがずれる。
+    // ちょうど割り切れる warmup で 1 コマ余分に数えると、GPU と CPU で焼き始めがずれる。
     EXPECT_EQ(fluid::FluidWarmupFrames(0.25f, 0.125f), 2);
     EXPECT_EQ(fluid::FluidWarmupFrames(0.26f, 0.125f), 3);
     EXPECT_EQ(fluid::FluidWarmupFrames(0.0f, 0.125f), 0);
@@ -109,7 +111,7 @@ TEST(FluidSteppingTest, TimeSnapsToAFrameBoundary)
     const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(SmallGasRecipe());
     EXPECT_EQ(plan.FrameOfTime(0.0f), 0);
     EXPECT_EQ(plan.FrameOfTime(0.13f), 1);
-    /// @note コマ数を超える秒は最後のコマで止める (存在しないコマを指さない)。
+    // コマ数を超える秒は最後のコマで止める (存在しないコマを指さない)。
     EXPECT_EQ(plan.FrameOfTime(99.0f), plan.frameCount - 1);
 }
 
@@ -165,7 +167,7 @@ TEST(FluidDeterminismTest, PreviewFrameMatchesTheBakedFrame)
     const fluid::FluidRecipe recipe = SmallGasRecipe();
     const std::vector<std::string> baked = BakeFingerprints(recipe, AllFrames(recipe));
     ASSERT_EQ(baked.size(), 4u);
-    /// @note 1 コマだけ頼む道 (プレビュー) と、全コマ焼く道が同じ絵を出すこと。
+    // 1 コマだけ頼む道 (プレビュー) と、全コマ焼く道が同じ絵を出すこと。
     for (int frame = 0; frame < 4; ++frame) {
         const std::vector<std::string> single = BakeFingerprints(recipe, { frame });
         ASSERT_EQ(single.size(), 1u);
@@ -176,8 +178,8 @@ TEST(FluidDeterminismTest, PreviewFrameMatchesTheBakedFrame)
 /// @brief Preview matches the baked frame when looping.
 TEST(FluidDeterminismTest, PreviewMatchesTheBakedFrameWhenLooping)
 {
-    /// @note ループの先頭コマは «末尾の続き» と混ぜたものが焼かれる。プレビューがこれを再現しないと、
-    ///       先頭の数コマだけ «見た絵と違うもの» が焼ける。
+    // ループの先頭コマは «末尾の続き» と混ぜたものが焼かれる。プレビューがこれを再現しないと、
+    //       先頭の数コマだけ «見た絵と違うもの» が焼ける。
     fluid::FluidRecipe recipe = SmallGasRecipe();
     recipe.output.loop = true;
     const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(recipe);
@@ -192,7 +194,7 @@ TEST(FluidDeterminismTest, PreviewMatchesTheBakedFrameWhenLooping)
 /// @brief Supersampling applies to single frames too.
 TEST(FluidDeterminismTest, SupersamplingAppliesToSingleFramesToo)
 {
-    /// @note 焼きだけ超解像が掛かっていたころは、プレビューより焼きの方が滑らかだった。
+    // 焼きだけ超解像が掛かっていたころは、プレビューより焼きの方が滑らかだった。
     fluid::FluidRecipe recipe = SmallGasRecipe();
     recipe.output.supersampling = 2;
     const std::vector<std::string> baked = BakeFingerprints(recipe, AllFrames(recipe));
@@ -217,7 +219,7 @@ TEST(BakeFingerprintTest, DifferentBytesGiveDifferentDigests)
 /// @brief Checks negative zero hashes as zero.
 TEST(BakeFingerprintTest, NegativeZeroHashesAsZero)
 {
-    /// @note 同じ絵が «-0 が混ざっているかどうか» で別の指紋になると、変化の検出が嘘になる。
+    // 同じ絵が «-0 が混ざっているかどうか» で別の指紋になると、変化の検出が嘘になる。
     const std::vector<float> positive{ 0.0f, 1.0f };
     const std::vector<float> negative{ -0.0f, 1.0f };
     EXPECT_EQ(asset::BakeFingerprintOf(positive), asset::BakeFingerprintOf(negative));
@@ -244,12 +246,12 @@ TEST(FluidRecipeWriteTest, SavingTwiceGivesTheSameBytes)
 /// @brief Round trip keeps the bytes stable.
 TEST(FluidRecipeWriteTest, RoundTripKeepsTheBytesStable)
 {
-    /// @note 読んで書き戻しただけで行が動くと、AI が 1 項目直した差分に無関係な行が混ざる。
+    // 読んで書き戻しただけで行が動くと、AI が 1 項目直した差分に無関係な行が混ざる。
     testkit::TempDir temp{ "fluiddeterminism" };
     ASSERT_TRUE(temp.IsValid());
     const std::string path = util::FileSystem::PathToUtf8(temp.File("RoundTrip.fluid"));
     fluid::FluidRecipe recipe = SmallGasRecipe();
-    /// @note float では 0.10000000149011612 になる値
+    // float では 0.10000000149011612 になる値
     recipe.gas.buoyancy = 0.1f;
     recipe.render.opacity = 1.3f;
     ASSERT_TRUE(asset::SaveFluidRecipe(path, recipe));

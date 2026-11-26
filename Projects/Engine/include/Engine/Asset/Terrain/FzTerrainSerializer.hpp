@@ -16,4 +16,4 @@ public:
     std::string_view Extension() const override { return ".terrain"; }
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

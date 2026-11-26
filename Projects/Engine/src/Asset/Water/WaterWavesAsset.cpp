@@ -31,10 +31,14 @@ void WaterWavesAsset::Reflect(scene::IReflector& reflector)
 bool WaterWavesAsset::GenerateWaves(
     std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& out) const
 {
-    if (!std::isfinite(waveGrouping) || waveGrouping < 0.0f || waveGrouping > 1.0f
-        || !std::isfinite(waveSpread) || waveSpread < 0.0f || waveSpread > 1.0f) {
+    // アセットが持つ波群と方向の広がりは、基波を生成する前にそれぞれ 0〜1 の範囲を検査する。
+    if (!std::isfinite(waveGrouping) || waveGrouping < 0.0f || waveGrouping > 1.0f) {
         return false;
     }
+    if (!std::isfinite(waveSpread) || waveSpread < 0.0f || waveSpread > 1.0f) {
+        return false;
+    }
+
     return fluid::GenerateGerstnerWaves(GenerationSettings(), out);
 }
 
@@ -57,6 +61,6 @@ fluid::GerstnerWaveGenerationSettings WaterWavesAsset::GenerationSettings() cons
     return settings;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset
 
 FBZZ_REGISTER_BUILTIN_DATA_ASSET(::fbzz::asset::WaterWavesAsset);

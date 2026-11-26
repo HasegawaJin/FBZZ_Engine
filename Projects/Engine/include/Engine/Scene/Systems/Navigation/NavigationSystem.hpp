@@ -39,11 +39,10 @@ private:
         size_t last = SIZE_MAX;
     };
     [[nodiscard]] FBZZ_ENGINE_API AvoidanceBucket& FindAvoidanceBucket(int x, int z);
-    /// @note Scheduler の非再入 Update ごとに値を作り直し、callback を跨ぐ Entity 一覧の容量だけを保持する。
-    std::vector<EntityID> m_agentEntities;
+    std::vector<EntityID> m_agentEntities; ///< Scheduler の非再入 Update ごとに値を作り直し、callback を跨ぐ Entity 一覧の容量だけを保持する。
     std::vector<SurfaceEntry> m_surfaces;
     std::vector<AvoidanceEntry> m_avoidanceEntries;
     std::vector<AvoidanceBucket> m_avoidanceBuckets;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -25,9 +25,9 @@ static float SampleStitchedTerrainHeight(
     int                     columnX,
     int                     rowZ)
 {
-    /// @note TerrainGrid の境界では複数 Terrain が同じワールド頂点を持つ。描画用メッシュでは
-    /// @note その共有頂点を平均し、保存データを破壊せずに隙間を隠す。角は最大 4 Terrain が
-    /// @note 交差するため、斜め隣接も平均に含める。
+    // TerrainGrid の境界では複数 Terrain が同じワールド頂点を持つ。描画用メッシュでは
+    // その共有頂点を平均し、保存データを破壊せずに隙間を隠す。角は最大 4 Terrain が
+    // 交差するため、斜め隣接も平均に含める。
     float heightSum = 0.0f;
     int sampleCount = 0;
 
@@ -79,8 +79,9 @@ static float SampleStitchedTerrainHeight(
             sampleCount);
     }
 
-    if (sampleCount > 0)
+    if (sampleCount > 0) {
         return heightSum / static_cast<float>(sampleCount);
+    }
 
     const int clampedX = std::clamp(columnX, 0, terrain.columns - 1);
     const int clampedZ = std::clamp(rowZ, 0, terrain.rows - 1);
@@ -97,7 +98,7 @@ static void InvalidatePreviewChunks(renderer::ResourceManager& resources,
         EraseTerrainChunkCache(gpu, resources);
         return;
     }
-    /// @note 遮蔽証明の高さ下限は法線より広い最大 LOD 幅を読む。境界頂点は両チャンクに含まれる。
+    // 遮蔽証明の高さ下限は法線より広い最大 LOD 幅を読む。境界頂点は両チャンクに含まれる。
     const int halo = heightChanged ? renderer::TERRAIN_LOD_STEPS[gpu.lodCount - 1] + 1 : 0;
     const int firstX = std::max(region.minX - halo, 0) / terrain.chunkSize;
     const int firstZ = std::max(region.minZ - halo, 0) / terrain.chunkSize;
@@ -106,9 +107,11 @@ static void InvalidatePreviewChunks(renderer::ResourceManager& resources,
     for (int z = firstZ; z <= lastZ; ++z) {
         for (int x = firstX; x <= lastX; ++x) {
             const auto chunk = gpu.chunks.find({static_cast<uint32_t>(x), static_cast<uint32_t>(z)});
-            if (chunk == gpu.chunks.end()) continue;
+            if (chunk == gpu.chunks.end()) {
+                continue;
+            }
             chunk->second.verticesDirty |= heightChanged;
-            /// @note 穴の矩形は最終セルの奥側の頂点まで含む。各 LOD の穴判定はパッチ内に収める。
+            // 穴の矩形は最終セルの奥側の頂点まで含む。各 LOD の穴判定はパッチ内に収める。
             chunk->second.topologyDirty |= topologyChanged
                 && x * terrain.chunkSize < region.maxX && (x + 1) * terrain.chunkSize > region.minX
                 && z * terrain.chunkSize < region.maxZ && (z + 1) * terrain.chunkSize > region.minZ;
@@ -116,13 +119,23 @@ static void InvalidatePreviewChunks(renderer::ResourceManager& resources,
     }
     gpu.geometryDirty |= topologyChanged;
     gpu.shadowBakeGeometryHash = 0;
-    if (!heightChanged) return;
-    /// @note 隣接タイルがない場合は、高さバッファの余白に自タイル端のサンプルを複製する。
+    if (!heightChanged) {
+        return;
+    }
+    // 隣接タイルがない場合は、高さバッファの余白に自タイル端のサンプルを複製する。
     TerrainHeightRegion paddedRegion = region;
-    if (paddedRegion.minX == 0) --paddedRegion.minX;
-    if (paddedRegion.minZ == 0) --paddedRegion.minZ;
-    if (paddedRegion.maxX == terrain.columns - 1) ++paddedRegion.maxX;
-    if (paddedRegion.maxZ == terrain.rows - 1) ++paddedRegion.maxZ;
+    if (paddedRegion.minX == 0) {
+        --paddedRegion.minX;
+    }
+    if (paddedRegion.minZ == 0) {
+        --paddedRegion.minZ;
+    }
+    if (paddedRegion.maxX == terrain.columns - 1) {
+        ++paddedRegion.maxX;
+    }
+    if (paddedRegion.maxZ == terrain.rows - 1) {
+        ++paddedRegion.maxZ;
+    }
     gpu.heightUploadRegion.Include(paddedRegion);
 }
 
@@ -144,24 +157,33 @@ static void InvalidateNeighborTerrainChunks(TerrainRenderCache& cache, Scene& sc
     const TerrainGridLookup& gridLookup, EntityID entity, const TerrainComponent& terrain, const TerrainHeightRegion* region)
 {
     const auto* position = gridLookup.Find(entity);
-    if (!position) return;
+    if (!position) {
+        return;
+    }
     const auto [gridX, gridZ] = *position;
     for (int neighborOffsetZ = -1; neighborOffsetZ <= 1; ++neighborOffsetZ) {
         for (int neighborOffsetX = -1; neighborOffsetX <= 1; ++neighborOffsetX) {
-            if (neighborOffsetX == 0 && neighborOffsetZ == 0) continue;
+            if (neighborOffsetX == 0 && neighborOffsetZ == 0) {
+                continue;
+            }
             const EntityID neighborId = gridLookup.Grid()->GetCell(gridX + neighborOffsetX, gridZ + neighborOffsetZ);
             const auto cached = cache.entities.find(neighborId.index);
-            if (cached == cache.entities.end() || cached->second.entityId != neighborId) continue;
+            if (cached == cache.entities.end() || cached->second.entityId != neighborId) {
+                continue;
+            }
             const auto* neighbor = scene.GetComponent<TerrainComponent>(neighborId);
-            if (!neighbor) continue;
+            if (!neighbor) {
+                continue;
+            }
             if (!region) {
                 EraseTerrainChunkCache(cached->second, resources);
                 continue;
             }
             auto& gpu = cached->second;
             const auto affected = NeighborHeightPreview(terrain, *neighbor, neighborOffsetX, neighborOffsetZ, *region);
-            if (!affected.Empty() && gpu.lodCount != 0)
+            if (!affected.Empty() && gpu.lodCount != 0) {
                 InvalidatePreviewChunks(resources, *neighbor, gpu, affected, true);
+            }
         }
     }
 }
@@ -171,13 +193,15 @@ static void InvalidateNeighborTerrainChunks(TerrainRenderCache& cache, Scene& sc
 TerrainGridLookup::TerrainGridLookup(const TerrainGridComponent* terrainGrid)
     : m_grid(terrainGrid)
 {
-    if (!m_grid || m_grid->cellCountX <= 0 || m_grid->cellCountZ <= 0) return;
+    if (!m_grid || m_grid->cellCountX <= 0 || m_grid->cellCountZ <= 0) {
+        return;
+    }
     const size_t gridWidth = static_cast<size_t>(m_grid->cellCountX);
     const size_t cellCount = std::min(m_grid->cells.size(), gridWidth * static_cast<size_t>(m_grid->cellCountZ));
     m_positions.reserve(cellCount);
     for (size_t cellIndex = 0; cellIndex < cellCount; ++cellIndex) {
         const auto entity = m_grid->cells[cellIndex];
-        /// @note 重複参照は TryGetGridPos と同じく行優先で最初のセルを使う。
+        // 重複参照は TryGetGridPos と同じく行優先で最初のセルを使う。
         if (entity.IsValid()) m_positions.try_emplace(TerrainEntityKey(entity),
             std::array{static_cast<int>(cellIndex % gridWidth), static_cast<int>(cellIndex / gridWidth)});
     }
@@ -191,10 +215,12 @@ const std::array<int, 2>* TerrainGridLookup::Find(EntityID entity) const
 
 const TerrainGridComponent* FindActiveTerrainGrid(Scene& scene)
 {
-    /// @note 親ごと無効化された Grid は使わない (有効な最初の 1 つ)。
+    // 親ごと無効化された Grid は使わない (有効な最初の 1 つ)。
     for (const EntityID gridId : scene.GetEntities<TerrainGridComponent>()) {
         const GameObject* gridObject = scene.GetGameObject(gridId);
-        if (!gridObject || !gridObject->activeInHierarchy()) continue;
+        if (!gridObject || !gridObject->activeInHierarchy()) {
+            continue;
+        }
         return scene.GetComponent<TerrainGridComponent>(gridId);
     }
     return nullptr;
@@ -207,13 +233,16 @@ TerrainNeighbors ResolveTerrainNeighbors(
 {
     TerrainNeighbors neighbors;
     const auto* position = gridLookup.Find(entity);
-    if (!position) return neighbors;
+    if (!position) {
+        return neighbors;
+    }
     const auto [gridX, gridZ] = *position;
 
     auto resolveNeighbor = [&](int neighborX, int neighborZ) -> const TerrainComponent* {
         const EntityID neighbor = gridLookup.Grid()->GetCell(neighborX, neighborZ);
-        if (!scene.IsValid(neighbor))
+        if (!scene.IsValid(neighbor)) {
             return nullptr;
+        }
         return scene.GetComponent<TerrainComponent>(neighbor);
     };
 
@@ -234,14 +263,18 @@ void FillTerrainHeightRow(const TerrainComponent& terrain, const TerrainNeighbor
 {
     const auto sampleColumn = [&](int columnX) { output[columnX - firstX] = SampleStitchedTerrainHeight(terrain, neighbors, columnX, rowZ); };
     if (rowZ <= 0 || rowZ >= terrain.rows - 1) {
-        for (int columnX = firstX; columnX <= lastX; ++columnX) sampleColumn(columnX);
+        for (int columnX = firstX; columnX <= lastX; ++columnX) {
+            sampleColumn(columnX);
+        }
         return;
     }
-    for (int columnX = firstX; columnX <= (std::min)(lastX, 0); ++columnX) sampleColumn(columnX);
+    for (int columnX = firstX; columnX <= (std::min)(lastX, 0); ++columnX) {
+        sampleColumn(columnX);
+    }
     const int begin = (std::max)(firstX, 1), end = (std::min)(lastX, terrain.columns - 2);
     if (begin <= end) {
         const auto* source = terrain.heightData.data() + static_cast<size_t>(rowZ) * terrain.columns;
-        /// @note CPU パッチのゼロの符号は、継ぎ目での累積計算に揃える。
+        // CPU パッチのゼロの符号は、継ぎ目での累積計算に揃える。
         if (canonicalZero) {
             std::transform(source + begin, source + end + 1, output + (begin - firstX),
                 [maxHeight = terrain.maxHeight](float height) { return 0.0f + height * maxHeight; });
@@ -250,7 +283,9 @@ void FillTerrainHeightRow(const TerrainComponent& terrain, const TerrainNeighbor
                 [maxHeight = terrain.maxHeight](float height) { return height * maxHeight; });
         }
     }
-    for (int columnX = (std::max)(firstX, terrain.columns - 1); columnX <= lastX; ++columnX) sampleColumn(columnX);
+    for (int columnX = (std::max)(firstX, terrain.columns - 1); columnX <= lastX; ++columnX) {
+        sampleColumn(columnX);
+    }
 }
 
 void EraseTerrainChunkCache(TerrainGpuState& gpu, renderer::ResourceManager& resources)
@@ -265,11 +300,14 @@ void EraseTerrainChunkCache(TerrainGpuState& gpu, renderer::ResourceManager& res
 void ReleaseRemovedTerrainResources(TerrainRenderCache& cache, Scene& scene, renderer::ResourceManager& resources)
 {
     std::unordered_set<uint32_t> validIndices;
-    for (EntityID eid : scene.GetEntities<TerrainComponent>())
+    for (EntityID eid : scene.GetEntities<TerrainComponent>()) {
         validIndices.insert(eid.index);
+    }
 
     std::erase_if(cache.entities, [&scene, &validIndices, &resources](auto& entry) {
-        if (validIndices.contains(entry.first) && scene.IsValid(entry.second.entityId)) return false;
+        if (validIndices.contains(entry.first) && scene.IsValid(entry.second.entityId)) {
+            return false;
+        }
         ReleaseTerrainGpuState(entry.second, resources);
         return true;
     });
@@ -280,10 +318,14 @@ void RefreshTerrainGeometry(TerrainRenderCache& cache, Scene& scene, const Terra
 {
     const auto* owner = scene.GetGameObject(entity);
     auto* terrain = scene.GetComponent<TerrainComponent>(entity);
-    if (!owner || !terrain) return;
-    /// @note 可視タイルのキャッシュも、非アクティブまたは画面外の隣接タイルに設定された高さを参照できる。
+    if (!owner || !terrain) {
+        return;
+    }
+    // 可視タイルのキャッシュも、非アクティブまたは画面外の隣接タイルに設定された高さを参照できる。
     const bool isDrawable = terrain->enabled && !terrain->heightData.empty() && owner->activeInHierarchy();
-    if (!isDrawable && !gridLookup.Grid()) return;
+    if (!isDrawable && !gridLookup.Grid()) {
+        return;
+    }
     auto& gpu = cache.entities[entity.index];
     if (gpu.entityId != entity) {
         ReleaseTerrainGpuState(gpu, resources);
@@ -295,16 +337,21 @@ void RefreshTerrainGeometry(TerrainRenderCache& cache, Scene& scene, const Terra
     }
     auto& preview = terrain->heightPreview;
     preview.pending = false;
-    if (gpu.surfaceRevision == terrain->surfaceRevision) return;
+    if (gpu.surfaceRevision == terrain->surfaceRevision) {
+        return;
+    }
 
     const bool hasPartialUpdate = gpu.lodCount != 0 && preview.revision == terrain->surfaceRevision
         && preview.baseRevision == gpu.surfaceRevision;
     if (hasPartialUpdate) InvalidatePreviewChunks(resources, *terrain, gpu, preview.region,
         preview.heightChanged, preview.topologyChanged);
-    else EraseTerrainChunkCache(gpu, resources);
-    if (!hasPartialUpdate || preview.heightChanged)
+    else {
+        EraseTerrainChunkCache(gpu, resources);
+    }
+    if (!hasPartialUpdate || preview.heightChanged) {
         InvalidateNeighborTerrainChunks(cache, scene, resources, gridLookup, entity, *terrain,
             hasPartialUpdate ? &preview.region : nullptr);
+    }
     gpu.surfaceRevision = terrain->surfaceRevision;
 }
 

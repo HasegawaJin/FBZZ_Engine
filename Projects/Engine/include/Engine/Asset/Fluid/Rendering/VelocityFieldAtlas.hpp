@@ -20,11 +20,10 @@ namespace fbzz::asset {
 
 class VelocityFieldAtlas {
 public:
-    /// @brief 1 タイルの 1 辺 [テクセル]。
-    static constexpr uint32_t kTileResolution = 32;
+    static constexpr uint32_t kTileResolution = 32; ///< 1 タイルの 1 辺 [テクセル]。
     /// @brief 常駐できる場の枚数。D3D11 の 3D テクスチャは 1 辺 2048 まで = 64 タイルが上限。
     /// @brief 32³ × 64 枚 × RGBA8 = 8 MB。
-    static constexpr uint32_t kMaxTiles = 64;
+    static constexpr uint32_t kMaxTiles = 64; ///< このアトラスに同時常駐させられる速度場タイル数の上限。
 
     /// @brief 場をアトラスへ常駐させ、タイル番号を返す。既に載っていれば載っている番号。
     /// @brief 満杯・3D テクスチャ非対応・空の場では -1 を返し、呼び出し側は «効かない力» として扱う。
@@ -52,4 +51,4 @@ public:
     FBZZ_ENGINE_API static void Reset();
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

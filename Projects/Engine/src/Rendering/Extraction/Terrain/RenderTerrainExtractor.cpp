@@ -37,29 +37,44 @@ void ApplyTerrainFiberSettings(Scene& scene, EntityID entity, uint32_t layerCoun
 {
     const auto* fiber = scene.GetComponent<FiberComponent>(entity);
     input.fiberSurface = fiber && fiber->m_enabled && !fiber->m_materialPath.empty();
-    if (input.fiberSurface) {
-        input.fiberDistanceLod = fiber->m_distanceLod;
-        input.fiberLodFar = std::isfinite(fiber->m_lodFar) ? std::max(fiber->m_lodFar,0.1f) : 40.0f;
-        const auto& groundColor = fiber->m_terrainGroundColor;
-        if (fiber->m_mode == FiberRenderMode::BLADE && fiber->m_distanceLod
-            && fiber->m_bladeDensity > 0.0f && fiber->m_densityScale > 0.0f && fiber->m_lengthScale > 0.0f
-            && fiber->m_terrainLayer < static_cast<int>(layerCount)
-            && std::isfinite(fiber->m_lodNear) && std::isfinite(fiber->m_lodFar)
-            && std::isfinite(fiber->m_terrainGroundCover) && fiber->m_terrainGroundCover > 0.0f
-            && std::isfinite(groundColor.x) && std::isfinite(groundColor.y) && std::isfinite(groundColor.z)) {
-            const float nearDistance = std::max(fiber->m_lodNear, 0.0f);
-            const float farDistance = std::max(fiber->m_lodFar, nearDistance + 0.1f);
-            const float sparseStart = fiber->m_terrainSparseLodStart;
-            const float fullDistance = sparseStart > nearDistance && sparseStart < farDistance ? sparseStart : farDistance;
-            const float threshold = std::isfinite(fiber->m_terrainLayerThreshold)
-                ? std::clamp(fiber->m_terrainLayerThreshold, 0.0f, 1.0f) : 0.0f;
-            if (!grassWaterClip) grassWaterClip = GetTerrainGrassWaterClip(scene);
-            input.constants.grassGroundWaterClip = *grassWaterClip;
-            input.constants.grassGroundLod = {nearDistance, fullDistance, static_cast<float>(fiber->m_terrainLayer), threshold};
-            input.constants.grassGroundColor = {std::clamp(groundColor.x, 0.0f, 1.0f), std::clamp(groundColor.y, 0.0f, 1.0f),
-                std::clamp(groundColor.z, 0.0f, 1.0f), std::clamp(fiber->m_terrainGroundCover, 0.0f, 1.0f)};
-        }
+    if (!input.fiberSurface) {
+        return;
     }
+
+    // 草の描画距離は常に渡し、遠景を地表色へ置き換える設定だけを追加で検査する。
+    input.fiberDistanceLod = fiber->m_distanceLod;
+    input.fiberLodFar = std::isfinite(fiber->m_lodFar) ? std::max(fiber->m_lodFar, 0.1f) : 40.0f;
+    if (fiber->m_mode != FiberRenderMode::BLADE || !fiber->m_distanceLod) {
+        return;
+    }
+    const bool hasBlades = fiber->m_bladeDensity > 0.0f && fiber->m_densityScale > 0.0f && fiber->m_lengthScale > 0.0f;
+    if (!hasBlades || fiber->m_terrainLayer >= static_cast<int>(layerCount)) {
+        return;
+    }
+    if (!std::isfinite(fiber->m_lodNear) || !std::isfinite(fiber->m_lodFar)) {
+        return;
+    }
+    const auto& groundColor = fiber->m_terrainGroundColor;
+    const bool validGroundCover = std::isfinite(fiber->m_terrainGroundCover) && fiber->m_terrainGroundCover > 0.0f
+        && std::isfinite(groundColor.x) && std::isfinite(groundColor.y) && std::isfinite(groundColor.z);
+    if (!validGroundCover) {
+        return;
+    }
+
+    // 地表色を適用する LOD の区間とレイヤーしきい値を揃え、水中には適用しないようにする。
+    const float nearDistance = std::max(fiber->m_lodNear, 0.0f);
+    const float farDistance = std::max(fiber->m_lodFar, nearDistance + 0.1f);
+    const float sparseStart = fiber->m_terrainSparseLodStart;
+    const float fullDistance = sparseStart > nearDistance && sparseStart < farDistance ? sparseStart : farDistance;
+    const float threshold = std::isfinite(fiber->m_terrainLayerThreshold)
+        ? std::clamp(fiber->m_terrainLayerThreshold, 0.0f, 1.0f) : 0.0f;
+    if (!grassWaterClip) {
+        grassWaterClip = GetTerrainGrassWaterClip(scene);
+    }
+    input.constants.grassGroundWaterClip = *grassWaterClip;
+    input.constants.grassGroundLod = {nearDistance, fullDistance, static_cast<float>(fiber->m_terrainLayer), threshold};
+    input.constants.grassGroundColor = {std::clamp(groundColor.x, 0.0f, 1.0f), std::clamp(groundColor.y, 0.0f, 1.0f),
+        std::clamp(groundColor.z, 0.0f, 1.0f), std::clamp(fiber->m_terrainGroundCover, 0.0f, 1.0f)};
 }
 
 }
@@ -71,13 +86,18 @@ math::Vector4 GetTerrainGrassWaterClip(Scene& scene)
         const auto* owner = scene.GetGameObject(id);
         const auto* water = scene.GetComponent<WaterComponent>(id);
         if (!owner || !owner->activeInHierarchy() || !water || !water->enabled
-            || !WaterSurfaceUsesHorizon(*water) || !IsWaterSurfaceSupported(*water, owner->transform)) continue;
+            || !WaterSurfaceUsesHorizon(*water) || !IsWaterSurfaceSupported(*water, owner->transform)) {
+            continue;
+        }
         const auto* exclusions = WaterSurfaceExclusions(*water, WaterSurfaceReadView::LIVE_QUERY);
-        if (exclusions && (!exclusions->valid || !exclusions->boxes.empty())) continue;
-        /// @note PCG の岸辺の余白と揃える。静水面を基準にすることで、波が動いても植生の配置は変わらない。
+        if (exclusions && (!exclusions->valid || !exclusions->boxes.empty())) {
+            continue;
+        }
+        // PCG の岸辺の余白と揃える。静水面を基準にすることで、波が動いても植生の配置は変わらない。
         const float dryHeight = owner->transform.worldPosition.y + 0.15f;
-        if (terrainWaterClip.y == 0.0f || dryHeight > terrainWaterClip.x)
+        if (terrainWaterClip.y == 0.0f || dryHeight > terrainWaterClip.x) {
             terrainWaterClip = {dryHeight, 1.0f, 0.0f, 0.0f};
+        }
     }
     return terrainWaterClip;
 }
@@ -92,7 +112,7 @@ void ExtractRenderTerrains(RenderPassContext& context, renderer::RenderScene& ou
     ReleaseRemovedTerrainResources(cache, scene, resources);
     const TerrainGridLookup gridLookup(FindActiveTerrainGrid(scene));
 
-    /// @note 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
+    // 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
     const ActiveWeather weather = FindActiveWeather(scene);
     const auto drawMode = context.settings.geometryDrawMode;
     const bool useGpuGeometry = context.renderer.SupportsIndirectDraw()
@@ -112,7 +132,7 @@ void ExtractRenderTerrains(RenderPassContext& context, renderer::RenderScene& ou
     std::optional<math::Vector4> grassWaterClip;
     TerrainChunkScratch scratch;
     int64_t layersNs = 0, patchesNs = 0, setupNs = 0;
-    /// @note 隣接タイルを先に失効させ、同じフレームの出力が破棄済みバッファを参照しないようにする。
+    // 隣接タイルを先に失効させ、同じフレームの出力が破棄済みバッファを参照しないようにする。
     for (const EntityID entity : candidates) {
         detail::RenderPhaseTimer<> setupTimer(setupNs, collectPhases);
         RefreshTerrainGeometry(cache, scene, gridLookup, entity, resources);
@@ -121,16 +141,22 @@ void ExtractRenderTerrains(RenderPassContext& context, renderer::RenderScene& ou
         detail::RenderPhaseTimer<> setupTimer(setupNs, collectPhases);
         auto* ownerObject = scene.GetGameObject(entity);
         auto* terrainComponent = scene.GetComponent<TerrainComponent>(entity);
-        if (!ownerObject || !terrainComponent) continue;
+        if (!ownerObject || !terrainComponent) {
+            continue;
+        }
         auto& terrain = *terrainComponent;
         const auto& transform = ownerObject->transform;
-        if (!terrain.enabled || terrain.heightData.empty()) continue;
+        if (!terrain.enabled || terrain.heightData.empty()) {
+            continue;
+        }
 
         assert(terrain.heightData.size() == static_cast<size_t>(terrain.columns)
                                           * static_cast<size_t>(terrain.rows));
         assert(terrain.chunkSize > 0);
 
-        if (!ownerObject->activeInHierarchy()) continue;
+        if (!ownerObject->activeInHierarchy()) {
+            continue;
+        }
 
         renderer::RenderTerrainInput input;
         input.farLodDistance = ResolveTerrainFarLodDistance(terrain);
@@ -149,8 +175,10 @@ void ExtractRenderTerrains(RenderPassContext& context, renderer::RenderScene& ou
         const auto layerBinding = PrepareTerrainLayers(cache, gpu, terrain, resources);
         layersTimer.Finish();
         detail::RenderPhaseTimer<> patchesTimer(patchesNs, collectPhases);
-        /// @note 添字が無いと ResourceDescriptorHeap の範囲外を読む。描かない方が原因を切り分けやすい。
-        if (layerBinding.bufferIndex == renderer::INVALID_BINDLESS_INDEX) continue;
+        // 添字が無いと ResourceDescriptorHeap の範囲外を読む。描かない方が原因を切り分けやすい。
+        if (layerBinding.bufferIndex == renderer::INVALID_BINDLESS_INDEX) {
+            continue;
+        }
 
         const math::Matrix4 terrainToWorld = transform.GetWorldMatrix();
         TerrainObjectCB constants{};
@@ -177,10 +205,13 @@ void ExtractRenderTerrains(RenderPassContext& context, renderer::RenderScene& ou
         ApplyTerrainFiberSettings(scene, entity, layerBinding.layerCount, grassWaterClip, input);
         input.selected = selection.Contains(entity);
         PrepareTerrainPatches(gpu, terrain, neighbors, input, scratch, context);
-        if (useGpuGeometry) PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, cache, context.renderer, resources);
+        if (useGpuGeometry) {
+            PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, cache, context.renderer, resources);
+        }
         if ((context.directionalShadowBakeEnabled || context.staticShadowCache.cascadeMask != 0) && !input.patches.empty()) {
-            if (!gpu.shadowBakeGeometryHash)
+            if (!gpu.shadowBakeGeometryHash) {
                 gpu.shadowBakeGeometryHash = TerrainShadowBakeGeometryHash(terrain, input.patches);
+            }
             input.shadowBakeGeometryHash = gpu.shadowBakeGeometryHash;
             input.shadowBakeStatic = input.shadowBakeGeometryHash != 0;
         }

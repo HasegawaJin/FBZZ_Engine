@@ -23,4 +23,4 @@ public:
     }
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

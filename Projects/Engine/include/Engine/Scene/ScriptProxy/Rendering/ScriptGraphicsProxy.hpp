@@ -19,7 +19,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptGraphicsProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< グラフィックス操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name 明るさ
     /// @note Composite が画面フェードの直前に 1 度だけ掛ける。1.0 で無加工。
@@ -90,4 +90,4 @@ struct ScriptGraphicsProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

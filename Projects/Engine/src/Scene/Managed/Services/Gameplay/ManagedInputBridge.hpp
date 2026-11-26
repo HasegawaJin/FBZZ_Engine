@@ -19,4 +19,4 @@ public:
     FBZZ_ENGINE_API static ManagedBridgeStatus Query(std::string_view name, uint32_t query, ManagedBridgeReply& reply, std::string& names);
 };
 
-} /// @note namespace fbzz::scene::managed_detail
+} // namespace fbzz::scene::managed_detail

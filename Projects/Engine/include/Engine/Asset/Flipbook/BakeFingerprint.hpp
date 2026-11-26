@@ -28,10 +28,10 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API std::string Finish() const;
 
 private:
-    std::uint64_t m_hash = 1469598103934665603ull;
+    std::uint64_t m_hash = 1469598103934665603ull; ///< ベイク入力を順番に追加して更新する内容ハッシュの途中値。
 };
 
 [[nodiscard]] FBZZ_ENGINE_API std::string BakeFingerprintOf(std::span<const std::uint8_t> bytes);
 [[nodiscard]] FBZZ_ENGINE_API std::string BakeFingerprintOf(std::span<const float> values);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

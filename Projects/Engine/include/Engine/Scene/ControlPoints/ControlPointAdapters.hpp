@@ -81,8 +81,7 @@ struct WaterControlPointSnapshot {
 /// @brief 追従点のサンプリング前にスプラインの入力行を解決した結果。
 struct SplineControlPointSnapshot {
     std::vector<SplineControlPointValue> points;
-    /// @brief 解決した点列に適用する開曲線または閉曲線の扱い。
-    bool closed = false;
+    bool closed = false; ///< 解決した点列に適用する開曲線または閉曲線の扱い。
     ControlPointAdapterStatus status = ControlPointAdapterStatus::SUCCESS;
     ControlPointResolveStatus resolveStatus = ControlPointResolveStatus::SUCCESS;
     std::uint64_t inputSignature = 0;
@@ -111,18 +110,18 @@ FBZZ_ENGINE_API void ReflectWaterLakeIslandPoints(IReflector& reflector,
     std::vector<WaterLakeIslandPoint>& points);
 
 /// @brief 布のソルバー粒子の識別情報と三角形トポロジーをハッシュする。位置と材質は入力に含めない。
-/// @param asset 格子から布を生成する場合は null。
-/// @param generatedSegments 生成する布の格子分割数。
+/// @param[in] asset 格子から布を生成する場合は null。
+/// @param[in] generatedSegments 生成する布の格子分割数。
 /// @return 位置または材質だけの編集では変わらない非ゼロの署名。
 [[nodiscard]] FBZZ_ENGINE_API std::uint64_t ClothTopologySignature(
     const asset::ClothAsset* asset, std::uint32_t generatedSegments);
 
 /// @brief 接続候補について現在の布のトポロジーと粒子数を返す。
-/// @param asset 現在のインポート済みアセット。格子生成の場合は null。
-/// @param generatedSegments 現在の格子分割数。
-/// @param particle 接続候補のソルバー粒子の添字。
-/// @param signature 成功時のみトポロジーの署名を格納する。
-/// @param particleCount 現在のソルバー粒子数を格納する。
+/// @param[in] asset 現在のインポート済みアセット。格子生成の場合は null。
+/// @param[in] generatedSegments 現在の格子分割数。
+/// @param[in] particle 接続候補のソルバー粒子の添字。
+/// @param[out] signature 成功時のみトポロジーの署名を格納する。
+/// @param[out] particleCount 現在のソルバー粒子数を格納する。
 /// @return トポロジーが無効か、particle が現在の範囲外なら false。
 [[nodiscard]] FBZZ_ENGINE_API bool ResolveClothTopologyForParticle(const asset::ClothAsset* asset,
     std::uint32_t generatedSegments, int particle, std::uint64_t& signature,
@@ -153,7 +152,7 @@ FBZZ_ENGINE_API void ReflectWaterLakeIslandPoints(IReflector& reflector,
     ControlPointReadContext context = ControlPointReadContext::AUTHORING);
 
 /// @brief 水面やスプラインの静的ベイクに欠落、不正、古い入力があればランタイム開始前に拒否する。
-/// @param scene 現在の数値制作データを各ベイクと照合する対象。
+/// @param[in,out] scene 現在の数値制作データを各ベイクと照合する対象。
 /// @return LIVE 以外の制御点ポリシーが保存済みスナップショットで実行できない場合は false。
 [[nodiscard]] FBZZ_ENGINE_API bool ValidateStaticControlPointBakes(Scene& scene);
 

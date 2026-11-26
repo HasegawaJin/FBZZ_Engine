@@ -33,76 +33,74 @@ enum class TextOverflow { Overflow, Truncate, Ellipsis };
 struct UIText {
     /// @note 親のどこを基準に、自分のどこを合わせるか (UIRect.hpp 参照)。
     /// @note UIImage と完全に同じ規則で、同じ値を入れれば同じ場所に出る。
-    UIAnchor      anchoring{};
-    std::string   text          = "Text";
-    float         fontSize      = 42.0f;
-    float         letterSpacing = 4.0f;
-    math::Vector4 color         = { 1.0f, 1.0f, 1.0f, 1.0f };
-    /// @note 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
-    int           sortOrder     = 0;
-    TextAlign     align         = TextAlign::Left;
+    UIAnchor      anchoring{}; ///< 親の矩形を基準としてテキストの矩形を配置するアンカー設定。
+    std::string   text          = "Text"; ///< 描画する UTF-8 文字列。
+    float         fontSize      = 42.0f; ///< 文字をレイアウトする基準フォントサイズ。
+    float         letterSpacing = 4.0f; ///< 文字の進み幅に追加する間隔。
+    math::Vector4 color         = { 1.0f, 1.0f, 1.0f, 1.0f }; ///< 文字のグリフに乗算する RGBA 色。
+    int           sortOrder     = 0; ///< 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    TextAlign     align         = TextAlign::Left; ///< 行をテキスト矩形の水平方向に配置する揃え方。
     /// @note フォントの指定。2 通りの書き方を受け付ける。
     /// @note ".ttf" / ".ttc" / ".otf" … そのファイルを直接指定。使った字だけ実行時に焼く
     /// @note 拡張子なしのベースパス     … 静的アトラス。`<base>.fnt` (+ PNG) を読む
     /// @note 例: "Assets/Fonts/MPLUS1p/MPLUS1p-Regular.ttf"
     /// @note "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght"
     /// @note 空文字列なら ProjectSettings の既定フォントを使う。
-    std::string   fontPath      = "";
+    std::string   fontPath      = ""; ///< テキストに使用するフォントの参照パス。空なら既定のフォント。
     /// @note UI マテリアル (.mat)。空なら組み込みの UIText で描く。グラデーション・縁取り・発光を
     /// @note 文字ごと画像化せず表現する (多言語化を壊さないため)。
     /// @note 契約: t0 はフォントアトラス、 `.r` は 0.5 を輪郭とする値 (静的はカバレッジ、動的は SDF)。
     /// @note g_Rect はグリフ単位でなく 0 (1 ドローに複数文字を詰めるため) — 矩形基準の図形は不可。
     /// @note 詳細は `UI/Material/UITextGradient.hlsl` を参照。
-    std::string   materialPath  = "";
+    std::string   materialPath  = ""; ///< テキストの描画に使用するマテリアルの参照パス。
     /// @note 折り返し幅 (Canvas ピクセル)。0 で折り返さない。
     /// @note 無いと文言の長さがそのままレイアウトを支配する。幅を決めると align も
     /// @note 「その幅の中での行揃え」として意味を持つ。
-    float         maxWidth      = 0.0f;
+    float         maxWidth      = 0.0f; ///< テキスト矩形で許す最大幅。0 は個別の上限を指定しない。
     /// @note 箱の高さ (Canvas ピクセル)。0 で「行の束の高さがそのまま矩形の高さ」。
     /// @note 縦揃え・省略・自動縮小はこの高さが無いと解けない。無いと文言が伸びた分だけ
     /// @note 下へ流れ続け隣の要素を踏む。
-    float         maxHeight     = 0.0f;
-    bool          enabled       = true;
+    float         maxHeight     = 0.0f; ///< テキスト矩形で許す最大高さ。0 は個別の上限を指定しない。
+    bool          enabled       = true; ///< このテキストを描画対象にするかどうか。
 
     /// @note 行送りの倍率。1 で fontSize ぶん、1.5 で 1.5 倍の間隔になる。
     /// @note px でなく倍率にする理由: 行間は字の大きさに比例すべき値で、px だと
     /// @note fontSize を変えるたびに入れ直しになる。
-    float             lineSpacing   = 1.0f;
-    TextVerticalAlign verticalAlign = TextVerticalAlign::Top;
-    TextOverflow      overflow      = TextOverflow::Overflow;
+    float             lineSpacing   = 1.0f; ///< 隣り合うテキスト行の間隔を求める倍率。
+    TextVerticalAlign verticalAlign = TextVerticalAlign::Top; ///< テキスト行全体を矩形の垂直方向へ配置する揃え方。
+    TextOverflow      overflow      = TextOverflow::Overflow; ///< テキストが矩形へ収まらないときの表示方式。
 
     /// @note 先頭から何文字まで描くか。-1 で全部。単位は UTF-8 のバイトではなく文字。
     /// @note 文字列を毎フレーム切って SetText する実装は UTF-8 境界判定がスクリプトの数だけ
     /// @note 増えるため、描く量の指定に一本化する。リッチテキストのタグは数えない。
-    int           visibleCharacters = -1;
+    int           visibleCharacters = -1; ///< 先頭から表示する文字数の制限。-1 はすべて表示する。
 
     /// @note 箱に収まるよう fontSize を自動で縮める。maxWidth / maxHeight が基準になる。
     /// @note 文言は必ず伸び縮みする。全体を縮めると短い文言が貧相になり、放置すると溢れるので、
     /// @note 「入る範囲でいちばん大きく」に一本化する。
-    bool          autoSize      = false;
-    float         autoSizeMin   = 8.0f;
-    /// @note 0 で fontSize を上限に使う (縮むだけで、指定より大きくはならない)。
-    float         autoSizeMax   = 0.0f;
+    bool          autoSize      = false; ///< テキストが矩形へ収まるよう文字サイズを自動調整するかどうか。
+    float         autoSizeMin   = 8.0f; ///< 自動縮小が有効な場合に許す最小フォントサイズ。
+    float         autoSizeMax   = 0.0f; ///< 0 で fontSize を上限に使う (縮むだけで、指定より大きくはならない)。
 
     /// @note タグ付きの文字列として解釈する。
     /// @note `<color=#RRGGBB> <color=#RRGGBBAA> </color> <alpha=#AA>`
     /// @note `<size=32> <size=+8> <size=-4> </size>` (行高はその行の最大サイズで決まる)
     /// @note `<b> </b>` 疑似ボールド (字を僅かにずらし 2 度描く)  `<i> </i>` 疑似イタリック  `<br>` 改行
     /// @note 疑似ボールドは Bold フォント追加による「太字だけ出ない」欠けを避けるための近似。
-    bool          richText      = false;
+    bool          richText      = false; ///< テキスト内の装飾タグを解釈するかどうか。
 
     /// @note ランタイム専用: UISystem が実測した文字の外接矩形サイズ。
     /// @note アンカー/ピボットの解決に自分のサイズが要るが、文字は字面とフォントでサイズが
     /// @note 決まるため描画時の実測を書き戻す。Editor のギズモもこれを読んで矩形を描く。
-    math::Vector2 resolvedSize  = math::Vector2::ZERO;
+    math::Vector2 resolvedSize  = math::Vector2::ZERO; ///< レイアウトで確定したテキストの幅と高さ。
     /// @note ランタイム専用: autoSize が実際に採用した文字サイズ。autoSize が false なら fontSize。
     /// @note 計測と描画で別々に解き直すと縮んだ結果が 1 フレームずれて字が震えるため、
     /// @note 計測の 1 回だけで解き描画はこの値を読む。
-    float         resolvedFontSize = 0.0f;
+    float         resolvedFontSize = 0.0f; ///< レイアウトで確定した、実際に描画するフォントサイズ。
 
-    bool overrideThemeColor = false;
-    bool overrideThemeFont = false;
-    bool overrideThemeTypography = false;
+    bool overrideThemeColor = false; ///< テーマ色の代わりにこのテキストの色を使うかどうか。
+    bool overrideThemeFont = false; ///< テーマフォントの代わりにこのテキストのフォントを使うかどうか。
+    bool overrideThemeTypography = false; ///< テーマの文字サイズ・間隔の代わりにこのテキストの設定を使うかどうか。
 
     const char* GetTypeName() const { return "UIText"; }
     void Reflect(IReflector& r)

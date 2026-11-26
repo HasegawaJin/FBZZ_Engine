@@ -53,8 +53,7 @@ struct FiberMaterialEntry {
 /// @note 環境流は FiberFrameCB の風が持つため含めない (FlowFieldFrame::sceneFieldCount で切る)。
 struct FiberFlowCache {
     uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
-    /// @note 物体ごとの交差判定用。前フレームの vectorField は解放済みかもしれないので null にして持つ。
-    std::vector<ActiveFlowField> m_current;
+    std::vector<ActiveFlowField> m_current; ///< 物体ごとの交差判定用。前フレームの vectorField は解放済みかもしれないので null にして持つ。
     std::vector<ActiveFlowField> m_previous;
     std::vector<GpuFlowField> m_currentPacked;
     std::vector<GpuFlowField> m_previousPacked;
@@ -73,8 +72,7 @@ struct FiberResources {
     std::map<std::pair<uint64_t,std::string>,FiberPlacementResources> m_placements;
     std::map<uint64_t,FiberContactCache> m_contactStates;
     std::unordered_map<std::string, FiberMaterialEntry> m_materials;
-    /// @note FiberComponent::m_maskPath による個体ごとの差し替え。パスごとに 1 枠。
-    std::unordered_map<std::string, FiberMaskSlot> m_maskOverrides;
+    std::unordered_map<std::string, FiberMaskSlot> m_maskOverrides; ///< FiberComponent::m_maskPath による個体ごとの差し替え。パスごとに 1 枠。
     std::map<uint64_t, FiberFlowCache> m_flows;
     /// @note 流れの一覧は毎フレーム書き換える。GPU が読んでいる前フレームのバッファを上書きしないよう借り直す。
     /// @note プールの既定コンストラクターは explicit。集成体の {} 初期化から呼べるよう明示的に構築する。
@@ -88,13 +86,11 @@ struct FiberSurface {
     bool cast=true;
     bool validPreviousSkin=true;
     float dither=0;
-    bool densityFromAlpha=false;  ///< @brief 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
-    /// @note コンピュートスキニング済みの頂点 (静的メッシュと同じ並び)。有効なら Shell は VS でスキニングし直さない。
-    renderer::ResourceHandle<renderer::BufferTag> skinnedVertices;
+    bool densityFromAlpha=false; ///< 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
+    renderer::ResourceHandle<renderer::BufferTag> skinnedVertices; ///< コンピュートスキニング済みの頂点 (静的メッシュと同じ並び)。有効なら Shell は VS でスキニングし直さない。
     std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
     uint32_t preparedSkinningWrite = UINT32_MAX;
-    /// @note スキンの今の姿勢のワールド球 (毛丈込み)。得られないときは false で、カリングせずに描く。
-    bool hasSkinBounds=false;
+    bool hasSkinBounds=false; ///< スキンの今の姿勢のワールド球 (毛丈込み)。得られないときは false で、カリングせずに描く。
     WorldBounds skinBounds{};
     bool terrain = false;
 };
@@ -111,4 +107,4 @@ bool HasFiberSurface(GameObject& owner, fbzz::LayerMask mask);
 void CollectFiberSurfaces(GameObject& owner, const FiberComponent& fiber, float fiberPadding,
     FiberResources& cache, RenderPassContext& context, std::vector<FiberSurface>& surfaces);
 
-} /// @note namespace fbzz::scene::fiber_extraction_detail
+} // namespace fbzz::scene::fiber_extraction_detail

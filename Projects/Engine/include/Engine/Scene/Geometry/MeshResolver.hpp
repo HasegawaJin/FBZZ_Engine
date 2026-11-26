@@ -10,7 +10,7 @@
 namespace fbzz::renderer {
 struct Mesh;
 class ResourceManager;
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer
 
 namespace fbzz::scene {
 
@@ -20,4 +20,4 @@ namespace fbzz::scene {
 /// @note SceneSerializer.cpp の無名名前空間から独立させた。以前はシーン読み込み時にしか解決できず、実行中に meshPath を書き換えても見た目が変わらなかった (ScriptMeshProxy::SetMeshPath)。
 FBZZ_ENGINE_API renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManager& resources);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

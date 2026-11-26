@@ -30,7 +30,7 @@ class PostProcessProfile final : public DataAsset {
 public:
     /// @note Asset<T> のピッカー絞り込み・ドロップ型チェックに使われる。
     /// @note .fzdata の "type" キーにもこの名前が保存される。
-    static constexpr const char* TYPE_NAME = "PostProcessProfile";
+    static constexpr const char* TYPE_NAME = "PostProcessProfile"; ///< 保存文書と型レジストリーで後処理プロファイルを識別する名前。
     const char* GetTypeName() const override { return TYPE_NAME; }
 
     FBZZ_ENGINE_API void Reflect(scene::IReflector& r) override;
@@ -38,7 +38,7 @@ public:
     /// @note このプロファイルが持つ効果。リストの順に適用される。
     /// @note 効果ごとに別クラスで保持するパラメーターの数も型も違うため、共通の基底を値で
     /// @note 持つことはできず unique_ptr のベクタにした。
-    std::vector<std::unique_ptr<VolumeOverride>> overrides;
+    std::vector<std::unique_ptr<VolumeOverride>> overrides; ///< このプロファイルが所有する個別の後処理設定。
 
     /// @note 解決中の設定へ、有効なオーバーライドを weight で順に混ぜる。
     FBZZ_ENGINE_API void ApplyTo(renderer::VolumeSettings& target, float weight) const;
@@ -50,7 +50,7 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API std::vector<std::unique_ptr<VolumeOverride>> CloneOverrides() const;
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset
 
 /// @note DataAssetFactory への登録は PostProcessProfile.cpp で行う。ヘッダーに置かないのは、
 /// @note FBZZ_REGISTER_DATA_ASSET が無名名前空間の静的初期化を展開するため、置くと include

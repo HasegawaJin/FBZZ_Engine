@@ -46,22 +46,28 @@ std::vector<uint8_t> EncodeMip(const renderer::DecodedTextureRGBA8::Mip& mip)
     std::vector<uint8_t> bytes(8 + mip.rgba.size());
     std::memcpy(bytes.data(), &mip.width, 4);
     std::memcpy(bytes.data() + 4, &mip.height, 4);
-    if (!mip.rgba.empty()) std::memcpy(bytes.data() + 8, mip.rgba.data(), mip.rgba.size());
+    if (!mip.rgba.empty()) {
+        std::memcpy(bytes.data() + 8, mip.rgba.data(), mip.rgba.size());
+    }
     return bytes;
 }
 
 bool DecodeMip(const std::vector<uint8_t>& bytes, renderer::DecodedTextureRGBA8::Mip& mip)
 {
-    if (bytes.size() < 8) return false;
+    if (bytes.size() < 8) {
+        return false;
+    }
     std::memcpy(&mip.width, bytes.data(), 4);
     std::memcpy(&mip.height, bytes.data() + 4, 4);
     const std::size_t expected = static_cast<std::size_t>(mip.width) * mip.height * 4u;
-    if (mip.width == 0 || mip.height == 0 || bytes.size() != 8 + expected) return false;
+    if (mip.width == 0 || mip.height == 0 || bytes.size() != 8 + expected) {
+        return false;
+    }
     mip.rgba.assign(bytes.begin() + 8, bytes.end());
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime,
                          const renderer::TextureMipSettings& settings)
@@ -76,8 +82,9 @@ uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime,
 std::string CacheFileName(const std::string& sourcePath)
 {
     std::string normalized = sourcePath;
-    for (char& c : normalized)
+    for (char& c : normalized) {
         c = c == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     char name[32]{};
     std::snprintf(name, sizeof(name), "%016llx.fztc",
                   static_cast<unsigned long long>(Fnv1a(normalized.data(), normalized.size())));
@@ -89,15 +96,18 @@ renderer::DecodedTextureRGBA8 SelectQuality(const renderer::DecodedTextureRGBA8&
     renderer::DecodedTextureRGBA8 result;
     result.sourceWidth = full.sourceWidth;
     result.sourceHeight = full.sourceHeight;
-    if (full.mips.empty()) return result;
+    if (full.mips.empty()) {
+        return result;
+    }
     if (full.mips.size() > 1) {
         const std::size_t first = (std::min)(static_cast<std::size_t>(quality), full.mips.size() - 1);
         result.mips.assign(full.mips.begin() + static_cast<std::ptrdiff_t>(first), full.mips.end());
         return result;
     }
     renderer::DecodedTextureRGBA8::Mip level = full.mips[0];
-    for (AssetQuality i = 0; i < quality && (level.width > 1 || level.height > 1); ++i)
+    for (AssetQuality i = 0; i < quality && (level.width > 1 || level.height > 1); ++i) {
         level = renderer::DownsampleRGBA8Box2x(level);
+    }
     result.mips.push_back(std::move(level));
     return result;
 }
@@ -110,8 +120,12 @@ bool BakeDistributionTexture(const std::string& sourcePath, std::string& outErro
     std::transform(extension.begin(), extension.end(), extension.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (extension != ".png" && extension != ".jpg" && extension != ".jpeg" && extension != ".bmp"
-        && extension != ".tga" && extension != ".dds" && extension != ".tif" && extension != ".tiff") return true;
-    if (renderer::RequiresNativeTextureUpload(sourcePath)) return true;
+        && extension != ".tga" && extension != ".dds" && extension != ".tif" && extension != ".tiff") {
+        return true;
+    }
+    if (renderer::RequiresNativeTextureUpload(sourcePath)) {
+        return true;
+    }
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
     const auto time = error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path, error);
@@ -119,7 +133,9 @@ bool BakeDistributionTexture(const std::string& sourcePath, std::string& outErro
     renderer::DecodedTextureRGBA8 decoded;
     const auto settings = renderer::ResolveTextureMipSettings(settingsSourcePath.empty() ? sourcePath : settingsSourcePath);
     if (!renderer::DecodeTextureFileRGBA8(sourcePath, decoded, &outError)
-        || !renderer::PrepareTextureMipmaps(sourcePath, decoded, settings, &outError)) return false;
+        || !renderer::PrepareTextureMipmaps(sourcePath, decoded, settings, &outError)) {
+        return false;
+    }
     if (!Write(sourcePath + ".fztc", MakeSourceStamp(size, time.time_since_epoch().count(), settings), decoded, 4)) {
         outError = "Failed to write texture stream cache: " + sourcePath;
         return false;
@@ -140,17 +156,20 @@ bool Write(const std::string& cachePath, uint64_t sourceStamp,
     meta.sourceWidth = full.sourceWidth;
     meta.sourceHeight = full.sourceHeight;
     if (full.mips.size() > 1) {
-        /// @note ミップ付き: チャンク i = ミップ i。品質段 q は q 番以降を読む。
+        // ミップ付き: チャンク i = ミップ i。品質段 q は q 番以降を読む。
         meta.chunkCount = static_cast<uint32_t>(full.mips.size());
-        for (std::size_t i = 0; i < full.mips.size(); ++i)
+        for (std::size_t i = 0; i < full.mips.size(); ++i) {
             writer.AddChunk(static_cast<uint32_t>(i), EncodeMip(full.mips[i]));
+        }
     } else {
-        /// @note 1 段: チャンク q = q 回縮小した 1 段。品質段 q はそのチャンクだけを読む。
+        // 1 段: チャンク q = q 回縮小した 1 段。品質段 q はそのチャンクだけを読む。
         meta.chunkCount = static_cast<uint32_t>(lowest) + 1u;
         renderer::DecodedTextureRGBA8::Mip level = full.mips[0];
         for (uint32_t q = 0; q < meta.chunkCount; ++q) {
             writer.AddChunk(q, EncodeMip(level));
-            if (level.width > 1 || level.height > 1) level = renderer::DownsampleRGBA8Box2x(level);
+            if (level.width > 1 || level.height > 1) {
+                level = renderer::DownsampleRGBA8Box2x(level);
+            }
         }
     }
     std::vector<uint8_t> metaBytes(sizeof(CacheMeta));
@@ -164,18 +183,27 @@ bool ReadQuality(const std::string& cachePath, uint64_t sourceStamp, AssetQualit
 {
     ChunkFileReader reader;
     const auto finish = [&](bool ok) {
-        if (outBytesRead) *outBytesRead = reader.BytesRead();
+        if (outBytesRead) {
+            *outBytesRead = reader.BytesRead();
+        }
         return ok;
     };
-    if (!reader.Open(cachePath)) return finish(false);
-    if (reader.Header().contentKind != kContentKind || reader.Header().sourceStamp != sourceStamp)
+    if (!reader.Open(cachePath)) {
         return finish(false);
+    }
+    if (reader.Header().contentKind != kContentKind || reader.Header().sourceStamp != sourceStamp) {
+        return finish(false);
+    }
 
     std::vector<uint8_t> bytes;
     CacheMeta meta;
-    if (!reader.ReadChunk(kMetaChunkId, bytes) || bytes.size() != sizeof(CacheMeta)) return finish(false);
+    if (!reader.ReadChunk(kMetaChunkId, bytes) || bytes.size() != sizeof(CacheMeta)) {
+        return finish(false);
+    }
     std::memcpy(&meta, bytes.data(), sizeof(CacheMeta));
-    if (meta.rulesVersion != kDecodeRulesVersion || meta.chunkCount == 0) return finish(false);
+    if (meta.rulesVersion != kDecodeRulesVersion || meta.chunkCount == 0) {
+        return finish(false);
+    }
 
     out.mips.clear();
     out.sourceWidth = meta.sourceWidth;
@@ -186,8 +214,10 @@ bool ReadQuality(const std::string& cachePath, uint64_t sourceStamp, AssetQualit
         first = (std::min)(static_cast<uint32_t>(quality), meta.chunkCount - 1);
         last = meta.chunkCount - 1;
     } else {
-        /// @note キャッシュが持つ段より低い品質を求められたら、そのときは元画像から作り直させる。
-        if (quality >= meta.chunkCount) return finish(false);
+        // キャッシュが持つ段より低い品質を求められたら、そのときは元画像から作り直させる。
+        if (quality >= meta.chunkCount) {
+            return finish(false);
+        }
         first = last = quality;
     }
     for (uint32_t id = first; id <= last; ++id) {
@@ -201,4 +231,4 @@ bool ReadQuality(const std::string& cachePath, uint64_t sourceStamp, AssetQualit
     return finish(true);
 }
 
-} /// @note namespace fbzz::asset::texturecache
+} // namespace fbzz::asset::texturecache

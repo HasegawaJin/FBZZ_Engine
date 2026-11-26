@@ -70,16 +70,16 @@ constexpr const char* kCrashBuildConfig = "unknown";
 struct CrashRequest {
     EXCEPTION_POINTERS* exception = nullptr;
     DWORD               threadId  = 0;
-    char                reason[kCrashReasonBytes] = {};  ///< @note 空なら例外コードから «何が起きたか» を作る
+    char                reason[kCrashReasonBytes] = {}; ///< 空なら例外コードから «何が起きたか» を作る
     wchar_t             outDir[kCrashPathChars]   = {};
-    std::atomic<bool>   claimed{false};                  ///< @note 書き出しスレッドと落ちたスレッドのどちらが書くか
+    std::atomic<bool>   claimed{false}; ///< 書き出しスレッドと落ちたスレッドのどちらが書くか
     bool                written = false;
 };
 
 struct CrashState {
     bool     installed = false;
-    wchar_t  savedDir[kCrashPathChars] = {};  ///< @note `<根>\Saved`
-    wchar_t  crashDir[kCrashPathChars] = {};  ///< @note `<根>\Saved\Crashes`
+    wchar_t  savedDir[kCrashPathChars] = {}; ///< `<根>\Saved`
+    wchar_t  crashDir[kCrashPathChars] = {}; ///< `<根>\Saved\Crashes`
     char     appName[128] = {};
 
     LPTOP_LEVEL_EXCEPTION_FILTER prevFilter   = nullptr;
@@ -118,8 +118,9 @@ void CrashPrintf(HANDLE file, const char* fmt, ...)
     va_start(args, fmt);
     const int length = vsnprintf(buffer, sizeof(buffer), fmt, args);
     va_end(args);
-    if (length > 0)
+    if (length > 0) {
         CrashWrite(file, buffer, std::min(static_cast<size_t>(length), sizeof(buffer) - 1));
+    }
 }
 
 /// @see https://learn.microsoft.com/en-us/windows/win32/debug/getexceptioncode GetExceptionCode (例外コードの一覧)
@@ -210,8 +211,9 @@ void CrashWriteFiles(CrashRequest& request)
     }
     CreateDirectoryW(state.savedDir, nullptr);
     CreateDirectoryW(state.crashDir, nullptr);
-    if (!CreateDirectoryW(request.outDir, nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
+    if (!CreateDirectoryW(request.outDir, nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
         return;
+    }
 
     bool dumpWritten = false;
     DWORD dumpError = 0;
@@ -223,15 +225,18 @@ void CrashWriteFiles(CrashRequest& request)
         exceptionInfo.ClientPointers    = FALSE;
         dumpWritten = MiniDumpWriteDump(GetCurrentProcess(), pid, dump, kCrashDumpType,
                                         request.exception ? &exceptionInfo : nullptr, nullptr, nullptr) != FALSE;
-        if (!dumpWritten) dumpError = GetLastError();
+        if (!dumpWritten) {
+            dumpError = GetLastError();
+        }
         CloseHandle(dump);
     } else {
         dumpError = GetLastError();
     }
 
     const HANDLE report = CrashCreateFile(request.outDir, L"report.txt");
-    if (report == INVALID_HANDLE_VALUE)
+    if (report == INVALID_HANDLE_VALUE) {
         return;
+    }
 
     char what[kCrashReasonBytes + MAX_PATH * 3 + 64] = {};
     CrashDescribeWhat(request, what, sizeof(what));
@@ -247,7 +252,7 @@ void CrashWriteFiles(CrashRequest& request)
     CrashPrintf(report, "what:    %s\r\n", what);
     if (request.exception && request.exception->ExceptionRecord) {
         const EXCEPTION_RECORD& record = *request.exception->ExceptionRecord;
-        /// @note アクセス違反の ExceptionInformation は [0] = 0 読み / 1 書き / 8 DEP、[1] = 触ったアドレス。
+        // アクセス違反の ExceptionInformation は [0] = 0 読み / 1 書き / 8 DEP、[1] = 触ったアドレス。
         /// @see https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record EXCEPTION_RECORD
         if (record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record.NumberParameters >= 2) {
             const ULONG_PTR kind = record.ExceptionInformation[0];
@@ -258,10 +263,12 @@ void CrashWriteFiles(CrashRequest& request)
     }
     CrashPrintf(report, "thread:  %lu\r\n", request.threadId);
     CrashPrintf(report, "command: %s\r\n", commandLine);
-    if (dumpWritten)
+    if (dumpWritten) {
         CrashPrintf(report, "dump:    crash.dmp\r\n");
-    else
+    }
+    else {
         CrashPrintf(report, "dump:    failed (error %lu)\r\n", dumpError);
+    }
 
     CrashPrintf(report, "\r\n--- log (oldest first, last %u lines) ---\r\n", static_cast<unsigned>(CrashLogTail::LINE_COUNT));
     GetCrashLogTail().ForEachLine([report](const char* line) {
@@ -275,8 +282,9 @@ void CrashWriteFiles(CrashRequest& request)
 DWORD WINAPI CrashWriterThread(LPVOID param)
 {
     CrashRequest& request = *static_cast<CrashRequest*>(param);
-    if (!request.claimed.exchange(true))
+    if (!request.claimed.exchange(true)) {
         CrashWriteFiles(request);
+    }
     return 0;
 }
 
@@ -288,8 +296,9 @@ void CrashRunWriter(CrashRequest& request, DWORD timeoutMs)
         WaitForSingleObject(thread, timeoutMs);
         CloseHandle(thread);
     }
-    if (!request.claimed.exchange(true))
+    if (!request.claimed.exchange(true)) {
         CrashWriteFiles(request);
+    }
 }
 
 /// @brief 呼んだ地点の CONTEXT を例外レコードに包む。ダンプを開くとこの地点で止まって見える。
@@ -315,15 +324,21 @@ struct CrashCapturedContext {
 {
     CrashState& state = GetCrashState();
     if (state.handling.exchange(true)) {
-        for (;;) Sleep(INFINITE);
+        for (;;) {
+            Sleep(INFINITE);
+        }
     }
     CrashRequest& request = state.crashRequest;
     request.exception = exception;
     request.threadId  = GetCurrentThreadId();
-    if (reason) strncpy_s(request.reason, reason, _TRUNCATE);
+    if (reason) {
+        strncpy_s(request.reason, reason, _TRUNCATE);
+    }
     CrashRunWriter(request, kCrashWriterTimeoutMs);
     TerminateProcess(GetCurrentProcess(), exitCode);
-    for (;;) Sleep(INFINITE);
+    for (;;) {
+        Sleep(INFINITE);
+    }
 }
 
 /// @see https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setunhandledexceptionfilter SetUnhandledExceptionFilter
@@ -367,8 +382,10 @@ __declspec(noinline) void CrashTriggerStackOverflow(volatile unsigned depth)
 {
     volatile char frame[4096];
     frame[0] = static_cast<char>(depth);
-    /// @note 終わらない再帰に見せない (C4717) ための番兵。実際には届かない。
-    if (depth == 0xFFFFFFFFu) return;
+    // 終わらない再帰に見せない (C4717) ための番兵。実際には届かない。
+    if (depth == 0xFFFFFFFFu) {
+        return;
+    }
     CrashTriggerStackOverflow(depth + 1);
     frame[1] = frame[0];
 }
@@ -390,12 +407,16 @@ std::string CrashReadSummary(const std::filesystem::path& report)
     std::ifstream in(report);
     std::string line;
     while (std::getline(in, line)) {
-        if (line.rfind("what:", 0) != 0) continue;
+        if (line.rfind("what:", 0) != 0) {
+            continue;
+        }
         line.erase(0, 5);
-        /// @note 前後を同じ集合で削り、空白だけの値で npos から巨大な長さを算出することを避ける。
+        // 前後を同じ集合で削り、空白だけの値で npos から巨大な長さを算出することを避ける。
         const size_t begin = line.find_first_not_of(" \r");
         const size_t end   = line.find_last_not_of(" \r");
-        if (begin == std::string::npos) return {};
+        if (begin == std::string::npos) {
+            return {};
+        }
         return line.substr(begin, end - begin + 1);
     }
     return {};
@@ -417,15 +438,16 @@ bool CrashHandler::Install(const std::filesystem::path& root, std::string_view a
     wcsncpy_s(state.crashDir, crashes.c_str(), _TRUNCATE);
     strncpy_s(state.appName, std::string(appName).c_str(), _TRUNCATE);
 
-    if (state.installed)
+    if (state.installed) {
         return true;
+    }
 
     Logger::AddSink(&GetCrashLogTail());
     state.prevFilter      = SetUnhandledExceptionFilter(&CrashUnhandledFilter);
     state.prevInvalid       = _set_invalid_parameter_handler(&CrashOnInvalidParameter);
     state.prevPurecall      = _set_purecall_handler(&CrashOnPurecall);
     state.prevAbort         = signal(SIGABRT, &CrashOnAbort);
-    /// @note _CALL_REPORTFAULT が立っていると abort() が SIGABRT より先に WER へ渡してしまう。
+    // _CALL_REPORTFAULT が立っていると abort() が SIGABRT より先に WER へ渡してしまう。
     state.prevAbortBehavior = _set_abort_behavior(0, _CALL_REPORTFAULT);
 
     ULONG guarantee = kCrashStackGuaranteeBytes;
@@ -438,7 +460,9 @@ bool CrashHandler::Install(const std::filesystem::path& root, std::string_view a
 void CrashHandler::Uninstall()
 {
     CrashState& state = GetCrashState();
-    if (!state.installed) return;
+    if (!state.installed) {
+        return;
+    }
 
     SetUnhandledExceptionFilter(state.prevFilter);
     _set_invalid_parameter_handler(state.prevInvalid);
@@ -457,7 +481,9 @@ bool CrashHandler::IsInstalled()
 
 std::filesystem::path CrashHandler::WriteReport(std::string_view reason)
 {
-    if (!IsInstalled()) return {};
+    if (!IsInstalled()) {
+        return {};
+    }
 
     CrashCapturedContext captured;
     captured.Capture();
@@ -466,9 +492,11 @@ std::filesystem::path CrashHandler::WriteReport(std::string_view reason)
     request->exception = &captured.pointers;
     request->threadId  = GetCurrentThreadId();
     strncpy_s(request->reason, std::string(reason).c_str(), _TRUNCATE);
-    /// @note 落ちていないのでローダーロックの心配は無い。request を先に捨てないよう書き終わるまで待つ。
+    // 落ちていないのでローダーロックの心配は無い。request を先に捨てないよう書き終わるまで待つ。
     CrashRunWriter(*request, INFINITE);
-    if (!request->written) return {};
+    if (!request->written) {
+        return {};
+    }
     return std::filesystem::path(request->outDir);
 }
 
@@ -481,11 +509,15 @@ std::vector<CrashRecord> CrashHandler::FindUnreported(const std::filesystem::pat
     for (; !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
         const std::filesystem::path& dir = it->path();
         std::error_code entryError;
-        if (!std::filesystem::is_regular_file(dir / L"report.txt", entryError)) continue;
-        if (std::filesystem::exists(dir / L"reported", entryError)) continue;
+        if (!std::filesystem::is_regular_file(dir / L"report.txt", entryError)) {
+            continue;
+        }
+        if (std::filesystem::exists(dir / L"reported", entryError)) {
+            continue;
+        }
         records.push_back({ dir, CrashReadSummary(dir / L"report.txt") });
     }
-    /// @note ディレクトリ名は時刻で始まるので、名前の降順が新しい順。
+    // ディレクトリ名は時刻で始まるので、名前の降順が新しい順。
     std::sort(records.begin(), records.end(), [](const CrashRecord& a, const CrashRecord& b) {
         return a.directory.filename() > b.directory.filename();
     });
@@ -499,7 +531,7 @@ void CrashHandler::MarkReported(const CrashRecord& record)
 
 const std::vector<std::string>& CrashHandler::TriggerNames()
 {
-    /// @note CrashTrigger の並びと同じ順。
+    // CrashTrigger の並びと同じ順。
     static const std::vector<std::string> names = {
         "access_violation", "stack_overflow", "abort", "pure_call", "invalid_parameter", "report",
     };
@@ -555,27 +587,34 @@ bool CrashHandler::Trigger(CrashTrigger kind)
 size_t CrashHandler::NotifyUnreported(const std::filesystem::path& root, std::string_view appName, bool interactive)
 {
     const std::vector<CrashRecord> records = FindUnreported(root);
-    if (records.empty()) return 0;
+    if (records.empty()) {
+        return 0;
+    }
 
     const CrashRecord& latest = records.front();
     const std::string app = std::string(appName);
     const std::string dir = StringUtils::PathToUtf8(latest.directory);
     FBZZ_LOG_WARN("CrashHandler: 前回 %s が異常終了しました (%zu 件)。最新: %s (%s)",
                   app.c_str(), records.size(), latest.summary.c_str(), dir.c_str());
-    if (!interactive) return records.size();
+    if (!interactive) {
+        return records.size();
+    }
 
     std::string message = "前回の実行で " + app + " が異常終了しました。\n\n" + latest.summary + "\n\n記録の場所:\n" + dir;
-    if (records.size() > 1)
+    if (records.size() > 1) {
         message += "\n(ほかに " + std::to_string(records.size() - 1) + " 件)";
+    }
     message += "\n\nフォルダを開きますか？";
 
     const int answer = MessageBoxW(nullptr, StringUtils::ToWide(message).c_str(), StringUtils::ToWide(app).c_str(),
                                    MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
-    if (answer == IDYES)
+    if (answer == IDYES) {
         ShellExecuteW(nullptr, L"open", latest.directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
 
-    for (const CrashRecord& record : records)
+    for (const CrashRecord& record : records) {
         MarkReported(record);
+    }
     return records.size();
 }
 

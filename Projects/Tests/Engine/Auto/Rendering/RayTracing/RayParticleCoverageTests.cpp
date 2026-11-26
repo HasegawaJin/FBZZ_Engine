@@ -232,7 +232,7 @@ protected:
         emitter.settings.culling.cullingEnabled = false;
         emitter.settings.culling.lodEnabled = false;
         emitter.runtime.particles.resize(1);
-        /// @note Keep this collection test independent of playback's frame-token contract.
+        // 収集処理を単独で検証できるように、再生時のフレームトークンに依存させない。
         emitter.runtime.lastPlaybackFrame = Time::frameCount;
     }
 
@@ -590,7 +590,7 @@ TEST_F(RayFiberCoverageTest, DisabledInactiveZeroDensityLengthAndRootCountAreExc
     EXPECT_TRUE(Snapshot().rayUnsupportedEffects.empty());
     m_mesh.indexCount = 3;
     fiber->m_shellCount = 0;
-    /// @note Raster clamps Shell layers to at least one; raw zero is not proof of no surface.
+    // ラスタライズ時は Shell の層数が最低1に制限されるため、設定値が0でも描画面が存在し得る。
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);
     asset::MaterialAssetAuthoring zeroDensity;
     zeroDensity.params["fiberDensity"] = {0};
@@ -617,7 +617,7 @@ TEST_F(RayFiberCoverageTest, FinAndBladeCountProofMatchesEmptyNonmanifoldAndProd
     ASSERT_EQ(roots.size(), 1u);
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);
     m_mesh.indexCount = 0;
-    /// @note Expanded Blade/Fin draws consume CPU-generated geometry, not the root mesh's current GPU index count.
+    // 展開後の Blade と Fin は CPU が生成した形状を描画する。元メッシュの GPU インデックス数はその描画量を表さない。
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);
     fiber->m_bladeDensity = 65536;
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);

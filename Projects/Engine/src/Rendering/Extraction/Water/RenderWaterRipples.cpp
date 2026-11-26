@@ -65,7 +65,9 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
     std::vector<RippleBounds> activeRipples;
     activeRipples.reserve(water.ripples.size());
     for (const auto& ripple : water.ripples) {
-        if (ripple.amplitude <= 0.0f) continue;
+        if (ripple.amplitude <= 0.0f) {
+            continue;
+        }
         const float width = (std::max)(ripple.width, 1.0e-4f);
         const float inner = (std::max)(0.0f, ripple.radius - width * 6.0f - width * 16.0f);
         const float outer = (std::max)(0.0f, ripple.radius + width * 16.0f);
@@ -81,7 +83,7 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
             (static_cast<float>(x) + 0.5f) / static_cast<float>(state.width),
             (static_cast<float>(y) + 0.5f) / static_cast<float>(state.height)
         };
-        /// @note EmitWaterRipple と同じテクセル中心の対応式と演算順でサンプルする。
+        // EmitWaterRipple と同じテクセル中心の対応式と演算順でサンプルする。
         const auto point = surfaceToWorld * math::Vector4{(uv.x - 0.5f) * localExtent.x,
             0.0f, (uv.y - 0.5f) * localExtent.y, 1.0f};
         return math::Vector2{point.x, point.z};
@@ -93,16 +95,20 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
                 const auto worldXZ = worldAt(x, y);
                 math::Vector2 normalOffset = math::Vector2::ZERO;
                 float height = 0.0f;
-                /// @note どちらの走査でも波紋の順と、単精度で寄与がゼロになった末尾の判定を揃える。
+                // どちらの走査でも波紋の順と、単精度で寄与がゼロになった末尾の判定を揃える。
                 for (const auto& bounds : candidates) {
                     const auto& ripple = *bounds.ripple;
                     const math::Vector2 rippleOffset = worldXZ - ripple.center;
                     const float distanceSquared = rippleOffset.LengthSq();
                     /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/data-type-constants IEEE float range; WaterComponent::WaterRippleWave remains authoritative.
                     if (bounds.bounded && std::isfinite(distanceSquared)
-                        && (distanceSquared < bounds.innerSquared || distanceSquared > bounds.outerSquared)) continue;
+                        && (distanceSquared < bounds.innerSquared || distanceSquared > bounds.outerSquared)) {
+                        continue;
+                    }
                     const float distance = std::sqrt(distanceSquared);
-                    if (distance <= math::EPSILON) continue;
+                    if (distance <= math::EPSILON) {
+                        continue;
+                    }
 
                     const float wave = WaterComponent::WaterRippleWave(ripple, distance) * ripple.amplitude;
                     normalOffset += (rippleOffset / distance) * wave;
@@ -125,7 +131,9 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
         const auto overlapsTile = [](const RippleBounds& bounds,
             const math::Vector2& tileMinimum, const math::Vector2& tileMaximum) {
             if (!bounds.bounded || !std::isfinite(tileMinimum.x) || !std::isfinite(tileMinimum.y)
-                || !std::isfinite(tileMaximum.x) || !std::isfinite(tileMaximum.y)) return true;
+                || !std::isfinite(tileMaximum.x) || !std::isfinite(tileMaximum.y)) {
+                return true;
+            }
             const math::Vector2 minimumOffset = tileMinimum - bounds.ripple->center;
             const math::Vector2 maximumOffset = tileMaximum - bounds.ripple->center;
             const math::Vector2 nearest{
@@ -136,24 +144,27 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
                 (std::max)(std::abs(minimumOffset.y), std::abs(maximumOffset.y))};
             const float nearSquared = std::nextafter(nearest.LengthSq(), 0.0f);
             const float farSquared = std::nextafter(farthest.LengthSq(), std::numeric_limits<float>::infinity());
-            /// @note 距離を確定できない場合やオーバーフロー時は、従来のテクセル単位の計算を使う。
+            // 距離を確定できない場合やオーバーフロー時は、従来のテクセル単位の計算を使う。
             return !std::isfinite(nearSquared) || !std::isfinite(farSquared)
                 || (farSquared >= bounds.innerSquared && nearSquared <= bounds.outerSquared);
         };
-        /// @note 最後の波紋が消えた直後のフレームも含め、寄与ゼロは切り捨て後の値 127 に符号化される。
+        // 最後の波紋が消えた直後のフレームも含め、寄与ゼロは切り捨て後の値 127 に符号化される。
         state.bakedPixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 127u);
-        for (size_t alpha = 3; alpha < state.bakedPixels.size(); alpha += 4u) state.bakedPixels[alpha] = 255u;
+        for (size_t alpha = 3; alpha < state.bakedPixels.size(); alpha += 4u) {
+            state.bakedPixels[alpha] = 255u;
+        }
         constexpr uint32_t RIPPLE_TILE_SIZE = 16u;
         const auto roundingMargin = [&](size_t axis) {
             const double magnitude = std::abs(static_cast<double>(surfaceToWorld.m[axis][0])) * std::abs(localExtent.x) * 0.5
                 + std::abs(static_cast<double>(surfaceToWorld.m[axis][2])) * std::abs(localExtent.y) * 0.5
                 + std::abs(static_cast<double>(surfaceToWorld.m[axis][3]));
             const double error = (magnitude + 1.0) * 32.0 * std::numeric_limits<float>::epsilon();
-            if (!std::isfinite(error) || error > std::numeric_limits<float>::max())
+            if (!std::isfinite(error) || error > std::numeric_limits<float>::max()) {
                 return std::numeric_limits<float>::infinity();
+            }
             return std::nextafter(static_cast<float>(error), std::numeric_limits<float>::infinity());
         };
-        /// @note 大きな平行移動や桁落ちも含め、テクセル座標変換の丸め誤差を絶対値で見積もる。上限が不明なら全波紋を残す。
+        // 大きな平行移動や桁落ちも含め、テクセル座標変換の丸め誤差を絶対値で見積もる。上限が不明なら全波紋を残す。
         const math::Vector2 roundingError{roundingMargin(0u), roundingMargin(2u)};
         std::vector<RippleBounds> tileRipples;
         tileRipples.reserve(activeRipples.size());
@@ -176,8 +187,12 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
                 tileMaximum.y = std::nextafter(tileMaximum.y + roundingError.y, std::numeric_limits<float>::infinity());
                 tileRipples.clear();
                 for (const auto& bounds : activeRipples)
-                    if (!finiteCorners || overlapsTile(bounds, tileMinimum, tileMaximum)) tileRipples.push_back(bounds);
-                if (tileRipples.empty()) continue;
+                    if (!finiteCorners || overlapsTile(bounds, tileMinimum, tileMaximum)) {
+                        tileRipples.push_back(bounds);
+                    }
+                if (tileRipples.empty()) {
+                    continue;
+                }
                 bakeRegion(tileX, tileY, endX, endY, tileRipples);
             }
         }
@@ -187,13 +202,16 @@ void BakeRipplePixels(WaterRippleState& state, const WaterComponent& water, cons
 void UploadRippleTexture(WaterRippleState& state, renderer::ResourceManager& resources)
 {
     FBZZ_PROFILE_SCOPE("WaterRipple::Upload");
-    if (!resources.Get(state.texture))
+    if (!resources.Get(state.texture)) {
         state.texture = resources.CreateDynamicTexture(state.width, state.height, renderer::DynamicTextureFormat::RGBA8);
+    }
     auto* currentTexture = resources.Get(state.texture);
     const bool updated = currentTexture && currentTexture->UpdateRegion(0, 0, state.width, state.height,
         state.bakedPixels.data(), state.width * 4u);
     if (!updated) {
-        if (state.texture.IsValid()) resources.Release(state.texture);
+        if (state.texture.IsValid()) {
+            resources.Release(state.texture);
+        }
         state.texture = resources.CreateTexture(state.bakedPixels.data(), state.width, state.height);
     }
     state.signatureValid = resources.Get(state.texture) != nullptr;
@@ -207,7 +225,7 @@ void UpdateRippleState(WaterRippleState& state, const WaterComponent& water,
     const auto surfaceToWorld = transform.GetWorldMatrix();
     const auto localExtent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
     const uint64_t signature = ComputeRippleInputSignature(water, surfaceToWorld, localExtent);
-    /// @note 波紋は全ビュー共通のワールド座標で扱い、入力が同じなら焼き込み済みテクスチャを再利用する。
+    // 波紋は全ビュー共通のワールド座標で扱い、入力が同じなら焼き込み済みテクスチャを再利用する。
     if (state.signatureValid && state.inputSignature == signature && resources.Get(state.texture)) {
         state.dirty = false;
         return;

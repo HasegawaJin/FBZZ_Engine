@@ -28,8 +28,8 @@ enum class ScriptAssetType {
 /// @brief GUID を正本、path を Editor 表示と未登録 Asset 用 fallback として保持する。
 /// @note ファイル移動後も参照を維持しつつ、AssetDatabase 未初期化の standalone 実行にも耐える。
 struct ScriptAssetReference {
-    std::string guid;
-    std::string path;
+    std::string guid; ///< アセットを改名・移動後も識別する GUID。
+    std::string path; ///< アセットを参照する保存パス。
 
     FBZZ_ENGINE_API void SetPath(std::string_view assetPath);
     FBZZ_ENGINE_API void Clear();
@@ -39,9 +39,9 @@ struct ScriptAssetReference {
 
 template<ScriptAssetType TypeValue>
 struct ScriptAssetRef {
-    static constexpr ScriptAssetType ASSET_TYPE = TypeValue;
+    static constexpr ScriptAssetType ASSET_TYPE = TypeValue; ///< この参照型が受け付けるアセットの種類。
 
-    ScriptAssetReference reference;
+    ScriptAssetReference reference; ///< 型に対応するアセットの GUID とパス。
 
     ScriptAssetRef() = default;
     explicit ScriptAssetRef(std::string_view assetPath) { SetPath(assetPath); }
@@ -62,4 +62,4 @@ using SceneRef         = ScriptAssetRef<ScriptAssetType::Scene>;
 using ShaderRef        = ScriptAssetRef<ScriptAssetType::Shader>;
 using VFXRef           = ScriptAssetRef<ScriptAssetType::VFX>;
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

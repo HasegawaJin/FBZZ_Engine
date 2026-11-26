@@ -31,19 +31,19 @@ namespace fbzz::asset { struct Model; }
 namespace fbzz::scene {
 
 struct AnimatorNodeLocalPose {
-    math::Vector3 translation = math::Vector3::ZERO;
-    math::Quaternion rotation = math::Quaternion::Identity();
-    math::Vector3 scale = math::Vector3::ONE;
+    math::Vector3 translation = math::Vector3::ZERO; ///< 親ノードを基準にしたこのノードの平行移動 [m]。
+    math::Quaternion rotation = math::Quaternion::Identity(); ///< 親ノードを基準にしたこのノードの回転。
+    math::Vector3 scale = math::Vector3::ONE; ///< 親ノードから引き継ぐ伸縮に掛ける軸別のローカル倍率。
 };
 
 /// @brief AnimatorSystem が当該フレームに通過した Event。
 /// @note VFXGraph など Script 以外の購読者も利用する。
 struct FiredAnimationEvent {
-    std::string name;
-    int intParam = 0;
-    float floatParam = 0.0f;
-    float time = 0.0f;
-    std::uint64_t frame = 0;
+    std::string name; ///< クリップのイベントキーで指定したイベント識別名。
+    int intParam = 0; ///< クリップのイベントキーに保存された整数の追加引数。
+    float floatParam = 0.0f; ///< クリップのイベントキーに保存された浮動小数の追加引数。
+    float time = 0.0f; ///< 発火したイベントキーのクリップ内時刻 [秒]。
+    std::uint64_t frame = 0; ///< イベントを発火したアニメーション更新のフレーム番号。
 };
 
 /// @name ステートマシン用データ型
@@ -55,44 +55,44 @@ struct FiredAnimationEvent {
 
 /// @brief Float パラメーター1本で複数モーションを補間する。
 struct BlendTree1D {
-    std::string                  paramName;
+    std::string                  paramName; ///< 1 次元の補間位置を決める Animator の float パラメーター名。
     /// @note パラメーターの急変を時間補間し、Idle/Walk/Run の姿勢が瞬時に切り替わるのを防ぐ。0 は
     /// @note 平滑化なし。値は目標へ約63%近づく時定数 [秒] として扱う。
-    float                        dampTime = 0.0f;
-    bool                         syncNormalizedTime = false; ///< @note 全 Motion を同じ正規化位相で評価し、Weight が再上昇した Clip の位相ジャンプを防ぐ
-    std::vector<BlendTreeMotion> motions;
+    float                        dampTime = 0.0f; ///< パラメーター入力の時間平滑化に使う時定数 [秒]。0 は平滑化なし。
+    bool                         syncNormalizedTime = false; ///< 全 Motion を同じ正規化位相で評価し、Weight が再上昇した Clip の位相ジャンプを防ぐ
+    std::vector<BlendTreeMotion> motions; ///< 補間のしきい値ごとに設定したクリップの候補。
 
     /// @name ランタイム専用 (Controller/Scene には保存しない)
     /// @{
-    float                        dampedValue = 0.0f;
-    bool                         dampedValueInitialized = false;
-    float                        normalizedPhase = 0.0f;
-    bool                         normalizedPhaseInitialized = false;
+    float                        dampedValue = 0.0f; ///< 時間平滑化を適用した 1D パラメーターの現在値。
+    bool                         dampedValueInitialized = false; ///< 1D の平滑化に使う前回値を初期化済みかどうか。
+    float                        normalizedPhase = 0.0f; ///< 位相同期が有効なときに全クリップへ渡す共通の正規化再生位置。
+    bool                         normalizedPhaseInitialized = false; ///< 1D の共通位相を現在の再生状態に初期化したかどうか。
     /// @}
 };
 
 
 /// @brief Float パラメーター2本で複数モーションを2D補間する。
 struct BlendTree2D {
-    std::string                  paramX;
-    std::string                  paramY;
-    BlendTree2DType              type = BlendTree2DType::SimpleDirectional;
+    std::string                  paramX; ///< XY 平面で X の補間位置を決める Animator の float パラメーター名。
+    std::string                  paramY; ///< XY 平面で Y の補間位置を決める Animator の float パラメーター名。
+    BlendTree2DType              type = BlendTree2DType::SimpleDirectional; ///< 二次元の座標からクリップの重みを求めるブレンド方式。
     /// @note パラメーターの急変を時間補間する (1D と同じ意味・時定数)。生値のままだと入力を離した
     /// @note 瞬間に不連続へ飛び、前進から後退への切り返し1フレームで前後クリップが入れ替わり脚が跳ねる。
-    float                        dampTime = 0.0f;
+    float                        dampTime = 0.0f; ///< パラメーターの XY 入力を時間平滑化する時定数 [秒]。0 は平滑化なし。
     /// @note 全 Motion を同じ正規化位相で評価し、Weight が再上昇した Clip の位相ジャンプを防ぐ。歩きと
     /// @note 走りなど長さの違う輪を重ねるとブレンド中に位相がずれて足が滑るため、方向だけでなく速さの
     /// @note 輪を足す構成では必須になる。
-    bool                         syncNormalizedTime = false;
-    std::vector<BlendTreeMotion> motions;
+    bool                         syncNormalizedTime = false; ///< 全モーションを共通の正規化位相で評価するかどうか。
+    std::vector<BlendTreeMotion> motions; ///< 二次元補間の座標ごとに設定したクリップの候補。
 
     /// @name ランタイム専用 (Controller/Scene には保存しない)
     /// @{
-    float                        dampedX = 0.0f;
-    float                        dampedY = 0.0f;
-    bool                         dampedValueInitialized = false;
-    float                        normalizedPhase = 0.0f;
-    bool                         normalizedPhaseInitialized = false;
+    float                        dampedX = 0.0f; ///< 時間平滑化を適用した X パラメーターの現在値。
+    float                        dampedY = 0.0f; ///< 時間平滑化を適用した Y パラメーターの現在値。
+    bool                         dampedValueInitialized = false; ///< 2D の平滑化に使う前回の XY 値を初期化済みかどうか。
+    float                        normalizedPhase = 0.0f; ///< 位相同期が有効なときに全クリップへ渡す共通の正規化再生位置。
+    bool                         normalizedPhaseInitialized = false; ///< 2D の共通位相を現在の再生状態に初期化したかどうか。
     /// @}
 };
 
@@ -101,19 +101,19 @@ struct BlendTree2D {
 /// @note clipName が animator.clips 内の名前と一致しない場合は clipIndex で直接指定する。
 /// @note       clipIndex = -1 のときは clipName のみで探す。
 struct AnimationState {
-    std::string                      name;
-    AnimationStateMode               mode = AnimationStateMode::Clip;
-    std::string                      sourcePath; ///< @note Clip State が直接参照するアニメーションソース。BlendTree は Motion ごとに保持する
-    std::string                      clipName;
-    int                              clipIndex = -1;
-    float                            speed    = 1.0f;
-    bool                             loop     = true;
+    std::string                      name; ///< 遷移元や遷移先からこの状態を識別する名前。
+    AnimationStateMode               mode = AnimationStateMode::Clip; ///< 単一クリップまたはブレンドツリーのどれで姿勢を評価するか。
+    std::string                      sourcePath; ///< Clip State が直接参照するアニメーションソース。BlendTree は Motion ごとに保持する
+    std::string                      clipName; ///< 単一クリップモードで参照するクリップ名。
+    int                              clipIndex = -1; ///< クリップ名で見つからない場合の Animator クリップ添字。-1 は名前指定だけを使う。
+    float                            speed    = 1.0f; ///< このステートで経過時間に掛ける再生速度倍率。
+    bool                             loop     = true; ///< ステートのモーションを末尾から先頭へ戻して再生するかどうか。
     /// @note このステートでの IK ブレンド量。0=FK のみ、1=フル IK。ステートごとに影響度を制御し、
     /// @note Run や JumpUp で地面スナップを段階的に抑える。
-    float                            ikWeight = 1.0f;
-    std::vector<AnimationTransition> transitions;
-    BlendTree1D                      blendTree1D;
-    BlendTree2D                      blendTree2D;
+    float                            ikWeight = 1.0f; ///< このステートで解いた IK を混ぜる割合。0 は FK のみ、1 は全適用。
+    std::vector<AnimationTransition> transitions; ///< このステートを起点として評価する遷移候補。
+    BlendTree1D                      blendTree1D; ///< 1D ブレンドツリーで姿勢を求める場合の設定と実行時状態。
+    BlendTree2D                      blendTree2D; ///< 2D ブレンドツリーで姿勢を求める場合の設定と実行時状態。
 };
 
 
@@ -127,16 +127,16 @@ struct AnimationState {
 /// @note Base Layer と各 AnimationLayer が同じ形を共有する。別フィールドで二重に持つと
 /// @note       ロード処理・差し替え処理も二重化するため、この構造体へ集約する。
 struct AnimationMaskRef {
-    std::string path; ///< @note .mask アセットのパス。空ならマスクなし (全ボーンに効く)
+    std::string path; ///< .mask アセットのパス。空ならマスクなし (全ボーンに効く)
 
     /// @name ランタイム専用 (Controller/Scene には保存しない)
     /// @{
-    std::string            loadedPath;
-    bool                   loaded = false;
+    std::string            loadedPath; ///< このキャッシュの状態を最後に更新したアセット参照パス。
+    bool                   loaded = false; ///< 現在のパスに対応するマスクをロード済みかどうか。
     /// @note loadedPath のロードが失敗した。再試行とログの抑止に使う。loaded だけでは失敗のたびに
     /// @note 毎フレーム TOML を開き直し、警告も毎フレーム出てしまう。
-    bool                   failed = false;
-    asset::AvatarMaskAsset asset;
+    bool                   failed = false; ///< loadedPath の読み込みに失敗し、同じ参照の再試行を抑えるかどうか。
+    asset::AvatarMaskAsset asset; ///< パスから読み込んだ適用対象ボーンと重みの値。
     /// @}
 
     /// @brief path を書き換えたあと、次フレームに読み直させる。
@@ -152,12 +152,12 @@ struct AnimationMaskRef {
 /// @note AnimatorComponent 直下のフィールドは既存 Script/Editor/MCP の参照を壊さないため
 /// @note       Base Layer 用として残し、追加レイヤーはこの構造体を各自1つ持つ。
 struct AnimatorStateMachineRuntime {
-    std::string currentStateName;
-    float       stateTime     = 0.0f;
-    std::string blendToState;
-    float       blendToTime   = 0.0f;
-    float       blendWeight   = 0.0f;
-    float       blendDuration = 0.25f;
+    std::string currentStateName; ///< 現在の再生元ステートの名前。
+    float       stateTime     = 0.0f; ///< 現在の再生元ステート内で進んだ時間 [秒]。
+    std::string blendToState; ///< クロスフェード先のステート名。空なら遷移中ではない。
+    float       blendToTime   = 0.0f; ///< クロスフェード先ステート内で進んだ時間 [秒]。
+    float       blendWeight   = 0.0f; ///< クロスフェード先を合成する割合。0 は再生元、1 は遷移先。
+    float       blendDuration = 0.25f; ///< 現在のクロスフェードの所要時間 [秒]。
 };
 
 
@@ -165,49 +165,46 @@ struct AnimatorStateMachineRuntime {
 /// @note ステートマシンに専用ステートと復帰遷移を足さずに、スクリプトから1行で
 /// @note       差し込み・復帰を済ませるための機構。
 struct AnimationSlotPlayback {
-    std::string sourcePath;
-    std::string clipName;
-    float speed           = 1.0f;
-    bool  loop            = false;
-    float fadeInDuration  = 0.15f;
-    float fadeOutDuration = 0.15f;
+    std::string sourcePath; ///< スロットに差し込むアニメーションの参照パス。
+    std::string clipName; ///< 参照ソース内のスロット再生対象のクリップ名。
+    float speed           = 1.0f; ///< スロットのクリップ内時刻の進行倍率。
+    bool  loop            = false; ///< スロットのクリップを末尾から先頭へ戻して再生するかどうか。
+    float fadeInDuration  = 0.15f; ///< スロットを通常のレイヤー出力に混ぜ始めるときのフェード時間 [秒]。
+    float fadeOutDuration = 0.15f; ///< スロットから通常のレイヤー出力へ戻すときのフェード時間 [秒]。
 
     /// @name ランタイム専用 (Controller/Scene には保存しない)
     /// @{
-    bool  active   = false;
-    bool  stopping = false;  ///< @note フェードアウト中
-    float time     = 0.0f;   ///< @note クリップ内の再生秒数
-    float weight   = 0.0f;   ///< @note 0..1。ステートマシン出力に対するこの Slot の被せ量
-    bool  driven   = false;  ///< @note SequenceSystem が時刻を握っている間 true。AnimatorSystem は自前で time を進めない
+    bool  active   = false; ///< 現在スロットのモーションをレイヤー出力へ混ぜているかどうか。
+    bool  stopping = false; ///< フェードアウト中
+    float time     = 0.0f; ///< クリップ内の再生秒数
+    float weight   = 0.0f; ///< 0..1。ステートマシン出力に対するこの Slot の被せ量
+    bool  driven   = false; ///< SequenceSystem が時刻を握っている間 true。AnimatorSystem は自前で time を進めない
     /// @}
 };
 
 struct AnimationLayer {
-    std::string name = "Layer";
-    float weight = 1.0f;
-    AnimationLayerMode mode = AnimationLayerMode::Override;
-    bool enabled = true;
+    std::string name = "Layer"; ///< スロットやステート制御 API がこの追加レイヤーを特定する名前。
+    float weight = 1.0f; ///< 既に合成したレイヤーへこのレイヤーを重ねる割合。
+    AnimationLayerMode mode = AnimationLayerMode::Override; ///< 姿勢を置き換えるか、基準姿勢からの差分を加算するか。
+    bool enabled = true; ///< この追加レイヤーを姿勢評価と合成の対象にするかどうか。
 
-    /// @note マスク: .mask アセットへの参照。空でなければこちらを優先する。
-    AnimationMaskRef mask;
+    AnimationMaskRef mask; ///< マスク: .mask アセットへの参照。空でなければこちらを優先する。
 
-    /// @note 加算レイヤーの基準ポーズ設定。
-    AdditiveReferencePose additiveReference;
+    AdditiveReferencePose additiveReference; ///< 加算レイヤーの基準ポーズ設定。
 
     /// @name レイヤー独自ステートマシン
     /// @{
-    std::string defaultStateName;
-    std::vector<AnimationState> states;
-    std::vector<AnimationTransition> anyStateTransitions;
+    std::string defaultStateName; ///< この追加レイヤーを評価し始めるときの初期ステート名。
+    std::vector<AnimationState> states; ///< この追加レイヤーが独自に評価するステートの一覧。
+    std::vector<AnimationTransition> anyStateTransitions; ///< このレイヤーの現在ステートを問わず評価する割り込み遷移。
     /// @}
 
-    std::vector<RetargetBoneMapping> retargetMappings;
+    std::vector<RetargetBoneMapping> retargetMappings; ///< このレイヤーのモーションのボーンを対象リグへ対応付ける設定。
 
-    /// @note ワンショット再生スロット。
-    AnimationSlotPlayback slot;
+    AnimationSlotPlayback slot; ///< ワンショット再生スロット。
 
     /// @note ランタイム専用。Controller/Scene には保存しない。
-    AnimatorStateMachineRuntime runtime;  ///< @note states を使うときのステートマシン状態
+    AnimatorStateMachineRuntime runtime; ///< states を使うときのステートマシン状態
 };
 
 /// @}
@@ -247,18 +244,18 @@ enum class RootMotionPoseMode : int {
 };
 
 struct RootMotionSettings {
-    RootMotionMode         mode        = RootMotionMode::ApplyToTransform;
-    RootMotionSource       source      = RootMotionSource::ClipDefined;
-    RootMotionPoseMode     poseMode    = RootMotionPoseMode::Strip;
-    std::string            nodeName;    ///< @note source == NodeName のときに参照するトラック名。正規化一致で解決する
+    RootMotionMode         mode        = RootMotionMode::ApplyToTransform; ///< ルートモーションを抽出するか、抽出した値をどこへ適用するか。
+    RootMotionSource       source      = RootMotionSource::ClipDefined; ///< ルートモーションとして評価するトラックの解決方式。
+    RootMotionPoseMode     poseMode    = RootMotionPoseMode::Strip; ///< 抽出しない場合に、ポーズのルート移動を残すか除去するか。
+    std::string            nodeName; ///< source == NodeName のときに参照するトラック名。正規化一致で解決する
     /// @note 適用先 GameObject への相対パス。空なら Animator 自身。".." を先頭に並べると親を遡れる
     /// @note (例: Animator が子メッシュ、RigidBody が親のとき "..")。
-    std::string            targetPath;
-    RootMotionAxisOverride applyXZ       = RootMotionAxisOverride::UseClip;
-    RootMotionAxisOverride applyY        = RootMotionAxisOverride::UseClip;
-    RootMotionAxisOverride applyRotation = RootMotionAxisOverride::UseClip;
-    float                  positionScale = 1.0f; ///< @note 抽出した移動量へ掛ける倍率。アニメの歩幅とゲームの移動速度を合わせる
-    float                  rotationScale = 1.0f; ///< @note 抽出した回転量へ掛ける倍率
+    std::string            targetPath; ///< ルートモーションを適用するエンティティへの相対パス。空なら Animator 自身。
+    RootMotionAxisOverride applyXZ       = RootMotionAxisOverride::UseClip; ///< XZ 平面の移動を抽出するかについて、クリップの設定を上書きする。
+    RootMotionAxisOverride applyY        = RootMotionAxisOverride::UseClip; ///< Y 方向の移動を抽出するかについて、クリップの設定を上書きする。
+    RootMotionAxisOverride applyRotation = RootMotionAxisOverride::UseClip; ///< 回転を抽出するかについて、クリップの設定を上書きする。
+    float                  positionScale = 1.0f; ///< 抽出した移動量へ掛ける倍率。アニメの歩幅とゲームの移動速度を合わせる
+    float                  rotationScale = 1.0f; ///< 抽出した回転量へ掛ける倍率
 
     /// @brief 抽出そのものを行うか。
     /// @note None 以外なら常に抽出し、ポーズからのルート成分除去は強制になる (残すと Transform
@@ -270,11 +267,11 @@ struct RootMotionSettings {
 /// @note 支配クリップ1本の前後差分では BlendTree 切替や遷移のたびに移動が飛んだため、
 /// @note       クリップ単位で前回サンプル位置を持ち、delta を連続させる。
 struct RootMotionClipSample {
-    const asset::AnimationClip* clip = nullptr; ///< @note 同一性キー。LoadClips でクリップ配列を作り直すとキャッシュごと破棄する
-    double           ticks    = 0.0;   ///< @note 前回サンプルした tick
-    math::Vector3    position = math::Vector3::ZERO;
-    math::Quaternion rotation = math::Quaternion::Identity();
-    std::uint64_t    frame    = 0;     ///< @note 前回サンプルしたフレーム番号
+    const asset::AnimationClip* clip = nullptr; ///< 同一性キー。LoadClips でクリップ配列を作り直すとキャッシュごと破棄する
+    double           ticks    = 0.0; ///< 前回サンプルした tick
+    math::Vector3    position = math::Vector3::ZERO; ///< 前回サンプルしたルートモーショントラックの位置 [m]。
+    math::Quaternion rotation = math::Quaternion::Identity(); ///< 前回サンプルしたルートモーショントラックの姿勢。
+    std::uint64_t    frame    = 0; ///< 前回サンプルしたフレーム番号
 };
 
 /// @}
@@ -290,52 +287,62 @@ FBZZ_ENGINE_API void ReportUnknownAnimationLayer(const char* api,
 /// @brief アニメーション再生・ステートマシン・ルートモーションを統括する主コンポーネント。
 /// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
 struct AnimatorComponentGpuState {
-    renderer::OwnedResource<renderer::ConstantBufferTag> skinningBuffer;
-    renderer::OwnedResource<renderer::ConstantBufferTag> prevSkinningBuffer;
+    renderer::OwnedResource<renderer::ConstantBufferTag> skinningBuffer; ///< 現フレームのスキニング行列をシェーダーへ渡す定数バッファの所有ハンドル。
+    renderer::OwnedResource<renderer::ConstantBufferTag> prevSkinningBuffer; ///< 速度を求めるために、前フレームのスキニング行列を渡す定数バッファの所有ハンドル。
 };
 
 struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     /// @name 後方互換フィールド (states が空のとき使用)
     /// @{
-    bool        enabled    = true;
-    std::string controllerPath; ///< @note 共有 Animator Controller アセットへの参照。空なら Component 内蔵定義を使う
-    std::string loadedControllerPath; ///< @note ランタイム専用。参照変更時だけ Controller を再読み込みする
-    float       speed      = 1.0f;
-    /// @note speed による凍結と独立した時計倍率。ランタイム専用。
-    float       localTimeScale = 1.0f;
-    bool        playing    = true;
+    bool        enabled    = true; ///< この Animator の時刻と姿勢の評価を行うかどうか。
+    std::string controllerPath; ///< 共有 Animator Controller アセットへの参照。空なら Component 内蔵定義を使う
+    std::string loadedControllerPath; ///< ランタイム専用。参照変更時だけ Controller を再読み込みする
+    float       speed      = 1.0f; ///< この Animator のアニメーション再生速度の倍率。
+    float       localTimeScale = 1.0f; ///< speed による凍結と独立した時計倍率。ランタイム専用。
+    bool        playing    = true; ///< 再生時刻を進めるかどうか。停止しても姿勢評価は有効にできる。
     /// @brief クリップの代わりに Script が骨のローカルを書く構成であることを示す。
     /// @note オフだと «評価できるクリップが無い» フレームで骨がバインドポーズへ戻り、Script の
     /// @note       姿勢が毎フレーム消える。かといって Animator を外すとスキニングパレットを
     /// @note       埋める者がいなくなる (Skinning/GeometryPass は親を辿って Animator を探す)。
     /// @note enabled=false は Animator の評価自体を止めパレットが作られない。playing は
     /// @note       再生位置を止めるだけでバインドポーズへ戻す経路は残る。externalPose はどちらとも別軸。
-    bool        externalPose = false;
-    /// @note 任意で姿勢サンプリングの LOD を使う。状態時間とイベントは毎フレーム更新し、距離はワールド空間の [m]、間隔は [s] で指定する。
-    bool poseLodEnabled = false;
-    /// @note 0 は通常の Animator、1 は CPU のベイク済みサンプリング、2 は GPU 共有再生。既定値は従来の FBX 再生を維持する。
-    int boneBakeMode = static_cast<int>(BoneBakeMode::LEGACY);
-    float boneBakeSampleRate = 60.0f;
-    float boneBakeMinDistance = 20.0f;
-    /// @note CPU でボーンやソケットを参照する処理がなければ false にできる。カメラ付近とリグ制御下では通常の順運動学を維持する。
-    bool boneBakeRequireCpuBones = true;
-    /// @note 実行時のみ。Velocity、専用シェーダーと GPU 再生の失敗に備え、現在と前回の CPU パレットを保持する。
-    BoneBakeRuntime boneBake;
-    float poseLodNearDistance = 20.0f;
-    float poseLodFarDistance = 60.0f;
-    float poseLodMidInterval = 1.0f / 30.0f;
-    float poseLodFarInterval = 1.0f / 15.0f;
-    float poseUpdateElapsed = 0.0f;
-    bool poseEvaluatedThisFrame = false;
-    std::uint64_t poseEvaluationCount = 0;
-    std::string poseStateName;
-    const asset::Skeleton* poseSkeleton = nullptr;
-    /// @return 値に非有限値・逆順・負数が含まれると false を返し、設定を維持する。
+    bool        externalPose = false; ///< スクリプトなどの外部処理から骨のローカル姿勢を与えるかどうか。
+    bool poseLodEnabled = false; ///< 任意で姿勢サンプリングの LOD を使う。状態時間とイベントは毎フレーム更新し、距離はワールド空間の [m]、間隔は [s] で指定する。
+    int boneBakeMode = static_cast<int>(BoneBakeMode::LEGACY); ///< 0 は通常の Animator、1 は CPU のベイク済みサンプリング、2 は GPU 共有再生。既定値は従来の FBX 再生を維持する。
+    float boneBakeSampleRate = 60.0f; ///< ベイク済みボーンアニメーションを生成するサンプルの頻度 [Hz]。
+    float boneBakeMinDistance = 20.0f; ///< カメラからこの距離 [m] 以上であればベイク姿勢を使える。
+    bool boneBakeRequireCpuBones = true; ///< CPU でボーンやソケットを参照する処理がなければ false にできる。カメラ付近とリグ制御下では通常の順運動学を維持する。
+    BoneBakeRuntime boneBake; ///< 実行時のみ。Velocity、専用シェーダーと GPU 再生の失敗に備え、現在と前回の CPU パレットを保持する。
+    float poseLodNearDistance = 20.0f; ///< 姿勢を毎フレーム評価する近距離領域の外端までのカメラ距離 [m]。
+    float poseLodFarDistance = 60.0f; ///< 遠距離用の評価間隔へ切り替わるカメラ距離 [m]。
+    float poseLodMidInterval = 1.0f / 30.0f; ///< 中距離の姿勢サンプリングの間隔 [秒]。
+    float poseLodFarInterval = 1.0f / 15.0f; ///< 遠距離の姿勢サンプリングの間隔 [秒]。
+    float poseUpdateElapsed = 0.0f; ///< 最後の姿勢評価から蓄積した再評価判定用の時間 [秒]。
+    bool poseEvaluatedThisFrame = false; ///< このフレームで新しい姿勢を評価したかどうか。
+    std::uint64_t poseEvaluationCount = 0; ///< 診断用に数える姿勢評価の累計回数。
+    std::string poseStateName; ///< 最後の姿勢評価時に参照したステートの名前。
+    const asset::Skeleton* poseSkeleton = nullptr; ///< 最後の姿勢評価に使ったスケルトンの非所有参照。差し替えの照合に使う。
+    /// @brief カメラからの距離に応じて姿勢を更新する間隔を設定する。
+    /// @param[in] enabledValue 距離による姿勢更新 LOD を有効にする場合は true。
+    /// @param[in] nearDistance 毎フレーム更新する範囲の上限 [ワールド m]。
+    /// @param[in] farDistance 中距離の更新間隔を使う範囲の上限 [ワールド m]。
+    /// @param[in] midInterval 中距離の姿勢更新間隔 [s]。
+    /// @param[in] farInterval 遠距離の姿勢更新間隔 [s]。
+    /// @return 距離や間隔が非有限、逆順、負数の場合、または遠距離の間隔が 1 秒を超える場合は false を返し設定を維持する。
     bool SetUpdateLod(bool enabledValue, float nearDistance, float farDistance, float midInterval, float farInterval)
     {
+        // 距離と間隔が有限であることを確認した後、それぞれの値域と順序を検証する。
         if (!std::isfinite(nearDistance) || !std::isfinite(farDistance) || !std::isfinite(midInterval)
-            || !std::isfinite(farInterval) || nearDistance < 0 || farDistance < nearDistance
-            || midInterval < 0 || farInterval < midInterval || farInterval > 1.0f) return false;
+            || !std::isfinite(farInterval)) {
+            return false;
+        }
+        if (nearDistance < 0 || farDistance < nearDistance) {
+            return false;
+        }
+        if (midInterval < 0 || farInterval < midInterval || farInterval > 1.0f) {
+            return false;
+        }
+
         poseLodEnabled = enabledValue;
         poseLodNearDistance = nearDistance;
         poseLodFarDistance = farDistance;
@@ -346,29 +353,28 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     }
     /// @note ルートモーションの適用先・解決方法・軸マスク。VFX の決定論的 Preview は mode = None を
     /// @note 使い、姿勢だけを評価して Transform を動かさない。
-    RootMotionSettings rootMotion;
+    RootMotionSettings rootMotion; ///< ルートモーションの抽出元、適用先、抽出する軸の設定。
 
     /// @note ステートから参照されないクリップ (演出専用) のソース。LoadClips はステートと Additive
     /// @note 基準からしか集めないため、ここに宣言が無いと Slot へ差し込んでも参照が解決できず黙って畳まれる。
-    std::vector<std::string> externalClipSources;
+    std::vector<std::string> externalClipSources; ///< ステートから参照しない、スロットや演出専用クリップのソース。
 
-    /// @note ランタイム専用。初回更新時にステート参照から再構築する。
-    std::vector<asset::AnimationClip> clips;
+    std::vector<asset::AnimationClip> clips; ///< ランタイム専用。初回更新時にステート参照から再構築する。
     /// @note 不変キーは AssetManager が所有し、リロードやアンロード後は世代付きハンドルを解決し直す。
     struct ClipReference {
-        asset::AssetHandle<asset::AnimationClip> clip;
-        asset::AssetHandle<asset::Model> model;
-        std::uint32_t modelClipIndex = 0;
+        asset::AssetHandle<asset::AnimationClip> clip; ///< 独立したアニメーションクリップを解決する世代付きアセットハンドル。
+        asset::AssetHandle<asset::Model> model; ///< モデル内のクリップを使う場合に所有モデルを解決する世代付きアセットハンドル。
+        std::uint32_t modelClipIndex = 0; ///< model が指すモデル内のアニメーションクリップの添字。
     };
-    std::vector<ClipReference> sharedClips;
+    std::vector<ClipReference> sharedClips; ///< 独立したアセットまたはモデルが所有するクリップへの参照一覧。
     [[nodiscard]] std::size_t ClipCount() const { return clips.empty() ? sharedClips.size() : clips.size(); }
     /// @return 無効なハンドルは空のクリップを返す。手動で渡したクリップは値の配列として扱う。
     [[nodiscard]] FBZZ_ENGINE_API const asset::AnimationClip& ClipAt(std::size_t index) const;
     struct ClipRange {
-        const AnimatorComponent* owner;
+        const AnimatorComponent* owner; ///< この範囲がクリップを列挙する Animator の非所有参照。
         struct Iterator {
-            const AnimatorComponent* owner;
-            std::size_t index;
+            const AnimatorComponent* owner; ///< 反復中にクリップを解決する Animator の非所有参照。
+            std::size_t index; ///< 現在のクリップを ClipAt で取得するための添字。
             const asset::AnimationClip& operator*() const { return owner->ClipAt(index); }
             Iterator& operator++() { ++index; return *this; }
             bool operator==(const Iterator&) const = default;
@@ -377,24 +383,23 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
         Iterator end() const { return {owner, owner->ClipCount()}; }
     };
     [[nodiscard]] ClipRange Clips() const { return {this}; }
-    /// @note clips と同じ添字でロード元を保持し、同名クリップを Source Path で識別する。
-    std::vector<std::string> clipSourcePaths;
-    bool clipsLoaded          = false;
-    int  clipsAttemptGeneration = -1; ///< @note 最後に LoadClips を試行したときの FlushGeneration。
+    std::vector<std::string> clipSourcePaths; ///< clips と同じ添字でロード元を保持し、同名クリップを Source Path で識別する。
+    bool clipsLoaded          = false; ///< 現在の設定からクリップ参照を構築済みかどうか。
+    int  clipsAttemptGeneration = -1; ///< 最後に LoadClips を試行したときの FlushGeneration。
     /// @note 最後に Controller/クリップ/マスクを取り込んだときのアセット世代。AssetManager の現在値と
     /// @note 食い違う間は派生キャッシュが古い。
-    int  appliedAssetGeneration = -1;
+    int  appliedAssetGeneration = -1; ///< クリップなどを最後に取り込んだ AssetManager の世代。-1 は未適用。
 
     /// @brief スキニング後の骨が実際にいる位置 (owner のローカル空間)。
     /// @note カリング球はバインドポーズの submesh バウンズをそのまま運んでいたため、Script が
     /// @note       骨を大きく動かす構成では球と実体がずれ、部位ごとに独立して視錐台外/遮蔽物中へ消える。
     /// @note 半径 0 は「未計算」を意味する。スケルトン未所持や停止中は骨姿勢が確定しないため、
     /// @note       カリング側はこの場合バインドポーズ球へフォールバックする。
-    math::Vector3 skinnedBoundsCenter{};
-    float         skinnedBoundsRadius = 0.0f;
+    math::Vector3 skinnedBoundsCenter{}; ///< 確定した骨を包むカリング球の中心。オーナーのローカル座標 [m]。
+    float         skinnedBoundsRadius = 0.0f; ///< 確定した骨姿勢を囲むカリング球の半径 [m]。0 は未計算。
 
-    std::vector<math::Matrix4> boneMatrices;
-    std::vector<math::Matrix4> nodeGlobalTransforms;
+    std::vector<math::Matrix4> boneMatrices; ///< スキニングで頂点を変形するための、ボーン番号ごとの確定行列。
+    std::vector<math::Matrix4> nodeGlobalTransforms; ///< ノード番号ごとの、親階層を積み上げたオーナーのローカル空間での姿勢行列。
 
     /// @brief 前フレームの確定ボーンパレット。VelocityPass が VS で前フレーム頂点位置を組み直す
     /// @note        際に使う (b2 = CB_PREV_SKINNING へ束縛)。
@@ -403,74 +408,66 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     /// @note       2回スキニングする形にしている。
     /// @note boneMatrices の最終書き込み者は SpringBoneSystem。AnimatorSystem が上書きする直前に
     /// @note       スナップショットを取ることで「前フレームの最終ポーズ」になる (フレーム末ではなく次フレーム頭)。
-    std::vector<math::Matrix4> prevBoneMatrices;
-    /// @note prevBoneMatrices が有効か。初回フレームは前フレームが存在しないため速度 0 にする。
-    bool prevBoneMatricesValid = false;
+    std::vector<math::Matrix4> prevBoneMatrices; ///< 速度計算に使用する前フレームの確定ボーンパレット。
+    bool prevBoneMatricesValid = false; ///< prevBoneMatrices が有効か。初回フレームは前フレームが存在しないため速度 0 にする。
     /// @}
 
     /// @name ステートマシン定義 (シリアライズ対象)
     /// @{
-    std::string                    defaultStateName; ///< @note 初期ステート名。空なら states[0]
-    std::vector<AnimationState>    states;
-    /// @note 現在ステートを問わず評価する割り込み遷移。通常遷移より後に評価する。
-    std::vector<AnimationTransition> anyStateTransitions;
-    std::vector<AnimatorParameter> parameters;
-    /// @note index 0 の Base Layer は既存 state machine が担い、この配列は追加 Layer のみを保持する。
-    std::vector<AnimationLayer> layers;
+    std::string                    defaultStateName; ///< 初期ステート名。空なら states[0]
+    std::vector<AnimationState>    states; ///< ベースレイヤーが評価するステートの一覧。
+    std::vector<AnimationTransition> anyStateTransitions; ///< 現在ステートを問わず評価する割り込み遷移。通常遷移より後に評価する。
+    std::vector<AnimatorParameter> parameters; ///< 遷移条件とブレンドツリーで評価する名前付きの入力値。
+    std::vector<AnimationLayer> layers; ///< index 0 の Base Layer は既存 state machine が担い、この配列は追加 Layer のみを保持する。
     /// @note Base Layer 自身のマスク。空なら全身に効く (従来動作)。マスク外のボーンはバインドポーズの
     /// @note まま残り、上のレイヤーだけが動かす形になる。
-    AnimationMaskRef baseLayerMask;
-    /// @note 現在の BlendTree 評価結果。Script/Editor のデバッグ表示に使用する。
-    std::vector<std::pair<std::string, float>> currentBlendWeights;
-    float currentBlendDuration = 0.0f;
-    float currentIKWeight = 1.0f;
+    AnimationMaskRef baseLayerMask; ///< ベースレイヤーの姿勢を反映するボーンのマスク。空なら全身。
+    std::vector<std::pair<std::string, float>> currentBlendWeights; ///< 現在の BlendTree 評価結果。Script/Editor のデバッグ表示に使用する。
+    float currentBlendDuration = 0.0f; ///< 現在のブレンド結果の実効クリップ長 [秒]。
+    float currentIKWeight = 1.0f; ///< 現在の姿勢にブレンドした IK の影響度。0 は FK のみ、1 は全適用。
     /// @}
 
     /// @name ランタイム専用 (シリアライズしない)
     /// @{
     /// @note 現在再生中のステート名。
-    std::string currentStateName;
-    float       stateTime     = 0.0f;  ///< @note 現ステートの再生秒数
+    std::string currentStateName; ///< ベースレイヤーで現在再生しているステートの名前。
+    float       stateTime     = 0.0f; ///< 現ステートの再生秒数
 
-    /// @note 遷移中クロスフェード管理。blendToState が空でなければ遷移中。
-    std::string blendToState;
-    float       blendToTime   = 0.0f;  ///< @note 遷移先ステートの再生秒数
-    float       blendWeight   = 0.0f;  ///< @note 0=現ステート, 1=遷移先
-    float       blendDuration = 0.25f; ///< @note 今回の遷移のクロスフェード時間キャッシュ
+    std::string blendToState; ///< 遷移中クロスフェード管理。blendToState が空でなければ遷移中。
+    float       blendToTime   = 0.0f; ///< 遷移先ステートの再生秒数
+    float       blendWeight   = 0.0f; ///< 0=現ステート, 1=遷移先
+    float       blendDuration = 0.25f; ///< 今回の遷移のクロスフェード時間キャッシュ
     /// @note 割り込み時のベース姿勢。IK や追加レイヤー適用前のローカル TRS を保持する。
     struct InterruptedPose {
-        const asset::Skeleton* skeleton = nullptr;
-        std::vector<AnimatorNodeLocalPose> nodes;
-        std::vector<std::pair<std::string, float>> clipWeights;
-        float ikWeight = 1.0f;
+        const asset::Skeleton* skeleton = nullptr; ///< 割り込み前のポーズの保存に用いたスケルトンの非所有参照。
+        std::vector<AnimatorNodeLocalPose> nodes; ///< 割り込みで保存したノードごとのローカル姿勢。IK と追加レイヤーの適用前。
+        std::vector<std::pair<std::string, float>> clipWeights; ///< 割り込みの瞬間のクリップ名とブレンド重みの組。
+        float ikWeight = 1.0f; ///< 割り込みで保存したポーズに対応する IK の影響度。
     } interruptedPose;
-    /// @note Animation Event の区間評価に使う前フレーム時刻。
-    float       previousEventTime = 0.0f;
-    std::string previousEventClipName;
+    float       previousEventTime = 0.0f; ///< Animation Event の区間評価に使う前フレーム時刻。
+    std::string previousEventClipName; ///< 時刻の差分からイベントを探すために保持する前回のクリップ名。
     /// @}
 
     /// @name Root Motion 出力 (ランタイム専用)
     /// @{
     /// @note 適用先 GameObject のローカル空間での1フレーム移動量/回転量。
-    math::Vector3    rootMotionDeltaPosition = math::Vector3::ZERO;
-    math::Quaternion rootMotionDeltaRotation = math::Quaternion::Identity();
+    math::Vector3    rootMotionDeltaPosition = math::Vector3::ZERO; ///< 適用先のローカル空間での 1 フレーム分のルート移動量 [m]。
+    math::Quaternion rootMotionDeltaRotation = math::Quaternion::Identity(); ///< 1 フレームで抽出した、適用先のローカル空間での回転差分。
     /// @note deltaPosition をワールド空間へ変換した値と、それを dt で割った速度。Script 側で
     /// @note Time::deltaTime を掛け直すと Animator が実際に進めた時間とずれるため、速度制御へ
     /// @note そのまま渡せる形で公開する。
-    math::Vector3    rootMotionWorldDelta    = math::Vector3::ZERO;
-    math::Vector3    rootMotionWorldVelocity = math::Vector3::ZERO;
-    float            rootMotionDeltaTime     = 0.0f;
-    /// @note エンジンが Transform/RigidBody へ適用したフレームは true。ExtractOnly では false。
-    bool             rootMotionAppliedByEngine = false;
-    /// @note クリップごとの前フレームサンプル。BlendTree/遷移をまたいでも delta を連続させる。
-    std::vector<RootMotionClipSample> rootMotionSamples;
+    math::Vector3    rootMotionWorldDelta    = math::Vector3::ZERO; ///< 1 フレームのルート移動量をワールド空間へ変換した変位 [m]。
+    math::Vector3    rootMotionWorldVelocity = math::Vector3::ZERO; ///< ワールド空間へ変換したルート移動量を実際の更新時間で割った速度 [m/s]。
+    float            rootMotionDeltaTime     = 0.0f; ///< ルート移動量と速度の換算に使ったアニメーション更新時間 [秒]。
+    bool             rootMotionAppliedByEngine = false; ///< エンジンが Transform/RigidBody へ適用したフレームは true。ExtractOnly では false。
+    std::vector<RootMotionClipSample> rootMotionSamples; ///< クリップごとの前フレームサンプル。BlendTree/遷移をまたいでも delta を連続させる。
     /// @note 当該フレームの Skeleton ルートノード名。AutoDetect のフォールバック解決に使う。トラック
     /// @note 解決は Skeleton を持たない BuildStateClips からも呼ばれるため、AnimatorSystem::Update が
     /// @note 毎フレーム先頭でここへ焼いておく。
-    std::string skeletonRootNodeName;
+    std::string skeletonRootNodeName; ///< 現在のスケルトンのルートノード名。トラックの自動解決に使う。
     /// @}
 
-    std::vector<FiredAnimationEvent> firedEvents;
+    std::vector<FiredAnimationEvent> firedEvents; ///< このアニメーション更新で発火したイベントの一覧。購読処理へ渡す。
 
     const char* GetTypeName() const { return "Animator"; }
 
@@ -553,14 +550,18 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     [[nodiscard]] float GetFloat(std::string_view name) const
     {
         for (const auto& p : parameters)
-            if (p.name == name && p.type == ParamType::Float) return p.floatValue;
+            if (p.name == name && p.type == ParamType::Float) {
+                return p.floatValue;
+            }
         return 0.0f;
     }
 
     [[nodiscard]] int GetInt(std::string_view name) const
     {
         for (const auto& p : parameters)
-            if (p.name == name && p.type == ParamType::Int) return p.intValue;
+            if (p.name == name && p.type == ParamType::Int) {
+                return p.intValue;
+            }
         return 0;
     }
 
@@ -568,8 +569,9 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     {
         for (const auto& p : parameters)
             if (p.name == name &&
-                (p.type == ParamType::Bool || p.type == ParamType::Trigger))
+                (p.type == ParamType::Bool || p.type == ParamType::Trigger)) {
                 return p.boolValue;
+            }
         return false;
     }
 
@@ -589,14 +591,18 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     [[nodiscard]] AnimationLayer* FindLayer(std::string_view layerName)
     {
         for (auto& l : layers)
-            if (l.name == layerName) return &l;
+            if (l.name == layerName) {
+                return &l;
+            }
         return nullptr;
     }
 
     [[nodiscard]] const AnimationLayer* FindLayer(std::string_view layerName) const
     {
         for (const auto& l : layers)
-            if (l.name == layerName) return &l;
+            if (l.name == layerName) {
+                return &l;
+            }
         return nullptr;
     }
 
@@ -617,7 +623,9 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     [[nodiscard]] std::string GetLayerState(std::string_view layerName) const
     {
         const AnimationLayer* l = FindLayer(layerName);
-        if (!l) return {};
+        if (!l) {
+            return {};
+        }
         return l->runtime.currentStateName;
     }
 
@@ -627,7 +635,9 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     [[nodiscard]] float GetLayerNormalizedTime(std::string_view layerName) const
     {
         const AnimationLayer* layer = FindLayer(layerName);
-        if (!layer || layer->runtime.currentStateName.empty()) return 0.0f;
+        if (!layer || layer->runtime.currentStateName.empty()) {
+            return 0.0f;
+        }
 
         const AnimationState* state = nullptr;
         for (const auto& candidate : layer->states) {
@@ -636,7 +646,9 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
                 break;
             }
         }
-        if (!state) return 0.0f;
+        if (!state) {
+            return 0.0f;
+        }
         if (state->mode != AnimationStateMode::Clip) {
             return layer->runtime.blendDuration > 0.0f
                 ? std::clamp(layer->runtime.stateTime / layer->runtime.blendDuration, 0.0f, 1.0f)
@@ -646,9 +658,12 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
         const asset::AnimationClip* clip = nullptr;
         if (!state->sourcePath.empty()) {
             for (size_t i = 0; i < ClipCount(); ++i) {
-                if (i >= clipSourcePaths.size() || clipSourcePaths[i] != state->sourcePath)
+                if (i >= clipSourcePaths.size() || clipSourcePaths[i] != state->sourcePath) {
                     continue;
-                if (!clip) clip = &ClipAt(i);
+                }
+                if (!clip) {
+                    clip = &ClipAt(i);
+                }
                 if (!state->clipName.empty() && ClipAt(i).name == state->clipName) {
                     clip = &ClipAt(i);
                     break;
@@ -663,9 +678,12 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
                 }
         }
         if (!clip && state->clipIndex >= 0 &&
-            state->clipIndex < static_cast<int>(ClipCount()))
+            state->clipIndex < static_cast<int>(ClipCount())) {
             clip = &ClipAt(static_cast<size_t>(state->clipIndex));
-        if (!clip) return 0.0f;
+        }
+        if (!clip) {
+            return 0.0f;
+        }
 
         const float duration = static_cast<float>(clip->GetDurationSeconds());
         return duration > 0.0f
@@ -683,10 +701,12 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     {
         AnimationLayer* l = FindLayer(layerName);
         if (!l) { ReportUnknownAnimationLayer("PlayLayerState", layerName, layers); return; }
-        /// @note Controller 初回ロード前でも要求をランタイム状態へ保持する。Script は
-        /// @note       AnimatorSystem より先に実行されるため、states がまだ空だと無言で消えうる。
-        /// @note       ApplyAnimatorControllerAsset が同名 Layer の runtime を引き継ぎ、ロード後に実行する。
-        if (stateName.empty()) return;
+        // Controller 初回ロード前でも要求をランタイム状態へ保持する。Script は
+        // AnimatorSystem より先に実行されるため、states がまだ空だと無言で消えうる。
+        // ApplyAnimatorControllerAsset が同名 Layer の runtime を引き継ぎ、ロード後に実行する。
+        if (stateName.empty()) {
+            return;
+        }
         l->runtime.currentStateName = std::string(stateName);
         l->runtime.stateTime   = 0.0f;
         l->runtime.blendToState.clear();
@@ -723,14 +743,18 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     }
 
     /// @brief Slot をフェードアウトさせる。
-    /// @param fadeOut 負値なら登録済みの値を使う。
+    /// @param[in] fadeOut 負値なら登録済みの値を使う。
     void StopSlot(std::string_view layerName, float fadeOut = -1.0f)
     {
         AnimationLayer* l = FindLayer(layerName);
         if (!l) { ReportUnknownAnimationLayer("StopSlot", layerName, layers); return; }
-        /// @note 鳴っていない Slot を止めるのは通常の使い方であり、報告対象の異常ではない。
-        if (!l->slot.active) return;
-        if (fadeOut >= 0.0f) l->slot.fadeOutDuration = fadeOut;
+        // 鳴っていない Slot を止めるのは通常の使い方であり、報告対象の異常ではない。
+        if (!l->slot.active) {
+            return;
+        }
+        if (fadeOut >= 0.0f) {
+            l->slot.fadeOutDuration = fadeOut;
+        }
         l->slot.stopping = true;
     }
 
@@ -778,23 +802,31 @@ private:
     /// @note GetNormalizedTime/GetBlendToNormalizedTime が現ステート・遷移先それぞれに使う。
     [[nodiscard]] float NormalizedTimeForState(const std::string& stateName, float time) const
     {
-        if (stateName.empty()) return 0.0f;
+        if (stateName.empty()) {
+            return 0.0f;
+        }
         const AnimationState* st = nullptr;
         for (const auto& s : states)
             if (s.name == stateName) { st = &s; break; }
-        if (!st) return 0.0f;
+        if (!st) {
+            return 0.0f;
+        }
         if (st->mode != AnimationStateMode::Clip) {
             return currentBlendDuration > 0.0f
                 ? std::clamp(time / currentBlendDuration, 0.0f, 1.0f)
                 : 0.0f;
         }
-        /// @note 再生側と同じく、名前の完全一致 → 大文字小文字無視部分一致 → index で解決する。
+        // 再生側と同じく、名前の完全一致 → 大文字小文字無視部分一致 → index で解決する。
         const asset::AnimationClip* clip = nullptr;
         if (!st->sourcePath.empty()) {
             for (size_t i = 0; i < ClipCount(); ++i) {
                 if (i >= clipSourcePaths.size() ||
-                    clipSourcePaths[i] != st->sourcePath) continue;
-                if (!clip) clip = &ClipAt(i);
+                    clipSourcePaths[i] != st->sourcePath) {
+                    continue;
+                }
+                if (!clip) {
+                    clip = &ClipAt(i);
+                }
                 if (!st->clipName.empty() && ClipAt(i).name == st->clipName) {
                     clip = &ClipAt(i);
                     break;
@@ -807,9 +839,10 @@ private:
         }
         if (!clip && !st->clipName.empty()) {
             auto toLower = [](std::string value) {
-                for (char& ch : value)
+                for (char& ch : value) {
                     ch = static_cast<char>(
                         std::tolower(static_cast<unsigned char>(ch)));
+                }
                 return value;
             };
             const std::string target = toLower(st->clipName);
@@ -818,9 +851,12 @@ private:
                     { clip = &c; break; }
         }
         if (!clip && st->clipIndex >= 0 &&
-            st->clipIndex < static_cast<int>(ClipCount()))
+            st->clipIndex < static_cast<int>(ClipCount())) {
             clip = &ClipAt(static_cast<size_t>(st->clipIndex));
-        if (!clip) return 0.0f;
+        }
+        if (!clip) {
+            return 0.0f;
+        }
         const float dur = static_cast<float>(clip->GetDurationSeconds());
         return dur > 0.0f ? std::clamp(time / dur, 0.0f, 1.0f) : 0.0f;
     }

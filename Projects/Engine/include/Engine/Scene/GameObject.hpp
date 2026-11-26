@@ -22,30 +22,22 @@ namespace managed_detail { class ManagedObjectControls; }
 
 class GameObject {
 public:
-    /// @note  Unity: gameObject.name / .tag (直接変数)
-    std::string name       = "GameObject";
-    std::string tag        = "Untagged";
-    /// @note  クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
-    /// @note  UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
-    std::string instanceId;
-    /// @brief Prefab インスタンスの出所参照。GUID を正本とし、旧 Assets 相対パスも読み込める。
+    std::string name = "GameObject"; ///< 階層表示と名前検索に使う表示名。複数の個体で同じ名前を持てる。
+    std::string tag = "Untagged"; ///< CompareTag と FindWithTag が使う分類名。
+    std::string instanceId; ///< Scene が発行する個体の永続 UUID。改名後も IK などの参照解決に使う。
     /// @note 空なら非インスタンス。改名・移動時も同じ GUID の定義を Apply/Revert が参照する。
-    std::string prefabAssetPath;
-    /// @brief この GO が .prefab 内のどのオブジェクトから作られたか (プレファブ側の instanceId)。空文字列 = プレファブ由来でない。
-    /// @note instanceId はインスタンス化のたびに新規採番されるため、これで対応する子を突き合わせ、プロパティ単位の override を計算する。階層内の全 GO に入る。
-    std::string prefabSourceId;
-    /// @note ルートだけが最後に適用した元定義の TOML を保持する。個別変更はこの版との差分で判定する。
+    std::string prefabAssetPath; ///< 出所プレファブのアセット参照。GUID が正本で、旧データは Assets 相対パスも受け付ける。
+    std::string prefabSourceId; ///< 出所プレファブ内の元オブジェクトの instanceId。階層を照合して個別差分を計算する。
     /// @see Docs/design/prefab-safety.md
-    std::string prefabSourceSnapshot;
-    int layer = 0;
+    std::string prefabSourceSnapshot; ///< ルートが最後に適用したプレファブ定義の TOML。個別差分を測る基準。
+    int layer = 0; ///< 描画・照会でレイヤーマスクを適用するときに使うレイヤー番号。
 
     /// @brief システムが実行時に作った GO か (VFX Graph のノード実体・Water splash 等)。生成側が必ず立てる。
     /// @note 名前 "__" 接頭辞での判別をやめ意図を型で持たせた。SceneSerializer が保存対象から除外し、Hierarchy も既定で隠す。
     [[nodiscard]] bool IsRuntimeGenerated() const { return m_runtimeGenerated; }
     FBZZ_ENGINE_API void SetRuntimeGenerated(bool generated);
 
-    /// @note  Unity: gameObject.transform (常に存在。ComponentArray には入れない)
-    Transform transform;
+    Transform transform; ///< 個体が直接所有する位置・回転・スケール。階層同期に使う。
 
     /// @note  Unity: SetActive / activeSelf / activeInHierarchy
     FBZZ_ENGINE_API void SetActive(bool active);
@@ -97,20 +89,18 @@ public:
     EntityID GetID()   const { return m_id; }
 
 private:
-    EntityID              m_id       = EntityID::INVALID;
-    bool                  m_isActive = true;
-    EntityID              m_parent   = EntityID::INVALID;
-    std::vector<EntityID> m_children;
-    Scene*                m_scene    = nullptr; ///< @note 非所有参照
-    /// @note Scene の所有位置。破棄時の全検索を避け、並べ替えと一括整理で更新する。
-    std::size_t m_sceneStorageIndex = 0;
-    bool m_destroying = false;
-    /// @note managed の Component 削除要求は借用中の物理形状を壊さず Cleanup で確定する。
-    std::bitset<static_cast<std::size_t>(ManagedNativeComponentKind::COUNT)> m_pendingManagedComponentRemovals;
+    EntityID m_id = EntityID::INVALID; ///< 所属 Scene 内の世代付き識別子。未所属なら無効。
+    bool m_isActive = true; ///< 親の状態を含まない個体自身の有効フラグ。
+    EntityID m_parent = EntityID::INVALID; ///< 親の Scene 内識別子。ルートなら無効。
+    std::vector<EntityID> m_children; ///< 直下の子の Scene 内識別子。Hierarchy の表示順で保持する。
+    Scene* m_scene = nullptr; ///< この個体を所有する Scene の非所有参照。未所属なら null。
+    std::size_t m_sceneStorageIndex = 0; ///< Scene の所有位置。破棄時の全検索を避け、並べ替えと一括整理で更新する。
+    bool m_destroying = false; ///< Scene による破棄処理が進行しているか。
+    std::bitset<static_cast<std::size_t>(ManagedNativeComponentKind::COUNT)> m_pendingManagedComponentRemovals; ///< Cleanup で確定する Managed 側からの内蔵コンポーネント削除要求。
 
-    bool m_runtimeGenerated = false;
+    bool m_runtimeGenerated = false; ///< 実行時生成物として保存と標準の階層表示から除外するか。
     friend class Scene;
     friend class managed_detail::ManagedObjectControls;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

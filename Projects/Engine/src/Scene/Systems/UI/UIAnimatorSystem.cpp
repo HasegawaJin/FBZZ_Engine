@@ -30,7 +30,7 @@ float ApplyEasing(float t, UIEasingType easing)
     case UIEasingType::EaseIn:    return t * t;
     case UIEasingType::EaseOut:   return 1.0f - (1.0f - t) * (1.0f - t);
     case UIEasingType::EaseInOut: return t < 0.5f ? 2.0f * t * t : 1.0f - 2.0f * (1.0f - t) * (1.0f - t);
-    /// @note 線形
+    // 線形
     default: return t;
     }
 }
@@ -46,7 +46,9 @@ math::Vector2 LerpV2(const math::Vector2& a, const math::Vector2& b, float t)
 void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& active, bool& didWrap)
 {
     didWrap = false;
-    if (!active) return;
+    if (!active) {
+        return;
+    }
     elapsed += dt;
     if (elapsed >= duration) {
         if (loop) {
@@ -62,38 +64,45 @@ void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& act
 /// @note 数値トゥイーンを 1 段進め、この瞬間の値を返す。active でなければ書かない。
 bool EvaluateFloatTween(UIFloatTween& tween, float dt, float& out)
 {
-    if (!tween.active) return false;
+    if (!tween.active) {
+        return false;
+    }
     bool didWrap = false;
     AdvanceTween(tween.elapsed, tween.duration, tween.loop, dt, tween.active, didWrap);
     float t = (tween.duration > 0.0f)
         ? std::clamp(tween.elapsed / tween.duration, 0.0f, 1.0f) : 1.0f;
     t = ApplyEasing(t, tween.easing);
     out = tween.from + (tween.to - tween.from) * t;
-    if (tween.loop && tween.pingPong && didWrap)
+    if (tween.loop && tween.pingPong && didWrap) {
         std::swap(tween.from, tween.to);
+    }
     return true;
 }
 
 void ProcessGO(GameObject& go, float dt)
 {
-    if (!go.activeInHierarchy()) return;
+    if (!go.activeInHierarchy()) {
+        return;
+    }
 
     auto* anim  = go.GetComponent<UIAnimator>();
     auto* image = go.GetComponent<UIImage>();
     auto* text  = go.GetComponent<UIText>();
 
     if (anim && anim->enabled) {
-        /// @note 待ちは全トゥイーン共通の前段。待っている間は 1 つも進めない。「0.1 秒後に
-        /// @note 色と位置を同時に動かす」が普通の使い方で、個別に持たせると必ずどれかがずれる。
+        // 待ちは全トゥイーン共通の前段。待っている間は 1 つも進めない。「0.1 秒後に
+        // 色と位置を同時に動かす」が普通の使い方で、個別に持たせると必ずどれかがずれる。
         if (anim->delayElapsed < anim->delay) {
             anim->delayElapsed += dt;
             if (anim->delayElapsed < anim->delay) {
                 for (int i = 0; i < go.GetChildCount(); ++i)
-                    if (GameObject* child = go.GetChild(i)) ProcessGO(*child, dt);
+                    if (GameObject* child = go.GetChild(i)) {
+                        ProcessGO(*child, dt);
+                    }
                 return;
             }
         }
-        /// @note 色 Tween: UIImage または UIText が必要
+        // 色 Tween: UIImage または UIText が必要
         UIColorTween& ct = anim->colorTween;
         if (ct.active) {
             if (!image && !text) {
@@ -109,14 +118,19 @@ void ProcessGO(GameObject& go, float dt)
                 float t = (ct.duration > 0.0f) ? std::clamp(ct.elapsed / ct.duration, 0.0f, 1.0f) : 1.0f;
                 t = ApplyEasing(t, ct.easing);
                 const math::Vector4 col = math::Vector4::Lerp(ct.from, ct.to, t);
-                if (image && image->enabled) image->color = col;
-                if (text  && text->enabled)  text->color  = col;
-                if (ct.loop && ct.pingPong && didWrap)
+                if (image && image->enabled) {
+                    image->color = col;
+                }
+                if (text  && text->enabled) {
+                    text->color  = col;
+                }
+                if (ct.loop && ct.pingPong && didWrap) {
                     std::swap(ct.from, ct.to);
+                }
             }
         }
 
-        /// @note 位置 Tween: UIImage の有無に依存しない
+        // 位置 Tween: UIImage の有無に依存しない
         UIPositionTween& pt = anim->positionTween;
         if (pt.active) {
             bool didWrap = false;
@@ -126,11 +140,12 @@ void ProcessGO(GameObject& go, float dt)
             const math::Vector2 posVal = LerpV2(pt.from, pt.to, t);
             go.transform.position.x = posVal.x;
             go.transform.position.y = posVal.y;
-            if (pt.loop && pt.pingPong && didWrap)
+            if (pt.loop && pt.pingPong && didWrap) {
                 std::swap(pt.from, pt.to);
+            }
         }
 
-        /// @note スケール Tween
+        // スケール Tween
         UIScaleTween& st = anim->scaleTween;
         if (st.active) {
             bool didWrap = false;
@@ -140,12 +155,13 @@ void ProcessGO(GameObject& go, float dt)
             const math::Vector2 scaleVal = LerpV2(st.from, st.to, t);
             go.transform.scale.x = scaleVal.x;
             go.transform.scale.y = scaleVal.y;
-            if (st.loop && st.pingPong && didWrap)
+            if (st.loop && st.pingPong && didWrap) {
                 std::swap(st.from, st.to);
+            }
         }
 
-        /// @note 回転 Tween: 度で持ち、Z 軸だけを回す。UI の回転は必ず画面に平行な 1 軸で
-        /// @note オイラー角の曖昧さが起きないため、クォータニオンにせず度のまま補間する方が往復も素直。
+        // 回転 Tween: 度で持ち、Z 軸だけを回す。UI の回転は必ず画面に平行な 1 軸で
+        // オイラー角の曖昧さが起きないため、クォータニオンにせず度のまま補間する方が往復も素直。
         if (float degrees = 0.0f; EvaluateFloatTween(anim->rotationTween, dt, degrees)) {
             constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
             go.transform.rotation =
@@ -153,13 +169,15 @@ void ProcessGO(GameObject& go, float dt)
                                                 degrees * kDegToRad);
         }
 
-        /// @note 塗り潰し Tween: クールダウンや充填の演出。
+        // 塗り潰し Tween: クールダウンや充填の演出。
         if (float fill = 0.0f; EvaluateFloatTween(anim->fillTween, dt, fill)) {
-            if (image) image->fillAmount = std::clamp(fill, 0.0f, 1.0f);
+            if (image) {
+                image->fillAmount = std::clamp(fill, 0.0f, 1.0f);
+            }
         }
 
-        /// @note マテリアルの 1 パラメータ。要素ごとの上書きへ書くので、同じ .mat を
-        /// @note 使う他の要素へは波及しない (UIImage.hpp の materialParamOverrides を参照)。
+        // マテリアルの 1 パラメータ。要素ごとの上書きへ書くので、同じ .mat を
+        // 使う他の要素へは波及しない (UIImage.hpp の materialParamOverrides を参照)。
         if (float param = 0.0f; EvaluateFloatTween(anim->materialTween, dt, param)) {
             if (image && !anim->materialParam.empty()) {
                 auto& values = image->materialParamOverrides[anim->materialParam];
@@ -169,8 +187,9 @@ void ProcessGO(GameObject& go, float dt)
     }
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
-        if (GameObject* child = go.GetChild(i))
+        if (GameObject* child = go.GetChild(i)) {
             ProcessGO(*child, dt);
+        }
     }
 }
 
@@ -190,9 +209,13 @@ OrderingHints UIAnimatorSystem::GetOrder() const
 
 void UIAnimatorSystem::Update(SystemContext& ctx)
 {
-    if (ctx.scene.GetEntities<UIAnimator>().empty()) return;
+    if (ctx.scene.GetEntities<UIAnimator>().empty()) {
+        return;
+    }
     for (GameObject* root : ctx.scene.GetRootGameObjects()) {
-        if (root) ProcessGO(*root, ctx.dt);
+        if (root) {
+            ProcessGO(*root, ctx.dt);
+        }
     }
 }
 

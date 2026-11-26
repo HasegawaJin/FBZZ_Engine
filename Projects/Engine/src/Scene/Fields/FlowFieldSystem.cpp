@@ -43,15 +43,15 @@ ComponentAccess FlowFieldSystem::GetAccess() const
 
 OrderingHints FlowFieldSystem::GetOrder() const
 {
-    /// @note TransformPrePhysics は RunMode::SimOnly。編集中はこのヒントの相手が走らず、
-    /// @note 代わりに TransformEditorPreview (PreScript) がワールド姿勢を確定させている。
+    // TransformPrePhysics は RunMode::SimOnly。編集中はこのヒントの相手が走らず、
+    // 代わりに TransformEditorPreview (PreScript) がワールド姿勢を確定させている。
     return OrderingHints{}.After<TransformPrePhysics>();
 }
 
 void FlowFieldSystem::Update(SystemContext& ctx)
 {
-    /// @note 遅延更新を «物理より前» で強制的に踏む。剛体が読む時点で確定していることが仕事。
+    // 遅延更新を «物理より前» で強制的に踏む。剛体が読む時点で確定していることが仕事。
     (void)ctx.scene.FlowFrame();
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

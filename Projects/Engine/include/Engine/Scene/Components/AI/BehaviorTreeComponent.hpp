@@ -27,8 +27,8 @@ struct BehaviorTreeComponent {
     ///
     /// @note 既定 0.1 秒。人間の反応速度 (~200ms) に対し知覚上問題ない間引き。位相は個体ごとにずらす。
     float tickRate    = 0.1f;
-    float farTickDistance = 0.0f; ///< @note すべての有効カメラからこの距離 [m] より遠い場合に適用する。0 で無効。
-    float farTickRate = 0.5f; ///< @note 遠景での最小評価間隔 [s]。知覚・Blackboard の変更による wake は優先する。
+    float farTickDistance = 0.0f; ///< すべての有効カメラからこの距離 [m] より遠い場合に適用する。0 で無効。
+    float farTickRate = 0.5f; ///< 遠景での最小評価間隔 [s]。知覚・Blackboard の変更による wake は優先する。
     bool  startPaused = false;
     /// @}
 
@@ -45,7 +45,7 @@ struct BehaviorTreeComponent {
     bool                 evaluationRequested = false;
     bool                 patrolRequested = false;
     std::uint64_t        evaluatedRevision = 0;
-    float                elapsedTime      = 0.0f;   ///< @note Blackboard の時間条件の基準
+    float                elapsedTime      = 0.0f; ///< Blackboard の時間条件の基準
     bool                 initialized      = false;
     bool                 reloadRequested  = false;
     bool                 restartRequested = false;

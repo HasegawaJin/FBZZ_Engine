@@ -34,10 +34,12 @@ math::Vector3 DivideSafe(const math::Vector3& value, const math::Vector3& scale)
 /// @note 線を出さないフレームは帯を畳む。前の形が残って «消したのに光っている» にならないように。
 void Hide(GameObject& go)
 {
-    if (auto* procedural = go.GetComponent<ProceduralMeshComponent>()) procedural->enabled = false;
+    if (auto* procedural = go.GetComponent<ProceduralMeshComponent>()) {
+        procedural->enabled = false;
+    }
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess VFXLineSystem::GetAccess() const
 {
@@ -46,44 +48,52 @@ ComponentAccess VFXLineSystem::GetAccess() const
 
 OrderingHints VFXLineSystem::GetOrder() const
 {
-    /// @note 端点は «今フレームのワールド位置»。VFXSystem が生存窓で有効 / 無効を決めた後に形を作る。
+    // 端点は «今フレームのワールド位置»。VFXSystem が生存窓で有効 / 無効を決めた後に形を作る。
     return OrderingHints{}.After<VFXSystem>().After<AnimatorSystem>().After<TransformLateUpdate>();
 }
 
 void VFXLineSystem::Update(SystemContext& ctx)
 {
-    if (ctx.scene.GetEntities<VFXLineComponent>().empty()) return;
+    if (ctx.scene.GetEntities<VFXLineComponent>().empty()) {
+        return;
+    }
     FlushWorldTransforms(ctx.scene);
     const float dt = (std::max)(Time::deltaTime, 0.0f);
     std::vector<VFXLineStrand> strands;
     for (const EntityID id : ctx.scene.GetEntities<VFXLineComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         VFXLineComponent* linePtr = ctx.scene.GetComponent<VFXLineComponent>(id);
-        if (go == nullptr || linePtr == nullptr) continue;
+        if (go == nullptr || linePtr == nullptr) {
+            continue;
+        }
         VFXLineComponent& line = *linePtr;
         if (!go->activeInHierarchy() || !line.enabled) {
             Hide(*go);
             continue;
         }
 
-        /// @note 端点。実体を指していて見つからないときだけ «消えた» とみなす (最初から座標指定は消えない)。
+        // 端点。実体を指していて見つからないときだけ «消えた» とみなす (最初から座標指定は消えない)。
         const Transform& tf = go->transform;
         bool missing = false;
         math::Vector3 from = tf.worldPosition + line.fromOffset;
         if (line.fromEntity.IsAssigned()) {
-            if (GameObject* target = line.fromEntity.Resolve(ctx.scene); target && target->activeInHierarchy())
+            if (GameObject* target = line.fromEntity.Resolve(ctx.scene); target && target->activeInHierarchy()) {
                 from = target->transform.worldPosition + line.fromOffset;
-            else
+            }
+            else {
                 missing = true;
+            }
         }
         math::Vector3 to = tf.worldPosition
             + tf.worldRotation * math::Vector3{ line.toPoint.x * tf.worldScale.x, line.toPoint.y * tf.worldScale.y,
                                                 line.toPoint.z * tf.worldScale.z };
         if (line.toEntity.IsAssigned()) {
-            if (GameObject* target = line.toEntity.Resolve(ctx.scene); target && target->activeInHierarchy())
+            if (GameObject* target = line.toEntity.Resolve(ctx.scene); target && target->activeInHierarchy()) {
                 to = target->transform.worldPosition;
-            else
+            }
+            else {
                 missing = true;
+            }
         }
         if (missing && line.disableWhenEndpointMissing) {
             Hide(*go);
@@ -108,19 +118,23 @@ void VFXLineSystem::Update(SystemContext& ctx)
         }
 
         auto* procedural = go->GetComponent<ProceduralMeshComponent>();
-        if (procedural == nullptr) procedural = &go->AddComponent<ProceduralMeshComponent>();
+        if (procedural == nullptr) {
+            procedural = &go->AddComponent<ProceduralMeshComponent>();
+        }
         procedural->enabled = true;
         procedural->materialPath = line.materialPath;
 
-        /// @note 中心線だけを積む。帯へ広げるのは VS (VFXLine.hlsl) で、描いているビューのカメラへ向ける。
-        /// @note NORMAL = 線の向き / TANGENT.x = 半幅 / UV = (進み, 左右) / COLOR = 本流と枝の明るさ
+        // 中心線だけを積む。帯へ広げるのは VS (VFXLine.hlsl) で、描いているビューのカメラへ向ける。
+        // NORMAL = 線の向き / TANGENT.x = 半幅 / UV = (進み, 左右) / COLOR = 本流と枝の明るさ
         MeshBuilder& builder = procedural->builder;
         builder.Clear();
         const math::Quaternion inverseRotation = tf.worldRotation.Inverse();
         const float halfWidth = (std::max)(line.width, 0.0f) * 0.5f;
         for (const VFXLineStrand& strand : strands) {
             const std::size_t count = strand.points.size();
-            if (count < 2) continue;
+            if (count < 2) {
+                continue;
+            }
             const math::Vector4 tint{ strand.brightness, strand.brightness, strand.brightness, 1.0f };
             std::uint32_t previous = 0;
             for (std::size_t i = 0; i < count; ++i) {
@@ -147,9 +161,11 @@ void VFXLineSystem::Update(SystemContext& ctx)
         }
         procedural->dirty = MeshDirty::All;
 
-        /// @note 色と時刻は per-instance の上書きで渡す (同じ .mat を共有する線どうしが汚し合わない)。
+        // 色と時刻は per-instance の上書きで渡す (同じ .mat を共有する線どうしが汚し合わない)。
         auto* material = go->GetComponent<MaterialComponent>();
-        if (material == nullptr) material = &go->AddComponent<MaterialComponent>();
+        if (material == nullptr) {
+            material = &go->AddComponent<MaterialComponent>();
+        }
         const float brightness = VFXLineBrightness(line, line.time, line.strikeIndex, line.strikeClock);
         auto materialEdit = material->BeginAuthoringEdit();
         auto& materialValues = materialEdit.Draft();
@@ -166,4 +182,4 @@ void VFXLineSystem::Update(SystemContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

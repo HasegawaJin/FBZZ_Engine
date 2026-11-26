@@ -81,4 +81,4 @@ FBZZ_ENGINE_API void SetWorldPose(GameObject& go,
                   const math::Quaternion& worldRotation,
                   const math::Vector3& worldScale);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

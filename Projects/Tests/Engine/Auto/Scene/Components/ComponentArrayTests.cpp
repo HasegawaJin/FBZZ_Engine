@@ -43,7 +43,7 @@ protected:
 /// @brief Starts empty and allocates nothing.
 TEST_F(ComponentArrayTest, StartsEmptyAndAllocatesNothing)
 {
-    /// @note 未使用の型は確保すらしない (Scene が全コンポーネント型を束ねるため)。
+    // 未使用の型は確保すらしない (Scene が全コンポーネント型を束ねるため)。
     EXPECT_EQ(array.Count(), 0u);
     EXPECT_FALSE(array.Has(Entity(0)));
     EXPECT_TRUE(array.Data().empty());
@@ -106,8 +106,8 @@ TEST_F(ComponentArrayTest, RejectsInvalidAndUnallocatedIndices)
 /// @brief Rejects the same index from an earlier generation.
 TEST_F(ComponentArrayTest, RejectsTheSameIndexFromAnEarlierGeneration)
 {
-    /// @note index は再利用される。世代まで見ないと «破棄済みの参照» が生きている
-    /// @note        オブジェクトを掴む ── 一番たちの悪い壊れ方。
+    // index は再利用される。世代まで見ないと «破棄済みの参照» が生きている
+    // オブジェクトを掴む ── 一番たちの悪い壊れ方。
     array.Add(Entity(5, 2), Probe{ 50 });
 
     EXPECT_TRUE(array.Has(Entity(5, 2)));
@@ -131,8 +131,8 @@ TEST_F(ComponentArrayTest, ForgetsWhatItRemoved)
 /// @brief Keeps the other entries reachable after a removal.
 TEST_F(ComponentArrayTest, KeepsTheOtherEntriesReachableAfterARemoval)
 {
-    /// @note 末尾と swap して穴を埋める。swap された側の索引を直し忘れると、
-    /// @note        «消していないコンポーネントが引けなくなる»。
+    // 末尾と swap して穴を埋める。swap された側の索引を直し忘れると、
+    // «消していないコンポーネントが引けなくなる»。
     array.Add(Entity(1), Probe{ 10 });
     array.Add(Entity(2), Probe{ 20 });
     array.Add(Entity(3), Probe{ 30 });
@@ -209,7 +209,7 @@ TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInReverse)
 /// @brief Keeps every remaining value through interleaved removals.
 TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
 {
-    /// @note 1 つ飛ばしで消す。swap が絡む一番ややこしい並びで、残りが全部引けること。
+    // 1 つ飛ばしで消す。swap が絡む一番ややこしい並びで、残りが全部引けること。
     for (std::uint32_t i = 0; i < 16; ++i) array.Add(Entity(i), Probe{ static_cast<int>(i) });
 
     for (std::uint32_t i = 0; i < 16; i += 2) array.Remove(Entity(i));
@@ -226,8 +226,8 @@ TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
 /// @brief The component and entity arrays share the same index for each stored entry.
 TEST_F(ComponentArrayTest, DataAndEntitiesLineUp)
 {
-    /// @note System は Data() と Entities() を添字で対応づけて走査する。ずれると
-    /// @note        «別のオブジェクトのコンポーネントを更新する» ことになる。
+    // System は Data() と Entities() を添字で対応づけて走査する。ずれると
+    // «別のオブジェクトのコンポーネントを更新する» ことになる。
     array.Add(Entity(4), Probe{ 40 });
     array.Add(Entity(7), Probe{ 70 });
     array.Add(Entity(2), Probe{ 20 });
@@ -253,7 +253,7 @@ TEST_F(ComponentArrayTest, WalksEveryStoredEntryExactlyOnce)
 
     ASSERT_EQ(seen.size(), 9u);
     EXPECT_EQ(std::count(seen.begin(), seen.end(), 3), 0);
-    /// @note 重複なし
+    // 重複なし
     EXPECT_EQ(std::adjacent_find(seen.begin(), seen.end()), seen.end());
 }
 
@@ -338,7 +338,7 @@ TEST_F(ComponentArrayTest, TheMovedFromArrayIsEmptyAndReusable)
     array.Add(Entity(1), Probe{ 10 });
     scene::ComponentArray<Probe> moved = std::move(array);
 
-    EXPECT_EQ(array.Count(), 0u);        /// @note NOLINT(bugprone-use-after-move) — 空であることが契約
+    EXPECT_EQ(array.Count(), 0u);        // NOLINT(bugprone-use-after-move) — 空であることが契約
     EXPECT_FALSE(array.Has(Entity(1)));
 
     array.Add(Entity(1), Probe{ 5 });

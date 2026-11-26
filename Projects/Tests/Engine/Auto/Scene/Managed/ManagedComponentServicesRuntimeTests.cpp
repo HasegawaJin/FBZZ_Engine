@@ -65,7 +65,9 @@ protected:
     }
     bool Call(int operation, bool fixed = false)
     {
-        if (!m_adapter->ApplySettingsJson("{\"operation\":" + std::to_string(operation) + "}")) return false;
+        if (!m_adapter->ApplySettingsJson("{\"operation\":" + std::to_string(operation) + "}")) {
+            return false;
+        }
         return fixed ? m_adapter->ExecuteProfiledCallback(&scene::Script::OnFixedUpdate, scene::ScriptCallbackKind::FIXED_UPDATE, "OnFixedUpdate")
             : m_adapter->ExecuteProfiledCallback(&scene::Script::OnUpdate, scene::ScriptCallbackKind::UPDATE, "OnUpdate");
     }

@@ -19,32 +19,31 @@ namespace fbzz::asset {
 constexpr int MAX_SKINNING_BONES = 128;
 
 struct SkeletonNode {
-    std::string name;
-    int parentIndex = -1;
-    int boneIndex   = -1; ///< @note -1 = 変形に使わない補助ノード (ルート・グループ等)
-    math::Vector3 bindTranslation = math::Vector3::ZERO;
-    math::Quaternion bindRotation = math::Quaternion::Identity();
-    math::Vector3 bindScale = math::Vector3::ONE;
-    math::Matrix4 localBindTransform = math::Matrix4::Identity(); ///< @note バインドポーズのローカル TRS
-    std::vector<int> children;
+    std::string name; ///< アニメーションのトラックから照合する骨格ノードの名前。
+    int parentIndex = -1; ///< 骨格ノード配列の親の添字。-1 は親のないルート。
+    int boneIndex   = -1; ///< -1 = 変形に使わない補助ノード (ルート・グループ等)
+    math::Vector3 bindTranslation = math::Vector3::ZERO; ///< バインド姿勢における親ノード基準の位置。
+    math::Quaternion bindRotation = math::Quaternion::Identity(); ///< バインド姿勢における親ノード基準の回転。
+    math::Vector3 bindScale = math::Vector3::ONE; ///< バインド姿勢における親ノード基準の軸別倍率。
+    math::Matrix4 localBindTransform = math::Matrix4::Identity(); ///< バインドポーズのローカル TRS
+    std::vector<int> children; ///< 直接の子に当たる骨格ノード配列の添字列。
 };
 
 struct Bone {
-    std::string name;
-    int nodeIndex = -1;
+    std::string name; ///< スキニングで使用する骨の名前。
+    int nodeIndex = -1; ///< 出力骨に対応する骨格ノード配列の添字。-1 は未設定。
     /// @note 逆バインドポーズ行列 (inverse bind matrix)。
     /// @note boneMatrix = rootInverse * nodeGlobal * offsetMatrix でスキニング行列を得る。
-    math::Matrix4 offsetMatrix = math::Matrix4::Identity();
+    math::Matrix4 offsetMatrix = math::Matrix4::Identity(); ///< 頂点をバインド姿勢の骨空間へ移す逆バインド行列。
 };
 
 struct Skeleton {
-    int rootNodeIndex = -1;
-    /// @note メッシュのグローバル変換の逆行列。FBX エクスポート時の座標補正を打ち消す。
-    math::Matrix4 rootInverseTransform = math::Matrix4::Identity();
-    std::vector<SkeletonNode> nodes; ///< @note 全ノード (ボーン + 補助)
-    std::vector<Bone> bones;         ///< @note 変形ボーンのみ。GPU パレットのインデックスと対応
-    std::unordered_map<std::string, int> nodeMap; ///< @note 名前 -> nodes インデックス
-    std::unordered_map<std::string, int> boneMap; ///< @note 名前 -> bones インデックス
+    int rootNodeIndex = -1; ///< 骨格ノード配列のルートの添字。-1 は未設定。
+    math::Matrix4 rootInverseTransform = math::Matrix4::Identity(); ///< メッシュのグローバル変換の逆行列。FBX エクスポート時の座標補正を打ち消す。
+    std::vector<SkeletonNode> nodes; ///< 全ノード (ボーン + 補助)
+    std::vector<Bone> bones; ///< 変形ボーンのみ。GPU パレットのインデックスと対応
+    std::unordered_map<std::string, int> nodeMap; ///< 名前 -> nodes インデックス
+    std::unordered_map<std::string, int> boneMap; ///< 名前 -> bones インデックス
 
     /// @note リファレンスポーズ (= バインドポーズ) のスキニング行列パレット。
     /// @note bones と同じインデックス。BuildReferencePose() がロード時に一度だけ構築する。
@@ -52,11 +51,11 @@ struct Skeleton {
     /// @note 単位行列は正しくない: 頂点がモデル空間そのまま格納されるアセット (Mixamo 等) 以外は、
     /// @note モデルが倒れる・原点へ潰れるといった破綻が起きる。Unity / Unreal と同じく無アニメ時は
     /// @note このリファレンスポーズを既定とする。
-    std::vector<math::Matrix4> referencePose;
+    std::vector<math::Matrix4> referencePose; ///< 未再生時に使用する基準姿勢のスキニング行列列。
 };
 
 /// @note nodes のバインド TRS を辿って referencePose を構築する。
 /// @note palette[boneIndex] = rootInverseTransform · globalBind · offsetMatrix
 FBZZ_ENGINE_API void BuildReferencePose(Skeleton& skeleton);
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

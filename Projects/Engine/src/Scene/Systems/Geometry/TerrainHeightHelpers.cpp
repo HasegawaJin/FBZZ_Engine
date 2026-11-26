@@ -11,10 +11,12 @@ namespace fbzz::scene::terrain_height_detail {
 bool TryAddTerrainHeightSample(const TerrainComponent* terrain, int x, int z,
                                 float& sum, int& count)
 {
-    if (!terrain || terrain->heightData.empty())
+    if (!terrain || terrain->heightData.empty()) {
         return false;
-    if (x < 0 || x >= terrain->columns || z < 0 || z >= terrain->rows)
+    }
+    if (x < 0 || x >= terrain->columns || z < 0 || z >= terrain->rows) {
         return false;
+    }
     const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain->columns)
                      + static_cast<size_t>(x);
     sum += terrain->heightData[idx] * terrain->maxHeight;

@@ -15,12 +15,16 @@ namespace fbzz::scene {
 
 bool ColliderComponent::ResolvePhysicsMaterial()
 {
-    if (physicsMaterialPath.empty()) return false;
+    if (physicsMaterialPath.empty()) {
+        return false;
+    }
 
-    /// @note AssetManager がパス単位でキャッシュするため、毎フレーム呼んでもファイル I/O は起きない。
+    // AssetManager がパス単位でキャッシュするため、毎フレーム呼んでもファイル I/O は起きない。
     const auto handle = asset::AssetManager::Load<asset::PhysicsMaterialAsset>(physicsMaterialPath);
     const auto* physicsMaterial = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(handle);
-    if (!physicsMaterial) return false;
+    if (!physicsMaterial) {
+        return false;
+    }
 
     material = physicsMaterial->material;
     return true;

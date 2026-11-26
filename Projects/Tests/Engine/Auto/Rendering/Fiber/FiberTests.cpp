@@ -401,7 +401,7 @@ TEST_F(FiberTest, BuildsContinuousBladesOverTriangleInterior)
         EXPECT_LE(blade.m_height,1.0f);
         EXPECT_GE(blade.m_rank,0.0f);
         EXPECT_LT(blade.m_rank,1.0f);
-        /// @note 2 枚のリボンは法線に直交する十字で、幅の半分の長さを持つ。
+        // 2 枚のリボンは法線に直交する十字で、幅の半分の長さを持つ。
         EXPECT_NEAR(blade.m_side0.Length(),0.01f,1.0e-5f);
         EXPECT_NEAR(blade.m_side1.Length(),0.01f,1.0e-5f);
         EXPECT_NEAR(math::Vector3::Dot(blade.m_side0,blade.m_side1),0.0f,1.0e-6f);
@@ -412,7 +412,7 @@ TEST_F(FiberTest, BuildsContinuousBladesOverTriangleInterior)
     ASSERT_EQ(again.size(),blades.size());
     for (size_t i=0;i<blades.size();++i)
         EXPECT_EQ(std::memcmp(&blades[i],&again[i],sizeof(renderer::FiberBladeRoot)),0);
-    /// @note GPU へ送るのは 1 葉 64 バイト。以前の 28 頂点 + 72 インデックス (3312 バイト) を CPU で作らない。
+    // GPU へ送るのは 1 葉 64 バイト。以前の 28 頂点 + 72 インデックス (3312 バイト) を CPU で作らない。
     EXPECT_EQ(sizeof(renderer::FiberBladeRoot),64u);
 }
 
@@ -484,7 +484,7 @@ TEST_F(FiberTest, ContactCountsStopAtTheLastSlotThatCanStillBend)
     EXPECT_EQ(data.m_count, 0u) << "接触が無いシーンでは頂点ごとの走査を 1 回もしない";
     EXPECT_EQ(data.m_previousCount, 0u);
 
-    /// @note 枠 0 は回復済み、枠 2 は回復中、枠 5 はまだ発生していない。
+    // 枠 0 は回復済み、枠 2 は回復中、枠 5 はまだ発生していない。
     data.m_centers[0] = { 0, 0, 0, 1 };
     data.m_times[0] = { 1.0f, 1.0f, 2.0f, 0 };
     data.m_centers[2] = { 0, 0, 0, 1 };
@@ -495,7 +495,7 @@ TEST_F(FiberTest, ContactCountsStopAtTheLastSlotThatCanStillBend)
     data.m_times[32 + 7] = { 0.0f, 1.0f, 0.05f, 0 };
     scene::UpdateFiberContactCounts(data, 10.0f);
     EXPECT_EQ(data.m_count, 3u);
-    /// @note 前フレームは評価時刻が履歴でずれるので、回復済みでも半径を持つ枠までは走査する。
+    // 前フレームは評価時刻が履歴でずれるので、回復済みでも半径を持つ枠までは走査する。
     EXPECT_EQ(data.m_previousCount, 8u);
 
     data.m_times[2].x = 7.0f;
@@ -575,7 +575,7 @@ TEST_F(FiberTest, ProjectAppearanceKeepsTypedExtensionsThroughMaterialSaveReload
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, loaded));
     EXPECT_EQ(loaded.shaderPath, values.shaderPath);
     EXPECT_EQ(loaded.params.at("accentColor"), values.params.at("accentColor"));
-    /// @note Exactly representable small integers normalize to params; reflection restores UInt/Bool below.
+    // 小さな整数は正確に表現できるので params に正規化し、後段のリフレクションで UInt と Bool を復元する。
     ASSERT_TRUE(loaded.params.contains("colorBands"));
     ASSERT_TRUE(loaded.params.contains("enablePattern"));
     EXPECT_EQ(loaded.params.at("colorBands"), std::vector<float>{3.0f});

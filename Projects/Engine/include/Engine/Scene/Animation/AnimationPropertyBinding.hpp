@@ -22,7 +22,7 @@ struct AnimationPropertySample {
     float                floats[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     int32_t              intValue  = 0;
     bool                 boolValue = false;
-    bool                 found = false; ///< @note 一致するフィールドが見つかったか。false のスナップショットは復帰に使わない。
+    bool                 found = false; ///< 一致するフィールドが見つかったか。false のスナップショットは復帰に使わない。
 };
 
 /// @brief ticks 時点の値を Component / Script のプロパティへ書き込む。
@@ -55,4 +55,4 @@ FBZZ_ENGINE_API void RestoreMaterialProperty(GameObject& target,
                              const std::vector<float>& values,
                              bool hadOverride);
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

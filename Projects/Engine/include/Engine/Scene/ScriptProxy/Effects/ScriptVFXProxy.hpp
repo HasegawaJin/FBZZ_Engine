@@ -18,7 +18,7 @@ class Script;
 
 struct ScriptVFXProxy {
     explicit ScriptVFXProxy(Script* owner) : script(owner) {}
-    Script* script = nullptr;
+    Script* script = nullptr; ///< VFX操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void Play(bool restart = true) const;
     FBZZ_ENGINE_API void Pause() const;
@@ -34,4 +34,4 @@ struct ScriptVFXProxy {
     [[nodiscard]] FBZZ_ENGINE_API float GetSpeed() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

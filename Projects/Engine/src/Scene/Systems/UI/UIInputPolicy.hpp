@@ -73,7 +73,9 @@ inline bool UpdateButton(UIButton& button, math::Vector2 rectPosition, math::Vec
         && mouse.y >= rectPosition.y && mouse.y <= rectPosition.y + rectSize.y;
     const bool justPressed = mousePressed && !button.lastMouseState;
     const bool justReleased = !mousePressed && button.lastMouseState;
-    if (justPressed && hit) button.wasPressedOnThis = true;
+    if (justPressed && hit) {
+        button.wasPressedOnThis = true;
+    }
     if (justReleased) {
         button.onClick = button.wasPressedOnThis && hit;
         button.wasPressedOnThis = false;
@@ -86,4 +88,4 @@ inline bool UpdateButton(UIButton& button, math::Vector2 rectPosition, math::Vec
     return hit;
 }
 
-} /// @note namespace fbzz::scene::ui_detail
+} // namespace fbzz::scene::ui_detail

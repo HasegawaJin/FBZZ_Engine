@@ -12,7 +12,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptApplicationProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< アプリケーション操作で実行スコープを照合する、非所有の Script 参照。
 
     FBZZ_ENGINE_API void Quit() const;
     FBZZ_ENGINE_API bool IsRunning() const;
@@ -27,4 +27,4 @@ struct ScriptApplicationProxy {
     [[nodiscard]] FBZZ_ENGINE_API bool IsEditMode() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -15,4 +15,4 @@ inline constexpr const char* COLLIDER_SHAPE[] = { "sphere", "box", "plane", "cap
 inline constexpr const char* BAKE_MODE[] = { "2d", "3d" };
 inline constexpr const char* BAKE_SOLVER[] = { "auto", "gpu", "cpu" };
 
-} /// @note namespace fbzz::asset::fluid_recipe_labels
+} // namespace fbzz::asset::fluid_recipe_labels

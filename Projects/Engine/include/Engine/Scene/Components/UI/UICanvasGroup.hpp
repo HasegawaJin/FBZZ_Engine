@@ -15,22 +15,22 @@
 namespace fbzz::scene {
 
 struct UICanvasGroup {
-    bool  enabled = true;
+    bool  enabled = true; ///< 子孫へのキャンバスグループの色と操作設定を適用するかどうか。
     /// @note この GameObject 以下の UIImage / UIText の不透明度へ掛かる係数 [0,1]。
     /// @note 入れ子になった場合は掛け合わさる。
-    float alpha = 1.0f;
+    float alpha = 1.0f; ///< このグループの子孫の表示に掛ける不透明度倍率。
     /// @note false の間、配下の UIButton / UISlider などが一切入力を受け取らない。
     /// @note 見た目は変わらない。
-    bool  interactable = true;
+    bool  interactable = true; ///< このグループの子孫の操作を許可するかどうか。
     /// @note false の間、配下はポインターを「素通し」する。
     /// @note interactable = false は入力を止めるが、最前面にいる限り背後にも渡らない
     /// @note (吸って捨てる)。背後を触らせたい全画面の暗幕やフェード板ではこちらを false にする。
-    bool  blocksRaycasts = true;
+    bool  blocksRaycasts = true; ///< このグループの子孫がポインターのヒット判定を受けられるかどうか。
     /// @note true にすると、上位の UICanvasGroup の alpha / interactable を無視して
     /// @note この群の値から始め直す。
     /// @note フェードアウト中の画面の上に、確認ダイアログのように常に見えていてほしい層を
     /// @note 重ねる場面があるため。
-    bool  ignoreParentGroups = false;
+    bool  ignoreParentGroups = false; ///< このグループで先祖から受け継いだグループ設定を遮断するかどうか。
 
     const char* GetTypeName() const { return "UI Canvas Group"; }
     void Reflect(IReflector& r)

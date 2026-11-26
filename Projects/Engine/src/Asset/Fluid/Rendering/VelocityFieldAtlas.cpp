@@ -27,21 +27,23 @@ struct AtlasState {
     ~AtlasState()
     {
         auto* owner = renderer::ResourceManager::FindOwner(ownerInstanceId);
-        if (!owner || owner->GetResetVersion() != resetVersion) return;
+        if (!owner || owner->GetResetVersion() != resetVersion) {
+            return;
+        }
         owner->Release(texture);
-        for (const auto& entry : retired) owner->Release(entry.texture);
+        for (const auto& entry : retired) {
+            owner->Release(entry.texture);
+        }
     }
     uint64_t ownerInstanceId = 0;
     uint64_t resetVersion = 0;
     /// @brief 常駐表。キーは «その場の実体»。AssetStore のスロットは読み込み中は動かないので、
     /// @brief ポインタで引ける。プロジェクトを切り替えたら Reset() で丸ごと捨てる。
     std::unordered_map<const fluid::VectorFieldAsset*, int> tiles;
-    /// @brief アトラス全体の CPU 側の写し。タイルが増えるたびにここから作り直す。
-    std::vector<uint8_t> staging;
+    std::vector<uint8_t> staging; ///< アトラス全体の CPU 側の写し。タイルが増えるたびにここから作り直す。
     renderer::ResourceHandle<renderer::TextureTag> texture;
     uint32_t tileCount = 0;
-    /// @brief 3D テクスチャを作れないバックエンドで毎フレーム試さないための一度きりの印。
-    bool unsupported = false;
+    bool unsupported = false; ///< 3D テクスチャを作れないバックエンドで毎フレーム試さないための一度きりの印。
 
     /// @brief 作り直しで古くなったハンドル。**すぐには解放しない**。
     /// @note ResourceManager::Release は即座に D3D オブジェクトを壊す。DX12 では前フレームの
@@ -69,7 +71,9 @@ AtlasState& State(renderer::ResourceManager& resources)
         return !owner || owner->GetResetVersion() != state->resetVersion;
     });
     for (auto& state : states)
-        if (state->ownerInstanceId == resources.GetInstanceId()) return *state;
+        if (state->ownerInstanceId == resources.GetInstanceId()) {
+            return *state;
+        }
     auto state = std::make_unique<AtlasState>();
     state->ownerInstanceId = resources.GetInstanceId();
     state->resetVersion = resources.GetResetVersion();
@@ -96,8 +100,9 @@ void EncodeTile(const fluid::VectorFieldAsset& field, std::vector<uint8_t>& outT
 /// @brief staging から Texture3D を作り直す。古いハンドルは retire へ回す。
 void RebuildTexture(AtlasState& state, renderer::ResourceManager& resources)
 {
-    if (state.texture.IsValid())
+    if (state.texture.IsValid()) {
         state.retired.push_back({ state.texture, Time::frameCount });
+    }
 
     const uint32_t depth = (std::max)(state.tileCount, 1u) * kTile;
     state.texture = resources.CreateTexture3D(state.staging.data(), kTile, kTile, depth);
@@ -111,34 +116,39 @@ void RebuildTexture(AtlasState& state, renderer::ResourceManager& resources)
 /// @brief 数フレーム前に外したテクスチャを解放する。
 void FlushRetired(AtlasState& state, renderer::ResourceManager& resources)
 {
-    /// @note 3 フレーム。DX12 のフレームバッファリング (最大 2) より 1 つ多く取る。
+    // 3 フレーム。DX12 のフレームバッファリング (最大 2) より 1 つ多く取る。
     constexpr uint64_t kRetireDelay = 3;
     state.retired.erase(
         std::remove_if(state.retired.begin(), state.retired.end(),
                        [&](const AtlasState::Retired& entry) {
-                           if (Time::frameCount < entry.frame + kRetireDelay) return false;
+                           if (Time::frameCount < entry.frame + kRetireDelay) {
+                               return false;
+                           }
                            resources.Release(entry.texture);
                            return true;
                        }),
         state.retired.end());
 }
 
-} /// @note namespace
+} // namespace
 
 int VelocityFieldAtlas::Acquire(const fluid::VectorFieldAsset& field, renderer::ResourceManager& resources)
 {
     AtlasState& state = State(resources);
     FlushRetired(state, resources);
 
-    if (state.unsupported || field.Empty()) return -1;
+    if (state.unsupported || field.Empty()) {
+        return -1;
+    }
 
-    if (const auto found = state.tiles.find(&field); found != state.tiles.end())
+    if (const auto found = state.tiles.find(&field); found != state.tiles.end()) {
         return found->second;
+    }
 
     if (state.tileCount >= kMaxTiles) {
-        /// @note 追い出しは実装しない。使われなくなった場を判定するには «誰が参照しているか» が
-        /// @note 要り、力場は毎フレーム組み直されるので «今フレーム使われた» しか分からない。
-        /// @note 64 枚を超える構成は演出の作り方のほうを見直すべき数字なので、はっきり落とす。
+        // 追い出しは実装しない。使われなくなった場を判定するには «誰が参照しているか» が
+        // 要り、力場は毎フレーム組み直されるので «今フレーム使われた» しか分からない。
+        // 64 枚を超える構成は演出の作り方のほうを見直すべき数字なので、はっきり落とす。
         FBZZ_LOG_WARN("VelocityFieldAtlas: 常駐できる速度場は %u 枚までです。"
                       "これ以上の場は効きません", kMaxTiles);
         return -1;
@@ -155,7 +165,9 @@ int VelocityFieldAtlas::Acquire(const fluid::VectorFieldAsset& field, renderer::
     ++state.tileCount;
 
     RebuildTexture(state, resources);
-    if (!state.texture.IsValid()) return -1;
+    if (!state.texture.IsValid()) {
+        return -1;
+    }
 
     state.tiles.emplace(&field, tile);
     return tile;
@@ -165,16 +177,20 @@ renderer::ResourceHandle<renderer::TextureTag>
 VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
 {
     AtlasState& state = State(resources);
-    if (state.texture.IsValid()) return state.texture;
+    if (state.texture.IsValid()) {
+        return state.texture;
+    }
 
-    /// @note 場が 1 枚も無いときの 1x1x1。CS は tile < 0 で読まないので中身は何でもよいが、
-    /// @note **束縛されていること** が要る (DX12 の null ディスクリプタは Texture2D 固定で、
-    /// @note Texture3D を宣言したスロットを空にすると次元が食い違う)。
+    // 場が 1 枚も無いときの 1x1x1。CS は tile < 0 で読まないので中身は何でもよいが、
+    // **束縛されていること** が要る (DX12 の null ディスクリプタは Texture2D 固定で、
+    // Texture3D を宣言したスロットを空にすると次元が食い違う)。
     if (!state.unsupported && state.tileCount == 0) {
-        /// @note 復元すると 0 になる値
+        // 復元すると 0 になる値
         const uint8_t empty[4] = { 128, 128, 128, 255 };
         state.texture = resources.CreateTexture3D(empty, 1, 1, 1);
-        if (!state.texture.IsValid()) state.unsupported = true;
+        if (!state.texture.IsValid()) {
+            state.unsupported = true;
+        }
     }
     return state.texture;
 }
@@ -182,24 +198,27 @@ VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
 void VelocityFieldAtlas::Invalidate(renderer::ResourceManager& resources)
 {
     State(resources);
-    /// @note アセットの置換は全ビューに共通なので、生存中の全所有者へ無効化を伝える。
+    // アセットの置換は全ビューに共通なので、生存中の全所有者へ無効化を伝える。
     for (auto& owned : States()) {
         AtlasState& state = *owned;
         auto& owner = *renderer::ResourceManager::FindOwner(state.ownerInstanceId);
-        if (state.tiles.empty() && !state.texture.IsValid()) continue;
+        if (state.tiles.empty() && !state.texture.IsValid()) {
+            continue;
+        }
 
-        /// @note テクスチャは «すぐには» 捨てない。前フレームのコマンドリストがまだ読んでいる
-        /// @note 可能性があり、即時解放は use-after-free になる (RebuildTexture と同じ理由)。
-        if (state.texture.IsValid())
+        // テクスチャは «すぐには» 捨てない。前フレームのコマンドリストがまだ読んでいる
+        // 可能性があり、即時解放は use-after-free になる (RebuildTexture と同じ理由)。
+        if (state.texture.IsValid()) {
             state.retired.push_back({ state.texture, Time::frameCount });
+        }
         FlushRetired(state, owner);
 
         state.tiles.clear();
         state.staging.clear();
         state.texture = {};
         state.tileCount = 0;
-        /// @note unsupported は «このバックエンドで 3D テクスチャを作れない» という事実で、
-        /// @note アセットの差し替えでは変わらない。落とすと毎回作り直しを試みることになる。
+        // unsupported は «このバックエンドで 3D テクスチャを作れない» という事実で、
+        // アセットの差し替えでは変わらない。落とすと毎回作り直しを試みることになる。
     }
 }
 
@@ -208,4 +227,4 @@ void VelocityFieldAtlas::Reset()
     States().clear();
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -12,14 +12,13 @@
 namespace fbzz::asset {
 
 struct MeshInstancesAsset {
-    /// @note 配置時の見た目も保存し、素材定義の変更だけで既存の配置を作り直さない。
-    InstanceSetAsset instances;
-    std::string terrainPaintRef;
+    InstanceSetAsset instances; ///< 配置時の見た目も保存し、素材定義の変更だけで既存の配置を作り直さない。
+    std::string terrainPaintRef; ///< 各インスタンスの地形ペイント定義を解決するアセット参照。
 };
 
 /// @return 不正形式・未知バージョン・重複 ID・I/O 失敗時は false。out は未変更。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadMeshInstancesAsset(std::string_view path, MeshInstancesAsset& out);
-/// @param sourcePath TOML の診断に使うパス。ファイルは開かない。
+/// @param[in] sourcePath TOML の診断に使うパス。ファイルは開かない。
 /// @return 不正形式・未知バージョン・重複 ID の場合は false。out は未変更。
 [[nodiscard]] FBZZ_ENGINE_API bool DeserializeMeshInstancesAsset(std::string_view text, std::string_view sourcePath, MeshInstancesAsset& out);
 [[nodiscard]] FBZZ_ENGINE_API bool SaveMeshInstancesAsset(std::string_view path, const MeshInstancesAsset& asset);
@@ -46,4 +45,4 @@ public:
         return EXTENSIONS;
     }
 };
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

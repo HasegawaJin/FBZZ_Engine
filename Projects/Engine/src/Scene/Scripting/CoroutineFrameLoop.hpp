@@ -12,4 +12,4 @@ namespace fbzz::scene::coroutine_detail {
 /// @note callback はフレームが所有し、Script の停止・破棄時には既存 Coroutine とともに解放する。
 [[nodiscard]] Coroutine RunFrames(std::function<bool()> step);
 
-} /// @note namespace fbzz::scene::coroutine_detail
+} // namespace fbzz::scene::coroutine_detail

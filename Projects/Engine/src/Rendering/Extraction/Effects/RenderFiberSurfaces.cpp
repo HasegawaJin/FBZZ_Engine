@@ -19,11 +19,19 @@ namespace fbzz::scene::fiber_extraction_detail {
 
 bool HasFiberSurface(GameObject& owner, fbzz::LayerMask mask)
 {
-    if (!ShouldRenderGameObject(owner, mask)) return false;
+    if (!ShouldRenderGameObject(owner, mask)) {
+        return false;
+    }
     const auto* fiber = owner.GetComponent<FiberComponent>();
-    if (!fiber || !fiber->m_enabled || fiber->m_materialPath.empty()) return false;
-    if (const auto* mesh=owner.GetComponent<MeshRenderer>(); mesh && mesh->enabled && mesh->lodVisible && mesh->mesh) return true;
-    if (const auto* skin=owner.GetComponent<SkinnedMeshRenderer>(); skin && skin->enabled && skin->lodVisible && skin->model) return true;
+    if (!fiber || !fiber->m_enabled || fiber->m_materialPath.empty()) {
+        return false;
+    }
+    if (const auto* mesh=owner.GetComponent<MeshRenderer>(); mesh && mesh->enabled && mesh->lodVisible && mesh->mesh) {
+        return true;
+    }
+    if (const auto* skin=owner.GetComponent<SkinnedMeshRenderer>(); skin && skin->enabled && skin->lodVisible && skin->model) {
+        return true;
+    }
     const auto* terrain=owner.GetComponent<TerrainComponent>();
     return terrain && terrain->enabled;
 }
@@ -33,8 +41,9 @@ void CollectFiberSurfaces(GameObject& owner, const FiberComponent& fiber, float 
 {
     auto& resources = context.resources;
     surfaces.clear();
-    if (auto* meshRenderer=owner.GetComponent<MeshRenderer>(); meshRenderer && meshRenderer->enabled && meshRenderer->lodVisible && meshRenderer->mesh && !meshRenderer->mesh->isSkinned)
+    if (auto* meshRenderer=owner.GetComponent<MeshRenderer>(); meshRenderer && meshRenderer->enabled && meshRenderer->lodVisible && meshRenderer->mesh && !meshRenderer->mesh->isSkinned) {
         surfaces.push_back({meshRenderer->mesh,meshRenderer->mesh->vertexBuffer,{}, {},meshRenderer->castShadows,true,meshRenderer->lodDither});
+    }
     if (auto* skinnedRenderer=owner.GetComponent<SkinnedMeshRenderer>(); skinnedRenderer && skinnedRenderer->enabled && skinnedRenderer->lodVisible && skinnedRenderer->model) {
         auto* animator=FindAnimator(owner);
         const auto skin=ResolveSkinningCB(animator ? animator->skinningBuffer.Get() : renderer::ResourceHandle<renderer::ConstantBufferTag>{},
@@ -42,12 +51,14 @@ void CollectFiberSurfaces(GameObject& owner, const FiberComponent& fiber, float 
         const bool hasPreviousSkin=animator && animator->prevBoneMatricesValid && animator->prevSkinningBuffer.IsValid();
         const auto previousSkin=hasPreviousSkin ? animator->prevSkinningBuffer.Get() : skin;
         const auto* baseMaterial=owner.GetComponent<MaterialComponent>();
-        /// @note 骨の今の広がりから作る球 (Animator が焼く)。以前はスキンをカリングせず、画面外でも全カスケードへ全層を描いていた。
+        // 骨の今の広がりから作る球 (Animator が焼く)。以前はスキンをカリングせず、画面外でも全カスケードへ全層を描いていた。
         WorldBounds skinBounds{};
         const bool hasSkinBounds=ComputeSkinnedWorldBounds(owner,*skinnedRenderer,skinBounds,fiberPadding);
         for (size_t submeshSlot=0;submeshSlot<skinnedRenderer->SubmeshCount();++submeshSlot) {
             auto* mesh=skinnedRenderer->SubmeshMesh(submeshSlot);
-            if (!mesh || (baseMaterial && !baseMaterial->SlotAt(submeshSlot).visible)) continue;
+            if (!mesh || (baseMaterial && !baseMaterial->SlotAt(submeshSlot).visible)) {
+                continue;
+            }
             FiberSurface surface{mesh,skinnedRenderer->ResolveSlotVertexBuffer(submeshSlot,mesh->vertexBuffer),skin,previousSkin,skinnedRenderer->castShadows,hasPreviousSkin,skinnedRenderer->lodDither};
             surface.skinnedVertices=skinnedRenderer->ResolveSlotSkinnedVertexBuffer(submeshSlot);
             const uint32_t submesh = skinnedRenderer->SubmeshAt(submeshSlot);
@@ -74,4 +85,4 @@ void CollectFiberSurfaces(GameObject& owner, const FiberComponent& fiber, float 
     }
 }
 
-} /// @note namespace fbzz::scene::fiber_extraction_detail
+} // namespace fbzz::scene::fiber_extraction_detail

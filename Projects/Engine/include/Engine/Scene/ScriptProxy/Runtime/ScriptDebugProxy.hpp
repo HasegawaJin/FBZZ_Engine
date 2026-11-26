@@ -19,9 +19,8 @@ class Script;
 /// @note 描画は Scene View の «Script Gizmos» が点いているときだけ出る。配布ビルドでは出ない。
 /// @note duration は秒。0 はこのフレームだけ。座標はすべてワールド空間。
 struct ScriptDebugProxy {
-    Script* script = nullptr;
-    /// @note 以降の Draw* をシーン深度で遮蔽させるか。既定 false (物越しに見える)。
-    bool depthTest = false;
+    Script* script = nullptr; ///< デバッグ操作で実行スコープを照合する、非所有の Script 参照。
+    bool depthTest = false; ///< 以降の Draw* をシーン深度で遮蔽させるか。既定 false (物越しに見える)。
 
     FBZZ_ENGINE_API void Log(std::string_view msg) const;
     FBZZ_ENGINE_API void LogWarning(std::string_view msg) const;
@@ -41,16 +40,16 @@ struct ScriptDebugProxy {
     FBZZ_ENGINE_API void DrawCone(const math::Vector3& apex, const math::Vector3& direction,
                   float height = 1.0f, float baseRadius = 0.3f,
                   const math::Vector4& color = { 1,1,0,1 }, float duration = 0.0f) const;
-    /// @param halfHeight 半球中心までの距離 (半球を含まない)。軸は rotation のローカル Y。
+    /// @param[in] halfHeight 半球中心までの距離 (半球を含まない)。軸は rotation のローカル Y。
     FBZZ_ENGINE_API void DrawCapsule(const math::Vector3& center, float radius, float halfHeight,
                      const math::Quaternion& rotation, const math::Vector4& color, float duration = 0.0f) const;
     FBZZ_ENGINE_API void DrawCircle(const math::Vector3& center, const math::Vector3& normal, float radius,
                     const math::Vector4& color, float duration = 0.0f) const;
-    /// @param angleDegrees fromDirection から normal まわりに回る角度 (右手系)。
+    /// @param[in] angleDegrees fromDirection から normal まわりに回る角度 (右手系)。
     FBZZ_ENGINE_API void DrawArc(const math::Vector3& center, const math::Vector3& normal, const math::Vector3& fromDirection,
                  float radius, float angleDegrees, const math::Vector4& color, float duration = 0.0f) const;
     FBZZ_ENGINE_API void DrawPolyline(std::span<const math::Vector3> points, bool closed, const math::Vector4& color,
                       float duration = 0.0f) const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

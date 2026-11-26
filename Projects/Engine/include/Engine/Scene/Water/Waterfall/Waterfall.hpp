@@ -35,7 +35,7 @@ struct WaterfallGeometry {
     bool atStart, bool incoming, WaterfallSection& out);
 
 /// @brief 上限付きの滝幕、落水点の泡、任意のワールド空間エフェクト位置を生成する。
-/// @param ground 問い合わせた XZ の最も高い地形面。地形外は負の無限大。
+/// @param[in] ground 問い合わせた XZ の最も高い地形面。地形外は負の無限大。
 /// @return 接続が無効か、サンプリングした滝幕を地形より上に保てない場合は false。
 [[nodiscard]] FBZZ_ENGINE_API bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
     const std::function<float(const math::Vector3&)>& ground, MeshBuilder& out,

@@ -29,11 +29,15 @@ namespace fbzz::scene {
 namespace {
 uint32_t ParseTextureSlot(std::string_view slot)
 {
-    if (slot.size() < 2 || slot[0] != 't') return UINT32_MAX;
+    if (slot.size() < 2 || slot[0] != 't') {
+        return UINT32_MAX;
+    }
 
     uint32_t value = 0;
     for (size_t i = 1; i < slot.size(); ++i) {
-        if (slot[i] < '0' || slot[i] > '9') return UINT32_MAX;
+        if (slot[i] < '0' || slot[i] > '9') {
+            return UINT32_MAX;
+        }
         value = value * 10u + static_cast<uint32_t>(slot[i] - '0');
     }
     return value < 16u ? value : UINT32_MAX;
@@ -61,7 +65,9 @@ const renderer::ShaderVarDesc* FindCompatibleMaterialVariable(
     const renderer::ShaderDescriptor& descriptor, std::string_view property)
 {
     const auto canonical = CanonicalMaterialProperty(property);
-    if (const auto* variable = descriptor.FindVar(canonical)) return variable;
+    if (const auto* variable = descriptor.FindVar(canonical)) {
+        return variable;
+    }
     return canonical == "planarShading" ? descriptor.FindVar("grassShading") : nullptr;
 }
 
@@ -83,23 +89,32 @@ void NormalizeMaterialShadingOverride(std::unordered_map<std::string, std::vecto
 asset::MaterialAsset::AuthoringSnapshotPtr ResolveSharedMaterial(const MaterialRef& material)
 {
     const std::string path = material.ResolvePath();
-    if (path.empty()) return {};
+    if (path.empty()) {
+        return {};
+    }
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
-    if (!handle.IsValid()) return {};
+    if (!handle.IsValid()) {
+        return {};
+    }
     return asset::ReadMaterialAuthoring(handle);
 }
 
 
-} /// @note namespace
+} // namespace
 MaterialComponent* MaterialInstance::ResolveOwner(bool ensure) const
 {
-    if (!m_script || !m_script->m_scene) return nullptr;
+    if (!m_script || !m_script->m_scene) {
+        return nullptr;
+    }
     GameObject* object = m_target.IsValid()
         ? m_target.Resolve(*m_script->m_scene)
         : m_script->m_gameObject;
-    if (!object || !object->IsValid()) return nullptr;
-    if (auto* material = object->GetComponent<MaterialComponent>())
+    if (!object || !object->IsValid()) {
+        return nullptr;
+    }
+    if (auto* material = object->GetComponent<MaterialComponent>()) {
         return material;
+    }
     return ensure ? &object->AddComponent<MaterialComponent>() : nullptr;
 }
 
@@ -110,9 +125,13 @@ MaterialComponent* MaterialInstance::ResolveOwner(bool ensure) const
 void* MaterialInstance::ResolveComponent(bool ensure) const
 {
     MaterialComponent* owner = ResolveOwner(ensure);
-    if (!owner) return nullptr;
+    if (!owner) {
+        return nullptr;
+    }
     if (m_slot >= owner->SlotCount()) {
-        if (!ensure) return nullptr;
+        if (!ensure) {
+            return nullptr;
+        }
         owner->ResizeSlots(static_cast<size_t>(m_slot) + 1u);
     }
     return &owner->RawSlotAt(static_cast<size_t>(m_slot));
@@ -128,24 +147,36 @@ bool MaterialInstance::IsValid() const
 bool MaterialInstance::HasProperty(MaterialPropertyId property) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !property.IsValid()) return false;
+    if (!material || !property.IsValid()) {
+        return false;
+    }
     auto* owner = ResolveOwner(false);
-    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) return false;
+    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     const auto assetSnapshot = asset::ReadMaterialAuthoring(material->GetMaterialAsset());
     const auto* asset = assetSnapshot ? &assetSnapshot->Data() : nullptr;
-    if (!asset) return false;
+    if (!asset) {
+        return false;
+    }
     if (asset->integerParams.contains(std::string(CanonicalMaterialProperty(property.name))) || asset::FindMaterialParam(*asset, property.name) ||
-        asset->textures.contains(std::string(property.name)))
+        asset->textures.contains(std::string(property.name))) {
         return true;
+    }
     if (m_script) {
         const auto* descriptor = m_script->GetShaderDescriptor(material->GetShaderPath());
-        if (descriptor && FindCompatibleMaterialVariable(*descriptor, property.name))
+        if (descriptor && FindCompatibleMaterialVariable(*descriptor, property.name)) {
             return true;
+        }
         if (descriptor) {
             for (const auto& texture : descriptor->textures)
-                if (texture.name == property.name) return true;
+                if (texture.name == property.name) {
+                    return true;
+                }
         }
     }
     return ParseTextureSlot(property.name) < 5u;
@@ -167,8 +198,12 @@ const std::string& MaterialInstance::ResolvePropertyName(
                 values.paramOverrides.erase("grassShading"); values.integerParamOverrides.erase("grassShading");
             } else {
                 NormalizeMaterialShadingOverride(values.paramOverrides);
-                if (values.paramOverrides.contains("planarShading")) values.integerParamOverrides.erase("grassShading");
-                else NormalizeMaterialShadingOverride(values.integerParamOverrides);
+                if (values.paramOverrides.contains("planarShading")) {
+                    values.integerParamOverrides.erase("grassShading");
+                }
+                else {
+                    NormalizeMaterialShadingOverride(values.integerParamOverrides);
+                }
             }
             if (edit.Commit(material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
                 static const std::string unavailable;
@@ -178,7 +213,9 @@ const std::string& MaterialInstance::ResolvePropertyName(
         }
     }
     auto [it, inserted] = material.propertyNameCache.try_emplace(property.hash, std::string(name));
-    if (!inserted && it->second != name) it->second.assign(name);
+    if (!inserted && it->second != name) {
+        it->second.assign(name);
+    }
     return it->second;
 }
 
@@ -186,16 +223,24 @@ const std::string& MaterialInstance::ResolvePropertyName(
 bool MaterialInstance::ValidateProperty(MaterialPropertyId property, PropertyKind kind) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !property.IsValid()) return false;
+    if (!material || !property.IsValid()) {
+        return false;
+    }
     auto* owner = ResolveOwner(false);
-    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) return false;
+    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     const auto ownerSnapshot = material->ReadAuthoring();
     const std::string shaderPath = material->GetShaderPath();
     const auto* descriptor = m_script ? m_script->GetShaderDescriptor(shaderPath) : nullptr;
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || material->ReadAuthoring() != ownerSnapshot) return false;
+    if (!material || material->ReadAuthoring() != ownerSnapshot) {
+        return false;
+    }
     if (!descriptor) {
         FBZZ_LOG_WARN("Material reflection unavailable: %s", shaderPath.c_str());
         return false;
@@ -204,7 +249,9 @@ bool MaterialInstance::ValidateProperty(MaterialPropertyId property, PropertyKin
         const auto canonicalName = CanonicalTextureProperty(property.name);
         for (const auto& texture : descriptor->textures)
             if (texture.name == property.name || texture.name == canonicalName
-                || texture.slot == ParseTextureSlot(property.name)) return true;
+                || texture.slot == ParseTextureSlot(property.name)) {
+                return true;
+            }
         return false;
     }
     const auto* variable = FindCompatibleMaterialVariable(*descriptor, property.name);
@@ -239,16 +286,24 @@ bool MaterialInstance::ValidateProperty(MaterialPropertyId property, PropertyKin
 bool MaterialInstance::SetValues(MaterialPropertyId property, std::span<const double> values) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !property.IsValid()) return false;
+    if (!material || !property.IsValid()) {
+        return false;
+    }
     auto* owner = ResolveOwner(false);
-    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) return false;
+    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     const auto ownerSnapshot = material->ReadAuthoring();
     const std::string shaderPath = material->GetShaderPath();
     const auto* descriptor = m_script ? m_script->GetShaderDescriptor(shaderPath) : nullptr;
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || material->ReadAuthoring() != ownerSnapshot) return false;
+    if (!material || material->ReadAuthoring() != ownerSnapshot) {
+        return false;
+    }
     const auto* variable = descriptor ? FindCompatibleMaterialVariable(*descriptor, property.name) : nullptr;
     if (!variable || !asset::ValidateMaterialValues(*variable, values)) {
         FBZZ_LOG_WARN("Material property rejected (reflection/type/count/range): %.*s",
@@ -256,7 +311,9 @@ bool MaterialInstance::SetValues(MaterialPropertyId property, std::span<const do
         return false;
     }
     const std::string key = ResolvePropertyName(material, property);
-    if (key.empty()) return false;
+    if (key.empty()) {
+        return false;
+    }
     auto edit = material->BeginAuthoringEdit(); auto& draft = edit.Draft();
     if (variable->varType == renderer::ShaderVarType::Float) {
         auto& destination = draft.paramOverrides[key]; destination.resize(values.size());
@@ -264,7 +321,9 @@ bool MaterialInstance::SetValues(MaterialPropertyId property, std::span<const do
         draft.integerParamOverrides.erase(key);
     } else {
         auto& destination = draft.integerParamOverrides[key]; destination.clear(); destination.reserve(values.size());
-        for (const double value : values) destination.push_back(static_cast<int64_t>(value));
+        for (const double value : values) {
+            destination.push_back(static_cast<int64_t>(value));
+        }
         draft.paramOverrides.erase(key);
     }
     return edit.Commit(*material) != asset::detail::MaterialAuthoringCommitResult::CONFLICT;
@@ -274,30 +333,52 @@ bool MaterialInstance::SetValues(MaterialPropertyId property, std::span<const do
 bool MaterialInstance::TryGetValueCount(MaterialPropertyId property, size_t& count) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !property.IsValid()) return false;
+    if (!material || !property.IsValid()) {
+        return false;
+    }
     auto* owner = ResolveOwner(false);
-    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) return false;
+    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     const auto ownerSnapshot = material->ReadAuthoring();
     const std::string shaderPath = material->GetShaderPath();
     const auto* descriptor = m_script ? m_script->GetShaderDescriptor(shaderPath) : nullptr;
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || material->ReadAuthoring() != ownerSnapshot) return false;
+    if (!material || material->ReadAuthoring() != ownerSnapshot) {
+        return false;
+    }
     const auto* variable = descriptor ? FindCompatibleMaterialVariable(*descriptor, property.name) : nullptr;
-    if (!variable) return false;
+    if (!variable) {
+        return false;
+    }
     const auto& key = ResolvePropertyName(material, property);
     const auto validate = [&](const auto& stored) {
         using Value = typename std::decay_t<decltype(stored)>::value_type;
-        if (!asset::ValidateMaterialValues(*variable, std::span<const Value>(stored))) return false;
+        if (!asset::ValidateMaterialValues(*variable, std::span<const Value>(stored))) {
+            return false;
+        }
         count = stored.size(); return true;
     };
-    if (const auto it = material->Authoring().integerParamOverrides.find(key); it != material->Authoring().integerParamOverrides.end()) return validate(it->second);
-    if (const auto it = material->Authoring().paramOverrides.find(key); it != material->Authoring().paramOverrides.end()) return validate(it->second);
-    if (const auto it = material->Authoring().presentationParamDefaults.find(key); it != material->Authoring().presentationParamDefaults.end()) return validate(it->second);
+    if (const auto it = material->Authoring().integerParamOverrides.find(key); it != material->Authoring().integerParamOverrides.end()) {
+        return validate(it->second);
+    }
+    if (const auto it = material->Authoring().paramOverrides.find(key); it != material->Authoring().paramOverrides.end()) {
+        return validate(it->second);
+    }
+    if (const auto it = material->Authoring().presentationParamDefaults.find(key); it != material->Authoring().presentationParamDefaults.end()) {
+        return validate(it->second);
+    }
     if (const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->GetMaterialAsset())) {
-        if (const auto it = shared->Authoring().integerParams.find(key); it != shared->Authoring().integerParams.end()) return validate(it->second);
-        if (const auto it = shared->Authoring().params.find(key); it != shared->Authoring().params.end()) return validate(it->second);
+        if (const auto it = shared->Authoring().integerParams.find(key); it != shared->Authoring().integerParams.end()) {
+            return validate(it->second);
+        }
+        if (const auto it = shared->Authoring().params.find(key); it != shared->Authoring().params.end()) {
+            return validate(it->second);
+        }
     }
     return false;
 }
@@ -306,33 +387,55 @@ bool MaterialInstance::TryGetValueCount(MaterialPropertyId property, size_t& cou
 bool MaterialInstance::TryGetValues(MaterialPropertyId property, std::vector<double>& values) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !property.IsValid()) return false;
+    if (!material || !property.IsValid()) {
+        return false;
+    }
     auto* owner = ResolveOwner(false);
-    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) return false;
+    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     const auto ownerSnapshot = material->ReadAuthoring();
     const std::string shaderPath = material->GetShaderPath();
     const auto* descriptor = m_script ? m_script->GetShaderDescriptor(shaderPath) : nullptr;
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || material->ReadAuthoring() != ownerSnapshot) return false;
+    if (!material || material->ReadAuthoring() != ownerSnapshot) {
+        return false;
+    }
     const auto* variable = descriptor ? FindCompatibleMaterialVariable(*descriptor, property.name) : nullptr;
-    if (!variable) return false;
+    if (!variable) {
+        return false;
+    }
     const auto& key = ResolvePropertyName(material, property);
     std::vector<double> result;
     if (const auto it = material->Authoring().integerParamOverrides.find(key); it != material->Authoring().integerParamOverrides.end())
-        for (const auto value : it->second) result.push_back(static_cast<double>(value));
+        for (const auto value : it->second) {
+            result.push_back(static_cast<double>(value));
+        }
     else if (const auto it = material->Authoring().paramOverrides.find(key); it != material->Authoring().paramOverrides.end())
-        for (const auto value : it->second) result.push_back(static_cast<double>(value));
+        for (const auto value : it->second) {
+            result.push_back(static_cast<double>(value));
+        }
     else if (const auto it = material->Authoring().presentationParamDefaults.find(key); it != material->Authoring().presentationParamDefaults.end())
-        for (const auto value : it->second) result.push_back(static_cast<double>(value));
+        for (const auto value : it->second) {
+            result.push_back(static_cast<double>(value));
+        }
     else if (const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->GetMaterialAsset())) {
         if (const auto it = shared->Authoring().integerParams.find(key); it != shared->Authoring().integerParams.end())
-            for (const auto value : it->second) result.push_back(static_cast<double>(value));
+            for (const auto value : it->second) {
+                result.push_back(static_cast<double>(value));
+            }
         else if (const auto it = shared->Authoring().params.find(key); it != shared->Authoring().params.end())
-            for (const auto value : it->second) result.push_back(static_cast<double>(value));
+            for (const auto value : it->second) {
+                result.push_back(static_cast<double>(value));
+            }
     }
-    if (!asset::ValidateMaterialValues(*variable, result)) return false;
+    if (!asset::ValidateMaterialValues(*variable, result)) {
+        return false;
+    }
     values = std::move(result);
     return true;
 }
@@ -340,7 +443,9 @@ bool MaterialInstance::TryGetValues(MaterialPropertyId property, std::vector<dou
 
 bool MaterialInstance::SetFloat(MaterialPropertyId property, float value) const
 {
-    if (!ValidateProperty(property, PropertyKind::FLOAT)) return false;
+    if (!ValidateProperty(property, PropertyKind::FLOAT)) {
+        return false;
+    }
     const double values[] = { value };
     return SetValues(property, values);
 }
@@ -348,7 +453,9 @@ bool MaterialInstance::SetFloat(MaterialPropertyId property, float value) const
 
 bool MaterialInstance::SetInt(MaterialPropertyId property, int value) const
 {
-    if (!ValidateProperty(property, PropertyKind::INT)) return false;
+    if (!ValidateProperty(property, PropertyKind::INT)) {
+        return false;
+    }
     const double values[] = { static_cast<double>(value) };
     return SetValues(property, values);
 }
@@ -356,7 +463,9 @@ bool MaterialInstance::SetInt(MaterialPropertyId property, int value) const
 
 bool MaterialInstance::SetVector3(MaterialPropertyId property, const math::Vector3& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::VECTOR3)) return false;
+    if (!ValidateProperty(property, PropertyKind::VECTOR3)) {
+        return false;
+    }
     const double values[] = { value.x, value.y, value.z };
     return SetValues(property, values);
 }
@@ -364,7 +473,9 @@ bool MaterialInstance::SetVector3(MaterialPropertyId property, const math::Vecto
 
 bool MaterialInstance::SetVector4(MaterialPropertyId property, const math::Vector4& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::VECTOR4)) return false;
+    if (!ValidateProperty(property, PropertyKind::VECTOR4)) {
+        return false;
+    }
     const double values[] = { value.x, value.y, value.z, value.w };
     return SetValues(property, values);
 }
@@ -372,7 +483,9 @@ bool MaterialInstance::SetVector4(MaterialPropertyId property, const math::Vecto
 
 bool MaterialInstance::SetUInt(MaterialPropertyId property, uint32_t value) const
 {
-    if (!ValidateProperty(property, PropertyKind::UINT)) return false;
+    if (!ValidateProperty(property, PropertyKind::UINT)) {
+        return false;
+    }
     const double values[] = { static_cast<double>(value) };
     return SetValues(property, values);
 }
@@ -380,9 +493,13 @@ bool MaterialInstance::SetUInt(MaterialPropertyId property, uint32_t value) cons
 
 bool MaterialInstance::TryGetUInt(MaterialPropertyId property, uint32_t& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::UINT)) return false;
+    if (!ValidateProperty(property, PropertyKind::UINT)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = static_cast<uint32_t>(values[0]);
     return true;
 }
@@ -390,7 +507,9 @@ bool MaterialInstance::TryGetUInt(MaterialPropertyId property, uint32_t& value) 
 
 bool MaterialInstance::SetBool(MaterialPropertyId property, bool value) const
 {
-    if (!ValidateProperty(property, PropertyKind::BOOL)) return false;
+    if (!ValidateProperty(property, PropertyKind::BOOL)) {
+        return false;
+    }
     const double values[] = { value ? 1.0 : 0.0 };
     return SetValues(property, values);
 }
@@ -398,9 +517,13 @@ bool MaterialInstance::SetBool(MaterialPropertyId property, bool value) const
 
 bool MaterialInstance::TryGetBool(MaterialPropertyId property, bool& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::BOOL)) return false;
+    if (!ValidateProperty(property, PropertyKind::BOOL)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = values[0] != 0;
     return true;
 }
@@ -408,7 +531,9 @@ bool MaterialInstance::TryGetBool(MaterialPropertyId property, bool& value) cons
 
 bool MaterialInstance::SetVector2(MaterialPropertyId property, const math::Vector2& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::VECTOR2)) return false;
+    if (!ValidateProperty(property, PropertyKind::VECTOR2)) {
+        return false;
+    }
     const double values[] = { value.x, value.y };
     return SetValues(property, values);
 }
@@ -416,9 +541,13 @@ bool MaterialInstance::SetVector2(MaterialPropertyId property, const math::Vecto
 
 bool MaterialInstance::TryGetVector2(MaterialPropertyId property, math::Vector2& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::VECTOR2)) return false;
+    if (!ValidateProperty(property, PropertyKind::VECTOR2)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = {static_cast<float>(values[0]), static_cast<float>(values[1])};
     return true;
 }
@@ -426,19 +555,29 @@ bool MaterialInstance::TryGetVector2(MaterialPropertyId property, math::Vector2&
 
 bool MaterialInstance::SetMatrix(MaterialPropertyId property, const math::Matrix4& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::MATRIX)) return false;
+    if (!ValidateProperty(property, PropertyKind::MATRIX)) {
+        return false;
+    }
     double values[16];
-    for (size_t i = 0; i < 16; ++i) values[i] = value.m[i / 4][i % 4];
+    for (size_t i = 0; i < 16; ++i) {
+        values[i] = value.m[i / 4][i % 4];
+    }
     return SetValues(property, values);
 }
 
 
 bool MaterialInstance::TryGetMatrix(MaterialPropertyId property, math::Matrix4& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::MATRIX)) return false;
+    if (!ValidateProperty(property, PropertyKind::MATRIX)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
-    for (size_t i = 0; i < 16; ++i) value.m[i / 4][i % 4] = static_cast<float>(values[i]);
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
+    for (size_t i = 0; i < 16; ++i) {
+        value.m[i / 4][i % 4] = static_cast<float>(values[i]);
+    }
     return true;
 }
 
@@ -488,12 +627,18 @@ bool MaterialInstance::SetTexture(MaterialPropertyId property, const TextureRef&
         return false;
     }
     const std::string key = ResolvePropertyName(material, MaterialPropertyId(CanonicalTextureProperty(property.name)));
-    if (key.empty()) return false;
+    if (key.empty()) {
+        return false;
+    }
     const auto path = texture.ResolvePath();
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     auto edit = material->BeginAuthoringEdit(); edit.Draft().textureOverrides[key] = path;
-    if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) return false;
+    if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
+        return false;
+    }
     std::erase_if(material->runtimeTextureOverrides,
         [&](const auto& entry) { return entry.first == key || entry.second.propertyName == property.name; });
     return true;
@@ -508,28 +653,42 @@ bool MaterialInstance::SetRuntimeTexture(MaterialPropertyId property, renderer::
     auto* resources = context ? context->GetResourceManager() : nullptr;
     const auto available = [&] { return resources && resources == context->GetResourceManager()
         && resources->GetInstanceId() == resourceOwner && resources->GetResetVersion() == resetVersion && resources->Get(texture); };
-    if (!material || !property.IsValid() || !texture.IsValid() || !available()) return false;
+    if (!material || !property.IsValid() || !texture.IsValid() || !available()) {
+        return false;
+    }
     auto* owner = ResolveOwner(false);
-    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) return false;
+    if (!owner || !owner->EnsureRawMaterialAsset(m_slot)) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !available()) return false;
+    if (!material || !available()) {
+        return false;
+    }
     const auto ownerSnapshot = material->ReadAuthoring();
     const std::string_view canonical = CanonicalTextureProperty(property.name);
     const auto* descriptor = m_script ? m_script->GetShaderDescriptor(material->GetShaderPath()) : nullptr;
-    if (!descriptor) return false;
+    if (!descriptor) {
+        return false;
+    }
     uint32_t textureSlot = UINT32_MAX;
     std::string reflectedName;
     for (const auto& reflected : descriptor->textures) {
-        if (reflected.slot >= asset::kMaterialTextureSlotNames.size()) continue;
+        if (reflected.slot >= asset::kMaterialTextureSlotNames.size()) {
+            continue;
+        }
         if (reflected.name == property.name || reflected.name == canonical || reflected.slot == ParseTextureSlot(property.name)
             || property.name == asset::kMaterialTextureSlotNames[reflected.slot]) {
             textureSlot = reflected.slot; reflectedName = reflected.name; break;
         }
     }
-    if (textureSlot >= asset::kMaterialTextureSlotNames.size()) return false;
+    if (textureSlot >= asset::kMaterialTextureSlotNames.size()) {
+        return false;
+    }
     const std::string key = asset::kMaterialTextureSlotNames[textureSlot];
     material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || material->ReadAuthoring() != ownerSnapshot || !available()) return false;
+    if (!material || material->ReadAuthoring() != ownerSnapshot || !available()) {
+        return false;
+    }
     material->runtimeTextureOverrides[key] = {texture, resourceOwner, resetVersion, std::move(reflectedName)};
     return true;
 }
@@ -537,9 +696,13 @@ bool MaterialInstance::SetRuntimeTexture(MaterialPropertyId property, renderer::
 
 bool MaterialInstance::TryGetFloat(MaterialPropertyId property, float& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::FLOAT)) return false;
+    if (!ValidateProperty(property, PropertyKind::FLOAT)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = static_cast<float>(values[0]);
     return true;
 }
@@ -547,9 +710,13 @@ bool MaterialInstance::TryGetFloat(MaterialPropertyId property, float& value) co
 
 bool MaterialInstance::TryGetInt(MaterialPropertyId property, int& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::INT)) return false;
+    if (!ValidateProperty(property, PropertyKind::INT)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = static_cast<int>(values[0]);
     return true;
 }
@@ -557,9 +724,13 @@ bool MaterialInstance::TryGetInt(MaterialPropertyId property, int& value) const
 
 bool MaterialInstance::TryGetVector3(MaterialPropertyId property, math::Vector3& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::VECTOR3)) return false;
+    if (!ValidateProperty(property, PropertyKind::VECTOR3)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = {static_cast<float>(values[0]), static_cast<float>(values[1]), static_cast<float>(values[2])};
     return true;
 }
@@ -567,9 +738,13 @@ bool MaterialInstance::TryGetVector3(MaterialPropertyId property, math::Vector3&
 
 bool MaterialInstance::TryGetVector4(MaterialPropertyId property, math::Vector4& value) const
 {
-    if (!ValidateProperty(property, PropertyKind::VECTOR4)) return false;
+    if (!ValidateProperty(property, PropertyKind::VECTOR4)) {
+        return false;
+    }
     std::vector<double> values;
-    if (!TryGetValues(property, values)) return false;
+    if (!TryGetValues(property, values)) {
+        return false;
+    }
     value = {static_cast<float>(values[0]), static_cast<float>(values[1]), static_cast<float>(values[2]), static_cast<float>(values[3])};
     return true;
 }
@@ -586,7 +761,9 @@ bool MaterialInstance::TryGetColor(
 bool MaterialInstance::TryGetTexture(MaterialPropertyId property, TextureRef& texture) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material || !property.IsValid()) return false;
+    if (!material || !property.IsValid()) {
+        return false;
+    }
     const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
     const std::string& key = ResolvePropertyName(material, canonical);
     const auto overrideIt = material->Authoring().textureOverrides.find(key);
@@ -599,9 +776,13 @@ bool MaterialInstance::TryGetTexture(MaterialPropertyId property, TextureRef& te
         return true;
     }
     const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->GetMaterialAsset());
-    if (!shared) return false;
+    if (!shared) {
+        return false;
+    }
     const auto it = shared->Authoring().textures.find(key);
-    if (it == shared->Authoring().textures.end()) return false;
+    if (it == shared->Authoring().textures.end()) {
+        return false;
+    }
     texture.SetPath(it->second);
     return true;
 }
@@ -610,16 +791,24 @@ bool MaterialInstance::TryGetTexture(MaterialPropertyId property, TextureRef& te
 bool MaterialInstance::ClearOverride(MaterialPropertyId property) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     const std::string key = ResolvePropertyName(material, property);
     const std::string textureKey = ResolvePropertyName(material, MaterialPropertyId(CanonicalTextureProperty(property.name)));
-    if (key.empty() || textureKey.empty()) return false;
+    if (key.empty() || textureKey.empty()) {
+        return false;
+    }
     auto edit = material->BeginAuthoringEdit(); auto& values = edit.Draft();
     const size_t removed = values.paramOverrides.erase(key) + values.integerParamOverrides.erase(key) + values.textureOverrides.erase(textureKey);
     const bool runtime = std::any_of(material->runtimeTextureOverrides.begin(), material->runtimeTextureOverrides.end(),
         [&](const auto& entry) { return entry.first == textureKey || entry.second.propertyName == property.name; });
-    if (!removed && !runtime) return false;
-    if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) return false;
+    if (!removed && !runtime) {
+        return false;
+    }
+    if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
+        return false;
+    }
     std::erase_if(material->runtimeTextureOverrides,
         [&](const auto& entry) { return entry.first == textureKey || entry.second.propertyName == property.name; });
     return true;
@@ -629,11 +818,15 @@ bool MaterialInstance::ClearOverride(MaterialPropertyId property) const
 bool MaterialInstance::ClearAllOverrides() const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     auto edit = material->BeginAuthoringEdit(); auto& values = edit.Draft();
     values.paramOverrides.clear(); values.integerParamOverrides.clear(); values.textureOverrides.clear();
     values.hasBlendModeOverride = false; values.hasDoubleSidedOverride = false; values.hasRenderQueueOverride = false;
-    if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) return false;
+    if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
+        return false;
+    }
     material->runtimeTextureOverrides.clear();
     return true;
 }
@@ -706,13 +899,21 @@ bool ScriptMaterialProxy::SetSharedMaterial(EntityRef target,
     }
     values.materialPath = path; values.materialAsset = handle; values.hasPresentationMaterialOverride = true;
     const auto result = edit.Commit(*material);
-    if (result == asset::detail::MaterialAuthoringCommitResult::CONFLICT) return false;
+    if (result == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(instance.ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(instance.ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     material = static_cast<MaterialSlot*>(instance.ResolveComponent(false));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     material->propertyValidationCache.clear(); material->propertyValidationDescriptor = nullptr;
     return true;
 }
@@ -725,7 +926,9 @@ bool ScriptMaterialProxy::HasSharedProperty(const MaterialRef& material,
 {
     const auto sharedSnapshot = ResolveSharedMaterial(material);
     const auto* shared = sharedSnapshot ? &sharedSnapshot->Data() : nullptr;
-    if (!shared || !property.IsValid()) return false;
+    if (!shared || !property.IsValid()) {
+        return false;
+    }
     const std::string key(CanonicalMaterialProperty(property.name));
     return asset::FindMaterialParam(*shared, property.name) || shared->integerParams.contains(key) || shared->textures.contains(key);
 }
@@ -736,9 +939,13 @@ bool ScriptMaterialProxy::TryGetSharedFloat(const MaterialRef& material,
 {
     const auto sharedSnapshot = ResolveSharedMaterial(material);
     const auto* shared = sharedSnapshot ? &sharedSnapshot->Data() : nullptr;
-    if (!shared || !property.IsValid()) return false;
+    if (!shared || !property.IsValid()) {
+        return false;
+    }
     const auto* values = asset::FindMaterialParam(*shared, property.name);
-    if (!values || values->empty()) return false;
+    if (!values || values->empty()) {
+        return false;
+    }
     value = (*values)[0];
     return true;
 }
@@ -749,14 +956,20 @@ bool ScriptMaterialProxy::TryGetSharedValues(const MaterialRef& material,
 {
     const auto sharedSnapshot = ResolveSharedMaterial(material);
     const auto* shared = sharedSnapshot ? &sharedSnapshot->Data() : nullptr;
-    if (!shared || !property.IsValid()) return false;
+    if (!shared || !property.IsValid()) {
+        return false;
+    }
     const std::string key(CanonicalMaterialProperty(property.name));
     std::vector<double> result;
     if (const auto it = shared->integerParams.find(key); it != shared->integerParams.end()) {
-        for (const int64_t value : it->second) result.push_back(static_cast<double>(value));
+        for (const int64_t value : it->second) {
+            result.push_back(static_cast<double>(value));
+        }
     } else if (const auto* stored = asset::FindMaterialParam(*shared, property.name)) {
         result.assign(stored->begin(), stored->end());
-    } else return false;
+    } else {
+        return false;
+    }
     values = std::move(result);
     return true;
 }
@@ -768,12 +981,16 @@ bool ScriptMaterialProxy::TryGetSharedVector4(const MaterialRef& material,
 {
     const auto sharedSnapshot = ResolveSharedMaterial(material);
     const auto* shared = sharedSnapshot ? &sharedSnapshot->Data() : nullptr;
-    if (!shared || !property.IsValid()) return false;
+    if (!shared || !property.IsValid()) {
+        return false;
+    }
     const auto* stored = asset::FindMaterialParam(*shared, property.name);
-    if (!stored || stored->empty()) return false;
+    if (!stored || stored->empty()) {
+        return false;
+    }
 
-    /// @note .mat は float / float2 / float3 / float4 を同じ形式で持つため、
-    /// @note 足りない成分は 0 で埋める (Instance() の読み出しと同じ規則)。
+    // .mat は float / float2 / float3 / float4 を同じ形式で持つため、
+    // 足りない成分は 0 で埋める (Instance() の読み出しと同じ規則)。
     const auto& values = *stored;
     value = {
         values[0],
@@ -790,7 +1007,9 @@ bool ScriptMaterialProxy::TryGetSharedVector3(const MaterialRef& material,
                                               math::Vector3& value) const
 {
     math::Vector4 vector;
-    if (!TryGetSharedVector4(material, property, vector)) return false;
+    if (!TryGetSharedVector4(material, property, vector)) {
+        return false;
+    }
     value = { vector.x, vector.y, vector.z };
     return true;
 }
@@ -810,10 +1029,14 @@ bool ScriptMaterialProxy::TryGetSharedTexture(const MaterialRef& material,
 {
     const auto sharedSnapshot = ResolveSharedMaterial(material);
     const auto* shared = sharedSnapshot ? &sharedSnapshot->Data() : nullptr;
-    if (!shared || !property.IsValid()) return false;
+    if (!shared || !property.IsValid()) {
+        return false;
+    }
     const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
     const auto it = shared->textures.find(std::string(canonical.name));
-    if (it == shared->textures.end()) return false;
+    if (it == shared->textures.end()) {
+        return false;
+    }
     texture.SetPath(it->second);
     return true;
 }
@@ -822,9 +1045,12 @@ bool ScriptMaterialProxy::TryGetSharedTexture(const MaterialRef& material,
 bool ScriptMaterialProxy::EnsureMaterial(std::string_view materialPath) const
 {
     auto* material = static_cast<MaterialSlot*>(Instance().ResolveComponent(true));
-    if (!material) return false;
-    if (material->GetMaterialPath() != materialPath)
+    if (!material) {
+        return false;
+    }
+    if (material->GetMaterialPath() != materialPath) {
         return SetSharedMaterial(MaterialRef(materialPath));
+    }
     return material->EnsureMaterialAsset();
 }
 
@@ -900,7 +1126,9 @@ math::Vector4 ScriptMaterialProxy::GetVector4(std::string_view param) const
 bool ScriptMaterialProxy::SetEnabled(bool enabled) const
 {
 MaterialComponent* material = Instance().ResolveOwner(false);
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     material->SetEnabled(enabled); return true;
 }
 
@@ -915,14 +1143,16 @@ bool ScriptMaterialProxy::IsEnabled() const
 bool ScriptMaterialProxy::SetSlotVisible(uint32_t slot, bool visible) const
 {
     auto* material = static_cast<MaterialSlot*>(Instance(slot).ResolveComponent(true));
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     material->SetVisible(visible); return true;
 }
 
 
 bool ScriptMaterialProxy::IsSlotVisible(uint32_t slot) const
 {
-    /// @note ensure = false。存在しないスロットを問い合わせただけで作らない。
+    // ensure = false。存在しないスロットを問い合わせただけで作らない。
     const auto* material = static_cast<const MaterialSlot*>(Instance(slot).ResolveComponent(false));
     return material && material->IsVisible();
 }
@@ -946,7 +1176,7 @@ std::string ScriptMaterialProxy::GetSharedMaterialPath(EntityRef target, uint32_
 uint32_t ScriptMaterialProxy::GetSlotCount() const
 {
     const MaterialComponent* material = Instance().ResolveOwner(false);
-    /// @note スロット 0 は MaterialComponent 自身が兼ねるので extraSlots + 1。
+    // スロット 0 は MaterialComponent 自身が兼ねるので extraSlots + 1。
     return material ? static_cast<uint32_t>(material->extraSlots.size() + 1) : 0u;
 }
 
@@ -968,7 +1198,9 @@ int32_t ScriptMaterialProxy::GetRenderQueue() const
 bool ScriptMaterialProxy::SetOnlyVisibleSlot(int slot) const
 {
     MaterialComponent* material = Instance().ResolveOwner(false);
-    if (!material) return false;
+    if (!material) {
+        return false;
+    }
     material->SetOnlyVisibleSlot(slot);
     return true;
 }
@@ -994,8 +1226,10 @@ bool ScriptMaterialProxy::SetRenderQueue(int32_t renderQueue) const
 
 void ScriptMaterialProxy::QueueRenderPass(UserRenderPassDesc desc) const
 {
-    if (script) script->QueueRenderPass(std::move(desc));
+    if (script) {
+        script->QueueRenderPass(std::move(desc));
+    }
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

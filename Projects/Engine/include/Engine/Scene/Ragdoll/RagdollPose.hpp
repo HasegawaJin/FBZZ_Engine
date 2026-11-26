@@ -33,24 +33,34 @@ inline void PropagateRagdollDescendants(const asset::Skeleton& skeleton,
                                         std::vector<math::Matrix4>& globals)
 {
     if (original.size() != skeleton.nodes.size() || globals.size() != original.size() ||
-        selected.size() != original.size()) return;
+        selected.size() != original.size()) {
+        return;
+    }
     std::vector<int> pending;
     for (std::size_t i = 0; i < skeleton.nodes.size(); ++i)
-        if (skeleton.nodes[i].parentIndex < 0) pending.push_back(static_cast<int>(i));
+        if (skeleton.nodes[i].parentIndex < 0) {
+            pending.push_back(static_cast<int>(i));
+        }
     std::vector<bool> visited(skeleton.nodes.size(), false);
     while (!pending.empty()) {
         const int node = pending.back();
         pending.pop_back();
-        if (node < 0 || node >= static_cast<int>(globals.size())) continue;
+        if (node < 0 || node >= static_cast<int>(globals.size())) {
+            continue;
+        }
         const auto n = static_cast<std::size_t>(node);
-        if (visited[n]) continue;
+        if (visited[n]) {
+            continue;
+        }
         visited[n] = true;
         const int parent = skeleton.nodes[n].parentIndex;
         if (!selected[n] && parent >= 0 && parent < static_cast<int>(globals.size())) {
             const auto p = static_cast<std::size_t>(parent);
             globals[n] = globals[p] * (math::Matrix4::Inverse(original[p]) * original[n]);
         }
-        for (const int child : skeleton.nodes[n].children) pending.push_back(child);
+        for (const int child : skeleton.nodes[n].children) {
+            pending.push_back(child);
+        }
     }
 }
 

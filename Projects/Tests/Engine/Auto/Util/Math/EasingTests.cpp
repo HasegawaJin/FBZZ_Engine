@@ -74,7 +74,7 @@ class EasingTest : public testkit::EngineFixture {};
 /// @brief Every curve starts at zero and ends at one.
 TEST_F(EasingTest, EveryCurveStartsAtZeroAndEndsAtOne)
 {
-    /// @note ここが崩れると、演出の開始か終了で必ず 1 フレーム «飛ぶ»。
+    // ここが崩れると、演出の開始か終了で必ず 1 フレーム «飛ぶ»。
     for (const Curve& curve : AllCurves()) {
         EXPECT_NEAR(curve.fn(0.0f), 0.0f, testkit::kLooseTolerance) << curve.name;
         EXPECT_NEAR(curve.fn(1.0f), 1.0f, testkit::kLooseTolerance) << curve.name;
@@ -98,10 +98,12 @@ TEST_F(EasingTest, EveryCurveIsFiniteAcrossTheUnitInterval)
 /// @brief Plain curves stay inside the unit range.
 TEST_F(EasingTest, PlainCurvesStayInsideTheUnitRange)
 {
-    /// @note 行き過ぎるのは Back / Elastic / Bounce だけ。ほかが 1 を超えると
-    ///       «フェードが一瞬白飛びする» ような形で出る。
+    // 行き過ぎるのは Back / Elastic / Bounce だけ。ほかが 1 を超えると
+    //       «フェードが一瞬白飛びする» ような形で出る。
     for (const Curve& curve : AllCurves()) {
-        if (!curve.monotonic) continue;
+        if (!curve.monotonic) {
+            continue;
+        }
 
         for (int step = 0; step <= 100; ++step) {
             const float t = static_cast<float>(step) / 100.0f;
@@ -116,7 +118,9 @@ TEST_F(EasingTest, PlainCurvesStayInsideTheUnitRange)
 TEST_F(EasingTest, PlainCurvesNeverGoBackwards)
 {
     for (const Curve& curve : AllCurves()) {
-        if (!curve.monotonic) continue;
+        if (!curve.monotonic) {
+            continue;
+        }
 
         float previous = curve.fn(0.0f);
         for (int step = 1; step <= 100; ++step) {
@@ -134,7 +138,7 @@ TEST_F(EasingTest, PlainCurvesNeverGoBackwards)
 /// @brief In and out are mirror images.
 TEST_F(EasingTest, InAndOutAreMirrorImages)
 {
-    /// @note Out(t) == 1 - In(1-t) が «同じ形の裏返し» の定義。片方だけ式を直すとここで落ちる。
+    // Out(t) == 1 - In(1-t) が «同じ形の裏返し» の定義。片方だけ式を直すとここで落ちる。
     const std::pair<EaseFn, EaseFn> pairs[] = {
         { util::Easing::EaseInQuad,   util::Easing::EaseOutQuad   },
         { util::Easing::EaseInCubic,  util::Easing::EaseOutCubic  },
@@ -171,7 +175,7 @@ TEST_F(EasingTest, InOutCurvesPassThroughTheMidpoint)
 /// @brief Ease in starts slower than linear.
 TEST_F(EasingTest, EaseInStartsSlowerThanLinear)
 {
-    /// @note «In» は出だしが遅い。逆になっていると加速と減速が入れ替わる。
+    // «In» は出だしが遅い。逆になっていると加速と減速が入れ替わる。
     EXPECT_LT(util::Easing::EaseInQuad(0.25f), 0.25f);
     EXPECT_LT(util::Easing::EaseInCubic(0.25f), 0.25f);
     EXPECT_GT(util::Easing::EaseOutQuad(0.25f), 0.25f);
@@ -181,8 +185,8 @@ TEST_F(EasingTest, EaseInStartsSlowerThanLinear)
 /// @brief Checks higher powers bite harder.
 TEST_F(EasingTest, HigherPowersBiteHarder)
 {
-    /// @note Quad < Cubic < Quart < Quint の順に «出だしが遅い»。式の写し間違いで
-    ///       次数が入れ替わっても端点は通るので、ここでしか捕まらない。
+    // Quad < Cubic < Quart < Quint の順に «出だしが遅い»。式の写し間違いで
+    //       次数が入れ替わっても端点は通るので、ここでしか捕まらない。
     const float t = 0.4f;
 
     EXPECT_GT(util::Easing::EaseInQuad(t), util::Easing::EaseInCubic(t));
@@ -193,7 +197,7 @@ TEST_F(EasingTest, HigherPowersBiteHarder)
 /// @brief Back overshoots past the ends.
 TEST_F(EasingTest, BackOvershootsPastTheEnds)
 {
-    /// @note 行き過ぎることが Back の存在理由。抑えると «ただの Cubic» になる。
+    // 行き過ぎることが Back の存在理由。抑えると «ただの Cubic» になる。
     EXPECT_LT(util::Easing::EaseInBack(0.3f), 0.0f);
     EXPECT_GT(util::Easing::EaseOutBack(0.7f), 1.0f);
 }

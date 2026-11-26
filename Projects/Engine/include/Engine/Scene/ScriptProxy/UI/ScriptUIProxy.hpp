@@ -24,7 +24,7 @@ enum class UIButtonPhase {
 };
 
 struct ScriptUIProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< UI操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @name ボタン入力の取得
     /// @note ポーリング方式: コールバック登録だとスクリプト DLL リロード時に解放済み
@@ -243,4 +243,4 @@ struct ScriptUIProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

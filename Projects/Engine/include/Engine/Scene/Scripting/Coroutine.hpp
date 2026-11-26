@@ -22,9 +22,9 @@ struct Coroutine {
     struct WaitState {
         enum class Kind { Resume, Seconds, SecondsRealtime, Frames, Predicate };
         Kind  kind  = Kind::Resume; ///< 既定: 次フレームに再開
-        float seconds = 0.0f;
-        int   frames  = 0;
-        std::function<bool()> predicate;
+        float seconds = 0.0f; ///< 再開までに消費する残り時間 [s]。
+        int   frames  = 0; ///< 再開までに消費する残りフレーム数。
+        std::function<bool()> predicate; ///< 再開条件を次フレームから評価する関数。
         bool  predicateTarget = true; ///< WaitUntil:true で成立 / WaitWhile:false で成立
 
         /// @brief 待機命令を差し替えるたびに作り直す。
@@ -33,9 +33,8 @@ struct Coroutine {
     };
 
     struct promise_type {
-        WaitState wait;
-        /// @note 生成フレームでは Step させない。ScriptSystem は OnStart や Invoke のコールバックより後に UpdateCoroutines を呼ぶため、そこで開始したコルーチンだけ同じフレームで最初の待機を消費してしまう。
-        uint64_t startFrame = fbzz::Time::frameCount;
+        WaitState wait; ///< 中断中のコルーチンを再開する条件と残量。
+        uint64_t startFrame = fbzz::Time::frameCount; ///< 生成フレームでは Step させない。ScriptSystem は OnStart や Invoke のコールバックより後に UpdateCoroutines を呼ぶため、そこで開始したコルーチンだけ同じフレームで最初の待機を消費してしまう。
 
         Coroutine get_return_object() { return Coroutine{ handle_type::from_promise(*this) }; }
         /// @note 起動時に最初の co_await まで即実行する (Unity と同じ挙動)。
@@ -65,9 +64,13 @@ struct Coroutine {
 
     /// @brief 1 フレーム分進める。待機条件を満たしていれば再開する。完了済みなら false。
     bool Step() {
-        if (!m_handle || m_handle.done()) return false;
+        if (!m_handle || m_handle.done()) {
+            return false;
+        }
         promise_type& p = m_handle.promise();
-        if (p.startFrame == fbzz::Time::frameCount) return true;
+        if (p.startFrame == fbzz::Time::frameCount) {
+            return true;
+        }
         WaitState& w = p.wait;
         bool ready = false;
         switch (w.kind) {
@@ -78,18 +81,19 @@ struct Coroutine {
             w.seconds -= fbzz::Time::unscaledDeltaTime;  ready = w.seconds <= 0.0f; break;
         case WaitState::Kind::Frames:          ready = (--w.frames <= 0); break;
         case WaitState::Kind::Predicate:
-            /// @note 空の述語は判定できない。待ち続けると復帰不能になるため次フレームで再開する。
+            // 空の述語は判定できない。待ち続けると復帰不能になるため次フレームで再開する。
             ready = !w.predicate || (w.predicate() == w.predicateTarget); break;
         }
-        /// @note 再開すると body が次の co_await まで進み wait を再設定する。
-        if (ready)
+        // 再開すると body が次の co_await まで進み wait を再設定する。
+        if (ready) {
             m_handle.resume();
+        }
         return !m_handle.done();
     }
 
 private:
     void Destroy() { if (m_handle) { m_handle.destroy(); m_handle = {}; } }
-    handle_type m_handle;
+    handle_type m_handle; ///< 破棄または移譲までこのインスタンスが所有するコルーチンフレーム。
 };
 
 /// @name co_await できる待機命令
@@ -97,7 +101,7 @@ private:
 
 /// @brief 指定秒数 (timeScale 適用) だけ待つ。
 struct WaitForSeconds {
-    float seconds;
+    float seconds; ///< 時間倍率を反映して待つ時間 [s]。
     explicit WaitForSeconds(float s) : seconds(s) {}
     bool await_ready() const noexcept { return false; }
     void await_suspend(Coroutine::handle_type h) const noexcept {
@@ -111,7 +115,7 @@ struct WaitForSeconds {
 
 /// @brief 指定秒数 (timeScale 非適用の実時間) だけ待つ。ヒットストップ等、停止中でも進めたい待機に使う。
 struct WaitForSecondsRealtime {
-    float seconds;
+    float seconds; ///< 時間倍率と独立して待つ実時間 [s]。
     explicit WaitForSecondsRealtime(float s) : seconds(s) {}
     bool await_ready() const noexcept { return false; }
     void await_suspend(Coroutine::handle_type h) const noexcept {
@@ -125,7 +129,7 @@ struct WaitForSecondsRealtime {
 
 /// @brief 指定フレーム数だけ待つ。1 を渡すと「次フレームまで」。0 以下でも 1 フレームは待つ。
 struct WaitForFrames {
-    int frames;
+    int frames; ///< 再開するまでに待つフレーム数。
     explicit WaitForFrames(int n) : frames(n) {}
     bool await_ready() const noexcept { return false; }
     void await_suspend(Coroutine::handle_type h) const noexcept {
@@ -139,7 +143,7 @@ struct WaitForFrames {
 
 /// @brief 述語が true になるまで待つ。
 struct WaitUntil {
-    std::function<bool()> predicate;
+    std::function<bool()> predicate; ///< true になったフレームで再開する条件。
     explicit WaitUntil(std::function<bool()> p) : predicate(std::move(p)) {}
     bool await_ready() const noexcept { return false; }
     void await_suspend(Coroutine::handle_type h) const {
@@ -154,7 +158,7 @@ struct WaitUntil {
 
 /// @brief 述語が false になるまで待つ。
 struct WaitWhile {
-    std::function<bool()> predicate;
+    std::function<bool()> predicate; ///< true の間は待機を続ける条件。
     explicit WaitWhile(std::function<bool()> p) : predicate(std::move(p)) {}
     bool await_ready() const noexcept { return false; }
     void await_suspend(Coroutine::handle_type h) const {

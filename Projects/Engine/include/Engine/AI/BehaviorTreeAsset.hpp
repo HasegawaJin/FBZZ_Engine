@@ -17,31 +17,31 @@
 namespace fbzz::ai {
 
 struct BTNodeDef {
-    int id       = 0;   ///< @note 安定 ID。エディタの選択・Undo・親子解決の鍵。0 は無効値として使う。
-    int parentId = 0;   ///< @note 0 = ルート (親を持たない)。
-    int order    = 0;   ///< @note 同一親内の左→右順。これが優先度そのもの。
+    int id       = 0; ///< 安定 ID。エディタの選択・Undo・親子解決の鍵。0 は無効値として使う。
+    int parentId = 0; ///< 0 = ルート (親を持たない)。
+    int order    = 0; ///< 同一親内の左→右順。これが優先度そのもの。
 
     BTNodeType  type = BTNodeType::Sequence;
-    std::string name;   ///< @note 表示名 (空ならノード種別名を使う)
+    std::string name; ///< 表示名 (空ならノード種別名を使う)
 
     float editorX = 0.0f;
     float editorY = 0.0f;
 
     /// @name Decorator 共通
     /// @{
-    AbortMode abortMode = AbortMode::None;   ///< @note Validate が純粋条件でないノードへの付与を拒否する。
+    AbortMode abortMode = AbortMode::None; ///< Validate が純粋条件でないノードへの付与を拒否する。
     /// @}
 
     /// @name Repeat
     /// @{
-    int  repeatCount        = 0;   ///< @note 0 = 無限
+    int  repeatCount        = 0; ///< 0 = 無限
     bool repeatUntilFailure = false;
     /// @}
 
     /// @name Cooldown / TimeLimit / Wait
     /// @{
     float duration = 1.0f;
-    float durationRandom = 0.0f;   ///< @note ±この秒数をランダムに加える。同時スポーンした敵の待機が同期して見えるのを崩す。
+    float durationRandom = 0.0f; ///< ±この秒数をランダムに加える。同時スポーンした敵の待機が同期して見えるのを崩す。
     /// @}
 
     /// @name Parallel
@@ -49,11 +49,11 @@ struct BTNodeDef {
     BTParallelPolicy successPolicy = BTParallelPolicy::RequireAll;
     /// @}
 
-    std::vector<float> childWeights;   ///< @note RandomSelector: 子ごとの重み (order 順に対応)
+    std::vector<float> childWeights; ///< RandomSelector: 子ごとの重み (order 順に対応)
 
     /// @name Blackboard 参照 (BlackboardCondition / BlackboardCompare / SetBlackboard)
     /// @{
-    std::string    keyName;   ///< @note Compile 時に添字へ解決
+    std::string    keyName; ///< Compile 時に添字へ解決
     BTCompareOp    compareOp = BTCompareOp::Equal;
     BlackboardType valueType = BlackboardType::Bool;
     bool           valueBool    = false;
@@ -61,14 +61,14 @@ struct BTNodeDef {
     float          valueFloat   = 0.0f;
     math::Vector3  valueVector3 = math::Vector3::ZERO;
     std::string    valueString;
-    float withinSeconds = 0.0f;   ///< @note 「N 秒以内に書かれた値か」も条件に加える。0 = 時間条件なし。
+    float withinSeconds = 0.0f; ///< 「N 秒以内に書かれた値か」も条件に加える。0 = 時間条件なし。
     /// @}
 
     /// @name MoveTo
     /// @{
-    std::string moveTargetKey;   ///< @note Vector3 か Entity のキー。空なら valueVector3 を使う
+    std::string moveTargetKey; ///< Vector3 か Entity のキー。空なら valueVector3 を使う
     float       acceptanceRadius = 0.5f;
-    bool        chaseEntity      = false;   ///< @note true なら SetTarget で追跡し続ける。false なら SetDestination で一度だけ向かう。
+    bool        chaseEntity      = false; ///< true なら SetTarget で追跡し続ける。false なら SetDestination で一度だけ向かう。
     float       repathInterval   = 0.4f;
     /// @}
 
@@ -106,11 +106,11 @@ struct BehaviorTreeAsset {
     std::string name    = "Behavior Tree";
     std::string description;
 
-    std::vector<BTNodeDef> nodes;   ///< @note 順不同。木構造は parentId / order が持つ。
+    std::vector<BTNodeDef> nodes; ///< 順不同。木構造は parentId / order が持つ。
 
-    std::vector<BlackboardDef> blackboard;   ///< @note [0, bb::ReservedCount) は予約キー。EnsureReservedBlackboardKeys() が保証する。
+    std::vector<BlackboardDef> blackboard; ///< [0, bb::ReservedCount) は予約キー。EnsureReservedBlackboardKeys() が保証する。
 
-    int nextNodeId = 1;   ///< @note エディタの ID 発番カウンタ。次に作るノードの id。
+    int nextNodeId = 1; ///< エディタの ID 発番カウンタ。次に作るノードの id。
 
     [[nodiscard]] FBZZ_ENGINE_API const BTNodeDef* FindNode(int id) const;
     [[nodiscard]] FBZZ_ENGINE_API BTNodeDef*       FindNode(int id);
@@ -149,4 +149,4 @@ struct BTWarning {
 };
 [[nodiscard]] FBZZ_ENGINE_API std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asset);
 
-} /// @note namespace fbzz::ai
+} // namespace fbzz::ai

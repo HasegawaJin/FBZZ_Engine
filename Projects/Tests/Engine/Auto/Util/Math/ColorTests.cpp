@@ -24,7 +24,7 @@ class ColorTest : public testkit::EngineFixture {};
 /// @brief Packs and unpacks in RGBA order.
 TEST_F(ColorTest, PacksAndUnpacksInRgbaOrder)
 {
-    /// @note 並びが 1 つずれると赤と青が入れ替わる。0xRRGGBBAA の順を固定する。
+    // 並びが 1 つずれると赤と青が入れ替わる。0xRRGGBBAA の順を固定する。
     const Color color = Color::FromRGBA32(0xFF8000C0u);
 
     EXPECT_NEAR(color.r, 1.0f, 1.0f / 255.0f);
@@ -45,7 +45,7 @@ TEST_F(ColorTest, RoundTripsThrough32Bit)
 /// @brief Clamps out-of-range channels when packing.
 TEST_F(ColorTest, ClampsOutOfRangeChannelsWhenPacking)
 {
-    /// @note HDR の色をそのまま 8bit へ落とす経路がある。折り返して暗くなってはいけない。
+    // HDR の色をそのまま 8bit へ落とす経路がある。折り返して暗くなってはいけない。
     const Color overBright{ 4.0f, -1.0f, 0.5f, 1.0f };
 
     const uint32_t packed = overBright.ToRGBA32();
@@ -63,7 +63,7 @@ TEST_F(ColorTest, ParsesSixAndEightDigitHex)
     const Color rgba = Color::FromHex("#FF000080");
 
     EXPECT_NEAR(rgb.r, 1.0f, 1.0f / 255.0f);
-    /// @note 省略時は不透明
+    // 省略時は不透明
     EXPECT_NEAR(rgb.a, 1.0f, 1.0f / 255.0f);
     EXPECT_NEAR(rgba.a, 128.0f / 255.0f, 1.0f / 255.0f);
 }
@@ -113,7 +113,7 @@ TEST_F(ColorTest, ZeroSaturationIsGrey)
 /// @brief Round-trips through HSV.
 TEST_F(ColorTest, RoundTripsThroughHSV)
 {
-    /// @note カラーピッカーは RGB ↔ HSV を往復し続ける。ずれると触るたびに色が流れる。
+    // カラーピッカーは RGB ↔ HSV を往復し続ける。ずれると触るたびに色が流れる。
     const Color original{ 0.2f, 0.6f, 0.4f, 1.0f };
 
     float h = 0.0f, s = 0.0f, v = 0.0f;
@@ -148,7 +148,7 @@ TEST_F(ColorTest, LerpReturnsTheEndpoints)
 /// @brief Lerp clamps outside the unit interval.
 TEST_F(ColorTest, LerpClampsOutsideTheUnitInterval)
 {
-    /// @note フェードの t は経過時間から作るので、1 を少し超えることが普通に起きる。
+    // フェードの t は経過時間から作るので、1 を少し超えることが普通に起きる。
     const Color beyond = Color::Lerp(Color::Black, Color::White, 2.0f);
 
     EXPECT_NEAR(beyond.r, 1.0f, testkit::kTolerance);

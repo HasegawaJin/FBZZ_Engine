@@ -43,8 +43,9 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> EnsureSampleSkinningCB(
     renderer::ResourceManager& resources,
     renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseCB)
 {
-    if (sample.boneMatrices.empty())
+    if (sample.boneMatrices.empty()) {
         return bindPoseCB;
+    }
 
     if (!resources.Get(sample.skinningCB)) {
         sample.skinningCB.Reset();
@@ -52,14 +53,17 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> EnsureSampleSkinningCB(
         sample.skinningCBDirty = true;
     }
 
-    if (!sample.skinningCBDirty)
+    if (!sample.skinningCBDirty) {
         return sample.skinningCB;
+    }
 
     SkinningCB constants{};
-    for (int sampleIndex = 0; sampleIndex < asset::MAX_SKINNING_BONES; ++sampleIndex)
+    for (int sampleIndex = 0; sampleIndex < asset::MAX_SKINNING_BONES; ++sampleIndex) {
         constants.boneMatrices[sampleIndex] = math::Matrix4::Identity();
-    for (size_t sampleIndex = 0; sampleIndex < sample.boneMatrices.size() && sampleIndex < asset::MAX_SKINNING_BONES; ++sampleIndex)
+    }
+    for (size_t sampleIndex = 0; sampleIndex < sample.boneMatrices.size() && sampleIndex < asset::MAX_SKINNING_BONES; ++sampleIndex) {
         constants.boneMatrices[sampleIndex] = sample.boneMatrices[sampleIndex];
+    }
     resources.Update(sample.skinningCB, &constants, sizeof(constants));
     sample.skinningCBDirty = false;
     return sample.skinningCB;
@@ -75,7 +79,9 @@ math::Vector4 SampleColor(const MeshTrailComponent& trail, const MeshTrailSample
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/mul Linear blend skinning uses weighted affine positions.
 void HistoricalSkinBounds(const MeshTrailSample& sample, const renderer::Mesh& mesh, renderer::RenderMeshTrailInput& input)
 {
-    if (input.shader.IsValid() || !mesh.morphTargets.empty() || mesh.boundsRadius <= 0) return;
+    if (input.shader.IsValid() || !mesh.morphTargets.empty() || mesh.boundsRadius <= 0) {
+        return;
+    }
     math::Vector3 low{}, high{};
     bool first = true;
     const auto include = [&](const math::Matrix4& bone) {
@@ -93,14 +99,18 @@ void HistoricalSkinBounds(const MeshTrailSample& sample, const renderer::Mesh& m
         }
     };
     include(math::Matrix4::Identity());
-    for (const auto& bone : sample.boneMatrices) include(bone);
+    for (const auto& bone : sample.boneMatrices) {
+        include(bone);
+    }
     input.boundsCenter = (low + high) * 0.5f;
     input.boundsRadius = (high - low).Length() * 0.5f;
 }
 void ExtractStaticSample(MeshTrailComponent& trail, MeshTrailSample& sample, MeshRenderer& meshRenderer,
     RenderPassContext& context, float currentTime, const TrailMaterialBinding* material,
     renderer::RenderScene& output, uint32_t layer) {
-    if (!meshRenderer.enabled || !meshRenderer.lodVisible || !meshRenderer.mesh || meshRenderer.mesh->isSkinned || !meshRenderer.mesh->vertexBuffer.IsValid() || !meshRenderer.mesh->indexBuffer.IsValid()) return;
+    if (!meshRenderer.enabled || !meshRenderer.lodVisible || !meshRenderer.mesh || meshRenderer.mesh->isSkinned || !meshRenderer.mesh->vertexBuffer.IsValid() || !meshRenderer.mesh->indexBuffer.IsValid()) {
+        return;
+    }
     renderer::RenderMeshTrailInput input;
     input.layer = layer;
     input.object.world = sample.world;
@@ -119,12 +129,18 @@ void ExtractStaticSample(MeshTrailComponent& trail, MeshTrailSample& sample, Mes
 void ExtractSkinnedSample(MeshTrailComponent& trail, MeshTrailSample& sample, SkinnedMeshRenderer& skinnedRenderer,
     RenderPassContext& context, float currentTime, const TrailMaterialBinding* material,
     renderer::RenderScene& output, uint32_t layer) {
-    if (!skinnedRenderer.enabled || !skinnedRenderer.lodVisible || !skinnedRenderer.model) return;
+    if (!skinnedRenderer.enabled || !skinnedRenderer.lodVisible || !skinnedRenderer.model) {
+        return;
+    }
     const auto skin = EnsureSampleSkinningCB(sample, context.resources, context.handles.bindPoseSkinningCB);
     for (size_t meshIndex = 0; meshIndex < skinnedRenderer.SubmeshCount(); ++meshIndex) {
-        if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex))) continue;
+        if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex))) {
+            continue;
+        }
         const auto* mesh = skinnedRenderer.SubmeshMesh(meshIndex);
-        if (!mesh || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) continue;
+        if (!mesh || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) {
+            continue;
+        }
         renderer::RenderMeshTrailInput input;
         input.layer = layer; input.skinned = true; input.skin = skin;
         input.object.world = sample.world;
@@ -143,7 +159,9 @@ void ExtractMeshParticleSamples(GameObject& owner, MeshTrailComponent& trail, co
     RenderPassContext& context, float currentTime, const TrailMaterialBinding* material, renderer::RenderScene& output)
 {
     auto* mesh = owner.GetComponent<MeshRenderer>();
-    if (mesh == nullptr) return;
+    if (mesh == nullptr) {
+        return;
+    }
     const math::Vector4 savedStart = trail.colorStart;
     const math::Vector4 savedEnd = trail.colorEnd;
     const std::size_t particleCount = (std::min)(emitter.runtime.particles.size(),
@@ -161,15 +179,15 @@ void ExtractMeshParticleSamples(GameObject& owner, MeshTrailComponent& trail, co
         MeshTrailSample sample;
         sample.timestamp = currentTime;
         sample.position = position;
-        /// @note Mesh Particle は billboard と違い 3 軸すべてを使えるため、
-        /// @note sizeAxisScale の z も反映する (billboard 経路は xy のみ)。
+        // Mesh Particle は billboard と違い 3 軸すべてを使えるため、
+        // sizeAxisScale の z も反映する (billboard 経路は xy のみ)。
         sample.world = math::Matrix4::TRS(position,
             math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, particle.rotation),
             { particle.size * emitter.settings.sizeAxisScale.x,
               particle.size * emitter.settings.sizeAxisScale.y,
               particle.size * emitter.settings.sizeAxisScale.z });
-        /// @note Particle::color はリニア、MeshTrail の色はオーサリング空間 (sRGB) と
-        /// @note 規約が違う。境界のここで戻して、MeshTrail 側の扱いは一切変えない。
+        // Particle::color はリニア、MeshTrail の色はオーサリング空間 (sRGB) と
+        // 規約が違う。境界のここで戻して、MeshTrail 側の扱いは一切変えない。
         const math::Vector4 authored = ParticleLinearToSrgb(particle.color);
         trail.colorStart = authored;
         trail.colorEnd = authored;
@@ -179,7 +197,7 @@ void ExtractMeshParticleSamples(GameObject& owner, MeshTrailComponent& trail, co
     trail.colorEnd = savedEnd;
 }
 
-} /// @note namespace
+} // namespace
 
 void ExtractRenderMeshTrails(RenderPassContext& context, renderer::RenderScene& output)
 {
@@ -187,15 +205,19 @@ void ExtractRenderMeshTrails(RenderPassContext& context, renderer::RenderScene& 
     auto& cache = BeginMeshTrailMaterialPass(context.scene, resources);
 
     const float currentTime = Time::time;
-    if (context.scene.GetEntities<MeshTrailComponent>().empty()) return;
+    if (context.scene.GetEntities<MeshTrailComponent>().empty()) {
+        return;
+    }
 
     for (auto& owner : context.scene.GameObjects()) {
-        if (!owner.activeInHierarchy())
+        if (!owner.activeInHierarchy()) {
             continue;
+        }
 
         auto* trail = owner.GetComponent<MeshTrailComponent>();
-        if (!trail)
+        if (!trail) {
             continue;
+        }
 
         if (!trail->enabled && trail->clearOnDisable) {
             ClearMeshTrailSamples(*trail);
@@ -210,8 +232,9 @@ void ExtractRenderMeshTrails(RenderPassContext& context, renderer::RenderScene& 
 
         const bool hasStaticMesh = owner.GetComponent<MeshRenderer>() != nullptr;
         const bool hasSkinnedMesh = owner.GetComponent<SkinnedMeshRenderer>() != nullptr;
-        if (!hasStaticMesh && !hasSkinnedMesh)
+        if (!hasStaticMesh && !hasSkinnedMesh) {
             continue;
+        }
 
         PrepareMeshTrailSampleStorage(*trail);
         PrepareMeshTrailAppearance(*trail, resources);
@@ -226,12 +249,14 @@ void ExtractRenderMeshTrails(RenderPassContext& context, renderer::RenderScene& 
 
         for (int sampleIndex = 0; sampleIndex < trail->sampleCount; ++sampleIndex) {
             auto& sample = ReadMeshTrailSample(*trail, sampleIndex);
-            if (auto* meshRenderer = owner.GetComponent<MeshRenderer>())
+            if (auto* meshRenderer = owner.GetComponent<MeshRenderer>()) {
                 ExtractStaticSample(*trail, sample, *meshRenderer, context, currentTime, material, output, static_cast<uint32_t>(owner.layer));
-            if (auto* skinnedRenderer = owner.GetComponent<SkinnedMeshRenderer>())
+            }
+            if (auto* skinnedRenderer = owner.GetComponent<SkinnedMeshRenderer>()) {
                 ExtractSkinnedSample(*trail, sample, *skinnedRenderer, context, currentTime, material, output, static_cast<uint32_t>(owner.layer));
+            }
         }
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

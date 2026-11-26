@@ -54,7 +54,9 @@ protected:
     std::unique_ptr<scene::Scene> RoundTrip(scene::Scene& source)
     {
         const std::string path = ScenePath();
-        if (!scene::SceneSerializer::Save(source, path)) return nullptr;
+        if (!scene::SceneSerializer::Save(source, path)) {
+            return nullptr;
+        }
         return scene::SceneSerializer::LoadData(path);
     }
 
@@ -376,8 +378,8 @@ TEST_F(SceneSerializerTest, KeepsNameTagAndLayer)
 /// @brief 永続識別子を保持する。
 TEST_F(SceneSerializerTest, KeepsThePersistentIdentifier)
 {
-    /// @note instanceId はクロスオブジェクト参照 (IK の Pole/Target 等) の永続キー。
-    /// @note 保存で振り直すと、開き直した瞬間に参照が全部切れる。
+    // instanceId はクロスオブジェクト参照 (IK の Pole/Target 等) の永続キー。
+    // 保存で振り直すと、開き直した瞬間に参照が全部切れる。
     scene::Scene source;
     const std::string id = source.CreateGameObject("Player").instanceId;
     ASSERT_FALSE(id.empty());
@@ -440,7 +442,7 @@ TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
     const std::unique_ptr<scene::Scene> restored = RoundTrip(source);
 
     ASSERT_NE(restored, nullptr);
-    /// @note 親子が復元されていれば、ルートは親だけになる。
+    // 親子が復元されていれば、ルートは親だけになる。
     EXPECT_EQ(restored->GetRootGameObjects().size(), 1u);
     EXPECT_NE(restored->Find("Child"), nullptr);
 }
@@ -494,7 +496,7 @@ instanceId = 'cell'
 /// @brief ランタイムで生成した個体を保存対象から除く。
 TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 {
-    /// @note VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
+    // VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
     scene::Scene source;
     source.CreateGameObject("Authored");
     source.CreateGameObject("Spawned").SetRuntimeGenerated(true);
@@ -511,8 +513,8 @@ TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 /// @brief GPU 資源を構築せずにメッシュのパスを保持する。
 TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
 {
-    /// @note これが «データ復元と GPU リソース生成を分けた» ことの中身。
-    /// @note デバイス無しでも参照 (パス) は完全に残り、実体だけが後回しになる。
+    // これが «データ復元と GPU リソース生成を分けた» ことの中身。
+    // デバイス無しでも参照 (パス) は完全に残り、実体だけが後回しになる。
     scene::Scene source;
     scene::GameObject& object = source.CreateGameObject("Prop");
     scene::MeshRenderer renderer{};
@@ -529,15 +531,15 @@ TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
     ASSERT_NE(mr, nullptr);
     EXPECT_EQ(mr->meshPath, "Assets/Models/Prop.fbx");
     EXPECT_FALSE(mr->castShadows);
-    /// @note GPU リソースは作らない
+    // GPU リソースは作らない
     EXPECT_EQ(mr->mesh, nullptr);
 }
 
 /// @brief 複数のメッシュパスを独立して保持する。
 TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
 {
-    /// @note 後から ResolveMeshes() で結び直すのはこの meshPath。1 つでも落ちると
-    /// @note «そのオブジェクトだけ描かれない» になる。
+    // 後から ResolveMeshes() で結び直すのはこの meshPath。1 つでも落ちると
+    // «そのオブジェクトだけ描かれない» になる。
     scene::Scene source;
     for (int i = 0; i < 3; ++i) {
         scene::GameObject& object = source.CreateGameObject("Prop" + std::to_string(i));
@@ -576,7 +578,7 @@ TEST_F(SceneSerializerTest, RejectsAMissingFile)
 /// @brief 空の文書を読み込める。
 TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 {
-    /// @note 空のシーンファイルは «壊れている» ではなく «何も無い»。
+    // 空のシーンファイルは «壊れている» ではなく «何も無い»。
     const std::unique_ptr<scene::Scene> restored =
         scene::SceneSerializer::LoadDataFromText("", "empty.scene");
 
@@ -589,7 +591,7 @@ TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 /// @brief 2 回保存した結果が同じファイル内容になることを確認する。
 TEST_F(SceneSerializerTest, SavingTwiceProducesTheSameFile)
 {
-    /// @note 触っていないのに差分が出ると、シーンのコミットに毎回ノイズが混ざる。
+    // 触っていないのに差分が出ると、シーンのコミットに毎回ノイズが混ざる。
     scene::Scene source;
     scene::GameObject& object = source.CreateGameObject("Stable");
     object.transform.position = { 1.0f, 2.0f, 3.0f };

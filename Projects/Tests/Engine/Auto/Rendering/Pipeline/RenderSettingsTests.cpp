@@ -99,7 +99,7 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationTurnsOffEveryDiagnosticView)
 /// @brief Strip debug visualization keeps UI rects.
 TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsUIRects)
 {
-    /// @note UI の当たり判定を試すクリックは Game View で行う。ここで消すと矩形を見ながら押せない。
+    // UI の当たり判定を試すクリックは Game View で行う。ここで消すと矩形を見ながら押せない。
     RenderSettings settings = MakeEveryDiagnosticOn();
     settings.StripDebugVisualization();
 
@@ -109,7 +109,7 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsUIRects)
 /// @brief Script gizmos are off by default.
 TEST_F(RenderSettingsTest, ScriptGizmosAreOffByDefault)
 {
-    /// @note 配布ビルドは Strip を通さず既定値で描くので、既定が true だとゲーム画面にギズモが乗る。
+    // 配布ビルドは Strip を通さず既定値で描くので、既定が true だとゲーム画面にギズモが乗る。
     const RenderSettings settings;
     EXPECT_FALSE(settings.showScriptGizmos);
 }
@@ -117,7 +117,7 @@ TEST_F(RenderSettingsTest, ScriptGizmosAreOffByDefault)
 /// @brief Strip debug visualization keeps skeleton filter mode.
 TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsSkeletonFilterMode)
 {
-    /// @note «選択中だけ» は表示ではなくモード。Scene View へ戻ったときに選び直させない。
+    // «選択中だけ» は表示ではなくモード。Scene View へ戻ったときに選び直させない。
     RenderSettings settings = MakeEveryDiagnosticOn();
     settings.skeletonSelectedOnly = false;
     settings.StripDebugVisualization();

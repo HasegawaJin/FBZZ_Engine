@@ -479,7 +479,7 @@ TEST_F(AssetPartialIoTest, AtomicWriteAllowsRetainedReadersToReadTheirOldSnapsho
 {
     const std::string path = PathOf("retained.fztc");
     asset::ChunkFileWriter first;
-    /// @note Seek beyond the stdio read buffer after replacement so the retained OS handle, not only buffered bytes, is exercised.
+    // ファイルの置換後に stdio の読み取りバッファの外へ移動し、保持していた OS ハンドルから読み出す。
     first.AddChunk(99, std::vector<uint8_t>(8192, 0x55));
     first.AddChunk(1, Bytes({1, 2, 3}));
     ASSERT_TRUE(first.WriteAtomically(path, 1, 11));

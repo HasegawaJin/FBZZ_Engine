@@ -31,8 +31,9 @@ constexpr math::Vector4 kBindJointColor  = { 0.65f, 0.65f, 0.70f, 1.0f };
 AnimatorComponent* FindAnimatorUpwards(GameObject& go)
 {
     for (GameObject* current = &go; current; current = current->GetParent())
-        if (auto* animator = current->GetComponent<AnimatorComponent>())
+        if (auto* animator = current->GetComponent<AnimatorComponent>()) {
             return animator;
+        }
     return nullptr;
 }
 
@@ -40,8 +41,9 @@ AnimatorComponent* FindAnimatorUpwards(GameObject& go)
 GameObject& FindAnimatorOwner(GameObject& go)
 {
     for (GameObject* current = &go; current; current = current->GetParent())
-        if (current->GetComponent<AnimatorComponent>())
+        if (current->GetComponent<AnimatorComponent>()) {
             return *current;
+        }
     return go;
 }
 
@@ -52,15 +54,20 @@ void BuildBindPoseGlobals(const asset::Skeleton& skeleton,
 {
     outGlobals.assign(skeleton.nodes.size(), math::Matrix4::Identity());
     if (skeleton.rootNodeIndex < 0 ||
-        skeleton.rootNodeIndex >= static_cast<int>(skeleton.nodes.size()))
+        skeleton.rootNodeIndex >= static_cast<int>(skeleton.nodes.size())) {
         return;
+    }
 
     const auto walk = [&](auto&& self, int nodeIndex, const math::Matrix4& parentGlobal) -> void {
-        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) {
+            return;
+        }
         const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
         const math::Matrix4 global = parentGlobal * node.localBindTransform;
         outGlobals[static_cast<size_t>(nodeIndex)] = global;
-        for (int child : node.children) self(self, child, global);
+        for (int child : node.children) {
+            self(self, child, global);
+        }
     };
     walk(walk, skeleton.rootNodeIndex, math::Matrix4::Identity());
 }
@@ -88,7 +95,9 @@ std::string_view AnimatorDebugPass::Name() const { return "AnimatorDebug"; }
 
 bool AnimatorDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showSkeleton) return false;
+    if (!ctx.settings.showSkeleton) {
+        return false;
+    }
     return !ctx.settings.skeletonSelectedOnly || !ctx.settings.selectedObjects.empty();
 }
 
@@ -96,33 +105,46 @@ void AnimatorDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx
 {
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
 
-    /// @note 入口は SkinnedMeshRenderer。コントローラ未割り当てのリグもセットアップ中に見たい。
+    // 入口は SkinnedMeshRenderer。コントローラ未割り当てのリグもセットアップ中に見たい。
     std::vector<math::Matrix4> globals;
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
+        if (!go.activeInHierarchy()) {
+            continue;
+        }
+        if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) {
+            continue;
+        }
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
-        if (!smr || !smr->model || !smr->model->skeleton) continue;
-        /// @note 描かれていないメッシュの骨が宙に浮かないよう、描画側と同じ条件で弾く。
-        if (!smr->enabled || !smr->lodVisible) continue;
+        if (!smr || !smr->model || !smr->model->skeleton) {
+            continue;
+        }
+        // 描かれていないメッシュの骨が宙に浮かないよう、描画側と同じ条件で弾く。
+        if (!smr->enabled || !smr->lodVisible) {
+            continue;
+        }
 
         const asset::Skeleton& skeleton = *smr->model->skeleton;
-        if (skeleton.nodes.empty()) continue;
+        if (skeleton.nodes.empty()) {
+            continue;
+        }
 
         GameObject& owner = FindAnimatorOwner(go);
-        /// @note キャラクターのルート (Animator 側) を選んでも、メッシュの子を選んでも出す。
+        // キャラクターのルート (Animator 側) を選んでも、メッシュの子を選んでも出す。
         if (ctx.settings.skeletonSelectedOnly
-            && !IsSelectedForDebug(go, ctx) && !IsSelectedForDebug(owner, ctx))
+            && !IsSelectedForDebug(go, ctx) && !IsSelectedForDebug(owner, ctx)) {
             continue;
+        }
 
         const AnimatorComponent* anim = FindAnimatorUpwards(go);
-        if (anim && !anim->enabled) anim = nullptr;
+        if (anim && !anim->enabled) {
+            anim = nullptr;
+        }
 
         const bool livePose = ResolveNodeGlobals(skeleton, anim, globals);
         const math::Vector4 boneColor  = livePose ? kBoneColor  : kBindBoneColor;
         const math::Vector4 jointColor = livePose ? kJointColor : kBindJointColor;
 
-        /// @note 関節のワールド位置 = ownerWorld * rootInverseTransform * nodeGlobal * 原点。前 2 つは共通。
+        // 関節のワールド位置 = ownerWorld * rootInverseTransform * nodeGlobal * 原点。前 2 つは共通。
         const math::Matrix4 toWorld =
             owner.transform.GetWorldMatrix() * skeleton.rootInverseTransform;
         const auto jointWorldPos = [&toWorld](const math::Matrix4& nodeGlobal) -> math::Vector3 {
@@ -134,7 +156,7 @@ void AnimatorDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx
             const auto& node = skeleton.nodes[ni];
             const math::Vector3 childPos = jointWorldPos(globals[ni]);
 
-            /// @note 関節は距離でスケールし、画面上でおおよそ一定の大きさに見せる。
+            // 関節は距離でスケールし、画面上でおおよそ一定の大きさに見せる。
             if (node.boneIndex >= 0) {
                 const float dist = (childPos - ctx.camera.m_position).Length();
                 const float r = std::clamp(dist * 0.004f, 0.005f, 0.25f);
@@ -142,8 +164,9 @@ void AnimatorDebugPass::Execute(renderer::PassResources&, RenderPassContext& ctx
             }
 
             if (node.parentIndex < 0 ||
-                node.parentIndex >= static_cast<int>(globals.size()))
+                node.parentIndex >= static_cast<int>(globals.size())) {
                 continue;
+            }
             const math::Vector3 parentPos =
                 jointWorldPos(globals[static_cast<size_t>(node.parentIndex)]);
             renderer::DebugDraw::Line(ctx.renderer, parentPos, childPos, boneColor);

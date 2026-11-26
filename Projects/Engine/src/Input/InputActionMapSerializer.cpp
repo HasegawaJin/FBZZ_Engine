@@ -52,8 +52,8 @@ toml::table BindingToTable(const InputBinding& binding, bool explicitDefaults)
     toml::table table;
     table.insert("source", SourceToString(binding.source));
 
-    /// @note ゲームパッドは列挙名で保存する (数値だと enum への要素追加で既存ファイルの意味がずれる)。
-    /// @note       キーコードは Win32 仮想キーコードで値が固定なので数値のままでよい。
+    // ゲームパッドは列挙名で保存する (数値だと enum への要素追加で既存ファイルの意味がずれる)。
+    // キーコードは Win32 仮想キーコードで値が固定なので数値のままでよい。
     if (binding.source == BindingSource::GAMEPAD_BUTTON) {
         table.insert("button", ToString(static_cast<GamepadButton>(binding.code)));
     } else if (binding.source == BindingSource::GAMEPAD_AXIS) {
@@ -62,11 +62,16 @@ toml::table BindingToTable(const InputBinding& binding, bool explicitDefaults)
         table.insert("code", static_cast<int64_t>(binding.code));
     }
 
-    /// @note 既定値と同じフィールドは書き出さない。差分の読みやすさを優先する。
-    if (explicitDefaults || binding.scale != 1.0f)           table.insert("scale", static_cast<double>(binding.scale));
-    if (explicitDefaults || binding.padIndex != -1)          table.insert("pad", static_cast<int64_t>(binding.padIndex));
-    if (explicitDefaults || binding.buttonThreshold != 0.5f)
+    // 既定値と同じフィールドは書き出さない。差分の読みやすさを優先する。
+    if (explicitDefaults || binding.scale != 1.0f) {
+        table.insert("scale", static_cast<double>(binding.scale));
+    }
+    if (explicitDefaults || binding.padIndex != -1) {
+        table.insert("pad", static_cast<int64_t>(binding.padIndex));
+    }
+    if (explicitDefaults || binding.buttonThreshold != 0.5f) {
         table.insert("threshold", static_cast<double>(binding.buttonThreshold));
+    }
 
     return table;
 }
@@ -74,7 +79,9 @@ toml::table BindingToTable(const InputBinding& binding, bool explicitDefaults)
 bool TableToBinding(const toml::table& table, InputBinding& out)
 {
     const auto sourceText = table["source"].value<std::string>();
-    if (!sourceText) return false;
+    if (!sourceText) {
+        return false;
+    }
 
     InputBinding binding{};
     if (!ParseSource(*sourceText, binding.source)) {
@@ -124,18 +131,24 @@ void ArrayToBindings(const toml::node* node, std::vector<InputBinding>& out)
 {
     out.clear();
     const auto* array = node ? node->as_array() : nullptr;
-    if (!array) return;
+    if (!array) {
+        return;
+    }
 
     for (const auto& element : *array) {
         const auto* table = element.as_table();
-        if (!table) continue;
+        if (!table) {
+            continue;
+        }
 
         InputBinding binding{};
-        if (TableToBinding(*table, binding)) out.push_back(binding);
+        if (TableToBinding(*table, binding)) {
+            out.push_back(binding);
+        }
     }
 }
 
-} /// @note namespace
+} // namespace
 
 bool InputActionMap::LoadFromFile(const std::string& path)
 {
@@ -160,8 +173,12 @@ bool InputActionMap::LoadFromFile(const std::string& path)
         return false;
     }
     Clear();
-    for (const auto& axis : document.axes) AddAxis(axis);
-    for (const auto& action : document.actions) AddAction(action);
+    for (const auto& axis : document.axes) {
+        AddAxis(axis);
+    }
+    for (const auto& action : document.actions) {
+        AddAction(action);
+    }
     return true;
 }
 
@@ -170,7 +187,7 @@ bool InputActionMap::SaveToFile(const std::string& path)
     InputBindingsDocument document;
     document.axes = GetAxes();
     document.actions = GetActions();
-    /// @note 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
+    // 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
     std::error_code error;
     const std::filesystem::path filePath = util::FileSystem::PathFromUtf8(path);
     if (filePath.has_parent_path()) {
@@ -194,22 +211,28 @@ bool InputActionMap::SaveToFile(const std::string& path)
 bool InputBindingsDocument::LoadFromToml(std::string_view text)
 {
     const auto parsed = toml::parse(text);
-    if (!parsed) return false;
+    if (!parsed) {
+        return false;
+    }
     const toml::table& root = parsed.table();
 
-    /// @note 先にローカルへ組み立て、成功確定後に差し替える。パース途中の失敗で現在のバインドが
-    /// @note       半端に壊れるのを防ぐ。
+    // 先にローカルへ組み立て、成功確定後に差し替える。パース途中の失敗で現在のバインドが
+    // 半端に壊れるのを防ぐ。
     std::vector<InputAxis>   loadedAxes;
     std::vector<InputAction> loadedActions;
 
     if (const auto* axisArray = root["axis"].as_array()) {
         for (const auto& element : *axisArray) {
             const auto* table = element.as_table();
-            if (!table) continue;
+            if (!table) {
+                continue;
+            }
 
             InputAxis axis{};
             axis.name = (*table)["name"].value_or(std::string{});
-            if (axis.name.empty()) continue;
+            if (axis.name.empty()) {
+                continue;
+            }
 
             axis.deadZone    = static_cast<float>((*table)["deadZone"].value_or(0.25));
             axis.gravity     = static_cast<float>((*table)["gravity"].value_or(8.0));
@@ -228,11 +251,15 @@ bool InputBindingsDocument::LoadFromToml(std::string_view text)
     if (const auto* actionArray = root["action"].as_array()) {
         for (const auto& element : *actionArray) {
             const auto* table = element.as_table();
-            if (!table) continue;
+            if (!table) {
+                continue;
+            }
 
             InputAction action{};
             action.name = (*table)["name"].value_or(std::string{});
-            if (action.name.empty()) continue;
+            if (action.name.empty()) {
+                continue;
+            }
 
             ArrayToBindings((*table)["bindings"].node(), action.bindings);
             loadedActions.push_back(std::move(action));
@@ -256,12 +283,20 @@ std::string InputBindingsDocument::ToToml(bool explicitDefaults) const
         table.insert("gravity",     static_cast<double>(axis.gravity));
         table.insert("sensitivity", static_cast<double>(axis.sensitivity));
         table.insert("snap", axis.snap);
-        if (explicitDefaults || axis.raw) table.insert("raw", axis.raw);
+        if (explicitDefaults || axis.raw) {
+            table.insert("raw", axis.raw);
+        }
 
-        /// @note 空の配列は書き出さない。既定バインドのファイルが読みやすくなる。
-        if (explicitDefaults || !axis.positive.empty()) table.insert("positive", BindingsToArray(axis.positive, explicitDefaults));
-        if (explicitDefaults || !axis.negative.empty()) table.insert("negative", BindingsToArray(axis.negative, explicitDefaults));
-        if (explicitDefaults || !axis.analog.empty())   table.insert("analog",   BindingsToArray(axis.analog, explicitDefaults));
+        // 空の配列は書き出さない。既定バインドのファイルが読みやすくなる。
+        if (explicitDefaults || !axis.positive.empty()) {
+            table.insert("positive", BindingsToArray(axis.positive, explicitDefaults));
+        }
+        if (explicitDefaults || !axis.negative.empty()) {
+            table.insert("negative", BindingsToArray(axis.negative, explicitDefaults));
+        }
+        if (explicitDefaults || !axis.analog.empty()) {
+            table.insert("analog",   BindingsToArray(axis.analog, explicitDefaults));
+        }
 
         axisArray.push_back(std::move(table));
     }
@@ -281,4 +316,4 @@ std::string InputBindingsDocument::ToToml(bool explicitDefaults) const
     return stream.str();
 }
 
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

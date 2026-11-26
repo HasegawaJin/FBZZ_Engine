@@ -134,4 +134,4 @@ private:
     FBZZ_ENGINE_API static std::string s_textInput;
 };
 
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

@@ -57,11 +57,9 @@ struct CameraComponent {
     /// @note 投影行列に触れずに描画距離だけを削るための値。
     float maxDrawDistance = 0.0f;
 
-    /// @note レイヤーごとの描画距離上書き [m]。0 以下の要素は maxDrawDistance を使う。
-    float layerCullDistances[kCullLayerCount] = {};
+    float layerCullDistances[kCullLayerCount] = {}; ///< レイヤーごとの描画距離上書き [m]。0 以下の要素は maxDrawDistance を使う。
 
-    /// @note 距離の測り方。true = カメラからの球距離、false = 視線方向の深度距離。
-    bool  cullDistanceSpherical = true;
+    bool  cullDistanceSpherical = true; ///< 距離の測り方。true = カメラからの球距離、false = 視線方向の深度距離。
 
     /// @note バウンディング球の画面高さ比がこの値未満なら描かない。0 以下で無効。
     /// @note 単位は LODLevel::screenRelativeHeight と同じ (0.01 = 画面高さの 1%)。
@@ -93,8 +91,8 @@ struct CameraComponent {
         clearMode = static_cast<renderer::CameraClearMode>(
             clearModeValue < 0 || clearModeValue > 1 ? 0 : clearModeValue);
         r.ColorField("backgroundColor", backgroundColor);
-        /// @note layerCullDistances は固定長配列で IReflector に対応する Field が無い。
-        /// @note 永続化は SceneSerializer が配列として書き出す。
+        // layerCullDistances は固定長配列で IReflector に対応する Field が無い。
+        // 永続化は SceneSerializer が配列として書き出す。
     }
     /// @}
 };

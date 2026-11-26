@@ -59,8 +59,9 @@ constexpr float kTwoPi = 6.28318530717958647692f;
     const float cycles = light.flickerTime * (std::max)(light.flickerFrequency, 0.0f)
                        + light.flickerPhase;
 
-    if (light.flickerMode == LightComponent::FlickerMode::Noise)
+    if (light.flickerMode == LightComponent::FlickerMode::Noise) {
         return ValueNoise01(cycles, light.flickerSeed);
+    }
 
     float wave = 1.0f;
     if (light.flickerMode == LightComponent::FlickerMode::Sine) {
@@ -70,7 +71,9 @@ constexpr float kTwoPi = 6.28318530717958647692f;
     }
 
     const float noiseAmount = std::clamp(light.flickerNoise, 0.0f, 1.0f);
-    if (noiseAmount <= 0.0f) return wave;
+    if (noiseAmount <= 0.0f) {
+        return wave;
+    }
     const float noise = ValueNoise01(cycles, light.flickerSeed);
     return wave + (noise - wave) * noiseAmount;
 }
@@ -93,13 +96,15 @@ constexpr float kTwoPi = 6.28318530717958647692f;
 /// @note 捕獲した値へ戻す。捕獲していなければ何もしない。
 void Restore(LightComponent& light)
 {
-    if (!light.flickerCaptured) return;
+    if (!light.flickerCaptured) {
+        return;
+    }
     light.intensity         = light.flickerBaseIntensity;
     light.flickerCaptured   = false;
     light.flickerTime       = 0.0f;
 }
 
-} /// @note namespace
+} // namespace
 
 ComponentAccess LightFlickerSystem::GetAccess() const
 {
@@ -108,8 +113,8 @@ ComponentAccess LightFlickerSystem::GetAccess() const
 
 OrderingHints LightFlickerSystem::GetOrder() const
 {
-    /// @note VFXLightEnvelope も intensity を捕まえて掛け直す。先に VFX を通しておかないと、
-    /// @note 捕獲の順番がフレームごとに入れ替わりうる (同じ光源に両方付けるのは非推奨)。
+    // VFXLightEnvelope も intensity を捕まえて掛け直す。先に VFX を通しておかないと、
+    // 捕獲の順番がフレームごとに入れ替わりうる (同じ光源に両方付けるのは非推奨)。
     return OrderingHints{}.After<VFXSystem>();
 }
 
@@ -120,22 +125,25 @@ void LightFlickerSystem::Update(SystemContext& ctx)
 
     for (const EntityID id : ctx.scene.GetEntities<LightComponent>()) {
         LightComponent* lightPtr = ctx.scene.GetComponent<LightComponent>(id);
-        if (lightPtr == nullptr) continue;
+        if (lightPtr == nullptr) {
+            continue;
+        }
         LightComponent& light = *lightPtr;
 
-        /// @note 編集中は書かない。intensity はシーンへ保存されるフィールドなので、
-        /// @note 揺れている途中の値が «オーサリング値» として焼き付く。
+        // 編集中は書かない。intensity はシーンへ保存されるフィールドなので、
+        // 揺れている途中の値が «オーサリング値» として焼き付く。
         if (!playing || !FlickerActive(light)) {
             Restore(light);
             continue;
         }
-        /// @note 親ごと無効化された光源は明滅の時計も止める (Pause と同じく今の明るさを保ち、有効に戻れば続きから)。
-        if (const GameObject* owner = ctx.scene.GetGameObject(id); !owner || !owner->activeInHierarchy())
+        // 親ごと無効化された光源は明滅の時計も止める (Pause と同じく今の明るさを保ち、有効に戻れば続きから)。
+        if (const GameObject* owner = ctx.scene.GetGameObject(id); !owner || !owner->activeInHierarchy()) {
             continue;
+        }
 
         if (!light.flickerCaptured) {
-            /// @note VFXLightEnvelope も «捕まえて掛け直す» ので、同じ光源に両方付けると互いの出力を
-            /// @note 基準として掴み合い、繰り返すたびに暗くなる。絵だけ見て原因に辿り着けない。
+            // VFXLightEnvelope も «捕まえて掛け直す» ので、同じ光源に両方付けると互いの出力を
+            // 基準として掴み合い、繰り返すたびに暗くなる。絵だけ見て原因に辿り着けない。
             if (ctx.scene.GetComponent<VFXLightEnvelope>(id) != nullptr) {
                 const GameObject* owner = ctx.scene.GetGameObject(id);
                 FBZZ_LOG_WARN("LightFlicker: '%s' は VFXLightEnvelope と同居しています。"
@@ -146,8 +154,10 @@ void LightFlickerSystem::Update(SystemContext& ctx)
             light.flickerCaptured      = true;
             light.flickerTime          = 0.0f;
         }
-        /// @note Pause 中 (playing && !simulating) は時刻を進めず、今の明るさを保つ。
-        if (ctx.simulating) light.flickerTime += dt;
+        // Pause 中 (playing && !simulating) は時刻を進めず、今の明るさを保つ。
+        if (ctx.simulating) {
+            light.flickerTime += dt;
+        }
 
         const float amplitude = std::clamp(light.flickerAmplitude, 0.0f, 1.0f);
         const float scale     = (std::max)(1.0f - amplitude * (1.0f - FlickerWave(light)), 0.0f);
@@ -155,4 +165,4 @@ void LightFlickerSystem::Update(SystemContext& ctx)
     }
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -191,11 +191,11 @@ struct LightProbeVolumeSelection {
         const GameObject*                owner  = nullptr;
         const LightProbeVolumeComponent* volume = nullptr;
     };
-    Entry inner;   ///< @brief 小さい箱。外側の上に重なる (t22)
-    Entry outer;   ///< @brief 大きい箱 (t21)
+    Entry inner; ///< 小さい箱。外側の上に重なる (t22)
+    Entry outer; ///< 大きい箱 (t21)
 };
 /// @brief 焼きが要るボリュームを probesPerFrame 個ぶん進め、描画に使うボリュームを最大 2 つ選ぶ。
-/// @param mainData このフレームの b8。捕捉で描く面にも同じ IBL・天候を効かせるために写す。
+/// @param[in] mainData このフレームの b8。捕捉で描く面にも同じ IBL・天候を効かせるために写す。
 /// @return 焼き上がったボリュームのうちカメラに近い 2 つ (箱の中なら距離 0)。小さい方が inner。
 /// @note グラフの外で呼ぶ (描画先が RenderGraph 管理外の RT とボリュームのため)。影マップは前フレームの中身を読む。
 FBZZ_ENGINE_API LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData);
@@ -231,7 +231,7 @@ FBZZ_ENGINE_API void ReleaseDecalMaterialCache             ();
 /// @note b4 は 464 バイト固定で Terrain / Water まで同じレイアウトを読むため、対応パスを増やしている途中の Spot / Point は、束縛していないパスが 0 埋め (= 影なし) で素通りできる別スロットに置く。
 
 /// @note 主スロット (submesh 0) を同期する。単一マテリアルのオブジェクト向け。
-/// @param screenPixels 描く物体の画面上の直径 [px] (EstimateScreenPixels)。テクスチャの品質段の自動選択に使う。0 は不明。
+/// @param[in] screenPixels 描く物体の画面上の直径 [px] (EstimateScreenPixels)。テクスチャの品質段の自動選択に使う。0 は不明。
 FBZZ_ENGINE_API renderer::Material* SyncMaterial(
     MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false,
     float screenPixels = 0.0f);
@@ -276,10 +276,8 @@ FBZZ_ENGINE_API void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shade
 /// @note 子 GO (submesh ごとの SkinnedMeshRenderer) は AnimatorComponent を持たない。
 FBZZ_ENGINE_API AnimatorComponent* FindAnimator(GameObject& go);
 
-/// @param depthBias / depthBiasSlope 正で手前へ寄せる (renderer::PipelineStateDesc::depthBias)。
-
-
 /// @brief スロットのブレンド・両面・深度バイアスから PSO を引く。
+/// @param[in] slot 深度バイアスと傾斜バイアスは正の値で手前へ寄せる。
 /// @note カメラ視点で同じメッシュを描くパスはすべてこちらを通す (バイアスがパス間で食い違うと深度が合わない)。
 FBZZ_ENGINE_API renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,

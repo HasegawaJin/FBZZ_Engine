@@ -35,10 +35,12 @@ std::uint64_t& Epoch()
 
 bool RegisterImpl(const std::string& typeName, Entry entry)
 {
-    if (typeName.empty() || !entry.factory) return false;
+    if (typeName.empty() || !entry.factory) {
+        return false;
+    }
 
     auto& registry = Registry();
-    /// @note 同名のスクリプト型で組み込み登録を上書きすると UnregisterScriptTypes で組み込み型まで失われる。
+    // 同名のスクリプト型で組み込み登録を上書きすると UnregisterScriptTypes で組み込み型まで失われる。
     if (const auto it = registry.find(typeName);
         it != registry.end() && it->second.builtin && !entry.builtin) {
         FBZZ_LOG_WARN("DataAssetFactory: '%s' is a built-in type; script registration ignored",
@@ -53,7 +55,9 @@ bool RegisterImpl(const std::string& typeName, Entry entry)
 
 std::function<detail::CreatedDataAsset()> WrapLegacyFactory(DataAssetFactory::Factory factory)
 {
-    if (!factory) return {};
+    if (!factory) {
+        return {};
+    }
     return [factory = std::move(factory)] { return detail::CreatedDataAsset{factory(), {}}; };
 }
 
@@ -78,7 +82,9 @@ detail::CreatedDataAsset detail::CreateDataAsset(const std::string& typeName)
 {
     const auto& registry = Registry();
     const auto found = registry.find(typeName);
-    if (found == registry.end()) return {};
+    if (found == registry.end()) {
+        return {};
+    }
     return found->second.factory();
 }
 
@@ -97,7 +103,9 @@ void DataAssetFactory::UnregisterScriptTypes()
     auto& registry = Registry();
     const std::size_t before = registry.size();
     std::erase_if(registry, [](const auto& pair) { return !pair.second.builtin; });
-    if (registry.size() != before) ++Epoch();
+    if (registry.size() != before) {
+        ++Epoch();
+    }
 }
 
 std::vector<std::string> DataAssetFactory::RegisteredTypeNames()
@@ -106,8 +114,9 @@ std::vector<std::string> DataAssetFactory::RegisteredTypeNames()
     auto& registry = Registry();
     names.reserve(registry.size());
     for (const auto& [typeName, entry] : registry) {
-        if (!typeName.empty() && entry.factory)
+        if (!typeName.empty() && entry.factory) {
             names.push_back(typeName);
+        }
     }
     std::sort(names.begin(), names.end());
     return names;

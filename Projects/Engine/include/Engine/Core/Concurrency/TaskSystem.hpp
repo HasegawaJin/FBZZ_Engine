@@ -75,4 +75,4 @@ private:
     FBZZ_ENGINE_API static void SubmitRaw(std::function<void()> task);
 };
 
-} /// @note namespace fbzz
+} // namespace fbzz

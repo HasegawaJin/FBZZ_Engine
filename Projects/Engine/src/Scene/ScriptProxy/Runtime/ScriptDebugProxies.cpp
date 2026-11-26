@@ -42,7 +42,7 @@ ScriptDebugDrawCommand MakeDebugDrawCommand(ScriptDebugDrawType type, const math
 }
 
 
-} /// @note namespace
+} // namespace
 void ScriptDebugProxy::Log(std::string_view msg) const
 {
     core::Logger::Info("%.*s", static_cast<int>(msg.size()), msg.data());
@@ -63,7 +63,9 @@ void ScriptDebugProxy::LogError(std::string_view msg) const
 
 void ScriptDebugProxy::DrawLine(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     script->m_scene->QueueScriptDebugDraw(
         MakeDebugDrawCommand(ScriptDebugDrawType::Line, a, b, color, duration, depthTest));
 }
@@ -71,7 +73,9 @@ void ScriptDebugProxy::DrawLine(const math::Vector3& a, const math::Vector3& b, 
 
 void ScriptDebugProxy::DrawSphere(const math::Vector3& center, float radius, const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Sphere, center, {}, color, duration, depthTest);
     command.radius = radius;
@@ -81,7 +85,9 @@ void ScriptDebugProxy::DrawSphere(const math::Vector3& center, float radius, con
 
 void ScriptDebugProxy::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents, const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Box, center, {}, color, duration, depthTest);
     command.halfExtents = halfExtents;
@@ -92,7 +98,9 @@ void ScriptDebugProxy::DrawBox(const math::Vector3& center, const math::Vector3&
 void ScriptDebugProxy::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents,
                                const math::Quaternion& rotation, const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::OrientedBox, center, {}, color, duration, depthTest);
     command.halfExtents = halfExtents;
@@ -103,7 +111,9 @@ void ScriptDebugProxy::DrawBox(const math::Vector3& center, const math::Vector3&
 
 void ScriptDebugProxy::DrawRay(const math::Vector3& origin, const math::Vector3& dir, const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     script->m_scene->QueueScriptDebugDraw(
         MakeDebugDrawCommand(ScriptDebugDrawType::Ray, origin, origin + dir, color, duration, depthTest));
 }
@@ -113,7 +123,9 @@ void ScriptDebugProxy::DrawArrow(const math::Vector3& from, const math::Vector3&
                                   float headLength, float headRadius,
                                   const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Arrow, from, to, color, duration, depthTest);
     command.radius      = headLength;
@@ -126,7 +138,9 @@ void ScriptDebugProxy::DrawCone(const math::Vector3& apex, const math::Vector3& 
                                  float height, float baseRadius,
                                  const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Cone, apex, direction, color, duration, depthTest);
     command.radius      = baseRadius;
@@ -139,7 +153,9 @@ void ScriptDebugProxy::DrawCapsule(const math::Vector3& center, float radius, fl
                                    const math::Quaternion& rotation, const math::Vector4& color,
                                    float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Capsule, center, {}, color, duration, depthTest);
     command.radius      = radius;
@@ -152,7 +168,9 @@ void ScriptDebugProxy::DrawCapsule(const math::Vector3& center, float radius, fl
 void ScriptDebugProxy::DrawCircle(const math::Vector3& center, const math::Vector3& normal, float radius,
                                   const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Circle, center, normal, color, duration, depthTest);
     command.radius = radius;
@@ -164,7 +182,9 @@ void ScriptDebugProxy::DrawArc(const math::Vector3& center, const math::Vector3&
                                const math::Vector3& fromDirection, float radius, float angleDegrees,
                                const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene) return;
+    if (!script || !script->m_scene) {
+        return;
+    }
     ScriptDebugDrawCommand command =
         MakeDebugDrawCommand(ScriptDebugDrawType::Arc, center, normal, color, duration, depthTest);
     command.halfExtents = fromDirection;
@@ -177,11 +197,15 @@ void ScriptDebugProxy::DrawArc(const math::Vector3& center, const math::Vector3&
 void ScriptDebugProxy::DrawPolyline(std::span<const math::Vector3> points, bool closed,
                                     const math::Vector4& color, float duration) const
 {
-    if (!script || !script->m_scene || points.size() < 2) return;
-    for (size_t i = 0; i + 1 < points.size(); ++i)
+    if (!script || !script->m_scene || points.size() < 2) {
+        return;
+    }
+    for (size_t i = 0; i + 1 < points.size(); ++i) {
         DrawLine(points[i], points[i + 1], color, duration);
-    if (closed && points.size() > 2)
+    }
+    if (closed && points.size() > 2) {
         DrawLine(points.back(), points.front(), color, duration);
+    }
 }
 
 
@@ -325,4 +349,4 @@ void GizmoProxy::DrawTargetLine(const math::Vector3& from, const math::Vector3& 
 }
 
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

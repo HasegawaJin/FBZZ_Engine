@@ -54,20 +54,24 @@ float SampleStitchedTerrainHeight(const TerrainComponent& terrain,
                                   int                     x,
                                   int                     z)
 {
-    /// @note 描画と同じ境界平均を一時データへ適用し、保存データを破壊せず衝突形状を見た目へ合わせる。
+    // 描画と同じ境界平均を一時データへ適用し、保存データを破壊せず衝突形状を見た目へ合わせる。
     float sum = 0.0f;
     int count = 0;
 
     TryAddTerrainHeightSample(&terrain, x, z, sum, count);
 
-    if (x <= 0)
+    if (x <= 0) {
         TryAddTerrainHeightSample(neighbors.west, neighbors.west ? neighbors.west->columns - 1 + x : x, z, sum, count);
-    if (x >= terrain.columns - 1)
+    }
+    if (x >= terrain.columns - 1) {
         TryAddTerrainHeightSample(neighbors.east, x - (terrain.columns - 1), z, sum, count);
-    if (z <= 0)
+    }
+    if (z <= 0) {
         TryAddTerrainHeightSample(neighbors.north, x, neighbors.north ? neighbors.north->rows - 1 + z : z, sum, count);
-    if (z >= terrain.rows - 1)
+    }
+    if (z >= terrain.rows - 1) {
         TryAddTerrainHeightSample(neighbors.south, x, z - (terrain.rows - 1), sum, count);
+    }
 
     if (x <= 0 && z <= 0) {
         TryAddTerrainHeightSample(neighbors.northWest,
@@ -98,8 +102,9 @@ float SampleStitchedTerrainHeight(const TerrainComponent& terrain,
                                   count);
     }
 
-    if (count > 0)
+    if (count > 0) {
         return sum / static_cast<float>(count);
+    }
 
     const int clampedX = std::clamp(x, 0, terrain.columns - 1);
     const int clampedZ = std::clamp(z, 0, terrain.rows - 1);
@@ -112,26 +117,31 @@ TerrainNeighbors ResolveTerrainNeighbors(Scene& scene, EntityID eid)
 {
     TerrainNeighbors neighbors;
 
-    /// @note 親ごと無効化された Grid は使わない (描画側の TerrainRenderPass と同じ規則)。
+    // 親ごと無効化された Grid は使わない (描画側の TerrainRenderPass と同じ規則)。
     const TerrainGridComponent* terrainGrid = nullptr;
     for (const EntityID gridId : scene.GetEntities<TerrainGridComponent>()) {
         const GameObject* gridObject = scene.GetGameObject(gridId);
-        if (!gridObject || !gridObject->activeInHierarchy()) continue;
+        if (!gridObject || !gridObject->activeInHierarchy()) {
+            continue;
+        }
         terrainGrid = scene.GetComponent<TerrainGridComponent>(gridId);
         break;
     }
-    if (!terrainGrid)
+    if (!terrainGrid) {
         return neighbors;
+    }
 
     int gx = 0;
     int gz = 0;
-    if (!terrainGrid->TryGetGridPos(eid, gx, gz))
+    if (!terrainGrid->TryGetGridPos(eid, gx, gz)) {
         return neighbors;
+    }
 
     auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
         const EntityID neid = terrainGrid->GetCell(ngx, ngz);
-        if (!scene.IsValid(neid))
+        if (!scene.IsValid(neid)) {
             return nullptr;
+        }
         return scene.GetComponent<TerrainComponent>(neid);
     };
 
@@ -168,13 +178,15 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
                                                 int                meshIndex)
 {
     const renderer::Mesh* mesh = nullptr;
-    if (auto* meshRenderer = go.GetComponent<MeshRenderer>())
+    if (auto* meshRenderer = go.GetComponent<MeshRenderer>()) {
         mesh = meshRenderer->mesh;
+    }
     if (!mesh) {
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
-            if (!skinned->model && !skinned->modelPath.empty())
+            if (!skinned->model && !skinned->modelPath.empty()) {
                 skinned->model = asset::AssetManager::LoadAndGet<asset::Model>(skinned->modelPath);
-            /// @note 見た目と衝突形状を合わせるため、Renderer 内のローカルスロットを使い、無指定時は先頭を選ぶ。
+            }
+            // 見た目と衝突形状を合わせるため、Renderer 内のローカルスロットを使い、無指定時は先頭を選ぶ。
             if (skinned->model) {
                 const size_t submesh = meshIndex >= 0 ? static_cast<size_t>(meshIndex) : 0u;
                 mesh = skinned->SubmeshMesh(submesh);
@@ -183,8 +195,9 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
     }
     if (!mesh && !meshPath.empty()) {
         if (auto* model = asset::AssetManager::LoadAndGet<asset::Model>(meshPath)) {
-            if (meshIndex >= 0 && meshIndex < static_cast<int>(model->meshes.size()))
+            if (meshIndex >= 0 && meshIndex < static_cast<int>(model->meshes.size())) {
                 mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
+            }
         }
     }
     return mesh;
@@ -252,7 +265,9 @@ template<typename T>
 void MergePrimitiveBounds(GameObject& go, physics::AABB& bounds, bool& found)
 {
     const auto* component = go.GetComponent<T>();
-    if (!component) return;
+    if (!component) {
+        return;
+    }
     auto shape = MakePrimitiveShape(*component, go.transform.worldScale);
     shape.Update(ColliderWorldCenter(go, *component), go.transform.worldRotation);
     const auto candidate = shape.GetAABB();
@@ -264,7 +279,9 @@ void MergePrimitiveBounds(GameObject& go, physics::AABB& bounds, bool& found)
 
 bool TryGetPrimitiveColliderBounds(GameObject& go, physics::AABB& outBounds)
 {
-    if (!go.IsValid()) return false;
+    if (!go.IsValid()) {
+        return false;
+    }
     physics::AABB bounds{};
     bool found = false;
     MergePrimitiveBounds<SphereColliderComponent>(go, bounds, found);
@@ -272,7 +289,9 @@ bool TryGetPrimitiveColliderBounds(GameObject& go, physics::AABB& outBounds)
     MergePrimitiveBounds<BoxColliderComponent>(go, bounds, found);
     MergePrimitiveBounds<AabbColliderComponent>(go, bounds, found);
     MergePrimitiveBounds<CylinderColliderComponent>(go, bounds, found);
-    if (!found) return false;
+    if (!found) {
+        return false;
+    }
     outBounds = bounds;
     return true;
 }
@@ -307,7 +326,7 @@ void SyncColliderShape(BoxColliderComponent& col, const math::Vector3& worldScal
 
 void SyncColliderShape(SphereColliderComponent& col, const math::Vector3& worldScale)
 {
-    /// @note 球は半径 1 つしか持てない。非一様スケールでは最大軸に合わせて包む。
+    // 球は半径 1 つしか持てない。非一様スケールでは最大軸に合わせて包む。
     const float radius = MakePrimitiveShape(col, worldScale).m_radius;
     auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::SPHERE
         ? static_cast<physics::SphereCollider*>(col.collider.get())
@@ -321,7 +340,7 @@ void SyncColliderShape(SphereColliderComponent& col, const math::Vector3& worldS
 
 void SyncColliderShape(CapsuleColliderComponent& col, const math::Vector3& worldScale)
 {
-    /// @note Y 軸カプセル。半径は水平 2 軸の大きい方、円柱半長は Y。
+    // Y 軸カプセル。半径は水平 2 軸の大きい方、円柱半長は Y。
     const auto scaled = MakePrimitiveShape(col, worldScale);
     const float radius = scaled.m_radius;
     const float halfHeight = scaled.m_halfHeight;
@@ -339,7 +358,7 @@ void SyncColliderShape(CapsuleColliderComponent& col, const math::Vector3& world
 
 void SyncColliderShape(CylinderColliderComponent& col, const math::Vector3& worldScale)
 {
-    /// @note Y 軸円柱。半径は水平 2 軸の大きい方、半長は Y。
+    // Y 軸円柱。半径は水平 2 軸の大きい方、半長は Y。
     const auto scaled = MakePrimitiveShape(col, worldScale);
     const float radius = scaled.m_radius;
     const float halfHeight = scaled.m_halfHeight;
@@ -357,29 +376,39 @@ void SyncColliderShape(CylinderColliderComponent& col, const math::Vector3& worl
 
 void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
 {
-    if (col.collider) return;
+    if (col.collider) {
+        return;
+    }
 
     const renderer::Mesh* mesh = ResolveColliderSourceMesh(go, col.meshPath, col.meshIndex);
-    if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) return;
+    if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) {
+        return;
+    }
 
     std::vector<math::Vector3> positions;
     positions.reserve(mesh->cpuVertices.size());
-    for (const auto& vertex : mesh->cpuVertices)
+    for (const auto& vertex : mesh->cpuVertices) {
         positions.push_back(vertex.position);
+    }
     col.collider = std::make_unique<physics::TriangleMeshCollider>(positions, mesh->cpuIndices);
 }
 
 void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
 {
-    if (col.collider) return;
+    if (col.collider) {
+        return;
+    }
 
     const renderer::Mesh* mesh = ResolveColliderSourceMesh(go, col.meshPath, col.meshIndex);
-    if (!mesh || mesh->cpuVertices.empty()) return;
+    if (!mesh || mesh->cpuVertices.empty()) {
+        return;
+    }
 
     std::vector<math::Vector3> positions;
     positions.reserve(mesh->cpuVertices.size());
-    for (const auto& vertex : mesh->cpuVertices)
+    for (const auto& vertex : mesh->cpuVertices) {
         positions.push_back(vertex.position);
+    }
     col.collider = std::make_unique<physics::ConvexHullCollider>(std::move(positions));
 }
 
@@ -394,11 +423,12 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
 
     if (terrain->colliderDirty || !col.collider) {
         const std::vector<float> colliderHeights = BuildColliderHeightData(scene, go, *terrain);
-        /// @note 大きさの合わない穴マスクは «穴なし» として渡さない。
+        // 大きさの合わない穴マスクは «穴なし» として渡さない。
         /// @see Docs/design/terrain-layers.md §4 穴
         std::vector<std::uint8_t> colliderHoles;
-        if (terrain->holeData.size() == terrain->CellCount())
+        if (terrain->holeData.size() == terrain->CellCount()) {
             colliderHoles = terrain->holeData;
+        }
         if (!terrain->surfaceIndices.empty()) {
             std::vector<math::Vector3> positions;
             std::vector<uint32_t> indices;
@@ -407,19 +437,23 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
                 positions.push_back({x * terrain->cellSize,
                     colliderHeights[static_cast<size_t>(z) * terrain->columns + x] * terrain->maxHeight, z * terrain->cellSize});
             for (int z = 0; z < terrain->rows - 1; ++z) for (int x = 0; x < terrain->columns - 1; ++x) {
-                if (terrain->IsHoleCell(x, z)) continue;
+                if (terrain->IsHoleCell(x, z)) {
+                    continue;
+                }
                 const auto a = static_cast<uint32_t>(z * terrain->columns + x), b = a + terrain->columns;
                 indices.insert(indices.end(), {a, b, a + 1, a + 1, b, b + 1});
             }
             const auto offset = static_cast<uint32_t>(positions.size());
             positions.insert(positions.end(), terrain->surfacePositions.begin(), terrain->surfacePositions.end());
-            for (uint32_t index : terrain->surfaceIndices) indices.push_back(offset + index);
+            for (uint32_t index : terrain->surfaceIndices) {
+                indices.push_back(offset + index);
+            }
             col.collider = std::make_unique<physics::TriangleMeshCollider>(positions, indices);
         } else if (auto* hf = col.collider
                 && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
                 ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
                 : nullptr) {
-            /// @note 既存 HeightFieldCollider に再適用して BVH を再構築する (WorldHandle を維持できる)。
+            // 既存 HeightFieldCollider に再適用して BVH を再構築する (WorldHandle を維持できる)。
             hf->Rebuild(colliderHeights,
                         terrain->rows, terrain->columns,
                         terrain->cellSize, terrain->maxHeight,
@@ -437,7 +471,9 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
 
 void UpdateColliderPose(const GameObject& go, ColliderComponent& col, bool useTransformScale)
 {
-    if (!col.collider) return;
+    if (!col.collider) {
+        return;
+    }
 
     const math::Vector3 worldCenter = ColliderWorldCenter(go, col);
     const math::Vector3 scale = useTransformScale ? go.transform.worldScale : math::Vector3::ONE;
@@ -452,12 +488,12 @@ void UpdateColliderPose(const GameObject& go, ColliderComponent& col, bool useTr
             ->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
         break;
     case physics::ColliderType::HEIGHT_FIELD:
-        /// @note 地形は useTransformScale を持たないため常に Transform スケールを適用する。
+        // 地形は useTransformScale を持たないため常に Transform スケールを適用する。
         static_cast<physics::HeightFieldCollider*>(col.collider.get())
             ->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
         break;
     default:
-        /// @note 基本形状の寸法には SyncColliderShape でスケールを反映済みなので、二重に掛けない。
+        // 基本形状の寸法には SyncColliderShape でスケールを反映済みなので、二重に掛けない。
         col.collider->Update(worldCenter, go.transform.worldRotation);
         break;
     }

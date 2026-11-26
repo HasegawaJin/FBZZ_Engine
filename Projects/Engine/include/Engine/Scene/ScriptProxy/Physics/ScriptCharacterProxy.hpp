@@ -16,7 +16,7 @@ class Script;
 struct CollisionInfo;
 
 struct ScriptCharacterProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< キャラクター操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @brief OnUpdate 先頭で呼ぶ。CharacterControllerComponent::Tick を rb を自動取得して実行する。
     FBZZ_ENGINE_API void Tick(float dt) const;
@@ -55,4 +55,4 @@ struct ScriptCharacterProxy {
     FBZZ_ENGINE_API bool IsEnabled() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

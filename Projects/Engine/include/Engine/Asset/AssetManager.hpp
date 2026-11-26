@@ -56,11 +56,10 @@ template<typename T>
 class AssetStore {
 public:
     struct Slot {
-        std::unique_ptr<T> asset;
-        uint32_t gen      = 1;
-        bool     occupied = false;
-        /// @note 同期 Load<T> が配ったスロット。明示的な Unload まで自動 eviction の対象にしない。
-        bool     pinned   = false;
+        std::unique_ptr<T> asset; ///< ストアが所有するアセット実体。予約中は null。
+        uint32_t gen      = 1; ///< スロットの再利用で進むハンドルの世代。
+        bool     occupied = false; ///< この枠が予約済みまたはロード済みか。
+        bool     pinned   = false; ///< 同期 Load<T> が配ったスロット。明示的な Unload まで自動 eviction の対象にしない。
     };
 
     static AssetStore& Get() { static AssetStore s; return s; }
@@ -85,7 +84,9 @@ public:
 
     /// @brief 同期 API が配ったことを記録する。
     void Pin(AssetHandle<T> h) {
-        if (IsLive(h)) slots[h.id - 1u].pinned = true;
+        if (IsLive(h)) {
+            slots[h.id - 1u].pinned = true;
+        }
     }
 
     [[nodiscard]] bool IsPinned(AssetHandle<T> h) const {
@@ -97,9 +98,13 @@ public:
     AssetHandle<T> Reserve() { return Alloc(nullptr); }
 
     bool IsLive(AssetHandle<T> h) const {
-        if (!h.IsValid()) return false;
+        if (!h.IsValid()) {
+            return false;
+        }
         const uint32_t idx = h.id - 1u;
-        if (idx >= slots.size()) return false;
+        if (idx >= slots.size()) {
+            return false;
+        }
         return slots[idx].occupied && slots[idx].gen == h.gen;
     }
 
@@ -109,20 +114,26 @@ public:
     }
 
     T* GetPtr(AssetHandle<T> h) {
-        if (!IsLive(h)) return nullptr;
+        if (!IsLive(h)) {
+            return nullptr;
+        }
         return slots[h.id - 1u].asset.get();
     }
 
     /// @brief ハンドルを保ったままスロットの中身だけを差し替える。
     /// @note gen は進めない。進めると Scene / Component が持つ既存ハンドルが一斉に死に、参照切れとして現れる。
     bool Replace(AssetHandle<T> h, std::unique_ptr<T> asset_) {
-        if (!IsLive(h) || !asset_) return false;
+        if (!IsLive(h) || !asset_) {
+            return false;
+        }
         slots[h.id - 1u].asset = std::move(asset_);
         return true;
     }
 
     void Free(AssetHandle<T> h) {
-        if (!IsLive(h)) return;
+        if (!IsLive(h)) {
+            return;
+        }
         const uint32_t idx = h.id - 1u;
         Slot& s = slots[idx];
         s.asset.reset();
@@ -136,7 +147,9 @@ public:
     /// @note 別アセットを指して «蘇る»。
     void Clear() {
         uint32_t highest = genFloor;
-        for (const Slot& s : slots) highest = (std::max)(highest, s.gen);
+        for (const Slot& s : slots) {
+            highest = (std::max)(highest, s.gen);
+        }
         genFloor = (highest == (std::numeric_limits<uint32_t>::max)()) ? 1u : highest + 1u;
         slots.clear();
         freeList.clear();
@@ -144,12 +157,11 @@ public:
         importer.reset();
     }
 
-    std::vector<Slot>                               slots;
-    std::vector<uint32_t>                           freeList;
-    /// @note 新しく作るスロットの初期世代。Clear を跨いで増え続ける。
-    uint32_t                                        genFloor = 1;
-    std::unordered_map<std::string, AssetHandle<T>> cache;
-    std::unique_ptr<IAssetImporter<T>>              importer;
+    std::vector<Slot>                               slots; ///< ハンドルの割り当て番号で引くアセットの保管枠。
+    std::vector<uint32_t>                           freeList; ///< 次の予約で使い回せる空き枠の番号列。
+    uint32_t                                        genFloor = 1; ///< 新しく作るスロットの初期世代。Clear を跨いで増え続ける。
+    std::unordered_map<std::string, AssetHandle<T>> cache; ///< 正規化したアセット参照から予約済みまたは公開済みのハンドルを引く索引。
+    std::unique_ptr<IAssetImporter<T>>              importer; ///< この型の同期ロードで使うインポーターの所有ポインター。
 
 private:
     AssetStore() = default;
@@ -163,7 +175,7 @@ public:
     FBZZ_ENGINE_API static int  GetFlushGeneration();
 
     /// @note 指定ファイルを参照しているキャッシュ済みアセットを、ハンドルを保ったまま再取り込みする。
-    /// @param absPath 監視イベントが返す絶対パス
+    /// @param[in] absPath 監視イベントが返す絶対パス
     /// @return 差し替えた件数。0 ならこのファイルはどのストアにも載っていない
 
     /// @note 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
@@ -218,21 +230,24 @@ public:
 
         const auto it = store.cache.find(key);
         if (it != store.cache.end()) {
-            /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
-            /// @note ここで読んで埋め、実行中の非同期結果は棄却させる。
+            // 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
+            // ここで読んで埋め、実行中の非同期結果は棄却させる。
             if (store.IsPending(it->second) && store.importer) {
                 if (std::unique_ptr<T> filled = store.importer->Import(ResolvePath(key, S_base()), S_res())) {
                     store.Replace(it->second, std::move(filled));
                     NotifyStreamerSyncFilled(AssetStreamTypeName<T>(), key);
                 }
             }
-            if (!store.IsPending(it->second)) store.Pin(it->second);
+            if (!store.IsPending(it->second)) {
+                store.Pin(it->second);
+            }
             return it->second;
         }
 
         std::unique_ptr<T> asset;
-        if (store.importer)
+        if (store.importer) {
             asset = store.importer->Import(ResolvePath(key, S_base()), S_res());
+        }
 
         if (!asset) {
             store.cache[key] = AssetHandle<T>::Null();
@@ -249,7 +264,9 @@ public:
     template<typename T>
     static bool FillPendingWithoutPin(const std::string& key, AssetHandle<T> handle) {
         AssetStore<T>& store = AssetStore<T>::Get();
-        if (!store.IsPending(handle) || !store.importer) return false;
+        if (!store.IsPending(handle) || !store.importer) {
+            return false;
+        }
         std::unique_ptr<T> filled = store.importer->Import(ResolveImportPath(key, IsModelContainer<T>()), S_res());
         return filled && store.Replace(handle, std::move(filled));
     }
@@ -272,7 +289,9 @@ public:
         const std::string key = CacheKey(relativePath);
         AssetStore<T>& store = AssetStore<T>::Get();
         const auto it = store.cache.find(key);
-        if (it == store.cache.end()) return;
+        if (it == store.cache.end()) {
+            return;
+        }
         store.Free(it->second);
         store.cache.erase(it);
         NotifyStreamerUnloaded(AssetStreamTypeName<T>(), key);
@@ -281,10 +300,10 @@ public:
     /// @}
 
 private:
-    FBZZ_ENGINE_API static renderer::ResourceManager* s_resources;
-    FBZZ_ENGINE_API static std::string                s_basePath;
-    FBZZ_ENGINE_API static std::string                s_engineBasePath;
-    FBZZ_ENGINE_API static bool                       s_initialized;
+    FBZZ_ENGINE_API static renderer::ResourceManager* s_resources; ///< アセットの GPU 資源作成に使う ResourceManager の非所有参照。
+    FBZZ_ENGINE_API static std::string                s_basePath; ///< プロジェクトの相対アセット参照を展開する基準ディレクトリ。
+    FBZZ_ENGINE_API static std::string                s_engineBasePath; ///< Engine 共通の相対アセット参照を展開する基準ディレクトリ。
+    FBZZ_ENGINE_API static bool                       s_initialized; ///< アセット索引と型別ロード経路を初期化済みか。
 
     FBZZ_ENGINE_API static std::string Normalize(const std::string& path);
 
@@ -328,4 +347,4 @@ private:
 #include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

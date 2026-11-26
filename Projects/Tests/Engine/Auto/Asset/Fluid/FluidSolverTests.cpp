@@ -81,7 +81,7 @@ TEST(FluidGasSolverTest, ProjectionRemovesMostOfTheDivergence)
     recipe.gas.pressureIterations = 120;
     fluid::FluidGasSolver solver;
     solver.Reset(recipe, 32, 32, 1);
-    /// @note 中心から湧き出す滑らかな流れ (発散しか持たない場)。投影でほぼ消えなければならない。
+    // 中心から湧き出す滑らかな流れ (発散しか持たない場)。投影でほぼ消えなければならない。
     for (int y = 0; y < 32; ++y) {
         for (int x = 0; x < 32; ++x) {
             const float px = (static_cast<float>(x) + 0.5f) / 32.0f * 2.0f - 1.0f;
@@ -116,7 +116,7 @@ TEST(FluidGasSolverTest, HotSmokeRises)
 /// @brief Same seed gives the same result.
 TEST(FluidGasSolverTest, SameSeedGivesTheSameResult)
 {
-    /// @note 焼き直すたびに絵が変わると、パラメーターを 1 つ変えた効果を見比べられない。
+    // 焼き直すたびに絵が変わると、パラメーターを 1 つ変えた効果を見比べられない。
     const fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
     fluid::FluidGasSolver a;
     fluid::FluidGasSolver b;
@@ -132,7 +132,7 @@ TEST(FluidGasSolverTest, SameSeedGivesTheSameResult)
 /// @brief Checks combustion turns fuel into smoke.
 TEST(FluidGasSolverTest, CombustionTurnsFuelIntoSmoke)
 {
-    /// @note 炎のプリセットは煤を直接注入しない。煤があるなら燃焼が働いている。
+    // 炎のプリセットは煤を直接注入しない。煤があるなら燃焼が働いている。
     const fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
     ASSERT_FALSE(recipe.sources.empty());
     EXPECT_EQ(recipe.sources.front().density, 0.0f);
@@ -186,7 +186,7 @@ TEST(FluidLiquidSolverTest, ParticlesSettleOnTheFloorWithoutCollapsing)
         minX = (std::min)(minX, particle.x);
         maxX = (std::max)(maxX, particle.x);
     }
-    /// @note 密度拘束が効いていれば、粒子は 1 点に潰れず床の上へ広がる。
+    // 密度拘束が効いていれば、粒子は 1 点に潰れず床の上へ広がる。
     EXPECT_GT(maxX - minX, solver.ParticleRadius() * 10.0f);
 }
 
@@ -202,7 +202,7 @@ TEST(FluidLiquidSolverTest, DensityStaysNearRest)
     double total = 0.0;
     for (std::size_t i = 0; i < particles.size(); ++i) total += solver.MeasuredDensity(i);
     const float average = static_cast<float>(total / static_cast<double>(particles.size())) / solver.RestDensity();
-    /// @note 表面の粒子は近傍が少ないので平均は 1 を下回る。潰れ (> 1.6) と散乱 (< 0.3) だけを弾く。
+    // 表面の粒子は近傍が少ないので平均は 1 を下回る。潰れ (> 1.6) と散乱 (< 0.3) だけを弾く。
     EXPECT_GT(average, 0.3f);
     EXPECT_LT(average, 1.6f);
 }
@@ -210,7 +210,7 @@ TEST(FluidLiquidSolverTest, DensityStaysNearRest)
 /// @brief Checks every preset produces a visible frame.
 TEST(FluidRecipeTest, EveryPresetProducesAVisibleFrame)
 {
-    /// @note プリセットの数値を触ったときに «焼いたら真っ白 / 真っ透明» を見逃さないための網。
+    // プリセットの数値を触ったときに «焼いたら真っ白 / 真っ透明» を見逃さないための網。
     for (int index = 0; index < static_cast<int>(asset::FluidPreset::Count); ++index) {
         const auto preset = static_cast<asset::FluidPreset>(index);
         fluid::FluidRecipe recipe = asset::MakeFluidPreset(preset);
@@ -281,7 +281,7 @@ TEST(FluidRecipeTest, RoundTripsThroughToml)
 /// @brief Detail layers cross fade without popping.
 TEST(FluidGasSolverTest, DetailLayersCrossFadeWithoutPopping)
 {
-    /// @note 層を初期位置へ戻す瞬間にその層の重みが 0 でないと、細部のノイズがコマ間で «跳ぶ»。
+    // 層を初期位置へ戻す瞬間にその層の重みが 0 でないと、細部のノイズがコマ間で «跳ぶ»。
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     recipe.gas.detailPeriod = 0.5f;
     fluid::FluidGasSolver solver;
@@ -301,7 +301,7 @@ TEST(FluidGasSolverTest, DetailLayersCrossFadeWithoutPopping)
 /// @brief Detail coordinates move with the flow.
 TEST(FluidGasSolverTest, DetailCoordinatesMoveWithTheFlow)
 {
-    /// @note 右へ一様に流れていれば、原点にある細部の座標は «少し左から運ばれてきたもの» になる。
+    // 右へ一様に流れていれば、原点にある細部の座標は «少し左から運ばれてきたもの» になる。
     fluid::FluidRecipe recipe;
     recipe.gas.detailPeriod = 10.0f;
     recipe.gas.turbulence = 0.0f;
@@ -322,7 +322,7 @@ TEST(FluidGasSolverTest, DetailCoordinatesMoveWithTheFlow)
 /// @brief Volume solve has no detail layers.
 TEST(FluidGasSolverTest, VolumeSolveHasNoDetailLayers)
 {
-    /// @note 3D (速度場 PNG) は速度しか焼かない。細部の座標を持つとメモリだけ 2 倍になる。
+    // 3D (速度場 PNG) は速度しか焼かない。細部の座標を持つとメモリだけ 2 倍になる。
     const fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     fluid::FluidGasSolver solver;
     solver.Reset(recipe, 8, 8, 8);
@@ -343,7 +343,7 @@ TEST(FluidGasSolverTest, SphereColliderKeepsSmokeOutAndTheFlowProjected)
         recipe.gas.turbulence = 0.0f;
         recipe.gas.vorticity = 0.0f;
         recipe.gas.pressureIterations = 80;
-        /// @note 煙の重みを切って密度を受け身のスカラーにする。これで «届いたか» は注入量に比例して測れる。
+        // 煙の重みを切って密度を受け身のスカラーにする。これで «届いたか» は注入量に比例して測れる。
         recipe.gas.weight = 0.0f;
         fluid::FluidSource source;
         source.center = { 0.0f, -0.75f, 0.0f };
@@ -355,16 +355,16 @@ TEST(FluidGasSolverTest, SphereColliderKeepsSmokeOutAndTheFlowProjected)
         if (blocked) recipe.colliders.push_back(collider);
         fluid::FluidGasSolver solver;
         solver.Reset(recipe, 32, 32, 1);
-        /// @note 止まった場から 1 回の Advance で進めると CFL の分割が 1 回になり、2 秒を 1 刻みで解いてしまう。
+        // 止まった場から 1 回の Advance で進めると CFL の分割が 1 回になり、2 秒を 1 刻みで解いてしまう。
         for (int frame = 0; frame < 60; ++frame) solver.Advance(1.0f / 30.0f);
         return solver;
     };
     fluid::FluidGasSolver blocked = solve(true);
     fluid::FluidGasSolver open = solve(false);
 
-    /// @note 障害物が無ければ煙は障害物の居る所まで届く (= 下の «中は 0» が空振りではない)。
-    ///       絶対値ではなく «開けたときと塞いだときの差» で見る: 柱の濃さは浮力と散逸で桁が動くが、
-    ///       塞げばそこは必ず 0 になる。
+    // 障害物が無ければ煙は障害物の居る所まで届く (= 下の «中は 0» が空振りではない)。
+    //       絶対値ではなく «開けたときと塞いだときの差» で見る: 柱の濃さは浮力と散逸で桁が動くが、
+    //       塞げばそこは必ず 0 になる。
     const float openAtCentre = open.SampleDensity(0.0f, collider.center.y);
     const float blockedAtCentre = blocked.SampleDensity(0.0f, collider.center.y);
     EXPECT_GT(openAtCentre, 1.0e-3f);
@@ -377,7 +377,9 @@ TEST(FluidGasSolverTest, SphereColliderKeepsSmokeOutAndTheFlowProjected)
             const math::Vector3 p = { (static_cast<float>(x) + 0.5f - static_cast<float>(blocked.SizeX()) * 0.5f) * h,
                                       (static_cast<float>(y) + 0.5f - static_cast<float>(blocked.SizeY()) * 0.5f) * h,
                                       0.0f };
-            if (fluid::FluidColliderDistance(collider, collider.center, p, h, false) >= 0.0f) continue;
+            if (fluid::FluidColliderDistance(collider, collider.center, p, h, false) >= 0.0f) {
+                continue;
+            }
             ++insideCells;
             insideDensity = (std::max)(insideDensity, blocked.Density()[blocked.Index(x, y, 0)]);
         }
@@ -385,7 +387,7 @@ TEST(FluidGasSolverTest, SphereColliderKeepsSmokeOutAndTheFlowProjected)
     EXPECT_EQ(insideDensity, 0.0f);
     EXPECT_GT(blocked.TotalDensity(), 0.0f);
 
-    /// @note 固体の隣を壁として解いても、投影は障害物が無いときと同程度に発散を消せる。
+    // 固体の隣を壁として解いても、投影は障害物が無いときと同程度に発散を消せる。
     blocked.Project();
     open.Project();
     EXPECT_TRUE(std::isfinite(blocked.MaxDivergence()));
@@ -414,7 +416,7 @@ TEST(FluidGasSolverTest, MovingColliderPushesTheAirAhead)
         fluid::FluidGasSolver solver;
         solver.Reset(recipe, 32, 32, 1);
         for (int step = 0; step < 20; ++step) solver.Step(1.0f / 60.0f);
-        /// @note 1/3 秒後、球の中心は x ≈ −0.2 で前の縁は x ≈ 0。その少し先を見る。
+        // 1/3 秒後、球の中心は x ≈ −0.2 で前の縁は x ≈ 0。その少し先を見る。
         float vx = 0.0f;
         float vy = 0.0f;
         float vz = 0.0f;
@@ -424,7 +426,7 @@ TEST(FluidGasSolverTest, MovingColliderPushesTheAirAhead)
     const float pushed = solve(true);
     const float still = solve(false);
     EXPECT_GT(pushed, 0.05f);
-    /// @note 速さを渡さない障害物はただ場所を塞ぐだけで、止まった空気は止まったまま。
+    // 速さを渡さない障害物はただ場所を塞ぐだけで、止まった空気は止まったまま。
     EXPECT_NEAR(still, 0.0f, 1.0e-6f);
 }
 
@@ -465,7 +467,7 @@ TEST(FluidLiquidSolverTest, TiltedPlaneColliderCatchesTheParticles)
     fluid::FluidCollider plane;
     plane.shape = fluid::FluidColliderShape::Plane;
     plane.center = { 0.0f, -0.3f, 0.0f };
-    /// @note 30° 傾いた斜面 (右が高い)
+    // 30° 傾いた斜面 (右が高い)
     plane.direction = { -0.5f, 0.8660254f, 0.0f };
     recipe.colliders.push_back(plane);
 
@@ -473,10 +475,10 @@ TEST(FluidLiquidSolverTest, TiltedPlaneColliderCatchesTheParticles)
     solver.Reset(recipe);
     AdvanceInFrames(solver, 1.0f);
 
-    /// @note 斜面が無ければ 1 秒で y < −1.6 まで落ちて全部消えている。
+    // 斜面が無ければ 1 秒で y < −1.6 まで落ちて全部消えている。
     EXPECT_GE(solver.Particles().size(), 120u);
     EXPECT_GE(MinColliderDistance(solver, plane), -1.0e-3f);
-    /// @note 受け止めた後は斜面を下る (左へ流れる)。
+    // 受け止めた後は斜面を下る (左へ流れる)。
     double meanX = 0.0;
     for (const auto& particle : solver.Particles()) meanX += particle.x;
     if (!solver.Particles().empty()) meanX /= static_cast<double>(solver.Particles().size());
@@ -486,7 +488,7 @@ TEST(FluidLiquidSolverTest, TiltedPlaneColliderCatchesTheParticles)
 /// @brief Texture source without an image still fills the plate.
 TEST(FluidRecipeTest, TextureSourceWithoutAnImageStillFillsThePlate)
 {
-    /// @note 画像が読めないマスクは 1 として引く。«何も起きない» より原因に気付きやすい。
+    // 画像が読めないマスクは 1 として引く。«何も起きない» より原因に気付きやすい。
     fluid::FluidSource plate;
     plate.shape = fluid::FluidSourceShape::Texture;
     plate.texture = "Textures/__missing_fluid_mask__.png";
@@ -522,7 +524,7 @@ TEST(FluidRecipeTest, AutoGridFollowsTheFrameSize)
     recipe.output.frameSize = 128;
     EXPECT_EQ(fluid::ResolveGasResolution(recipe), 128);
     recipe.output.frameSize = 512;
-    /// @note 焼き時間の都合で頭打ち。先は細部ノイズ
+    // 焼き時間の都合で頭打ち。先は細部ノイズ
     EXPECT_EQ(fluid::ResolveGasResolution(recipe), 256);
     recipe.gas.resolution = 96;
     EXPECT_EQ(fluid::ResolveGasResolution(recipe), 96);
@@ -533,7 +535,7 @@ TEST(FluidRecipeTest, AutoGridFollowsTheFrameSize)
 /// @brief Color key stays with its source.
 TEST(FluidGasSolverTest, ColorKeyStaysWithItsSource)
 {
-    /// @note 鍵 0 と鍵 1 の発生源を離して置く。煙の量で重み付けした鍵なので、それぞれの芯は自分の鍵になる。
+    // 鍵 0 と鍵 1 の発生源を離して置く。煙の量で重み付けした鍵なので、それぞれの芯は自分の鍵になる。
     fluid::FluidRecipe recipe;
     recipe.gas.turbulence = 0.0f;
     recipe.gas.vorticity = 0.0f;
@@ -565,10 +567,10 @@ TEST(FluidGasSolverTest, ColorKeyStaysWithItsSource)
 /// @brief Color key does not change the flow.
 TEST(FluidGasSolverTest, ColorKeyDoesNotChangeTheFlow)
 {
-    /// @note 鍵は «描く色を選ぶ» だけ。付けても付けなくても流れ (密度・温度) は 1 ビットも変わらない。
-    ///       燃焼で煤が生まれる爆発で見る (煤が鍵を受け継ぐ経路も通る)。
+    // 鍵は «描く色を選ぶ» だけ。付けても付けなくても流れ (密度・温度) は 1 ビットも変わらない。
+    //       燃焼で煤が生まれる爆発で見る (煤が鍵を受け継ぐ経路も通る)。
     fluid::FluidRecipe plain = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
-    /// @note プリセットは鍵付きの発生源 (Dust Ring) を持つ。«鍵なし» の側は明示的に全部 0 にする。
+    // プリセットは鍵付きの発生源 (Dust Ring) を持つ。«鍵なし» の側は明示的に全部 0 にする。
     for (auto& source : plain.sources) source.colorKey = 0.0f;
     fluid::FluidRecipe keyed = plain;
     for (auto& source : keyed.sources) source.colorKey = 0.7f;
@@ -580,7 +582,7 @@ TEST(FluidGasSolverTest, ColorKeyDoesNotChangeTheFlow)
     b.Advance(0.4f);
     EXPECT_EQ(a.Density(), b.Density());
     EXPECT_EQ(a.Temperature(), b.Temperature());
-    /// @note 鍵の付いた発生源が無いレシピは、鍵が全部 0 (色の量を運ぶのも飛ばしている)。
+    // 鍵の付いた発生源が無いレシピは、鍵が全部 0 (色の量を運ぶのも飛ばしている)。
     EXPECT_TRUE(std::all_of(a.ColorKey().begin(), a.ColorKey().end(), [](float k) { return k == 0.0f; }));
     EXPECT_EQ(a.SampleColorKey(0.0f, 0.0f), 0.0f);
 }
@@ -588,8 +590,8 @@ TEST(FluidGasSolverTest, ColorKeyDoesNotChangeTheFlow)
 /// @brief Fuel only fire carries its key into the soot.
 TEST(FluidGasSolverTest, FuelOnlyFireCarriesItsKeyIntoTheSoot)
 {
-    /// @note 炎のプリセットは煙を注がない (density 0・fuel > 0)。煤は «燃えた燃料の鍵» で生まれるので、
-    ///       発生源に鍵を付ければ、一度も煙を注いでいなくてもその色が乗る。
+    // 炎のプリセットは煙を注がない (density 0・fuel > 0)。煤は «燃えた燃料の鍵» で生まれるので、
+    //       発生源に鍵を付ければ、一度も煙を注いでいなくてもその色が乗る。
     fluid::FluidRecipe plain = asset::MakeFluidPreset(asset::FluidPreset::Fire);
     ASSERT_FALSE(plain.sources.empty());
     ASSERT_EQ(plain.sources.front().density, 0.0f);
@@ -607,7 +609,7 @@ TEST(FluidGasSolverTest, FuelOnlyFireCarriesItsKeyIntoTheSoot)
         b.Advance(1.0f / 30.0f);
     }
     ASSERT_GT(b.TotalDensity(), 0.0f);
-    /// @note 燃料に色を積んでも燃え方は変わらない。
+    // 燃料に色を積んでも燃え方は変わらない。
     EXPECT_EQ(a.Density(), b.Density());
     EXPECT_EQ(a.Temperature(), b.Temperature());
 
@@ -648,12 +650,12 @@ TEST(FluidGasSolverTest, ReplaceOperatorsKeepsTheFieldAndAppliesTheNewParts)
     fluid::FluidRecipe moved = recipe;
     moved.sources[0].center.x = 0.5f;
     ASSERT_TRUE(solver.ReplaceOperators(moved));
-    /// @note 差し替えただけでは場も時刻も 1 ビットも動かない (解き直しの途中から «続ける» ための入口)。
+    // 差し替えただけでは場も時刻も 1 ビットも動かない (解き直しの途中から «続ける» ための入口)。
     EXPECT_EQ(solver.Density(), field);
     EXPECT_EQ(solver.Time(), time);
 
     for (int frame = 0; frame < 12; ++frame) solver.Advance(1.0f / 30.0f);
-    /// @note 新しい場所に湧き、古い場所はもう積み増されない (昇って薄くなるだけ)。
+    // 新しい場所に湧き、古い場所はもう積み増されない (昇って薄くなるだけ)。
     EXPECT_GT(solver.SampleDensity(0.5f, -0.6f), rightBefore + 0.01f);
     EXPECT_LT(solver.SampleDensity(-0.5f, -0.6f), leftBefore);
 }
@@ -665,13 +667,13 @@ TEST(FluidGasSolverTest, ReplaceOperatorsRefusesWhatTheFieldDependsOn)
     fluid::FluidGasSolver solver;
     solver.Reset(recipe, 32, 32, 1);
 
-    /// @note 刻みごとに効くだけの設定は途中から変えてよい。
+    // 刻みごとに効くだけの設定は途中から変えてよい。
     fluid::FluidRecipe tuned = recipe;
     tuned.gas.buoyancy = 5.0f;
     tuned.gas.floor = true;
     EXPECT_TRUE(solver.ReplaceOperators(tuned));
 
-    /// @note 格子の意味が変わるもの (ノイズの切り出し・要求解像度・種類) は断る。
+    // 格子の意味が変わるもの (ノイズの切り出し・要求解像度・種類) は断る。
     fluid::FluidRecipe reseeded = recipe;
     reseeded.seed = recipe.seed + 1u;
     EXPECT_FALSE(solver.ReplaceOperators(reseeded));
@@ -703,18 +705,18 @@ TEST(FluidLiquidSolverTest, ReplaceOperatorsKeepsTheParticlesAndTheEmittedCounts
     EXPECT_EQ(solver.Particles().size(), count);
     EXPECT_EQ(solver.Time(), time);
 
-    /// @note 撃ち出し済みの数を発生源ごとに引き継ぐので、同じ発生源が最初から湧き直すことはない。
+    // 撃ち出し済みの数を発生源ごとに引き継ぐので、同じ発生源が最初から湧き直すことはない。
     AdvanceInFrames(solver, 0.3f);
     EXPECT_EQ(solver.Particles().size(), count);
 
-    /// @note 足した発生源はその場で効く。
+    // 足した発生源はその場で効く。
     fluid::FluidRecipe added = moved;
     added.sources.push_back(DropletSource({ 0.4f, 0.5f, 0.0f }, 40));
     ASSERT_TRUE(solver.ReplaceOperators(added));
     AdvanceInFrames(solver, 0.3f);
     EXPECT_EQ(solver.Particles().size(), count + 40);
 
-    /// @note 粒子の並びの意味が変わるもの (粒子半径・種類) は断る。
+    // 粒子の並びの意味が変わるもの (粒子半径・種類) は断る。
     fluid::FluidRecipe thicker = added;
     thicker.liquid.particleRadius = added.liquid.particleRadius * 2.0f;
     EXPECT_FALSE(solver.ReplaceOperators(thicker));

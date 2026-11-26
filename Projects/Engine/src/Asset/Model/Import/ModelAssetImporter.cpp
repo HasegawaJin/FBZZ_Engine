@@ -86,7 +86,7 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
         bone.offsetMatrix = FromFloatArray(bd.offsetMatrix);
         skel.boneMap[bone.name] = static_cast<int>(bi);
     }
-    /// @note 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
     BuildReferencePose(skel);
     return true;
 }
@@ -146,28 +146,37 @@ bool SkipSubmeshPayload(BinaryReader& r, const FzSubmeshHeader& header,
         ? sizeof(renderer::SkinnedVertex)
         : (hasVertexColor ? sizeof(renderer::Vertex) : sizeof(FzVertexV1));
     if (!r.Skip(static_cast<std::size_t>(header.vertexCount) * vertexStride
-                + static_cast<std::size_t>(header.indexCount) * sizeof(uint32_t)))
+                + static_cast<std::size_t>(header.indexCount) * sizeof(uint32_t))) {
         return false;
+    }
     for (uint32_t mi = 0; mi < extension.morphTargetCount; ++mi) {
         FzMorphTargetHeader morphHeader{};
-        if (!r.Read(morphHeader) || morphHeader.vertexCount != header.vertexCount) return false;
-        if (!r.Skip(static_cast<std::size_t>(morphHeader.vertexCount) * sizeof(FzMorphDelta))) return false;
+        if (!r.Read(morphHeader) || morphHeader.vertexCount != header.vertexCount) {
+            return false;
+        }
+        if (!r.Skip(static_cast<std::size_t>(morphHeader.vertexCount) * sizeof(FzMorphDelta))) {
+            return false;
+        }
     }
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
     const std::string&         absPath,
     renderer::ResourceManager* resources)
 {
     FBZZ_LOG_INFO("ModelAssetImporter: importing [%s]", absPath.c_str());
-    /// @note SDK の読み取り専用原本には project のベイクが無い場合があるため、既存の原本 importer を共有する。
+    // SDK の読み取り専用原本には project のベイクが無い場合があるため、既存の原本 importer を共有する。
     if (IsModelSourcePath(absPath)) {
-        if (!resources) return nullptr;
+        if (!resources) {
+            return nullptr;
+        }
         auto source = ModelImporter::Import(absPath, *resources);
-        if (!source || source->meshes.empty()) return nullptr;
+        if (!source || source->meshes.empty()) {
+            return nullptr;
+        }
         auto model = std::make_unique<ModelAsset>();
         model->skeleton = std::move(source->skeleton);
         model->nodes = std::move(source->nodes);
@@ -205,7 +214,9 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportPartial(
         return nullptr;
     }
     auto model = ImportFromReader(r, absPath, resources, firstResidentLod);
-    if (outBytesRead) *outBytesRead = r.bytesRead;
+    if (outBytesRead) {
+        *outBytesRead = r.bytesRead;
+    }
     return model;
 }
 
@@ -228,7 +239,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
         return nullptr;
     }
 
-    /// @note v4 以前は静的頂点に色が無いだけで、他のチャンクは同一レイアウト。
+    // v4 以前は静的頂点に色が無いだけで、他のチャンクは同一レイアウト。
     if (hdr.version < FZMODEL_VERSION_PRE_VERTEX_COLOR || hdr.version > FZMODEL_VERSION
         || hdr.lodCount == 0) {
         FBZZ_LOG_ERROR("ModelAssetImporter: unsupported header version=%u lodCount=%u [%s]",
@@ -240,7 +251,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
     auto model = std::make_unique<ModelAsset>();
     const bool skinned = (hdr.flags & FZMODEL_FLAG_SKINNED) != 0;
 
-    /// @note マテリアルスロット名
+    // マテリアルスロット名
     model->materialSlotNames.resize(hdr.materialSlotCount);
     for (uint32_t i = 0; i < hdr.materialSlotCount; ++i) {
         char nameBuf[FZMODEL_SLOT_NAME_LEN]{};
@@ -251,10 +262,10 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
         model->materialSlotNames[i] = nameBuf;
     }
 
-    /// @note 最低品質の LOD は必ず読む。これより高品質な LOD は本体をシークで飛ばす。
+    // 最低品質の LOD は必ず読む。これより高品質な LOD は本体をシークで飛ばす。
     const uint32_t firstResident = (std::min)(firstResidentLod, hdr.lodCount - 1u);
 
-    /// @note LOD ループ
+    // LOD ループ
     model->lods.resize(hdr.lodCount);
     for (uint32_t li = 0; li < hdr.lodCount; ++li) {
         FzLodHeader lodHdr{};
@@ -312,11 +323,12 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
                                    li, si, smHdr.vertexCount, absPath.c_str());
                     return nullptr;
                 }
-                if (resources)
+                if (resources) {
                     mesh->vertexBuffer = resources->CreateVertexBuffer(
                         mesh->cpuVertices.data(),
                         smHdr.vertexCount * sizeof(renderer::Vertex),
                         sizeof(renderer::Vertex));
+                }
             } else {
                 mesh->cpuSkinnedVertices.resize(smHdr.vertexCount);
                 if (!r.ReadBytes(mesh->cpuSkinnedVertices.data(),
@@ -325,11 +337,12 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
                                    li, si, smHdr.vertexCount, absPath.c_str());
                     return nullptr;
                 }
-                if (resources)
+                if (resources) {
                     mesh->vertexBuffer = resources->CreateVertexBuffer(
                         mesh->cpuSkinnedVertices.data(),
                         smHdr.vertexCount * sizeof(renderer::SkinnedVertex),
                         sizeof(renderer::SkinnedVertex));
+                }
             }
 
             mesh->cpuIndices.resize(smHdr.indexCount);
@@ -339,11 +352,12 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
                                li, si, smHdr.indexCount, absPath.c_str());
                 return nullptr;
             }
-            /// @note ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
+            // ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
             mesh->ComputeBoundsExtents();
-            if (resources)
+            if (resources) {
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);
+            }
 
             const uint32_t morphTargetCount = smExtV3.morphTargetCount;
             mesh->morphTargets.resize(morphTargetCount);
@@ -361,7 +375,9 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
                 morph.tangentDeltas.resize(morphHeader.vertexCount);
                 for (uint32_t vi = 0; vi < morphHeader.vertexCount; ++vi) {
                     FzMorphDelta delta{};
-                    if (!r.Read(delta)) return nullptr;
+                    if (!r.Read(delta)) {
+                        return nullptr;
+                    }
                     morph.positionDeltas[vi] = {
                         delta.position[0], delta.position[1], delta.position[2]
                     };
@@ -379,15 +395,15 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
         }
     }
 
-    /// @note スケルトン
+    // スケルトン
     if (skinned) {
         if (!ReadSkeleton(r, *model, absPath)) {
             FBZZ_LOG_WARN("ModelAssetImporter: skeleton read failed [%s]", absPath.c_str());
         }
     }
 
-    /// @note ノード階層 (v4)。読めなくても配置側が「全 submesh を 1 GameObject」へ
-    /// @note フォールバックできるため、失敗は警告に留めてモデル自体は返す。
+    // ノード階層 (v4)。読めなくても配置側が「全 submesh を 1 GameObject」へ
+    // フォールバックできるため、失敗は警告に留めてモデル自体は返す。
     if ((hdr.flags & FZMODEL_FLAG_NODES) != 0u) {
         model->nodeTransformsBaked =
             (hdr.flags & FZMODEL_FLAG_NODE_TRANSFORMS_BAKED) != 0u;
@@ -401,4 +417,4 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
     return model;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

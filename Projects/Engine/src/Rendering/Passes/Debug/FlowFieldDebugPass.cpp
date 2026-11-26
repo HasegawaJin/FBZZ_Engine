@@ -66,12 +66,13 @@ void DrawWireBox(renderer::IRenderer& r, const math::Vector3& center, const math
             (i & 4) ? halfExtents.z : -halfExtents.z };
         corners[static_cast<size_t>(i)] = center + rotation * local;
     }
-    /// @note 添字のビットが 1 つだけ違う角同士が辺。
+    // 添字のビットが 1 つだけ違う角同士が辺。
     for (int i = 0; i < 8; ++i)
         for (int bit = 1; bit < 8; bit <<= 1)
-            if ((i & bit) == 0)
+            if ((i & bit) == 0) {
                 renderer::DebugDraw::LineDashed(r, corners[static_cast<size_t>(i)],
                                                 corners[static_cast<size_t>(i | bit)], color, 0.15f, 16);
+            }
 }
 
 /// @brief 中心から外 (Source) または中 (Sink) へ向かう 6 本の矢印。
@@ -97,7 +98,7 @@ void DrawField(renderer::IRenderer& r, const ActiveFlowField& field, const math:
     const math::Vector3& center = field.position;
 
     if (field.type == FlowFieldType::Baked) {
-        /// @note 未割り当て・読めない 速度場 PNG は «箱はあるのに何も起きない» ので、赤い対角線で知らせる。
+        // 未割り当て・読めない 速度場 PNG は «箱はあるのに何も起きない» ので、赤い対角線で知らせる。
         const bool missing = field.vectorField == nullptr || field.vectorField->Empty();
         DrawWireBox(r, center, field.extents, rotation, baseColor, dashed);
         if (missing) {
@@ -113,15 +114,16 @@ void DrawField(renderer::IRenderer& r, const ActiveFlowField& field, const math:
     const bool global = field.radius <= 0.0f;
     const float glyphRadius = global ? kGlobalGlyphRadius : field.radius;
     if (global) {
-        /// @note 全体に効く場は二重の小球で «境界なし» を示す。
+        // 全体に効く場は二重の小球で «境界なし» を示す。
         DrawDebugSphere(r, center, 0.15f, baseColor, dashed);
         DrawDebugSphere(r, center, 0.25f, baseColor, dashed);
     } else {
         DrawDebugSphere(r, center, field.radius, baseColor, dashed);
         const float guide = field.radius
             * (1.0f - std::pow(kFalloffGuideInfluence, 1.0f / field.falloffPower));
-        if (guide > field.radius * 0.02f)
+        if (guide > field.radius * 0.02f) {
             DrawDebugSphere(r, center, guide, WithAlpha(baseColor, 0.4f), true);
+        }
     }
 
     const float sign = field.strength >= 0.0f ? 1.0f : -1.0f;
@@ -148,7 +150,7 @@ void DrawField(renderer::IRenderer& r, const ActiveFlowField& field, const math:
         break;
     }
     case FlowFieldType::Curl: {
-        /// @note 向きを持たない乱流。渦を逆向きに 2 つ並べて «ばらばら» を示す。実際の向きは Flow Samples で見る。
+        // 向きを持たない乱流。渦を逆向きに 2 つ並べて «ばらばら» を示す。実際の向きは Flow Samples で見る。
         const math::Vector3 offset = DebugPerpendicular(math::Vector3::UP) * (glyphRadius * 0.25f);
         DrawDebugSwirl(r, center + offset, math::Vector3::UP, glyphRadius * 0.18f, 1.0f, glyphColor);
         DrawDebugSwirl(r, center - offset, math::Vector3::UP, glyphRadius * 0.18f, -1.0f, glyphColor);
@@ -175,14 +177,18 @@ void FlowFieldDebugPass::Execute(renderer::PassResources&, RenderPassContext& ct
     for (EntityID id : ctx.scene.GetEntities<FlowField>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         const FlowField* component = ctx.scene.GetComponent<FlowField>(id);
-        if (go == nullptr || component == nullptr || !go->activeInHierarchy()) continue;
+        if (go == nullptr || component == nullptr || !go->activeInHierarchy()) {
+            continue;
+        }
 
         const float alpha = IsSelectedForDebug(*go, ctx) ? 1.0f : kUnselectedAlpha;
         const math::Quaternion& rotation = go->transform.worldRotation;
         for (const FlowFieldSettings& settings : component->forces) {
-            if (!settings.enabled) continue;
+            if (!settings.enabled) {
+                continue;
+            }
             const ActiveFlowField field = ResolveFlowField(settings, go->transform.worldPosition, rotation);
-            /// @note channels を絞った場は一部のエミッターにしか効かないので破線にする。
+            // channels を絞った場は一部のエミッターにしか効かないので破線にする。
             const bool restricted = settings.channels != 0xFFFFFFFFu;
             DrawField(ctx.renderer, field, rotation, WithAlpha(FlowFieldColor(settings.fieldType), alpha),
                       restricted);

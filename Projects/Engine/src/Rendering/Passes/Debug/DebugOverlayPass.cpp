@@ -37,17 +37,20 @@ math::Vector3 DebugPerpendicular(const math::Vector3& axis)
 void DrawDebugCircle(renderer::IRenderer& r, const math::Vector3& center, const math::Vector3& axis,
                      float radius, const math::Vector4& color, bool dashed)
 {
-    if (radius <= 0.0f) return;
+    if (radius <= 0.0f) {
+        return;
+    }
     const math::Vector3 u = DebugPerpendicular(axis);
     const math::Vector3 v = math::Vector3::Cross(axis, u);
-    /// @note 破線 1 本の長さは円周から決める。固定長だと大きな球が点線の粒で埋まる。
+    // 破線 1 本の長さは円周から決める。固定長だと大きな球が点線の粒で埋まる。
     const float dashLength = (std::max)(radius * kTwoPi / (kCircleSegments * 2.0f), 0.03f);
     math::Vector3 prev = center + u * radius;
     for (int i = 1; i <= kCircleSegments; ++i) {
         const float angle = kTwoPi * static_cast<float>(i) / kCircleSegments;
         const math::Vector3 next = center + (u * std::cos(angle) + v * std::sin(angle)) * radius;
-        if (!dashed)
+        if (!dashed) {
             renderer::DebugDraw::Line(r, prev, next, color);
+        }
         else if (i % 2 == 0)
             renderer::DebugDraw::LineDashed(r, prev, next, color, dashLength, 2);
         prev = next;
@@ -65,7 +68,9 @@ void DrawDebugSphere(renderer::IRenderer& r, const math::Vector3& center, float 
 void DrawDebugSwirl(renderer::IRenderer& r, const math::Vector3& center, const math::Vector3& axis,
                     float radius, float sign, const math::Vector4& color)
 {
-    if (radius <= 0.0f || sign == 0.0f) return;
+    if (radius <= 0.0f || sign == 0.0f) {
+        return;
+    }
     constexpr int   kSegments = 24;
     constexpr float kSweep    = kTwoPi * 0.75f;
     const float direction = sign > 0.0f ? 1.0f : -1.0f;
@@ -81,7 +86,7 @@ void DrawDebugSwirl(renderer::IRenderer& r, const math::Vector3& center, const m
         renderer::DebugDraw::Line(r, prev, next, color);
         prev = next;
     }
-    /// @note 矢じりは弧の終端の接線方向。弧の弦へ向けると半径が小さいとき内側へ倒れて見える。
+    // 矢じりは弧の終端の接線方向。弧の弦へ向けると半径が小さいとき内側へ倒れて見える。
     const float endAngle = direction * kSweep;
     const math::Vector3 tangent = (v * std::cos(endAngle) - u * std::sin(endAngle)) * direction;
     const float head = radius * 0.3f;

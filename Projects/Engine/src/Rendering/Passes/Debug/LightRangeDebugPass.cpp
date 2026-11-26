@@ -24,21 +24,26 @@ void LightRangeDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
     constexpr math::Vector4 kColor   = { 1.0f, 0.90f, 0.30f, 1.0f };
     constexpr float         kDeg2Rad = 3.14159265f / 180.0f;
 
-    /// @note 範囲は淡く、光源の形は濃く描く。Tube / Area は «どこから» と «どこまで» が別物。
+    // 範囲は淡く、光源の形は濃く描く。Tube / Area は «どこから» と «どこまで» が別物。
     const math::Vector4 kShape = kColor;
     const math::Vector4 kRange = { kColor.x, kColor.y, kColor.z, kColor.w * 0.45f };
 
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
+        if (!go.activeInHierarchy()) {
+            continue;
+        }
         const auto* light = go.GetComponent<LightComponent>();
-        if (!light || !light->enabled) continue;
+        if (!light || !light->enabled) {
+            continue;
+        }
         const math::Vector3 pos = go.transform.worldPosition;
         switch (light->type) {
         case LightComponent::Type::Point:
             renderer::DebugDraw::Sphere(ctx.renderer, pos, light->range, kRange);
-            if (light->sourceRadius > 0.0f)
+            if (light->sourceRadius > 0.0f) {
                 renderer::DebugDraw::Sphere(ctx.renderer, pos, light->sourceRadius, kShape);
+            }
             break;
 
         case LightComponent::Type::Spot: {
@@ -57,7 +62,7 @@ void LightRangeDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
             break;
 
         case LightComponent::Type::Tube: {
-            /// @note 管の軸は Right (ライト収集と同じ規約)。Capsule の軸はローカル Y なので Z まわり -90 度を挟む。
+            // 管の軸は Right (ライト収集と同じ規約)。Capsule の軸はローカル Y なので Z まわり -90 度を挟む。
             const math::Quaternion toX =
                 math::Quaternion::FromAxisAngle({ 0.0f, 0.0f, 1.0f }, -3.14159265f * 0.5f);
             const math::Quaternion rot = go.transform.worldRotation * toX;
@@ -69,7 +74,7 @@ void LightRangeDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
         }
 
         case LightComponent::Type::Area: {
-            /// @note 面の法線は Forward、幅が Right、高さが Up。
+            // 面の法線は Forward、幅が Right、高さが Up。
             const math::Vector3 n  = go.transform.forward;
             const math::Vector3 rt = go.transform.right;
             const math::Vector3 up = go.transform.up;
@@ -82,8 +87,9 @@ void LightRangeDebugPass::Execute(renderer::PassResources&, RenderPassContext& c
             renderer::DebugDraw::Polyline(ctx.renderer, quad, true, kShape);
             const float arrow = (std::min)(light->range * 0.25f, 3.0f);
             renderer::DebugDraw::Arrow(ctx.renderer, pos, pos + n * arrow, 0.2f, 0.06f, kShape);
-            if (light->areaTwoSided)
+            if (light->areaTwoSided) {
                 renderer::DebugDraw::Arrow(ctx.renderer, pos, pos - n * arrow, 0.2f, 0.06f, kShape);
+            }
             renderer::DebugDraw::Sphere(ctx.renderer, pos, light->range, kRange);
             break;
         }

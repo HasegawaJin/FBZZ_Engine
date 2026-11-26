@@ -15,23 +15,33 @@ namespace fbzz::scene {
 
 std::string ResolveUIFontBasePath(const std::string& reference)
 {
-    if (reference.empty()) return {};
+    if (reference.empty()) {
+        return {};
+    }
     const std::string extension = ".fnt";
     if (reference.starts_with("guid:") || reference.ends_with(extension)
         || renderer::FontAtlas::IsDynamicFontPath(reference)) {
         std::string resolved = asset::AssetManager::ResolveAssetPath(reference);
-        if (resolved.ends_with(extension)) resolved.resize(resolved.size() - extension.size());
+        if (resolved.ends_with(extension)) {
+            resolved.resize(resolved.size() - extension.size());
+        }
         return resolved;
     }
     std::string resolved = asset::AssetManager::ResolveAssetPath(reference + extension);
-    if (resolved.ends_with(extension)) return resolved.substr(0, resolved.size() - extension.size());
+    if (resolved.ends_with(extension)) {
+        return resolved.substr(0, resolved.size() - extension.size());
+    }
     return reference;
 }
 
 void ApplyUIThemeToText(const asset::UIThemeStyle& style, UIText& text)
 {
-    if (!text.overrideThemeColor) text.color = style.textColor;
-    if (!text.overrideThemeFont) text.fontPath = style.fontPath;
+    if (!text.overrideThemeColor) {
+        text.color = style.textColor;
+    }
+    if (!text.overrideThemeFont) {
+        text.fontPath = style.fontPath;
+    }
     if (!text.overrideThemeTypography) {
         text.fontSize = style.fontSize;
         text.letterSpacing = style.letterSpacing;

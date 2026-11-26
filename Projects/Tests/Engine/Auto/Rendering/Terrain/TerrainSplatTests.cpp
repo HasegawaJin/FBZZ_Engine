@@ -62,10 +62,14 @@ constexpr float kSplatStep = 1.0f / 255.0f;
         if (i > 0) {
             const bool ordered = weights[i - 1] > weights[i] ||
                                  (weights[i - 1] == weights[i] && (weights[i] == 0 || indices[i - 1] < indices[i]));
-            if (!ordered) return ::testing::AssertionFailure() << "slots " << i - 1 << "," << i << " out of order";
+            if (!ordered) {
+                return ::testing::AssertionFailure() << "slots " << i - 1 << "," << i << " out of order";
+            }
         }
     }
-    if (sum != 255) return ::testing::AssertionFailure() << "weight sum " << sum;
+    if (sum != 255) {
+        return ::testing::AssertionFailure() << "weight sum " << sum;
+    }
     return ::testing::AssertionSuccess();
 }
 
@@ -124,7 +128,7 @@ scene::TerrainComponent CaveTerrain()
     quad({2,-6,4},{2,-2,4},{2,-6,10},{2,-2,10});
     quad({10,-6,4},{10,-6,10},{10,-2,4},{10,-2,10});
     quad({2,-6,10},{2,-2,10},{10,-6,10},{10,-2,10});
-    /// @note Entrance collars close the cut heightfield sides and the front roof thickness.
+    // 入口の押さえ形状で切り取った高さ場の側面と、手前の屋根の厚みの部分を閉じる。
     const auto first = static_cast<uint32_t>(tc.surfacePositions.size());
     tc.surfacePositions.insert(tc.surfacePositions.end(), {{2,0,0},{2,0,4},{2,-6,4},{10,0,0},{10,-6,4},{10,0,4}});
     tc.surfaceIndices.insert(tc.surfaceIndices.end(), {first,first+1,first+2,first+3,first+4,first+5});
@@ -163,7 +167,9 @@ thread_local TerrainQueryContractContext* terrainQueryContractContext = nullptr;
 void MutateTerrainAndReenterOnMathContract(const math::ContractViolation&)
 {
     auto* context = terrainQueryContractContext;
-    if (!context || ++context->callbackCount != 1) return;
+    if (!context || ++context->callbackCount != 1) {
+        return;
+    }
     context->outerTerrain->surfaceIndices[2] = static_cast<uint32_t>(context->outerTerrain->surfacePositions.size());
     context->nestedHit = scene::TrySampleTerrainFloorWorld(*context->nestedTerrain, {}, {.25f,9,.25f}, 2, context->nestedSample);
 }
@@ -275,7 +281,7 @@ TEST_F(TerrainSplatTest, BlendTowardInsertsFifthLayerIntoFullVertex)
     scene::terrain_splat::BlendToward(idx.data(), w.data(), 4, 0.5f);
     scene::terrain_splat::BlendToward(idxTiny.data(), wTiny.data(), 4, 1e-4f);
 
-    /// @note 補間後に 5 層目 (最も軽い層 3) を捨てて正規化し直すので、層 4 は 0.5 以上になる。
+    // 補間後に 5 層目 (最も軽い層 3) を捨てて正規化し直すので、層 4 は 0.5 以上になる。
     EXPECT_TRUE(IsCanonical(idx.data(), w.data()));
     EXPECT_GE(scene::terrain_splat::WeightOf(idx.data(), w.data(), 4), 0.5f);
     EXPECT_FLOAT_EQ(scene::terrain_splat::WeightOf(idx.data(), w.data(), 3), 0.0f);
@@ -334,7 +340,9 @@ TEST_F(TerrainSplatTest, RemoveLayerRedistributesOnlyTheRemovedWeight)
     for (size_t v = 0; v < after.size(); ++v) {
         EXPECT_TRUE(IsCanonical(&tc.splatIndices[v * 4], &tc.splatWeights[v * 4])) << "vertex " << v;
         const float removed = before[v].at("Terrain/L1");
-        if (removed >= 1.0f) continue;
+        if (removed >= 1.0f) {
+            continue;
+        }
         for (const auto& [material, weight] : after[v])
             EXPECT_NEAR(weight, before[v].at(material) / (1.0f - removed), 2.0f * kSplatStep)
                 << "vertex " << v << " " << material;
@@ -514,7 +522,7 @@ TEST_F(TerrainAssetSerializerTest, FztnV1DenseWeightsFoldIntoTopFourLayers)
     hdr.columns = 2;
     hdr.rows = 1;
     hdr.layerCount = layerCount;
-    /// @note 頂点 0 は 6 層すべてに重み、頂点 1 は層 5 だけ。v1 の並びは [頂点][層]。
+    // 頂点 0 は 6 層すべてに重み、頂点 1 は層 5 だけ。v1 の並びは [頂点][層]。
     const std::uint8_t dense[layerCount * 2] = { 10, 20, 60, 40, 50, 75,  0, 0, 0, 0, 0, 255 };
     {
         std::ofstream f(path, std::ios::binary);
@@ -572,7 +580,7 @@ TEST_F(TerrainAssetSerializerTest, HoleAndMissingFloorReturnFalseWithoutChanging
     EXPECT_VEC3_NEAR(sample.normal, sentinel.normal, 0);
     ASSERT_TRUE(tc.SetSurfaceGeometry({}, {}));
     EXPECT_FALSE(scene::TrySampleTerrainWorld(tc, transform, 6, 2, sample));
-    /// @note The legacy scalar is intentionally an authoring sample, and preserves its prior heightfield contract.
+    // The legacy scalar is intentionally an authoring sample, and preserves its prior heightfield contract.
     EXPECT_FLOAT_EQ(tc.GetHeightAt(6,2), 0);
     EXPECT_VEC3_NEAR(sample.position, sentinel.position, 0);
     EXPECT_TRUE(scene::TrySampleTerrainWorld(tc, transform, 1, 7, sample));
@@ -728,7 +736,7 @@ TEST_F(TerrainAssetSerializerTest, CaveSphereCanTravelThroughEntranceAndStopsAtW
     EXPECT_NEAR(body.GetPosition().y, -4, .02f);
     body.SetVelocity({4,0,0});
     for (int i = 0; i < 120; ++i) world.Step(1.0f / 60.0f);
-    /// @note PhysicsSolver permits 1cm contact slop; include float rounding without weakening passage checks.
+    // PhysicsSolver permits 1cm contact slop; include float rounding without weakening passage checks.
     EXPECT_NEAR(body.GetPosition().x, 9.6f, .02f);
     body.SetPosition({6,-4,7}); body.SetVelocity({0,-2,0});
     for (int i = 0; i < 120; ++i) world.Step(1.0f / 60.0f);
@@ -849,7 +857,7 @@ TEST_F(TerrainSplatTest, PreservesSlopedSurfaceHeightAndNormalUnderYawPitchRollA
     pose.worldRotation = math::Quaternion::FromEuler({.2f,.6f,-.3f});
     const auto worldPoint = pose.GetWorldMatrix() * math::Vector4{.5f,2.75f,.5f,1};
     const math::Vector3 expectedPosition{worldPoint.x,worldPoint.y,worldPoint.z};
-    /// @note The plane y=2+x+z/2 has scaled unit normal (-3,2,-6)/7 before rotation.
+    // The plane y=2+x+z/2 has scaled unit normal (-3,2,-6)/7 before rotation.
     const auto expectedNormal = pose.worldRotation * math::Vector3{-3.0f/7,2.0f/7,-6.0f/7};
     scene::TerrainSurfaceSample sample;
 
@@ -1019,7 +1027,7 @@ TEST_F(TerrainSplatTest, ProjectionMissRejectionPreservesEdgeSlackAndLargeSurfac
     auto small = SurfaceOnlyTerrain();
     ASSERT_TRUE(small.SetSurfaceGeometry({{0,1,0},{0,3,1},{1,2,0}}, {0,1,2}));
     const scene::TerrainSurfaceSample sentinel{{71,72,73},{74,75,76}};
-    /// @note u may exceed 1+epsilon when v is negative within epsilon; a one-sided upper-u test would lose these contacts.
+    // u may exceed 1+epsilon when v is negative within epsilon; a one-sided upper-u test would lose these contacts.
     const std::array<math::Vector3, 11> probes{{{0,1.5f,0}, {-.75e-6f,1.5f,1+1.5e-6f},
         {1+1.5e-6f,1.5f,-.75e-6f}, {-.5e-6f,1.5f,.25f}, {.25f,1.5f,-.5e-6f},
         {.5f,1.5f,.5f}, {1+4e-6f,1.5f,0}, {0,1.5f,1+4e-6f}, {-4e-6f,1.5f,.25f},
@@ -1044,8 +1052,12 @@ TEST_F(TerrainSplatTest, ProjectionMissRejectionPreservesEdgeSlackAndLargeSurfac
                 SCOPED_TRACE(probe.z);
                 auto actual = sentinel, expected = sentinel;
                 const auto query = [&](const scene::TerrainComponent& terrain, scene::TerrainSurfaceSample& result) {
-                    if (selection == 0) return scene::TrySampleTerrainWorld(terrain, pose, point.x, point.z, result);
-                    if (selection == 1) return scene::TrySampleTerrainFloorWorld(terrain, pose, {point.x,point.y+20,point.z}, 40, result);
+                    if (selection == 0) {
+                        return scene::TrySampleTerrainWorld(terrain, pose, point.x, point.z, result);
+                    }
+                    if (selection == 1) {
+                        return scene::TrySampleTerrainFloorWorld(terrain, pose, {point.x,point.y+20,point.z}, 40, result);
+                    }
                     return scene::TrySampleTerrainCeilingWorld(terrain, pose, {point.x,point.y-20,point.z}, 40, result);
                 };
                 EXPECT_EQ(query(small, actual), query(large, expected));
@@ -1205,7 +1217,7 @@ TEST_F(TerrainSplatTest, RejectsCallbackMutatedGeometryAfterNestedQueryWithoutCh
     ASSERT_TRUE(scene::TrySampleTerrainFloorWorld(outer, {}, {.25f,3,.25f}, 3, sample));
 
     EXPECT_FLOAT_EQ(sample.position.y, 2);
-    /// @note Finite steep heights overflow normal length-squared; the interpolated zero normal reaches the public MathContract handler.
+    // Finite steep heights overflow normal length-squared; the interpolated zero normal reaches the public MathContract handler.
     outer.heightData = {0,1e20f,0,1e20f};
     TerrainQueryContractContext context;
     context.outerTerrain = &outer;
@@ -1254,9 +1266,13 @@ TEST_F(TerrainSplatTest, SceneTerrainProxyKeepsAncestorActivityFirstTieAndFalseO
         math::Vector3 expectedPosition=sentinel,expectedNormal=sentinel;
         bool expected=false;scene::TerrainSurfaceSample best;
         for(auto& object:queryScene.GameObjects()) {
-            if(!object.activeInHierarchy())continue;
+            if(!object.activeInHierarchy()) {
+                continue;
+            }
             const auto* terrain=object.GetComponent<scene::TerrainComponent>();
-            if(!terrain || !terrain->enabled)continue;
+            if(!terrain || !terrain->enabled) {
+                continue;
+            }
             scene::TerrainSurfaceSample candidate;
             const bool hit=ceiling?scene::TrySampleTerrainCeilingWorld(*terrain,object.transform,reference,10,candidate)
                 :scene::TrySampleTerrainFloorWorld(*terrain,object.transform,reference,10,candidate);

@@ -58,7 +58,9 @@ WaterDepthSceneCache& DepthCacheFor(const Scene& scene)
     }
     size_t target = 0;
     for (size_t i = 1; i < kSceneCacheCapacity; ++i)
-        if (g_cacheUse[i] < g_cacheUse[target]) target = i;
+        if (g_cacheUse[i] < g_cacheUse[target]) {
+            target = i;
+        }
     g_cacheGenerations[target] = generation;
     g_cacheUse[target] = ++g_cacheClock;
     g_depthCaches[target] = {};
@@ -67,10 +69,14 @@ WaterDepthSceneCache& DepthCacheFor(const Scene& scene)
 
 float MaterialFloat(const asset::MaterialAssetAuthoring* material, const char* key, float fallback)
 {
-    if (!material) return fallback;
+    if (!material) {
+        return fallback;
+    }
     const auto found = material->params.find(key);
     if (found == material->params.end() || found->second.empty()
-        || !std::isfinite(found->second.front())) return fallback;
+        || !std::isfinite(found->second.front())) {
+        return fallback;
+    }
     return found->second.front();
 }
 
@@ -78,8 +84,12 @@ float MaterialFloat(const asset::MaterialAssetAuthoring* material, const char* k
 /// @see Docs/design/water-wave-optics-morph.md 「浅水減衰」。
 float SmoothAttenuation(float depth, float threshold)
 {
-    if (depth <= 0.0f) return 0.0f;
-    if (depth >= threshold) return 1.0f;
+    if (depth <= 0.0f) {
+        return 0.0f;
+    }
+    if (depth >= threshold) {
+        return 1.0f;
+    }
     const float t = depth / threshold;
     return t * t * (3.0f - 2.0f * t);
 }
@@ -100,14 +110,18 @@ bool TexelFactor(const WaterDepthField& field, size_t pixel, float& out, float l
     }
     float depth = 0.0f;
     if (!TryDecodeWaterTerrainDepth(field.rgba[pixel + 1], field.rgba[pixel + 2],
-            field.depthRange, depth)) return false;
+            field.depthRange, depth)) {
+        return false;
+    }
     if ((flags & 4u) != 0u) {
         out = !dry && depth > 0.0f ? 1.0f : 0.0f;
         return true;
     }
     if (landFadeDepth > 0.0f) {
         constexpr float SHORE_HEIGHT_FACTOR = 0.65f;
-        if (dry) depth = (std::min)(depth, 0.0f);
+        if (dry) {
+            depth = (std::min)(depth, 0.0f);
+        }
         out = depth < 0.0f
             ? SHORE_HEIGHT_FACTOR * SmoothAttenuation(depth + landFadeDepth, landFadeDepth)
             : SHORE_HEIGHT_FACTOR + (1.0f - SHORE_HEIGHT_FACTOR) * SmoothAttenuation(depth, field.attenuationDepth);
@@ -130,11 +144,24 @@ bool ValidMapping(const WaterDepthWorldMapping& mapping)
 
 bool TryResolveWaterDepthUv(const WaterDepthField& field, math::Vector2 worldXZ, math::Vector2& out)
 {
-    if (!Finite(worldXZ) || field.width < 2 || field.height < 2
-        || field.width > MAX_HORIZON_WATER_TERRAIN_RESOLUTION || field.height > MAX_HORIZON_WATER_TERRAIN_RESOLUTION
-        || field.rgba.size() != static_cast<size_t>(field.width) * field.height * 4u
-        || !std::isfinite(field.depthRange) || field.depthRange <= 0.0f
-        || !ValidMapping(field.mapping)) return false;
+    // 照会位置を確認し、格納バイト数の計算は寸法が範囲内の場合に限る。
+    if (!Finite(worldXZ)) {
+        return false;
+    }
+    if (field.width < 2 || field.height < 2
+        || field.width > MAX_HORIZON_WATER_TERRAIN_RESOLUTION || field.height > MAX_HORIZON_WATER_TERRAIN_RESOLUTION) {
+        return false;
+    }
+    if (field.rgba.size() != static_cast<size_t>(field.width) * field.height * 4u
+        || !std::isfinite(field.depthRange) || field.depthRange <= 0.0f) {
+        return false;
+    }
+
+    // ワールド XZ を深度テクスチャの UV に写せる場合だけ変換する。
+    if (!ValidMapping(field.mapping)) {
+        return false;
+    }
+
     const math::Vector3 relative{
         worldXZ.x - field.mapping.worldPosition.x, 0.0f,
         worldXZ.y - field.mapping.worldPosition.z};
@@ -145,7 +172,7 @@ bool TryResolveWaterDepthUv(const WaterDepthField& field, math::Vector2 worldXZ,
         localZ / field.mapping.signedScaleZ / field.mapping.extentZ + 0.5f};
     return Finite(out);
 }
-} /// @note namespace
+} // namespace
 
 bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComponent& water,
     const Transform& transform, WaterDepthField& out, WaterSurfaceReadView view)
@@ -153,16 +180,32 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
     const size_t pixelCount = static_cast<size_t>(atlas.width) * atlas.height;
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(view);
     const bool hasDomain = atlas.domain.z > 0.0f && atlas.domain.w > 0.0f;
-    if (atlas.width < 2 || atlas.height < 2
-        || atlas.width > MAX_HORIZON_WATER_TERRAIN_RESOLUTION || atlas.height > MAX_HORIZON_WATER_TERRAIN_RESOLUTION
-        || pixelCount > std::numeric_limits<size_t>::max() / 4u
-        || atlas.rgba.size() != pixelCount * 4u
-        || !std::isfinite(atlas.depthRange) || atlas.depthRange <= 0.0f
-        || !std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
-        || (attenuationDepth == 0.0f && !hasDomain)
-        || (UsesWaterSurfaceGeometry(water, view) && !WaterSurfaceGeometry(water, view))
-        || !IsWaterSurfaceSupported(water, transform, view)) return false;
 
+    // アトラスの寸法と RGBA8 の格納範囲を確認してから、中身を参照する。
+    if (atlas.width < 2 || atlas.height < 2
+        || atlas.width > MAX_HORIZON_WATER_TERRAIN_RESOLUTION || atlas.height > MAX_HORIZON_WATER_TERRAIN_RESOLUTION) {
+        return false;
+    }
+    if (pixelCount > std::numeric_limits<size_t>::max() / 4u || atlas.rgba.size() != pixelCount * 4u) {
+        return false;
+    }
+    if (!std::isfinite(atlas.depthRange) || atlas.depthRange <= 0.0f) {
+        return false;
+    }
+
+    // 波の減衰に使わない場合も、明示的な領域があれば地形水深を照会できる。
+    if (!std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
+        || (attenuationDepth == 0.0f && !hasDomain)) {
+        return false;
+    }
+    if (UsesWaterSurfaceGeometry(water, view) && !WaterSurfaceGeometry(water, view)) {
+        return false;
+    }
+    if (!IsWaterSurfaceSupported(water, transform, view)) {
+        return false;
+    }
+
+    // ワールド XZ とアトラス UV の対応を記録し、検証が済むまで呼び出し元に公開しない。
     WaterDepthField field;
     field.width = atlas.width;
     field.height = atlas.height;
@@ -178,13 +221,17 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
     field.mapping.extentX = hasDomain ? atlas.domain.z / std::abs(transform.worldScale.x) : extent.x;
     field.mapping.extentZ = hasDomain ? atlas.domain.w / std::abs(transform.worldScale.z) : extent.y;
     field.rgba = atlas.rgba;
-    if (!ValidMapping(field.mapping)) return false;
+    if (!ValidMapping(field.mapping)) {
+        return false;
+    }
     const float texelWidthX = std::abs(field.mapping.signedScaleX)
         * field.mapping.extentX / static_cast<float>(field.width);
     const float texelWidthZ = std::abs(field.mapping.signedScaleZ)
         * field.mapping.extentZ / static_cast<float>(field.height);
     field.outsideFadeWidth = (std::max)({texelWidthX, texelWidthZ, 1.0f});
-    if (!std::isfinite(field.outsideFadeWidth)) return false;
+    if (!std::isfinite(field.outsideFadeWidth)) {
+        return false;
+    }
     if (attenuationDepth == 0.0f) {
         out = std::move(field);
         return true;
@@ -193,11 +240,14 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
     std::vector<float> factors(pixelCount);
     float minimumBoundaryFactor = 1.0f;
     for (size_t i = 0; i < pixelCount; ++i) {
-        if (!TexelFactor(field, i * 4u, factors[i])) return false;
+        if (!TexelFactor(field, i * 4u, factors[i])) {
+            return false;
+        }
         const uint32_t x = static_cast<uint32_t>(i % field.width);
         const uint32_t z = static_cast<uint32_t>(i / field.width);
-        if (x == 0 || z == 0 || x + 1 == field.width || z + 1 == field.height)
+        if (x == 0 || z == 0 || x + 1 == field.width || z + 1 == field.height) {
             minimumBoundaryFactor = (std::min)(minimumBoundaryFactor, factors[i]);
+        }
     }
 
     float maximumU = 0.0f;
@@ -205,11 +255,13 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
     for (uint32_t z = 0; z < field.height; ++z) {
         for (uint32_t x = 0; x < field.width; ++x) {
             const size_t index = static_cast<size_t>(z) * field.width + x;
-            if (x + 1 < field.width)
+            if (x + 1 < field.width) {
                 maximumU = (std::max)(maximumU, std::abs(factors[index + 1] - factors[index]));
-            if (z + 1 < field.height)
+            }
+            if (z + 1 < field.height) {
                 maximumV = (std::max)(maximumV,
                     std::abs(factors[index + field.width] - factors[index]));
+            }
         }
     }
     const double gradientX = static_cast<double>(maximumU) * field.width
@@ -217,10 +269,12 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
     const double gradientZ = static_cast<double>(maximumV) * field.height
         / (std::abs(field.mapping.signedScaleZ) * field.mapping.extentZ);
     const double interiorGradient = std::sqrt(gradientX * gradientX + gradientZ * gradientZ);
-    /// @note smoothstep の最大傾きは 1.5/width。最小境界 texel が外側の差分を上から抑える。
+    // smoothstep の最大傾きは 1.5/width。最小境界 texel が外側の差分を上から抑える。
     const double outsideGradient = 1.5 * (1.0 - minimumBoundaryFactor) / field.outsideFadeWidth;
     field.maximumAttenuationGradient = static_cast<float>(interiorGradient + outsideGradient);
-    if (!std::isfinite(field.maximumAttenuationGradient)) return false;
+    if (!std::isfinite(field.maximumAttenuationGradient)) {
+        return false;
+    }
     out = std::move(field);
     return true;
 }
@@ -235,9 +289,13 @@ bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldX
 {
     if (!std::isfinite(field.attenuationDepth) || field.attenuationDepth <= 0.0f
         || !std::isfinite(field.outsideFadeWidth) || field.outsideFadeWidth <= 0.0f
-        || !std::isfinite(field.maximumAttenuationGradient) || field.maximumAttenuationGradient < 0.0f) return false;
+        || !std::isfinite(field.maximumAttenuationGradient) || field.maximumAttenuationGradient < 0.0f) {
+        return false;
+    }
     math::Vector2 uv;
-    if (!TryResolveWaterDepthUv(field, worldXZ, uv)) return false;
+    if (!TryResolveWaterDepthUv(field, worldXZ, uv)) {
+        return false;
+    }
     const auto [u, v] = uv;
     WaterDepthSample sample;
     const float outsideUvX = u < 0.0f ? -u : (u > 1.0f ? u - 1.0f : 0.0f);
@@ -249,7 +307,9 @@ bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldX
         out = sample;
         return true;
     }
-    if (!std::isfinite(outsideDistance)) return false;
+    if (!std::isfinite(outsideDistance)) {
+        return false;
+    }
 
     const float clampedU = std::clamp(u, 0.0f, 1.0f);
     const float clampedV = std::clamp(v, 0.0f, 1.0f);
@@ -272,7 +332,9 @@ bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldX
     if (!TexelFactor(field, pixel(x0, z0), f00, landFadeDepth)
         || !TexelFactor(field, pixel(x1, z0), f10, landFadeDepth)
         || !TexelFactor(field, pixel(x0, z1), f01, landFadeDepth)
-        || !TexelFactor(field, pixel(x1, z1), f11, landFadeDepth)) return false;
+        || !TexelFactor(field, pixel(x1, z1), f11, landFadeDepth)) {
+        return false;
+    }
 
     const float lower = f00 + (f10 - f00) * tx;
     const float upper = f01 + (f11 - f01) * tx;
@@ -307,7 +369,9 @@ bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldX
             + math::Vector2{outsideWorldUnit.x, outsideWorldUnit.z}
                 * ((1.0f - innerFactor) * fadeDerivative);
     }
-    if (!std::isfinite(sample.factor) || !Finite(sample.gradient)) return false;
+    if (!std::isfinite(sample.factor) || !Finite(sample.gradient)) {
+        return false;
+    }
     out = sample;
     return true;
 }
@@ -316,7 +380,9 @@ bool TrySampleWaterTerrainColumn(const WaterDepthField& field, math::Vector2 wor
 {
     math::Vector2 uv;
     if (!TryResolveWaterDepthUv(field, worldXZ, uv) || uv.x < 0.0f || uv.x > 1.0f
-        || uv.y < 0.0f || uv.y > 1.0f) return false;
+        || uv.y < 0.0f || uv.y > 1.0f) {
+        return false;
+    }
     const float x = uv.x * static_cast<float>(field.width) - 0.5f;
     const float z = uv.y * static_cast<float>(field.height) - 0.5f;
     const int baseX = static_cast<int>(std::floor(x)), baseZ = static_cast<int>(std::floor(z));
@@ -330,16 +396,24 @@ bool TrySampleWaterTerrainColumn(const WaterDepthField& field, math::Vector2 wor
             const size_t pixel = (static_cast<size_t>(row) * field.width + static_cast<size_t>(column)) * 4u;
             const uint8_t flags = field.rgba[pixel + 3];
             const bool dry = (flags & 2u) != 0u;
-            if ((flags & 1u) == 0u || ((flags & 4u) != 0u && !dry)) continue;
+            if ((flags & 1u) == 0u || ((flags & 4u) != 0u && !dry)) {
+                continue;
+            }
             float depth = 0.0f;
-            if (!TryDecodeWaterTerrainDepth(field.rgba[pixel + 1], field.rgba[pixel + 2], field.depthRange, depth)) return false;
-            if (dry) depth = (std::min)(depth, 0.0f);
+            if (!TryDecodeWaterTerrainDepth(field.rgba[pixel + 1], field.rgba[pixel + 2], field.depthRange, depth)) {
+                return false;
+            }
+            if (dry) {
+                depth = (std::min)(depth, 0.0f);
+            }
             const float weight = (dx == 0 ? 1.0f - tx : tx) * (dz == 0 ? 1.0f - tz : tz);
             coverage += weight;
             sum += weight * depth;
         }
     }
-    if (coverage <= 1.0e-4f) return false;
+    if (coverage <= 1.0e-4f) {
+        return false;
+    }
     out = sum / coverage;
     return true;
 }
@@ -354,7 +428,9 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
             if (auto* water = scene.GetComponent<WaterComponent>(id)) {
                 const bool hasPublishedSimulation = view == WaterSurfaceReadView::SIMULATION
                     && water->simulationReadEnabled && water->simulationSurfacePublished;
-                if (!hasPublishedSimulation) water->depthField.reset();
+                if (!hasPublishedSimulation) {
+                    water->depthField.reset();
+                }
             }
         return;
     }
@@ -366,18 +442,30 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
         GameObject* object = scene.GetGameObject(id);
         const bool hasPublishedSimulation = water && view == WaterSurfaceReadView::SIMULATION
             && water->simulationReadEnabled && water->simulationSurfacePublished;
-        if (hasPublishedSimulation) continue;
+        if (hasPublishedSimulation) {
+            continue;
+        }
         if (water && WaterSurfaceZoneOwner(*water, view).IsValid()) {
             water->depthField.reset();
             continue;
         }
         const float attenuationDepth = water ? water->EffectiveWaveAttenuationDepth(view) : 0.0f;
         const bool needsTerrainColumn = water && !inputs.terrains.empty() && WaterSurfaceUsesHorizon(*water, view);
-        if (!water || !object || !water->enabled || !object->activeInHierarchy()
-            || !std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
-            || (attenuationDepth == 0.0f && !needsTerrainColumn)
-            || !IsWaterSurfaceSupported(*water, WaterSurfaceTransform(*water, object->transform, view), view)) {
-            if (water) water->depthField.reset();
+
+        // 有効な水面のうち、波の減衰か地形水深の照会でアトラスが必要なものだけを処理する。
+        const bool activeWater = water && object && water->enabled && object->activeInHierarchy();
+        const bool needsDepthField = activeWater && std::isfinite(attenuationDepth) && attenuationDepth >= 0.0f
+            && (attenuationDepth != 0.0f || needsTerrainColumn);
+        if (!needsDepthField) {
+            if (water) {
+                water->depthField.reset();
+            }
+            continue;
+        }
+
+        // ベイク対象外の姿勢や形状では、前回の深度フィールドも無効にする。
+        if (!IsWaterSurfaceSupported(*water, WaterSurfaceTransform(*water, object->transform, view), view)) {
+            water->depthField.reset();
             continue;
         }
 
@@ -409,9 +497,13 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
             continue;
         }
         const auto lifetime = scene.GetComponentLifetime<WaterComponent>(id);
-        if (lifetime != 0) liveAtlases.insert(lifetime);
+        if (lifetime != 0) {
+            liveAtlases.insert(lifetime);
+        }
         if (water->depthField && water->depthField->signature == signature
-            && water->depthField->attenuationDepth == attenuationDepth) continue;
+            && water->depthField->attenuationDepth == attenuationDepth) {
+            continue;
+        }
 
         WaterTerrainInfoAtlas atlas;
         WaterDepthField field;
@@ -427,5 +519,5 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
     }
     std::erase_if(cache.atlases, [&](const auto& entry) { return !liveAtlases.contains(entry.first); });
 }
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene
 

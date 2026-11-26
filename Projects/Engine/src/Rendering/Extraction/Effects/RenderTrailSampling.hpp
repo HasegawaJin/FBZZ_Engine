@@ -16,4 +16,4 @@ void AdvanceTrailSamples(Scene& scene, GameObject& owner, TrailComponent& trail,
 const TrailPoint& ReadTrailPoint(const TrailComponent& trail, int logicalIndex);
 void ClearTrailSamples(TrailComponent& trail);
 
-} /// @note namespace fbzz::scene::trail_extraction_detail
+} // namespace fbzz::scene::trail_extraction_detail

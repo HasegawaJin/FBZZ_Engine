@@ -97,7 +97,9 @@ bool SameSpatialDebugRequest(const PhysicsSpatialDebugRequest& a,
 std::shared_ptr<const SpatialDebugRequestState> ReadSpatialDebugRequest(uint64_t sceneGeneration)
 {
     auto& bridge = GetSpatialDebugBridge();
-    if (!bridge.enabled.load(std::memory_order_acquire)) return {};
+    if (!bridge.enabled.load(std::memory_order_acquire)) {
+        return {};
+    }
     std::scoped_lock lock(bridge.mutex);
     return bridge.request && bridge.request->request.sceneGeneration == sceneGeneration
         ? bridge.request : nullptr;
@@ -107,10 +109,14 @@ void PublishSpatialDebugSnapshot(const std::shared_ptr<const SpatialDebugRequest
                                  std::shared_ptr<const physics::BroadPhaseDebugSnapshot> snapshot,
                                  uint64_t worldEpoch)
 {
-    if (!request || !snapshot || snapshot->worldEpoch != worldEpoch || !snapshot->request.enabled) return;
+    if (!request || !snapshot || snapshot->worldEpoch != worldEpoch || !snapshot->request.enabled) {
+        return;
+    }
     auto& bridge = GetSpatialDebugBridge();
     std::scoped_lock lock(bridge.mutex);
-    if (bridge.request != request || bridge.revision != request->revision) return;
+    if (bridge.request != request || bridge.revision != request->revision) {
+        return;
+    }
     bridge.snapshot = std::make_shared<const PhysicsSpatialDebugSnapshot>(
         PhysicsSpatialDebugSnapshot{request->request.sceneGeneration, request->revision, std::move(snapshot)});
 }
@@ -138,15 +144,31 @@ physics::ColliderHandle SelectedColliderHandle(Scene& scene, EntityID selected, 
 physics::ColliderHandle ResolveSelectedCollider(Scene& scene, EntityID selected, const ColliderOwnerMap& owners)
 {
     GameObject* owner = scene.GetGameObject(selected);
-    if (!owner || !owner->activeInHierarchy()) return {};
+    if (!owner || !owner->activeInHierarchy()) {
+        return {};
+    }
     physics::ColliderHandle handle;
-    if ((handle = SelectedColliderHandle<AabbColliderComponent>(scene, selected, owners)).IsValid()) return handle;
-    if ((handle = SelectedColliderHandle<BoxColliderComponent>(scene, selected, owners)).IsValid()) return handle;
-    if ((handle = SelectedColliderHandle<SphereColliderComponent>(scene, selected, owners)).IsValid()) return handle;
-    if ((handle = SelectedColliderHandle<CapsuleColliderComponent>(scene, selected, owners)).IsValid()) return handle;
-    if ((handle = SelectedColliderHandle<CylinderColliderComponent>(scene, selected, owners)).IsValid()) return handle;
-    if ((handle = SelectedColliderHandle<MeshColliderComponent>(scene, selected, owners)).IsValid()) return handle;
-    if ((handle = SelectedColliderHandle<ConvexHullColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<AabbColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
+    if ((handle = SelectedColliderHandle<BoxColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
+    if ((handle = SelectedColliderHandle<SphereColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
+    if ((handle = SelectedColliderHandle<CapsuleColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
+    if ((handle = SelectedColliderHandle<CylinderColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
+    if ((handle = SelectedColliderHandle<MeshColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
+    if ((handle = SelectedColliderHandle<ConvexHullColliderComponent>(scene, selected, owners)).IsValid()) {
+        return handle;
+    }
     return SelectedColliderHandle<TerrainColliderComponent>(scene, selected, owners);
 }
 
@@ -158,8 +180,9 @@ using BodyVolumeMap = physics::BodyVolumeMap;
 /// @brief 浮動小数の再計算誤差では履歴をリセットしないよう、位置と回転に小さい許容値を持たせる。
 bool PoseChanged(const RigidBodyComponent& component, const Transform& transform)
 {
-    if (!component.hasPhysicsSyncState)
+    if (!component.hasPhysicsSyncState) {
         return true;
+    }
     constexpr float POSITION_EPSILON_SQ = 1.0e-10f;
     constexpr float ROTATION_DOT_EPSILON = 1.0e-5f;
     const bool positionChanged =
@@ -187,7 +210,9 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
     desc.surfaceHeight = [snapshot, pose = transform](float worldX, float worldZ, float time) {
         WaterSurfaceHeightSample sample;
         if (!TrySampleWaterSurfaceHeightWorld(*snapshot, pose, {worldX, pose.worldPosition.y, worldZ}, time, sample,
-                WaterSurfaceReadView::SIMULATION)) return 0.0f;
+                WaterSurfaceReadView::SIMULATION)) {
+            return 0.0f;
+        }
         return sample.displacement;
     };
     if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)
@@ -197,7 +222,9 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
             WaterSurfaceHeightSample sample;
             if (!TrySampleWaterSurfaceHeightWorld(*snapshot, pose,
                     {worldX, pose.worldPosition.y, worldZ}, time, sample,
-                    WaterSurfaceReadView::SIMULATION)) return 0.0f;
+                    WaterSurfaceReadView::SIMULATION)) {
+                return 0.0f;
+            }
             return sample.waterDepthLimit;
         };
     }
@@ -210,8 +237,8 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
             *snapshot, WaterSurfaceReadView::SIMULATION), worldPosition);
     };
     desc.allowProbeIntersection = true;
-    /// @note Rectangle は .mat の一様な current、Spline は制御点から焼いた速度を基流にし、明示 FlowField を足す。
-    /// @note これで浮いた物は flowCoupling を立てなくても Vortex の周りを回る。
+    // Rectangle は .mat の一様な current、Spline は制御点から焼いた速度を基流にし、明示 FlowField を足す。
+    // これで浮いた物は flowCoupling を立てなくても Vortex の周りを回る。
     desc.flowVelocity = [snapshot, snapshotFields = fields,
          baseY = transform.worldPosition.y,
          time = Time::time](const math::Vector3& p) {
@@ -221,7 +248,7 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
     desc.center     = transform.worldPosition;
     const float displacementBound = water.SurfaceHeightBound(WaterSurfaceReadView::SIMULATION);
     if (WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION)) {
-        /// @note Horizon の水平所属を有限 AABB で落とさない。深さと各 probe の除外判定は維持する。
+        // Horizon の水平所属を有限 AABB で落とさない。深さと各 probe の除外判定は維持する。
         desc.halfX = std::numeric_limits<float>::infinity();
         desc.halfZ = std::numeric_limits<float>::infinity();
     } else if (!UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)
@@ -241,8 +268,8 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
     desc.buoyancy   = water.buoyancy;
     desc.drag       = water.waterDrag;
     desc.depthLimit = water.buoyancyDepth;
-    /// @note Time::Tick はフレーム終端時刻を公開済みで、World は各サブステップ前に水域を更新する。
-    /// @note 区間の始めからサンプリングし、最後の浮力計算を描画時の波の時刻に合わせる。
+    // Time::Tick はフレーム終端時刻を公開済みで、World は各サブステップ前に水域を更新する。
+    // 区間の始めからサンプリングし、最後の浮力計算を描画時の波の時刻に合わせる。
     desc.startTime  = Time::time - fixedDt;
     desc.surfaceHeightBound = water.SurfaceHeightBound(WaterSurfaceReadView::SIMULATION);
     desc.radii      = std::move(radii);
@@ -261,12 +288,14 @@ physics::VolumeHandle SyncFlowVolume(Scene& scene, physics::World& world,
                                      physics::VolumeHandle handle)
 {
     const FlowFieldFrame& frame = scene.FlowFrame();
-    if (frame.fields->empty()) return {};
+    if (frame.fields->empty()) {
+        return {};
+    }
 
     physics::FlowVolumeDesc desc;
-    /// @note channels は全ビット。剛体にはチャンネルの申告が無いので «どの場も受ける»。
-    /// @note 時刻を捕まえ時に固定するのは、Curl のスクロールが substep ごとに進むと
-    /// @note 同じフレームの中で場が動いてしまうため。
+    // channels は全ビット。剛体にはチャンネルの申告が無いので «どの場も受ける»。
+    // 時刻を捕まえ時に固定するのは、Curl のスクロールが substep ごとに進むと
+    // 同じフレームの中で場が動いてしまうため。
     desc.flowVelocity = MakeFlowSampler(frame, {}, Time::time);
     return world.SyncVolume(handle, std::make_unique<physics::FlowVolume>(std::move(desc)));
 }
@@ -285,11 +314,11 @@ void AddColliderInstance(Scene& scene,
     auto* rb = go.GetComponent<RigidBodyComponent>();
     physics::RigidBody* body = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
 
-    /// @note 祖先の剛体へ属させる指定。自分に剛体が無いときだけ遡る。既定では遡らない —
-    /// @note «親が剛体・子は静的な床» の構成もあるため、遡るかはコライダー側の申告に任せ、
-    /// @note 立てた所だけが «同じ体の一部» になる。質量も遡らせない。下の FromDensity は
-    /// @note «この剛体の体積» を積むので、子の当たり (骨のヒットボックス等) まで数えると
-    /// @note 形を 1 つ足すたびに質量が勝手に増える。質量は自分の GameObject の分だけ。
+    // 祖先の剛体へ属させる指定。自分に剛体が無いときだけ遡る。既定では遡らない —
+    // «親が剛体・子は静的な床» の構成もあるため、遡るかはコライダー側の申告に任せ、
+    // 立てた所だけが «同じ体の一部» になる。質量も遡らせない。下の FromDensity は
+    // «この剛体の体積» を積むので、子の当たり (骨のヒットボックス等) まで数えると
+    // 形を 1 つ足すたびに質量が勝手に増える。質量は自分の GameObject の分だけ。
     bool attachedToAncestor = false;
     if (!body && col.attachToParentBody) {
         for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
@@ -302,23 +331,24 @@ void AddColliderInstance(Scene& scene,
         }
     }
 
-    /// @note 共有 .physmat を参照しているなら、この時点で実効値へ解決する。毎フレーム解決する
-    /// @note のは、エディタで .physmat を編集した結果を参照コライダーへ待ち時間なく反映させる
-    /// @note ため。未参照なら即 return、参照ありでも AssetManager のパスキャッシュ引きだけなので
-    /// @note フレームコストは実質ゼロ。
+    // 共有 .physmat を参照しているなら、この時点で実効値へ解決する。毎フレーム解決する
+    // のは、エディタで .physmat を編集した結果を参照コライダーへ待ち時間なく反映させる
+    // ため。未参照なら即 return、参照ありでも AssetManager のパスキャッシュ引きだけなので
+    // フレームコストは実質ゼロ。
     col.ResolvePhysicsMaterial();
 
-    /// @note 密度モードの剛体へ、このコライダーぶんの質量を積む。
-    if (rb && rb->massMode == MassMode::FromDensity && col.collider)
+    // 密度モードの剛体へ、このコライダーぶんの質量を積む。
+    if (rb && rb->massMode == MassMode::FromDensity && col.collider) {
         rb->computedMass += col.collider->ComputeVolume() * col.material.density;
+    }
 
-    /// @note 剛体を持つコライダーの姿勢は World::UpdateColliders が
-    /// @note «body の位置 + body の回転 × centerOffset» で組む。剛体が自分の GameObject に
-    /// @note 乗っているときは body の姿勢 = 自分の姿勢なので、centerOffset はローカルの
-    /// @note center そのままでよい。祖先の剛体へ属させたときは両者がずれるので、
-    /// @note «body から見た自分» へ直さないと、当たりが親の位置に生えてしまう。
-    /// @note ⚠ 回転は body のものが使われる。祖先へ属させてよいのは、向きが剛体と揃っている
-    /// @note 当たりだけ (骨と一緒に回る当たりは、この経路では正しく回らない)。
+    // 剛体を持つコライダーの姿勢は World::UpdateColliders が
+    // «body の位置 + body の回転 × centerOffset» で組む。剛体が自分の GameObject に
+    // 乗っているときは body の姿勢 = 自分の姿勢なので、centerOffset はローカルの
+    // center そのままでよい。祖先の剛体へ属させたときは両者がずれるので、
+    // «body から見た自分» へ直さないと、当たりが親の位置に生えてしまう。
+    // ⚠ 回転は body のものが使われる。祖先へ属させてよいのは、向きが剛体と揃っている
+    // 当たりだけ (骨と一緒に回る当たりは、この経路では正しく回らない)。
     math::Vector3 centerOffset = ColliderCenterOffset(go, col);
     if (attachedToAncestor && body) {
         centerOffset = body->GetRotation().Inverse()
@@ -327,14 +357,19 @@ void AddColliderInstance(Scene& scene,
     physics::ColliderInstance instance{ col.collider.get(), body, &col.material, centerOffset, col.isTrigger, go.layer };
     col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
     colliderOwners[col.collider.get()] = { &go, &col };
-    /// @note トリガーは体の一部ではないので、浸かる大きさには数えない。
-    if (body && !col.isTrigger)
+    // トリガーは体の一部ではないので、浸かる大きさには数えない。
+    if (body && !col.isTrigger) {
         bodyVolumes[body] += col.collider->ComputeVolume();
+    }
 
     auto* volume = go.GetComponent<VolumeComponent>();
     if (volume && volume->enabled && col.isTrigger) {
-        if (volume->duration >= 0.0f && volume->elapsed >= volume->duration) return;
-        if (volume->duration >= 0.0f) volume->elapsed += dt;
+        if (volume->duration >= 0.0f && volume->elapsed >= volume->duration) {
+            return;
+        }
+        if (volume->duration >= 0.0f) {
+            volume->elapsed += dt;
+        }
 
         physics::VolumeSettings settings;
         settings.type = volume->type;
@@ -360,17 +395,21 @@ void SyncColliderComponents(Scene& scene,
                             BodyVolumeMap& bodyVolumes,
                             float dt)
 {
-    /// @note GameObject 全体を毎 fixed step 走査して各 Collider 型を GetComponent すると、
-    /// @note 物理を持たないオブジェクト数に比例して固定コストが増える。ComponentArray が
-    /// @note 保持する Entity span を入口にし、存在する Collider component だけを同期する。
+    // GameObject 全体を毎 fixed step 走査して各 Collider 型を GetComponent すると、
+    // 物理を持たないオブジェクト数に比例して固定コストが増える。ComponentArray が
+    // 保持する Entity span を入口にし、存在する Collider component だけを同期する。
     for (EntityID id : scene.GetEntities<T>()) {
         GameObject* go = scene.GetGameObject(id);
         T* col = scene.GetComponent<T>(id);
-        if (!go || !go->activeInHierarchy() || !col || !col->enabled) continue;
+        if (!go || !go->activeInHierarchy() || !col || !col->enabled) {
+            continue;
+        }
 
-        /// @note 構築 → 形状同期 → 姿勢反映は ColliderSync に集約。
-        /// @note 同じ手順をコライダー可視化 (DebugCollidersPass) も使うため、両者の見え方が一致する。
-        if (!PrepareCollider(scene, *go, *col)) continue;
+        // 構築 → 形状同期 → 姿勢反映は ColliderSync に集約。
+        // 同じ手順をコライダー可視化 (DebugCollidersPass) も使うため、両者の見え方が一致する。
+        if (!PrepareCollider(scene, *go, *col)) {
+            continue;
+        }
 
         AddColliderInstance(scene, *go, *col, world, colliderOwners, bodyVolumes, dt);
     }
@@ -409,23 +448,35 @@ void RegisterCharacterGroundContact(const ColliderOwner& self,
                                     const physics::CollisionEvent& event,
                                     bool flipped)
 {
-    if (!self.gameObject || !other.gameObject) return;
+    if (!self.gameObject || !other.gameObject) {
+        return;
+    }
 
     auto* controller = self.gameObject->GetComponent<CharacterControllerComponent>();
-    if (!controller) return;
+    if (!controller) {
+        return;
+    }
 
     controller->RegisterGroundContact(BuildCollisionInfo(self, other, event, flipped));
 }
 
 GameObject* CollisionRigidBodyOwner(const ColliderOwner& owner)
 {
-    if (!owner.gameObject) return nullptr;
+    if (!owner.gameObject) {
+        return nullptr;
+    }
     auto* body = owner.gameObject->GetComponent<RigidBodyComponent>();
-    if (body && body->enabled && body->rigidBody) return owner.gameObject;
-    if (!owner.collider || !owner.collider->attachToParentBody) return nullptr;
+    if (body && body->enabled && body->rigidBody) {
+        return owner.gameObject;
+    }
+    if (!owner.collider || !owner.collider->attachToParentBody) {
+        return nullptr;
+    }
     for (GameObject* parent = owner.gameObject->GetParent(); parent; parent = parent->GetParent()) {
         body = parent->GetComponent<RigidBodyComponent>();
-        if (body && body->enabled && body->rigidBody) return parent;
+        if (body && body->enabled && body->rigidBody) {
+            return parent;
+        }
     }
     return nullptr;
 }
@@ -435,10 +486,14 @@ void RegisterWaterGroundContact(Scene& scene, const ColliderOwner& self, const C
     const physics::CollisionEvent& event, bool flipped)
 {
     GameObject* bodyOwner = CollisionRigidBodyOwner(self);
-    if (!bodyOwner) return;
+    if (!bodyOwner) {
+        return;
+    }
     if (GameObject* otherBodyOwner = CollisionRigidBodyOwner(other)) {
         const auto* body = otherBodyOwner->GetComponent<RigidBodyComponent>();
-        if (body && body->rigidBody && !body->rigidBody->IsStatic()) return;
+        if (body && body->rigidBody && !body->rigidBody->IsStatic()) {
+            return;
+        }
     }
     SupplyWaterGroundContact(scene, bodyOwner->GetID(), event.point,
         event.normal * (flipped ? 1.0f : -1.0f), event.approachSpeed);
@@ -452,15 +507,21 @@ void DispatchToScript(Scene& scene,
                       ScriptCollisionCallback callback,
                       ScriptCallbackKind kind)
 {
-    if (!self.gameObject || !other.gameObject) return;
+    if (!self.gameObject || !other.gameObject) {
+        return;
+    }
 
     auto* scriptComponent = self.gameObject->GetComponent<ScriptComponent>();
-    if (!scriptComponent) return;
+    if (!scriptComponent) {
+        return;
+    }
 
     CollisionInfo info = BuildCollisionInfo(self, other, event, flipped);
 
     for (auto& entry : scriptComponent->scripts) {
-        if (!entry.script || !entry.script->enabled) continue;
+        if (!entry.script || !entry.script->enabled) {
+            continue;
+        }
         entry.script->SetContext(&scene, self.gameObject);
         entry.script->ExecuteProfiledCallback(callback, info, kind, "collision callback");
     }
@@ -475,7 +536,9 @@ void DispatchCollisionEvent(Scene& scene,
 {
     auto ownerA = owners.find(event.colliderA);
     auto ownerB = owners.find(event.colliderB);
-    if (ownerA == owners.end() || ownerB == owners.end()) return;
+    if (ownerA == owners.end() || ownerB == owners.end()) {
+        return;
+    }
 
     if (registerGroundContact && !event.isTrigger) {
         RegisterCharacterGroundContact(ownerA->second, ownerB->second, event, false);
@@ -527,13 +590,17 @@ uint64_t PhysicsSystem::SetSpatialDebugRequest(const PhysicsSpatialDebugRequest&
     auto& bridge = GetSpatialDebugBridge();
     std::scoped_lock lock(bridge.mutex);
     if (!request.physics.enabled || request.sceneGeneration == 0) {
-        if (bridge.request || bridge.snapshot) ++bridge.revision;
+        if (bridge.request || bridge.snapshot) {
+            ++bridge.revision;
+        }
         bridge.request.reset();
         bridge.snapshot.reset();
         bridge.enabled.store(false, std::memory_order_release);
         return bridge.revision;
     }
-    if (bridge.request && SameSpatialDebugRequest(bridge.request->request, request)) return bridge.revision;
+    if (bridge.request && SameSpatialDebugRequest(bridge.request->request, request)) {
+        return bridge.revision;
+    }
     PhysicsSpatialDebugRequest value = request;
     value.physics.selected = {};
     value.physics.selectedWorldEpoch = 0;
@@ -554,7 +621,9 @@ std::shared_ptr<const PhysicsSpatialDebugSnapshot>
 PhysicsSystem::GetSpatialDebugSnapshot(uint64_t sceneGeneration)
 {
     auto& bridge = GetSpatialDebugBridge();
-    if (!bridge.enabled.load(std::memory_order_acquire)) return {};
+    if (!bridge.enabled.load(std::memory_order_acquire)) {
+        return {};
+    }
     std::scoped_lock lock(bridge.mutex);
     return bridge.snapshot && bridge.snapshot->sceneGeneration == sceneGeneration
         && bridge.snapshot->revision == bridge.revision ? bridge.snapshot : nullptr;
@@ -568,7 +637,8 @@ ComponentAccess PhysicsSystem::GetAccess() const
                 WaterZoneComponent, WaterExclusionComponent, JointComponent>();
 }
 
-void PhysicsSystem::Update(SystemContext& ctx) {
+void PhysicsSystem::Update(SystemContext& ctx)
+{
     Scene& scene = ctx.scene;
     physics::World& world = ctx.world;
     const float dt = ctx.fixedDt;
@@ -576,6 +646,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
 
     Script::SetPhysicsWorld(&world);
 
+    // コライダーの所有者と体積を集める作業領域は、固定ステップの間で容量を再利用する。
     static thread_local ColliderOwnerMap colliderOwners;
     colliderOwners.clear();
     colliderOwners.reserve(
@@ -590,39 +661,47 @@ void PhysicsSystem::Update(SystemContext& ctx) {
     static thread_local BodyVolumeMap bodyVolumes;
     bodyVolumes.clear();
 
+    // Scene が今ステップで申告した要素を World に同期する。
     world.BeginSceneSync();
 
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncRigidBodies");
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             GameObject* go = scene.GetGameObject(id);
-            auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-            if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) continue;
+            auto* rigidBodyComponent = scene.GetComponent<RigidBodyComponent>(id);
+            if (!go || !go->activeInHierarchy()) {
+                continue;
+            }
+            if (!rigidBodyComponent || !rigidBodyComponent->enabled || !rigidBodyComponent->rigidBody) {
+                continue;
+            }
 
-            /// @note BodyHandle は Component 側へ永続化される runtime state で、Component 実体へ
-            /// @note 直接書き戻す。動的剛体は Physics を正とし、Transform が前回物理姿勢から
-            /// @note 明示的に変わった時だけテレポートとして Scene → Physics へ送る (毎 step の
-            /// @note 無条件再送は補間履歴と FixedScript の直接操作を巻き戻すため行わない)。
-            if (rb->rigidBody->IsStatic() || PoseChanged(*rb, go->transform)) {
-                rb->rigidBody->SetPosition(go->transform.worldPosition);
-                rb->rigidBody->SetRotation(go->transform.worldRotation);
-                rb->ResetPhysicsSyncState(
+            // 動的剛体は、Scene 側が前回の物理確定姿勢を明示的に変えたときだけテレポートする。
+            const bool copyScenePose = rigidBodyComponent->rigidBody->IsStatic()
+                || PoseChanged(*rigidBodyComponent, go->transform);
+            if (copyScenePose) {
+                rigidBodyComponent->rigidBody->SetPosition(go->transform.worldPosition);
+                rigidBodyComponent->rigidBody->SetRotation(go->transform.worldRotation);
+                rigidBodyComponent->ResetPhysicsSyncState(
                     go->transform.worldPosition, go->transform.worldRotation);
             }
-            /// @note 毎フレーム押し込む理由: 正本はコンポーネント側。Inspector と
-            /// @note スクリプトが触るのはそちらなので、massMode と同じ形で剛体へ配る。
-            rb->rigidBody->SetFlowCoupling(rb->flowCoupling);
-            rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody.get());
+
+            // 制作値の正本はコンポーネント。適用後に World が返した登録ハンドルを保持する。
+            rigidBodyComponent->rigidBody->SetFlowCoupling(rigidBodyComponent->flowCoupling);
+            rigidBodyComponent->bodyHandle = world.SyncBody(
+                rigidBodyComponent->bodyHandle, rigidBodyComponent->rigidBody.get());
         }
     }
 
-    /// @note 密度から質量を出す剛体は、コライダー同期の中で体積 × 密度を積算するため、ここで
-    /// @note 累算器をゼロに戻す。コライダー側で積むのは、1 つの GameObject に複数のコライダーが
-    /// @note 付くことがあり (胴 + 頭のカプセル等) 質量は全部の体積の合計であるべきで、コライダー
-    /// @note 走査はどのみち毎フレーム行うのでそこに相乗りするのが最も安いため。
+    // 密度から質量を出す剛体は、コライダー同期の中で体積 × 密度を積算するため、ここで
+    // 累算器をゼロに戻す。コライダー側で積むのは、1 つの GameObject に複数のコライダーが
+    // 付くことがあり (胴 + 頭のカプセル等) 質量は全部の体積の合計であるべきで、コライダー
+    // 走査はどのみち毎フレーム行うのでそこに相乗りするのが最も安いため。
     for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
         auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-        if (rb && rb->massMode == MassMode::FromDensity) rb->computedMass = 0.0f;
+        if (rb && rb->massMode == MassMode::FromDensity) {
+            rb->computedMass = 0.0f;
+        }
     }
 
     {
@@ -645,17 +724,31 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         for (EntityID id : scene.GetEntities<WaterComponent>()) {
             auto* water = scene.GetComponent<WaterComponent>(id);
             GameObject* go = scene.GetGameObject(id);
-            if (water && WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid()) {
+            if (!water) {
+                continue;
+            }
+
+            // ゾーンに統合された水面は、ゾーン所有者が登録する一つの浮力領域を使う。
+            if (WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid()) {
                 water->volumeHandle = {};
                 continue;
             }
-            if (!water || !go || !go->activeInHierarchy() || !water->enabled || !water->buoyancyEnabled)
+            if (!go || !go->activeInHierarchy()) {
                 continue;
+            }
+            if (!water->enabled || !water->buoyancyEnabled) {
+                continue;
+            }
+
             const Transform& pose = WaterSurfaceTransform(*water, go->transform,
                 WaterSurfaceReadView::SIMULATION);
-            if (!IsWaterSurfaceSupported(*water, pose, WaterSurfaceReadView::SIMULATION)) continue;
-            /// @note 半径表は水面が 1 枚でもあるときだけ作り、全水面で共有する。
-            if (!radii) radii = physics::MakeBodyRadii(bodyVolumes);
+            if (!IsWaterSurfaceSupported(*water, pose, WaterSurfaceReadView::SIMULATION)) {
+                continue;
+            }
+            // 半径表は水面が 1 枚でもあるときだけ作り、全水面で共有する。
+            if (!radii) {
+                radii = physics::MakeBodyRadii(bodyVolumes);
+            }
             water->volumeHandle = world.SyncVolume(
                 water->volumeHandle,
                 std::make_unique<physics::FluidVolume>(
@@ -668,8 +761,8 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         m_flowVolumeHandle = SyncFlowVolume(scene, world, m_flowVolumeHandle);
     }
 
-    /// @note 関節は剛体と同じ «毎フレーム申告» で寿命を持つ。申告が途切れた制約は
-    /// @note EndSceneSync が破棄するので、Scene 側に «外す» 経路は要らない。
+    // 関節は剛体と同じ «毎フレーム申告» で寿命を持つ。申告が途切れた制約は
+    // EndSceneSync が破棄するので、Scene 側に «外す» 経路は要らない。
     SyncJointComponents(scene, world);
 
     {
@@ -678,9 +771,11 @@ void PhysicsSystem::Update(SystemContext& ctx) {
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
             GameObject* go = scene.GetGameObject(id);
             if (!go || !go->activeInHierarchy() || !rb ||
-                rb->massMode != MassMode::FromDensity || !rb->rigidBody) continue;
-            /// @note コライダーが 1 つも付いていない (= 体積 0) 剛体を質量 0 にすると
-            /// @note invMass が無限大になり、わずかな接触で吹き飛ぶ。下限で守る。
+                rb->massMode != MassMode::FromDensity || !rb->rigidBody) {
+                continue;
+            }
+            // コライダーが 1 つも付いていない (= 体積 0) 剛体を質量 0 にすると
+            // invMass が無限大になり、わずかな接触で吹き飛ぶ。下限で守る。
             constexpr float MIN_MASS = 0.001f;
             rb->rigidBody->SetMass(std::max(rb->computedMass, MIN_MASS));
         }
@@ -718,7 +813,9 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             GameObject* go = scene.GetGameObject(id);
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-            if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) continue;
+            if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) {
+                continue;
+            }
             const math::Vector3 position = rb->rigidBody->GetPosition();
             const math::Quaternion rotation = rb->rigidBody->GetRotation();
             rb->CommitPhysicsSyncState(position, rotation);

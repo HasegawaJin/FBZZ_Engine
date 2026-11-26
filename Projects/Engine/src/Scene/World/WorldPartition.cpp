@@ -67,7 +67,9 @@ bool Inside(const std::filesystem::path& root, const std::filesystem::path& path
 {
     auto r = root.begin(), p = path.begin();
     for (; r != root.end(); ++r, ++p)
-        if (p == path.end() || FoldPath(util::FileSystem::PathToUtf8(*r)) != FoldPath(util::FileSystem::PathToUtf8(*p))) return false;
+        if (p == path.end() || FoldPath(util::FileSystem::PathToUtf8(*r)) != FoldPath(util::FileSystem::PathToUtf8(*p))) {
+            return false;
+        }
     return true;
 }
 
@@ -84,7 +86,9 @@ bool ResolvePayload(const std::string& projectRoot, const std::string& relative,
 
 bool ReadBounded(const std::string& path, uint64_t limit, const std::atomic<bool>& canceled, std::string& out, std::string& diagnostic)
 {
-    if (canceled.load(std::memory_order_relaxed)) return false;
+    if (canceled.load(std::memory_order_relaxed)) {
+        return false;
+    }
     std::ifstream file(util::FileSystem::PathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!file) { diagnostic = "Cannot open cell payload: " + path; return false; }
     const auto size = file.tellg();
@@ -95,7 +99,9 @@ bool ReadBounded(const std::string& path, uint64_t limit, const std::atomic<bool
     file.seekg(0);
     file.read(text.data(), static_cast<std::streamsize>(size));
     if (!file || file.peek() != std::char_traits<char>::eof()) { diagnostic = "Cell payload changed or could not be read completely: " + path; return false; }
-    if (canceled.load(std::memory_order_relaxed)) return false;
+    if (canceled.load(std::memory_order_relaxed)) {
+        return false;
+    }
     out = std::move(text);
     return true;
 }
@@ -108,11 +114,21 @@ bool ValidateDocument(const std::string& text, std::vector<std::string>& ids, st
 
 std::string ChannelName(const std::string& name)
 {
-    if (name == "Texture" || name == "TextureAsset") return std::string(asset::AssetStreamTypeName<asset::TextureAsset>());
-    if (name == "Model") return std::string(asset::AssetStreamTypeName<asset::Model>());
-    if (name == "ModelAsset") return std::string(asset::AssetStreamTypeName<asset::ModelAsset>());
-    if (name == "Material" || name == "MaterialAsset") return std::string(asset::AssetStreamTypeName<asset::MaterialAsset>());
-    if (name == "MeshInstances" || name == "MeshInstancesAsset") return std::string(asset::AssetStreamTypeName<asset::MeshInstancesAsset>());
+    if (name == "Texture" || name == "TextureAsset") {
+        return std::string(asset::AssetStreamTypeName<asset::TextureAsset>());
+    }
+    if (name == "Model") {
+        return std::string(asset::AssetStreamTypeName<asset::Model>());
+    }
+    if (name == "ModelAsset") {
+        return std::string(asset::AssetStreamTypeName<asset::ModelAsset>());
+    }
+    if (name == "Material" || name == "MaterialAsset") {
+        return std::string(asset::AssetStreamTypeName<asset::MaterialAsset>());
+    }
+    if (name == "MeshInstances" || name == "MeshInstancesAsset") {
+        return std::string(asset::AssetStreamTypeName<asset::MeshInstancesAsset>());
+    }
     return name;
 }
 
@@ -121,12 +137,18 @@ std::string StripMeshIndex(const std::string& path, size_t& index)
     index = 0;
     const auto colon = path.find_last_of(':');
     const auto dot = path.find_last_of('.');
-    if (colon == std::string::npos || dot == std::string::npos || colon < dot || colon + 1 == path.size()) return path;
+    if (colon == std::string::npos || dot == std::string::npos || colon < dot || colon + 1 == path.size()) {
+        return path;
+    }
     size_t value = 0;
     for (size_t i = colon + 1; i < path.size(); ++i) {
-        if (!std::isdigit(static_cast<unsigned char>(path[i]))) return path;
+        if (!std::isdigit(static_cast<unsigned char>(path[i]))) {
+            return path;
+        }
         const auto digit = static_cast<size_t>(path[i] - '0');
-        if (value > (static_cast<size_t>((std::numeric_limits<int>::max)()) - digit) / 10) return {};
+        if (value > (static_cast<size_t>((std::numeric_limits<int>::max)()) - digit) / 10) {
+            return {};
+        }
         value = value * 10 + digit;
     }
     index = value;
@@ -137,14 +159,20 @@ void BindResidentMeshes(Scene& scene, const std::vector<EntityID>& owners, asset
 {
     for (const auto id : owners) {
         auto* mesh = scene.GetComponent<MeshRenderer>(id);
-        if (!mesh || mesh->meshPath.empty()) continue;
+        if (!mesh || mesh->meshPath.empty()) {
+            continue;
+        }
         if (mesh->meshPath.starts_with("primitive:")) {
-            if (resources) mesh->mesh = ResolveMeshPath(mesh->meshPath, *resources);
+            if (resources) {
+                mesh->mesh = ResolveMeshPath(mesh->meshPath, *resources);
+            }
             continue;
         }
         size_t index = 0;
         const auto reference = StripMeshIndex(mesh->meshPath, index);
-        if (reference.empty()) continue;
+        if (reference.empty()) {
+            continue;
+        }
         const auto key = asset::AssetManager::CanonicalKey(reference);
         const auto& cache = asset::AssetStore<asset::Model>::Get().cache;
         const auto found = cache.find(key);
@@ -174,10 +202,24 @@ bool ValidateWorldPartitionSettings(const WorldPartitionSettings& settings, std:
         || settings.hysteresis > settings.nearDistance || settings.hysteresis * 2 > settings.hlodDistance - settings.nearDistance) {
         diagnostic = "Streaming distances must be finite, ordered and leave room for hysteresis"; return false;
     }
-    if (settings.maxConcurrentLoads == 0 || settings.maxConcurrentLoads > 32 || settings.maxPublishesPerFrame == 0 || settings.maxPublishesPerFrame > 64
-        || settings.maxResidentCells == 0 || settings.maxResidentCells > 65536 || settings.maxCellBytes == 0 || settings.maxCellBytes > 1024ull * 1024ull * 1024ull
-        || settings.maxResidentBytes == 0) { diagnostic = "Invalid world streaming job, publication or memory budget"; return false; }
-    diagnostic.clear(); return true;
+    // ストリーミングで同時に処理するジョブと、一度に公開する件数を制限する。
+    constexpr char INVALID_BUDGET[] = "Invalid world streaming job, publication or memory budget";
+    if (settings.maxConcurrentLoads == 0 || settings.maxConcurrentLoads > 32
+        || settings.maxPublishesPerFrame == 0 || settings.maxPublishesPerFrame > 64) {
+        diagnostic = INVALID_BUDGET;
+        return false;
+    }
+
+    // 常駐セル数に加え、セル単位と全体にメモリ予算が必要。
+    if (settings.maxResidentCells == 0 || settings.maxResidentCells > 65536
+        || settings.maxCellBytes == 0 || settings.maxCellBytes > 1024ull * 1024ull * 1024ull
+        || settings.maxResidentBytes == 0) {
+        diagnostic = INVALID_BUDGET;
+        return false;
+    }
+
+    diagnostic.clear();
+    return true;
 }
 
 const char* WorldCellRepresentationName(WorldCellRepresentation value)
@@ -242,8 +284,12 @@ struct WorldPartitionRuntime::Impl {
     Impl(JobExecutor jobsExecutor, asset::AssetStreamer* assets) : executor(std::move(jobsExecutor)), streamer(assets ? assets : &asset::AssetStreamer::Engine())
     {
         if (!executor) executor = [](std::function<void()> job) {
-            if (TaskSystem::WorkerCount() > 0) (void)TaskSystem::Submit(std::move(job));
-            else job();
+            if (TaskSystem::WorkerCount() > 0) {
+                (void)TaskSystem::Submit(std::move(job));
+            }
+            else {
+                job();
+            }
         };
     }
     bool Live() const { return scene && !resetRequested && scene->GetRenderSceneGeneration() == generation; }
@@ -254,12 +300,16 @@ struct WorldPartitionRuntime::Impl {
     }
     void Cancel(Cell& cell)
     {
-        if (cell.ticket) cell.ticket->canceled.store(true, std::memory_order_relaxed);
+        if (cell.ticket) {
+            cell.ticket->canceled.store(true, std::memory_order_relaxed);
+        }
         cell.ticket.reset(); ++cell.attempt;
         std::string{}.swap(cell.pendingText); cell.pendingPath.clear();
         if (!cell.quarantined) {
             cell.pendingLeases.Release();
-            for (const auto& reference : cell.pendingInstanceReferences) EvictPlacements(reference);
+            for (const auto& reference : cell.pendingInstanceReferences) {
+                EvictPlacements(reference);
+            }
             cell.pendingInstanceReferences.clear();
         }
         cell.pendingRepresentation = WorldCellRepresentation::UNLOADED;
@@ -275,10 +325,14 @@ struct WorldPartitionRuntime::Impl {
         std::vector<EntityID>{}.swap(cell.roots); std::vector<EntityID>{}.swap(cell.entities); cell.bytes = 0;
         cell.resident = WorldCellRepresentation::UNLOADED; cell.state = WorldCellLoadState::UNLOADED; cell.diagnostic.clear();
         cell.leases.Release();
-        for (const auto& reference : cell.instanceReferences) EvictPlacements(reference);
+        for (const auto& reference : cell.instanceReferences) {
+            EvictPlacements(reference);
+        }
         cell.instanceReferences.clear();
         cell.quarantined = false; cell.pendingLeases.Release();
-        for (const auto& reference : cell.pendingInstanceReferences) EvictPlacements(reference);
+        for (const auto& reference : cell.pendingInstanceReferences) {
+            EvictPlacements(reference);
+        }
         cell.pendingInstanceReferences.clear();
         return true;
     }
@@ -311,18 +365,24 @@ struct WorldPartitionRuntime::Impl {
             uint64_t identityBytes = 0;
             for (const auto& path : paths) {
                 std::string text; std::vector<std::string> ids;
-                if (!ReadBounded(path, maximum, ticket->canceled, text, result.diagnostic) || !ValidateDocument(text, ids, result.diagnostic)) break;
+                if (!ReadBounded(path, maximum, ticket->canceled, text, result.diagnostic) || !ValidateDocument(text, ids, result.diagnostic)) {
+                    break;
+                }
                 for (auto& id : ids) {
                     const auto bytes = static_cast<uint64_t>(id.size()) * 2 + 192;
                     if (bytes > identityBudget || identityBytes > identityBudget - bytes) { result.diagnostic = "Source identity preflight exceeds world resident byte budget"; break; }
                     if (!all.insert(id).second) { result.diagnostic = "Near payloads contain duplicate global instanceId: " + id; break; }
                     identityBytes += bytes;
                 }
-                if (!result.diagnostic.empty()) break;
+                if (!result.diagnostic.empty()) {
+                    break;
+                }
             }
             if (result.diagnostic.empty() && !ticket->canceled.load(std::memory_order_relaxed)) {
                 for (const auto& id : expected) if (!all.contains(id)) { result.diagnostic = "Baked source is missing from near payloads: " + id; break; }
-                if (result.diagnostic.empty()) result.objectIds.assign(all.begin(), all.end());
+                if (result.diagnostic.empty()) {
+                    result.objectIds.assign(all.begin(), all.end());
+                }
             }
             std::scoped_lock lock(queue->mutex);
             if (ticket->canceled.load(std::memory_order_relaxed)) { std::string{}.swap(result.text); std::vector<std::string>{}.swap(result.objectIds); }
@@ -334,17 +394,25 @@ struct WorldPartitionRuntime::Impl {
     {
         const auto document = toml::parse(result.text);
         const auto* objects = document ? document.table()["gameobjects"].as_array() : nullptr;
-        if (!objects) return;
+        if (!objects) {
+            return;
+        }
         for (size_t index = 0; index < objects->size(); ++index) {
             const auto* object = (*objects)[index].as_table();
-            if (!object) continue;
+            if (!object) {
+                continue;
+            }
             if (const auto* terrain = (*object)["TerrainComponent"].as_table(); terrain && !terrain->contains("inlineData")) {
                 auto reference = (*terrain)["terrainAssetPath"].value_or(std::string{});
-                if (!reference.empty()) result.terrainReferences.emplace_back(index, std::move(reference));
+                if (!reference.empty()) {
+                    result.terrainReferences.emplace_back(index, std::move(reference));
+                }
             }
             if (const auto* instances = (*object)["InstancedMeshComponent"].as_table()) {
                 auto reference = (*instances)["instanceSetRef"].value_or(std::string{});
-                if (!reference.empty()) result.instanceReferences.push_back(std::move(reference));
+                if (!reference.empty()) {
+                    result.instanceReferences.push_back(std::move(reference));
+                }
             }
         }
     }
@@ -361,7 +429,9 @@ struct WorldPartitionRuntime::Impl {
         executor([ticket, queue, revision, attempt, cellIndex, maximum, resolved] {
             Completion result; result.epoch = revision; result.attempt = attempt; result.cell = cellIndex;
             if (ReadBounded(resolved, maximum, ticket->canceled, result.text, result.diagnostic)
-                && ValidateDocument(result.text, result.objectIds, result.diagnostic)) CollectCellInputs(result);
+                && ValidateDocument(result.text, result.objectIds, result.diagnostic)) {
+                CollectCellInputs(result);
+            }
             std::scoped_lock lock(queue->mutex);
             if (ticket->canceled.load(std::memory_order_relaxed)) { std::string{}.swap(result.text); std::vector<std::string>{}.swap(result.objectIds); }
             queue->pending.push_back(std::move(result));
@@ -373,14 +443,18 @@ struct WorldPartitionRuntime::Impl {
     }
     bool SubmitTerrainReads(Completion& input)
     {
-        if (input.terrainReferences.empty()) return false;
+        if (input.terrainReferences.empty()) {
+            return false;
+        }
         const size_t cellIndex = input.cell;
         auto& cell = cells[cellIndex];
         std::vector<std::pair<size_t, std::string>> paths;
         paths.reserve(input.terrainReferences.size());
         for (const auto& [index, reference] : input.terrainReferences) {
             std::string path;
-            if (asset::AssetDatabase::IsGuidRef(reference)) path = asset::AssetManager::ResolveAssetPath(reference);
+            if (asset::AssetDatabase::IsGuidRef(reference)) {
+                path = asset::AssetManager::ResolveAssetPath(reference);
+            }
             else if (reference.starts_with("Assets/")) {
                 if (!ResolvePayload(projectRoot, reference, path, cell.diagnostic)) { Fail(cell, cell.diagnostic); return true; }
             } else {
@@ -404,12 +478,18 @@ struct WorldPartitionRuntime::Impl {
             auto document = toml::parse(text);
             auto* objects = document ? document.table()["gameobjects"].as_array() : nullptr;
             uint64_t total = text.size();
-            if (!objects) result.diagnostic = "Cell document changed during terrain preparation";
+            if (!objects) {
+                result.diagnostic = "Cell document changed during terrain preparation";
+            }
             for (const auto& [index, path] : paths) {
-                if (!result.diagnostic.empty() || ticket->canceled.load(std::memory_order_relaxed)) break;
+                if (!result.diagnostic.empty() || ticket->canceled.load(std::memory_order_relaxed)) {
+                    break;
+                }
                 std::string terrainText;
                 if (total >= maximum) { result.diagnostic = "Combined terrain cell exceeds maxCellBytes"; break; }
-                if (!ReadBounded(path, maximum - total, ticket->canceled, terrainText, result.diagnostic)) break;
+                if (!ReadBounded(path, maximum - total, ticket->canceled, terrainText, result.diagnostic)) {
+                    break;
+                }
                 total += terrainText.size();
                 auto terrainDocument = toml::parse(terrainText);
                 if (!terrainDocument || !terrainDocument.table()["terrain"].is_table()) { result.diagnostic = "Referenced terrain is not a complete terrain document: " + path; break; }
@@ -420,8 +500,12 @@ struct WorldPartitionRuntime::Impl {
             }
             if (result.diagnostic.empty() && !ticket->canceled.load(std::memory_order_relaxed)) {
                 std::ostringstream serialized; serialized << document.table(); result.text = serialized.str();
-                if (result.text.size() > maximum) result.diagnostic = "Prepared terrain cell exceeds maxCellBytes";
-                else (void)ValidateDocument(result.text, result.objectIds, result.diagnostic);
+                if (result.text.size() > maximum) {
+                    result.diagnostic = "Prepared terrain cell exceeds maxCellBytes";
+                }
+                else {
+                    (void)ValidateDocument(result.text, result.objectIds, result.diagnostic);
+                }
             }
             std::scoped_lock lock(queue->mutex);
             if (ticket->canceled.load(std::memory_order_relaxed)) { std::string{}.swap(result.text); std::vector<std::string>{}.swap(result.objectIds); }
@@ -436,7 +520,9 @@ struct WorldPartitionRuntime::Impl {
         for (const auto& item : cell.spec.dependencies) {
             const auto type = ChannelName(item.typeName);
             dependencies.emplace(type, item.reference);
-            if (type == ChannelName("MeshInstancesAsset")) cell.pendingInstanceReferences.push_back(item.reference);
+            if (type == ChannelName("MeshInstancesAsset")) {
+                cell.pendingInstanceReferences.push_back(item.reference);
+            }
         }
         for (const auto& reference : instanceReferences) {
             const auto path = asset::AssetManager::ResolveAssetPath(reference);
@@ -458,12 +544,18 @@ struct WorldPartitionRuntime::Impl {
         }
         for (const auto& item : CollectSceneAssetReferences(cell.pendingText, [](std::string_view reference) {
             return asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(reference));
-        })) dependencies.emplace(std::string(StreamTypeNameOf(item.kind)), item.reference);
+        })) {
+            dependencies.emplace(std::string(StreamTypeNameOf(item.kind)), item.reference);
+        }
         asset::AssetRequestOptions options;
         options.priority = cell.pendingRepresentation == WorldCellRepresentation::NEAR ? asset::AssetPriority::Visible : asset::AssetPriority::Prefetch;
         for (const auto& [type, reference] : dependencies) {
-            if (type == asset::AssetStreamTypeName<asset::TextureAsset>()) options.quality.reset();
-            else options.quality = asset::AssetQuality{0};
+            if (type == asset::AssetStreamTypeName<asset::TextureAsset>()) {
+                options.quality.reset();
+            }
+            else {
+                options.quality = asset::AssetQuality{0};
+            }
             const auto error = cell.pendingLeases.Add(type, reference, options);
             if (error != asset::AssetLoadError::None) { Fail(cell, "Asset dependency request refused: " + type + " " + reference); return false; }
         }
@@ -475,26 +567,36 @@ struct WorldPartitionRuntime::Impl {
         std::vector<Completion> finished;
         { std::scoped_lock lock(completions->mutex); finished.swap(completions->pending); }
         for (auto& result : finished) {
-            if (jobs > 0) --jobs;
+            if (jobs > 0) {
+                --jobs;
+            }
             if (!Live() || result.epoch != epoch) { ++stale; continue; }
             if (result.sourcePreflight) {
                 sourcePending = false;
                 if (!sourceTicket || sourceTicket->canceled.load(std::memory_order_relaxed)) { ++stale; continue; }
                 sourceTicket.reset();
                 if (!result.diagnostic.empty()) { diagnostic = std::move(result.diagnostic); continue; }
-                if (!SourceClosure(diagnostic)) continue;
+                if (!SourceClosure(diagnostic)) {
+                    continue;
+                }
                 std::unordered_set<std::string> allowed(manifest.sourceInstanceIds.begin(), manifest.sourceInstanceIds.end());
                 bool collision = false;
                 std::unordered_set<std::string_view> persistentIds;
                 for (const auto& object : scene->GameObjects())
-                    if (!allowed.contains(object.instanceId)) persistentIds.insert(object.instanceId);
+                    if (!allowed.contains(object.instanceId)) {
+                        persistentIds.insert(object.instanceId);
+                    }
                 for (const auto& id : result.objectIds) if (persistentIds.contains(id)) { diagnostic = "Cell ID collides with a persistent object: " + id; collision = true; break; }
-                if (collision) continue;
+                if (collision) {
+                    continue;
+                }
                 std::vector<EntityID> roots;
                 for (const auto& [id, entity] : sourcesToRetire) {
                     auto* object = scene->GetGameObject(entity);
                     const auto* parent = object ? object->GetParent() : nullptr;
-                    if (!parent || !sourcesToRetire.contains(parent->instanceId)) roots.push_back(entity);
+                    if (!parent || !sourcesToRetire.contains(parent->instanceId)) {
+                        roots.push_back(entity);
+                    }
                     retiredSources.insert(id);
                 }
                 scene->DestroyGameObjects(roots);
@@ -507,7 +609,9 @@ struct WorldPartitionRuntime::Impl {
             if (result.attempt != cell.attempt || !cell.ticket || cell.ticket->canceled.load(std::memory_order_relaxed)) { ++stale; continue; }
             cell.ticket.reset();
             if (!result.diagnostic.empty() || result.text.empty()) { Fail(cell, result.diagnostic.empty() ? "Cell read was canceled" : std::move(result.diagnostic)); continue; }
-            if (SubmitTerrainReads(result)) continue;
+            if (SubmitTerrainReads(result)) {
+                continue;
+            }
             const auto resident = ResidentBytes();
             if (result.text.size() > settings.maxResidentBytes || resident - cell.bytes > settings.maxResidentBytes - result.text.size()) { Fail(cell, "Cell payload exceeds resident byte budget"); continue; }
             cell.pendingText = std::move(result.text);
@@ -516,12 +620,16 @@ struct WorldPartitionRuntime::Impl {
     }
     bool Publish(Cell& cell, renderer::ResourceManager* resources)
     {
-        if (!Live()) return false;
+        if (!Live()) {
+            return false;
+        }
         if (cell.quarantined || !scene->CanDestroyOwnedGameObjects(cell.entities)) {
             Fail(cell, "Cell replacement refused: detach nonowned descendants before changing representation"); return false;
         }
         const auto progress = cell.pendingLeases.GetProgress();
-        if (!progress.IsSettled()) return false;
+        if (!progress.IsSettled()) {
+            return false;
+        }
         if (progress.failed != 0) { Fail(cell, "A required cell dependency failed to load"); return false; }
         uint64_t bytes = cell.pendingText.size();
         for (const auto& reference : cell.pendingInstanceReferences) {
@@ -532,7 +640,7 @@ struct WorldPartitionRuntime::Impl {
         const auto residentBytes = ResidentBytes();
         if (bytes > settings.maxResidentBytes || residentBytes - cell.bytes > settings.maxResidentBytes - bytes) { Fail(cell, "Cell publication exceeds resident byte budget"); return false; }
 
-        /// @note 置換先の検証と追加が完了するまで元の表現を保持する。再利用する保存済み ID を隠すのはこの処理中だけ。
+        // 置換先の検証と追加が完了するまで元の表現を保持する。再利用する保存済み ID を隠すのはこの処理中だけ。
         std::vector<std::pair<EntityID, std::string>> hidden;
         for (const auto id : cell.entities) if (auto* object = scene->GetGameObject(id)) {
             hidden.emplace_back(id, object->instanceId);
@@ -564,7 +672,9 @@ struct WorldPartitionRuntime::Impl {
             }
             return false;
         }
-        if (!Live()) return false;
+        if (!Live()) {
+            return false;
+        }
         BindResidentMeshes(*scene, entities, *streamer, resources);
         auto oldLeases = std::move(cell.leases);
         auto oldInstances = std::move(cell.instanceReferences);
@@ -574,8 +684,12 @@ struct WorldPartitionRuntime::Impl {
         cell.instanceReferences = std::move(cell.pendingInstanceReferences);
         cell.pendingRepresentation = WorldCellRepresentation::UNLOADED;
         oldLeases.Release();
-        for (const auto& reference : oldInstances) EvictPlacements(reference);
-        if (Live()) FlushWorldTransforms(*scene);
+        for (const auto& reference : oldInstances) {
+            EvictPlacements(reference);
+        }
+        if (Live()) {
+            FlushWorldTransforms(*scene);
+        }
         return true;
     }
 };
@@ -599,7 +713,9 @@ bool WorldPartitionRuntime::Configure(Scene& scene, const WorldPartitionManifest
     const auto retained = RetainService(this); (void)retained;
     if (m_impl->inUpdate || m_impl->inReset) { diagnostic = "A partition cannot be reconfigured during its publication or retirement callbacks"; return false; }
     if (const auto found = Owners().find(&scene); found != Owners().end() && found->second != this) { diagnostic = "Another runtime already owns this Scene partition"; return false; }
-    if (!ValidateWorldPartitionManifest(manifest, diagnostic) || !ValidateWorldPartitionSettings(settings, diagnostic)) return false;
+    if (!ValidateWorldPartitionManifest(manifest, diagnostic) || !ValidateWorldPartitionSettings(settings, diagnostic)) {
+        return false;
+    }
     if (!manifest.sourceInstanceIds.empty() && !settings.retireSourceObjects) { diagnostic = "Authored source retirement is allowed only in an isolated Play scene"; return false; }
     std::error_code error;
     const auto suppliedRoot = util::FileSystem::PathFromUtf8(projectRoot);
@@ -609,17 +725,22 @@ bool WorldPartitionRuntime::Configure(Scene& scene, const WorldPartitionManifest
     const auto rootText = util::FileSystem::PathToUtf8(root);
     for (const auto& cell : manifest.cells) {
         std::string resolved;
-        if (!ResolvePayload(rootText, cell.nearPath, resolved, diagnostic) || (!cell.hlodPath.empty() && !ResolvePayload(rootText, cell.hlodPath, resolved, diagnostic))) return false;
+        if (!ResolvePayload(rootText, cell.nearPath, resolved, diagnostic) || (!cell.hlodPath.empty() && !ResolvePayload(rootText, cell.hlodPath, resolved, diagnostic))) {
+            return false;
+        }
     }
     std::unordered_map<std::string, EntityID> sources;
     const bool sameRetiredScene = m_impl->retiredScene == &scene && m_impl->retiredGeneration == scene.GetRenderSceneGeneration();
     for (const auto& id : manifest.sourceInstanceIds) {
-        if (sameRetiredScene && m_impl->retiredSources.contains(id)) continue;
+        if (sameRetiredScene && m_impl->retiredSources.contains(id)) {
+            continue;
+        }
         sources.emplace(id, EntityID::INVALID);
     }
     if (!sources.empty()) for (const auto& object : scene.GameObjects()) {
-        if (const auto source = sources.find(object.instanceId); source != sources.end() && !source->second.IsValid())
+        if (const auto source = sources.find(object.instanceId); source != sources.end() && !source->second.IsValid()) {
             source->second = object.GetID();
+        }
     }
     for (const auto& [id, entity] : sources) {
         auto* object = scene.GetGameObject(entity);
@@ -637,7 +758,9 @@ bool WorldPartitionRuntime::Configure(Scene& scene, const WorldPartitionManifest
     if (m_impl->scene || !m_impl->cells.empty()) { diagnostic = "Previous cell ownership is unsafe; detach foreign descendants before reconfiguring"; return false; }
     if (scene.GetRenderSceneGeneration() != expectedGeneration) { diagnostic = "Scene changed while retiring the previous partition"; return false; }
     auto& state = *m_impl;
-    if (!sameRetiredScene) state.retiredSources.clear();
+    if (!sameRetiredScene) {
+        state.retiredSources.clear();
+    }
     state.scene = &scene; state.generation = scene.GetRenderSceneGeneration(); state.retiredScene = &scene; state.retiredGeneration = state.generation;
     Owners()[&scene] = this;
     state.manifest = std::move(nextManifest); state.settings = nextSettings; state.projectRoot = rootText; state.diagnostic.clear(); state.hostDiagnostic = false;
@@ -645,7 +768,9 @@ bool WorldPartitionRuntime::Configure(Scene& scene, const WorldPartitionManifest
     for (const auto& spec : state.manifest.cells) {
         state.index.emplace(spec.id, state.cells.size()); state.cells.emplace_back(); state.cells.back().spec = spec;
     }
-    if (!state.sourcesReady && state.jobs < state.settings.maxConcurrentLoads) state.SubmitSourcePreflight();
+    if (!state.sourcesReady && state.jobs < state.settings.maxConcurrentLoads) {
+        state.SubmitSourcePreflight();
+    }
     diagnostic.clear(); return true;
 }
 
@@ -657,10 +782,14 @@ bool WorldPartitionRuntime::Open(Scene& scene, const std::string& reference, con
     const auto path = asset::AssetManager::ResolveAssetPath(manifestReference);
     if (path.empty()) { diagnostic = "Cannot resolve world manifest reference"; return fail(); }
     WorldPartitionManifest manifest;
-    if (!LoadWorldPartitionManifest(path, manifest, diagnostic)) return fail();
+    if (!LoadWorldPartitionManifest(path, manifest, diagnostic)) {
+        return fail();
+    }
     const auto root = asset::AssetDatabase::ProjectRoot();
     if (root.empty()) { diagnostic = "AssetDatabase project is not initialized"; return fail(); }
-    if (!Configure(scene, manifest, root, settings, diagnostic)) return fail();
+    if (!Configure(scene, manifest, root, settings, diagnostic)) {
+        return fail();
+    }
     m_impl->manifestPath = manifestReference;
     return true;
 }
@@ -669,20 +798,26 @@ void WorldPartitionRuntime::Update(const math::Vector3& source, renderer::Resour
 {
     const auto retained = RetainService(this); (void)retained;
     auto& state = *m_impl;
-    if (state.inUpdate || state.inReset) return;
+    if (state.inUpdate || state.inReset) {
+        return;
+    }
     state.inUpdate = true;
     struct UpdateScope {
         WorldPartitionRuntime& owner;
         Impl& state;
         ~UpdateScope() { state.inUpdate = false; if (state.resetRequested) { state.resetRequested = false; owner.Reset(); } }
     } scope{*this, state};
-    if (resources && state.Live()) state.scene->SetResourceManager(resources);
+    if (resources && state.Live()) {
+        state.scene->SetResourceManager(resources);
+    }
     state.Drain();
     if (!state.Live()) { DetachRetiredScene(); return; }
     if (!Finite(source)) { state.diagnostic = "Streaming source position must be finite"; return; }
     state.source = source;
     if (!state.sourcesReady) {
-        if (!state.sourcePending && state.diagnostic.empty() && state.jobs < state.settings.maxConcurrentLoads) state.SubmitSourcePreflight();
+        if (!state.sourcePending && state.diagnostic.empty() && state.jobs < state.settings.maxConcurrentLoads) {
+            state.SubmitSourcePreflight();
+        }
         return;
     }
     std::vector<std::pair<float, size_t>> wanted;
@@ -692,11 +827,15 @@ void WorldPartitionRuntime::Update(const math::Vector3& source, renderer::Resour
         const float dz = (std::max)({cell.spec.bounds.min.z - source.z, source.z - cell.spec.bounds.max.z, 0.0f});
         const float distance = (std::min)(WorldCellDistanceXZ(state.manifest.grid, cell.spec.id, source), std::hypot(dx, dz));
         auto target = WorldCellRepresentation::UNLOADED;
-        if (cell.overrideRepresentation) target = *cell.overrideRepresentation;
+        if (cell.overrideRepresentation) {
+            target = *cell.overrideRepresentation;
+        }
         else {
             const float nearThreshold = state.settings.nearDistance + (cell.resident == WorldCellRepresentation::NEAR ? state.settings.hysteresis : cell.resident == WorldCellRepresentation::HLOD ? -state.settings.hysteresis : 0.0f);
             const float farThreshold = state.settings.hlodDistance + (cell.resident != WorldCellRepresentation::UNLOADED ? state.settings.hysteresis : 0.0f);
-            if (distance <= nearThreshold) target = WorldCellRepresentation::NEAR;
+            if (distance <= nearThreshold) {
+                target = WorldCellRepresentation::NEAR;
+            }
             else if (distance <= farThreshold && !cell.spec.hlodPath.empty()) target = WorldCellRepresentation::HLOD;
         }
         if (target != cell.desired) {
@@ -704,16 +843,24 @@ void WorldPartitionRuntime::Update(const math::Vector3& source, renderer::Resour
             cell.state = cell.resident == WorldCellRepresentation::UNLOADED ? WorldCellLoadState::UNLOADED : WorldCellLoadState::RESIDENT;
         }
         if (cell.quarantined) { cell.state = WorldCellLoadState::FAILED; cell.diagnostic = "Detach foreign descendants from the retained forest before retrying"; }
-        if (target != WorldCellRepresentation::UNLOADED) wanted.emplace_back(distance, i);
+        if (target != WorldCellRepresentation::UNLOADED) {
+            wanted.emplace_back(distance, i);
+        }
     }
     const size_t admitted = (std::min)(wanted.size(), static_cast<size_t>(state.settings.maxResidentCells));
-    /// @note 距離が同じときはマニフェスト順のセルインデックスで比較し、従来の安定順序を保つ。
+    // 距離が同じときはマニフェスト順のセルインデックスで比較し、従来の安定順序を保つ。
     std::partial_sort(wanted.begin(), wanted.begin() + admitted, wanted.end());
-    for (size_t i = admitted; i < wanted.size(); ++i) state.cells[wanted[i].second].desired = WorldCellRepresentation::UNLOADED;
+    for (size_t i = admitted; i < wanted.size(); ++i) {
+        state.cells[wanted[i].second].desired = WorldCellRepresentation::UNLOADED;
+    }
     wanted.resize(admitted);
     for (auto& cell : state.cells) {
-        if (cell.desired == WorldCellRepresentation::UNLOADED && (cell.resident != WorldCellRepresentation::UNLOADED || cell.ticket || !cell.pendingText.empty())) state.Unload(cell);
-        if (!state.Live()) return;
+        if (cell.desired == WorldCellRepresentation::UNLOADED && (cell.resident != WorldCellRepresentation::UNLOADED || cell.ticket || !cell.pendingText.empty())) {
+            state.Unload(cell);
+        }
+        if (!state.Live()) {
+            return;
+        }
     }
     uint32_t published = 0;
     auto preparing = static_cast<uint32_t>(std::count_if(state.cells.begin(), state.cells.end(), [](const auto& entry) {
@@ -722,20 +869,32 @@ void WorldPartitionRuntime::Update(const math::Vector3& source, renderer::Resour
     for (const auto& [distance, cellIndex] : wanted) {
         (void)distance;
         auto& cell = state.cells[cellIndex];
-        if (cell.desired == WorldCellRepresentation::UNLOADED) continue;
+        if (cell.desired == WorldCellRepresentation::UNLOADED) {
+            continue;
+        }
         if (cell.state == WorldCellLoadState::WAITING_ASSETS && published < state.settings.maxPublishesPerFrame) {
-            if (state.Publish(cell, resources)) ++published;
-            if (!state.Live()) return;
-            if (cell.state != WorldCellLoadState::WAITING_ASSETS && preparing > 0) --preparing;
+            if (state.Publish(cell, resources)) {
+                ++published;
+            }
+            if (!state.Live()) {
+                return;
+            }
+            if (cell.state != WorldCellLoadState::WAITING_ASSETS && preparing > 0) {
+                --preparing;
+            }
         }
         if (cell.resident != cell.desired && cell.state != WorldCellLoadState::FAILED && cell.state != WorldCellLoadState::READING && cell.state != WorldCellLoadState::WAITING_ASSETS) {
             cell.state = WorldCellLoadState::QUEUED;
             if (state.jobs < state.settings.maxConcurrentLoads && preparing < state.settings.maxConcurrentLoads) {
                 state.SubmitCell(cellIndex);
-                if (cell.state == WorldCellLoadState::READING) ++preparing;
+                if (cell.state == WorldCellLoadState::READING) {
+                    ++preparing;
+                }
             }
         }
-        if (cell.resident != WorldCellRepresentation::UNLOADED) BindResidentMeshes(*state.scene, cell.entities, *state.streamer, resources);
+        if (cell.resident != WorldCellRepresentation::UNLOADED) {
+            BindResidentMeshes(*state.scene, cell.entities, *state.streamer, resources);
+        }
     }
 }
 
@@ -768,28 +927,40 @@ bool WorldPartitionRuntime::ClearCellOverride(WorldCellId id)
 void WorldPartitionRuntime::RetryFailed()
 {
     auto& state = *m_impl;
-    if (state.inUpdate || state.inReset) return;
+    if (state.inUpdate || state.inReset) {
+        return;
+    }
     for (auto& cell : state.cells) if (cell.state == WorldCellLoadState::FAILED) {
-        if (cell.quarantined && !state.Unload(cell)) continue;
+        if (cell.quarantined && !state.Unload(cell)) {
+            continue;
+        }
         cell.state = WorldCellLoadState::QUEUED; cell.diagnostic.clear();
     }
     if (!state.sourcesReady && !state.sourcePending && state.Live()) {
         state.diagnostic.clear();
-        if (state.jobs < state.settings.maxConcurrentLoads) state.SubmitSourcePreflight();
+        if (state.jobs < state.settings.maxConcurrentLoads) {
+            state.SubmitSourcePreflight();
+        }
     }
 }
 void WorldPartitionRuntime::Reset()
 {
     auto& state = *m_impl;
     if (state.inUpdate) { state.resetRequested = true; return; }
-    if (state.inReset) return;
+    if (state.inReset) {
+        return;
+    }
     const auto retained = RetainService(this); (void)retained;
     state.inReset = true;
     auto* previousScene = state.scene;
     ++state.epoch;
-    if (state.sourceTicket) state.sourceTicket->canceled.store(true, std::memory_order_relaxed);
+    if (state.sourceTicket) {
+        state.sourceTicket->canceled.store(true, std::memory_order_relaxed);
+    }
     state.sourceTicket.reset(); state.sourcePending = false;
-    for (auto& cell : state.cells) state.Cancel(cell);
+    for (auto& cell : state.cells) {
+        state.Cancel(cell);
+    }
     bool safe = true;
     if (state.Live()) for (auto& cell : state.cells) {
         if (!state.scene->CanDestroyOwnedGameObjects(cell.entities)) {
@@ -800,15 +971,23 @@ void WorldPartitionRuntime::Reset()
     }
     if (safe && state.Live()) for (auto& cell : state.cells) {
         if (!state.Unload(cell)) { state.diagnostic = cell.diagnostic; safe = false; break; }
-        if (!state.Live()) break;
+        if (!state.Live()) {
+            break;
+        }
     }
     if (safe || !state.Live()) {
-        if (const auto found = Owners().find(previousScene); found != Owners().end() && found->second == this) Owners().erase(found);
+        if (const auto found = Owners().find(previousScene); found != Owners().end() && found->second == this) {
+            Owners().erase(found);
+        }
         state.scene = nullptr;
         for (auto& cell : state.cells) {
             cell.leases.Release(); cell.pendingLeases.Release();
-            for (const auto& reference : cell.instanceReferences) state.EvictPlacements(reference);
-            for (const auto& reference : cell.pendingInstanceReferences) state.EvictPlacements(reference);
+            for (const auto& reference : cell.instanceReferences) {
+                state.EvictPlacements(reference);
+            }
+            for (const auto& reference : cell.pendingInstanceReferences) {
+                state.EvictPlacements(reference);
+            }
         }
         state.cells.clear(); state.index.clear(); state.sourcesToRetire.clear(); state.sourcesReady = true;
         state.manifest = {}; state.manifestPath.clear(); state.diagnostic.clear();
@@ -824,7 +1003,9 @@ void WorldPartitionRuntime::Reset()
 void WorldPartitionRuntime::DetachRetiredScene()
 {
     auto& state = *m_impl;
-    if (const auto found = Owners().find(state.scene); found != Owners().end() && found->second == this) Owners().erase(found);
+    if (const auto found = Owners().find(state.scene); found != Owners().end() && found->second == this) {
+        Owners().erase(found);
+    }
     state.scene = nullptr;
     Reset(); state.retiredSources.clear(); state.retiredScene = nullptr; state.retiredGeneration = 0;
 }
@@ -837,8 +1018,12 @@ WorldPartitionStatus WorldPartitionRuntime::Status() const
         WorldPartitionCellStatus value; value.id = cell.spec.id; value.desired = cell.desired; value.resident = cell.resident; value.state = cell.state;
         value.revision = cell.spec.revision; value.residentBytes = cell.bytes; value.objectCount = static_cast<uint32_t>(cell.entities.size()); value.diagnostic = cell.diagnostic;
         out.cells.push_back(std::move(value)); out.residentBytes += cell.bytes;
-        if (cell.resident == WorldCellRepresentation::NEAR) ++out.residentNear;
-        if (cell.resident == WorldCellRepresentation::HLOD) ++out.residentHlod;
+        if (cell.resident == WorldCellRepresentation::NEAR) {
+            ++out.residentNear;
+        }
+        if (cell.resident == WorldCellRepresentation::HLOD) {
+            ++out.residentHlod;
+        }
     }
     return out;
 }
@@ -846,12 +1031,16 @@ const WorldPartitionManifest& WorldPartitionRuntime::Manifest() const { return m
 
 WorldPartitionRuntime& GetWorldPartitionRuntime(Scene& scene)
 {
-    if (const auto found = Owners().find(&scene); found != Owners().end()) return *found->second;
+    if (const auto found = Owners().find(&scene); found != Owners().end()) {
+        return *found->second;
+    }
     auto& service = Services()[&scene]; if (!service) service = std::make_shared<WorldPartitionRuntime>(); return *service;
 }
 const WorldPartitionRuntime* FindWorldPartitionRuntime(const Scene& scene)
 {
-    if (const auto found = Owners().find(&scene); found != Owners().end()) return found->second;
+    if (const auto found = Owners().find(&scene); found != Owners().end()) {
+        return found->second;
+    }
     const auto found = Services().find(&scene); return found == Services().end() ? nullptr : found->second.get();
 }
 void ForgetWorldPartitionRuntime(Scene& scene)
@@ -860,13 +1049,17 @@ void ForgetWorldPartitionRuntime(Scene& scene)
     if (const auto found = Owners().find(&scene); found != Owners().end()) { owner = found->second; Owners().erase(found); }
     std::shared_ptr<WorldPartitionRuntime> retained;
     if (const auto found = Services().find(&scene); found != Services().end()) { retained = std::move(found->second); Services().erase(found); }
-    if (owner) owner->DetachRetiredScene();
+    if (owner) {
+        owner->DetachRetiredScene();
+    }
     else if (retained) retained->DetachRetiredScene();
 }
 void TransferWorldPartitionRuntime(Scene& source, Scene& destination)
 {
     const auto found = Owners().find(&source);
-    if (found == Owners().end()) return;
+    if (found == Owners().end()) {
+        return;
+    }
     auto* runtime = found->second;
     Owners().erase(found); Owners()[&destination] = runtime;
     if (const auto service = Services().find(&source); service != Services().end()) {
@@ -875,7 +1068,9 @@ void TransferWorldPartitionRuntime(Scene& source, Scene& destination)
     auto& state = *runtime->m_impl;
     state.scene = &destination; state.generation = destination.GetRenderSceneGeneration(); ++state.epoch;
     state.retiredScene = &destination; state.retiredGeneration = state.generation;
-    if (state.sourceTicket) state.sourceTicket->canceled.store(true, std::memory_order_relaxed);
+    if (state.sourceTicket) {
+        state.sourceTicket->canceled.store(true, std::memory_order_relaxed);
+    }
     state.sourceTicket.reset(); state.sourcePending = false;
     for (auto& cell : state.cells) { state.Cancel(cell); cell.state = cell.resident == WorldCellRepresentation::UNLOADED ? WorldCellLoadState::UNLOADED : WorldCellLoadState::RESIDENT; }
 }
@@ -884,7 +1079,9 @@ void UpdateWorldPartitionRuntime(Scene& scene, renderer::ResourceManager* resour
     WorldPartitionComponent* component = nullptr;
     for (const auto id : scene.GetEntities<WorldPartitionComponent>()) {
         auto* owner = scene.GetGameObject(id); auto* candidate = scene.GetComponent<WorldPartitionComponent>(id);
-        if (!owner || !owner->activeInHierarchy() || !candidate || !candidate->enabled) continue;
+        if (!owner || !owner->activeInHierarchy() || !candidate || !candidate->enabled) {
+            continue;
+        }
         if (component) {
             auto& state = *GetWorldPartitionRuntime(scene).m_impl;
             state.diagnostic = "Only one active WorldPartitionComponent may control a Scene"; state.hostDiagnostic = true;
@@ -942,7 +1139,9 @@ void UpdateWorldPartitionRuntime(Scene& scene, renderer::ResourceManager* resour
             auto* owner = scene.GetGameObject(id); const auto* camera = scene.GetComponent<CameraComponent>(id);
             if (owner && owner->activeInHierarchy() && camera && camera->enabled && camera->isMain) { sourceObject = owner; break; }
         }
-        if (sourceObject) source = sourceObject->transform.worldPosition;
+        if (sourceObject) {
+            source = sourceObject->transform.worldPosition;
+        }
     }
     runtime.Update(source, resources);
 }

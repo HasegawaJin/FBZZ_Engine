@@ -25,7 +25,9 @@ void NormalizeFiberShading(MaterialAssetAuthoring& asset)
     const bool hasCanonical = asset.params.contains("planarShading") || asset.integerParams.contains("planarShading");
     auto legacyFloat = asset.params.extract("grassShading");
     auto legacyInteger = asset.integerParams.extract("grassShading");
-    if (hasCanonical) return;
+    if (hasCanonical) {
+        return;
+    }
     if (!legacyFloat.empty()) {
         legacyFloat.key() = "planarShading";
         asset.params.insert(std::move(legacyFloat));
@@ -50,15 +52,19 @@ constexpr std::array<const char*, 8> kTextureSlots = {
 
 std::string ResolveTexturePath(std::string_view materialPath, std::string value)
 {
-    if (value.empty()) return value;
+    if (value.empty()) {
+        return value;
+    }
     std::replace(value.begin(), value.end(), '\\', '/');
-    if (value.starts_with("Assets/") || value.starts_with("assets/"))
+    if (value.starts_with("Assets/") || value.starts_with("assets/")) {
         return value;
-    if (value.find('/') != std::string::npos)
+    }
+    if (value.find('/') != std::string::npos) {
         return value;
+    }
 
-    /// @note FBX インポートは `materials/<MaterialName>.mat` と `textures/foo.png` を sibling に出す。
-    /// @note 旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
+    // FBX インポートは `materials/<MaterialName>.mat` と `textures/foo.png` を sibling に出す。
+    // 旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
     const std::filesystem::path materialDir = std::filesystem::path(std::string(materialPath)).parent_path();
     return (materialDir.parent_path() / "textures" / value).string();
 }
@@ -68,24 +74,41 @@ std::string ResolveTexturePath(std::string_view materialPath, std::string value)
 /// @note しまう。意図と結果がずれる経路を塞ぐ。
 renderer::BlendMode BlendModeFromString(std::string_view value)
 {
-    if (value == "AlphaBlend" || value == "Alpha Blend" || value == "Alpha" || value == "Transparent")
+    if (value == "AlphaBlend" || value == "Alpha Blend" || value == "Alpha" || value == "Transparent") {
         return renderer::BlendMode::ALPHA_BLEND;
-    if (value == "Additive" || value == "Add")
+    }
+    if (value == "Additive" || value == "Add") {
         return renderer::BlendMode::ADDITIVE;
-    if (value == "Premultiplied" || value == "PremultipliedAlpha")
+    }
+    if (value == "Premultiplied" || value == "PremultipliedAlpha") {
         return renderer::BlendMode::PREMULTIPLIED;
+    }
     return renderer::BlendMode::OPAQUE_BLEND;
 }
 
 DepthTest DepthTestFromString(std::string_view value)
 {
-    if (value == "Always")       return DepthTest::Always;
-    if (value == "Never")        return DepthTest::Never;
-    if (value == "Less")         return DepthTest::Less;
-    if (value == "Equal")        return DepthTest::Equal;
-    if (value == "Greater")      return DepthTest::Greater;
-    if (value == "GreaterEqual") return DepthTest::GreaterEqual;
-    if (value == "NotEqual")     return DepthTest::NotEqual;
+    if (value == "Always") {
+        return DepthTest::Always;
+    }
+    if (value == "Never") {
+        return DepthTest::Never;
+    }
+    if (value == "Less") {
+        return DepthTest::Less;
+    }
+    if (value == "Equal") {
+        return DepthTest::Equal;
+    }
+    if (value == "Greater") {
+        return DepthTest::Greater;
+    }
+    if (value == "GreaterEqual") {
+        return DepthTest::GreaterEqual;
+    }
+    if (value == "NotEqual") {
+        return DepthTest::NotEqual;
+    }
     return DepthTest::LessEqual;
 }
 
@@ -117,12 +140,24 @@ const char* BlendModeToString(renderer::BlendMode mode)
 
 RenderPath RenderPathFromString(std::string_view value)
 {
-    if (value == "auto" || value == "Auto") return RenderPath::Auto;
-    if (value == "particle" || value == "Particle") return RenderPath::Particle;
-    if (value == "trail" || value == "Trail") return RenderPath::Trail;
-    if (value == "ui" || value == "UI") return RenderPath::UI;
-    if (value == "decal" || value == "Decal") return RenderPath::Decal;
-    if (value == "post_process" || value == "PostProcess") return RenderPath::PostProcess;
+    if (value == "auto" || value == "Auto") {
+        return RenderPath::Auto;
+    }
+    if (value == "particle" || value == "Particle") {
+        return RenderPath::Particle;
+    }
+    if (value == "trail" || value == "Trail") {
+        return RenderPath::Trail;
+    }
+    if (value == "ui" || value == "UI") {
+        return RenderPath::UI;
+    }
+    if (value == "decal" || value == "Decal") {
+        return RenderPath::Decal;
+    }
+    if (value == "post_process" || value == "PostProcess") {
+        return RenderPath::PostProcess;
+    }
     return RenderPath::Auto;
 }
 
@@ -141,8 +176,12 @@ const char* RenderPathToString(RenderPath rp)
 
 MeshType MeshTypeFromString(std::string_view value)
 {
-    if (value == "surface" || value == "Surface") return MeshType::Surface;
-    if (value == "skinned" || value == "Skinned") return MeshType::Skinned;
+    if (value == "surface" || value == "Surface") {
+        return MeshType::Surface;
+    }
+    if (value == "skinned" || value == "Skinned") {
+        return MeshType::Skinned;
+    }
     return MeshType::Any;
 }
 
@@ -158,8 +197,9 @@ const char* MeshTypeToString(MeshType mt)
 
 void ReadFloatParam(const toml::table& table, const char* key, MaterialAssetAuthoring& asset)
 {
-    if (const auto value = table[key].value<double>())
+    if (const auto value = table[key].value<double>()) {
         asset.params[key] = { static_cast<float>(*value) };
+    }
     else if (const auto value = table[key].value<int64_t>())
         asset.params[key] = { static_cast<float>(*value) };
 }
@@ -167,18 +207,22 @@ void ReadFloatParam(const toml::table& table, const char* key, MaterialAssetAuth
 void ReadFloatArrayParam(const toml::table& table, const char* key, MaterialAssetAuthoring& asset)
 {
     auto* arr = table[key].as_array();
-    if (!arr) return;
+    if (!arr) {
+        return;
+    }
 
     std::vector<float> values;
     values.reserve(arr->size());
     for (const auto& node : *arr) {
-        if (const auto value = node.value<double>())
+        if (const auto value = node.value<double>()) {
             values.push_back(static_cast<float>(*value));
+        }
         else if (const auto value = node.value<int64_t>())
             values.push_back(static_cast<float>(*value));
     }
-    if (!values.empty())
+    if (!values.empty()) {
         asset.params[key] = std::move(values);
+    }
 }
 
 void ReadParamsTable(const toml::table& table, MaterialAssetAuthoring& asset)
@@ -201,20 +245,29 @@ void ReadParamsTable(const toml::table& table, MaterialAssetAuthoring& asset)
             } else if (item.is_floating_point()) {
                 allInteger = false;
                 floats.push_back(static_cast<float>(item.value_or(0.0)));
-            } else valid = false;
+            } else {
+                valid = false;
+            }
         };
         if (const auto* array = node.as_array()) {
-            for (const auto& item : *array) read(item);
-        } else read(node);
+            for (const auto& item : *array) {
+                read(item);
+            }
+        } else {
+            read(node);
+        }
         if (!valid) {
             FBZZ_LOG_WARN("Material parameter must be a number/bool or flat numeric array: %s", name.c_str());
             continue;
         }
         asset.params.erase(name);
         asset.integerParams.erase(name);
-        if (allInteger && std::any_of(integers.begin(), integers.end(), [](int64_t value) { return value < -16777216 || value > 16777216; }))
+        if (allInteger && std::any_of(integers.begin(), integers.end(), [](int64_t value) { return value < -16777216 || value > 16777216; })) {
             asset.integerParams[name] = std::move(integers);
-        else asset.params[name] = std::move(floats);
+        }
+        else {
+            asset.params[name] = std::move(floats);
+        }
     }
 }
 
@@ -225,12 +278,24 @@ void ReadParamsTable(const toml::table& table, MaterialAssetAuthoring& asset)
 
 scene::ParticleAlphaSource AlphaSourceFromString(std::string_view value)
 {
-    if (value == "luminance")          return scene::ParticleAlphaSource::Luminance;
-    if (value == "luminance_inverted") return scene::ParticleAlphaSource::LuminanceInverted;
-    if (value == "red")                return scene::ParticleAlphaSource::Red;
-    if (value == "green")              return scene::ParticleAlphaSource::Green;
-    if (value == "blue")               return scene::ParticleAlphaSource::Blue;
-    if (value == "alpha_inverted")     return scene::ParticleAlphaSource::AlphaInverted;
+    if (value == "luminance") {
+        return scene::ParticleAlphaSource::Luminance;
+    }
+    if (value == "luminance_inverted") {
+        return scene::ParticleAlphaSource::LuminanceInverted;
+    }
+    if (value == "red") {
+        return scene::ParticleAlphaSource::Red;
+    }
+    if (value == "green") {
+        return scene::ParticleAlphaSource::Green;
+    }
+    if (value == "blue") {
+        return scene::ParticleAlphaSource::Blue;
+    }
+    if (value == "alpha_inverted") {
+        return scene::ParticleAlphaSource::AlphaInverted;
+    }
     return scene::ParticleAlphaSource::TextureAlpha;
 }
 
@@ -250,9 +315,15 @@ const char* AlphaSourceToString(scene::ParticleAlphaSource value)
 
 scene::ParticleFlipbookMode FlipbookModeFromString(std::string_view value)
 {
-    if (value == "fps")         return scene::ParticleFlipbookMode::FramesPerSecond;
-    if (value == "random")      return scene::ParticleFlipbookMode::RandomFrame;
-    if (value == "ping_pong")   return scene::ParticleFlipbookMode::PingPong;
+    if (value == "fps") {
+        return scene::ParticleFlipbookMode::FramesPerSecond;
+    }
+    if (value == "random") {
+        return scene::ParticleFlipbookMode::RandomFrame;
+    }
+    if (value == "ping_pong") {
+        return scene::ParticleFlipbookMode::PingPong;
+    }
     return scene::ParticleFlipbookMode::Lifetime;
 }
 
@@ -336,24 +407,32 @@ void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
 {
     const ParticleMaterialSettings d{};
     const auto putF = [&](const char* key, float v, float def) {
-        if (v != def) out.insert(key, static_cast<double>(v));
+        if (v != def) {
+            out.insert(key, static_cast<double>(v));
+        }
     };
     const auto putI = [&](const char* key, int v, int def) {
-        if (v != def) out.insert(key, static_cast<int64_t>(v));
+        if (v != def) {
+            out.insert(key, static_cast<int64_t>(v));
+        }
     };
     const auto putB = [&](const char* key, bool v, bool def) {
-        if (v != def) out.insert(key, v);
+        if (v != def) {
+            out.insert(key, v);
+        }
     };
 
-    if (value.alphaSource != d.alphaSource)
+    if (value.alphaSource != d.alphaSource) {
         out.insert("alpha_source", AlphaSourceToString(value.alphaSource));
+    }
 
     putI("sprite_columns", value.flipbook.spriteColumns, d.flipbook.spriteColumns);
     putI("sprite_rows", value.flipbook.spriteRows, d.flipbook.spriteRows);
     putI("sprite_start_frame", value.flipbook.spriteStartFrame, d.flipbook.spriteStartFrame);
     putI("sprite_end_frame", value.flipbook.spriteEndFrame, d.flipbook.spriteEndFrame);
-    if (value.flipbook.flipbookMode != d.flipbook.flipbookMode)
+    if (value.flipbook.flipbookMode != d.flipbook.flipbookMode) {
         out.insert("flipbook_mode", FlipbookModeToString(value.flipbook.flipbookMode));
+    }
     putF("flipbook_fps", value.flipbook.flipbookFramesPerSecond, d.flipbook.flipbookFramesPerSecond);
     putB("flipbook_frame_blending", value.flipbook.flipbookFrameBlending, d.flipbook.flipbookFrameBlending);
     putB("sprite_random_start_frame", value.flipbook.spriteRandomStartFrame, d.flipbook.spriteRandomStartFrame);
@@ -400,32 +479,46 @@ void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
 
 bool ReadDielectricTable(const toml::table& table, renderer::SolidDielectricSettings& out)
 {
-    /// @note 表現範囲外の有限値を clamp しない。inf / nan は表面能力の診断へ保持する。
+    // 表現範囲外の有限値を clamp しない。inf / nan は表面能力の診断へ保持する。
     const auto floatValue = [](const toml::node& node, float& target) {
-        if (!node.is_number()) return false;
+        if (!node.is_number()) {
+            return false;
+        }
         const auto value = node.value<double>();
         if (!value || (std::isfinite(*value)
-            && std::abs(*value) > static_cast<double>(std::numeric_limits<float>::max()))) return false;
+            && std::abs(*value) > static_cast<double>(std::numeric_limits<float>::max()))) {
+            return false;
+        }
         target = static_cast<float>(*value);
         return true;
     };
     const auto number = [&](const char* key, float& target) {
         const auto* node = table.get(key);
-        if (!node) return true;
+        if (!node) {
+            return true;
+        }
         return floatValue(*node, target);
     };
     if (!number("transmission", out.transmission) || !number("ior", out.ior)
-        || !number("attenuation_distance", out.attenuationDistance)) return false;
+        || !number("attenuation_distance", out.attenuationDistance)) {
+        return false;
+    }
     if (const auto* node = table.get("thin_walled")) {
-        if (!node->is_boolean()) return false;
+        if (!node->is_boolean()) {
+            return false;
+        }
         out.thinWalled = node->value_or(false);
     }
     if (const auto* node = table.get("attenuation_color")) {
         const auto* color = node->as_array();
-        if (!color || color->size() != 3) return false;
+        if (!color || color->size() != 3) {
+            return false;
+        }
         std::array<float, 3> values{};
         for (size_t i = 0; i < values.size(); ++i) {
-            if (!floatValue((*color)[i], values[i])) return false;
+            if (!floatValue((*color)[i], values[i])) {
+                return false;
+            }
         }
         out.attenuationColor = {values[0], values[1], values[2]};
     }
@@ -435,28 +528,36 @@ bool ReadDielectricTable(const toml::table& table, renderer::SolidDielectricSett
 void WriteDielectricTable(const renderer::SolidDielectricSettings& value, toml::table& out)
 {
     const renderer::SolidDielectricSettings defaults;
-    if (value.transmission != defaults.transmission)
+    if (value.transmission != defaults.transmission) {
         out.insert("transmission", static_cast<double>(value.transmission));
-    if (value.ior != defaults.ior) out.insert("ior", static_cast<double>(value.ior));
+    }
+    if (value.ior != defaults.ior) {
+        out.insert("ior", static_cast<double>(value.ior));
+    }
     if (value.attenuationColor.x != defaults.attenuationColor.x
         || value.attenuationColor.y != defaults.attenuationColor.y
-        || value.attenuationColor.z != defaults.attenuationColor.z)
+        || value.attenuationColor.z != defaults.attenuationColor.z) {
         out.insert("attenuation_color", toml::array{static_cast<double>(value.attenuationColor.x),
             static_cast<double>(value.attenuationColor.y), static_cast<double>(value.attenuationColor.z)});
-    if (value.attenuationDistance != defaults.attenuationDistance)
+    }
+    if (value.attenuationDistance != defaults.attenuationDistance) {
         out.insert("attenuation_distance", static_cast<double>(value.attenuationDistance));
-    if (value.thinWalled != defaults.thinWalled) out.insert("thin_walled", value.thinWalled);
+    }
+    if (value.thinWalled != defaults.thinWalled) {
+        out.insert("thin_walled", value.thinWalled);
+    }
 }
 
 toml::array FloatArrayToToml(const std::vector<float>& values)
 {
     toml::array arr;
-    for (const float value : values)
+    for (const float value : values) {
         arr.push_back(static_cast<double>(value));
+    }
     return arr;
 }
 
-} /// @note namespace
+} // namespace
 
 MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle)
 {
@@ -526,7 +627,9 @@ bool MaterialAssetAuthoring::operator==(const MaterialAssetAuthoring& other) con
 bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 {
     MaterialAssetAuthoring values;
-    if (!LoadMaterialAssetFromFile(path, values)) return false;
+    if (!LoadMaterialAssetFromFile(path, values)) {
+        return false;
+    }
     outAsset.ReplaceAuthoring(values);
     return true;
 }
@@ -540,9 +643,9 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& ou
         return false;
     }
 
-    /// @note `toml::parse_file(std::string_view)` に Editor 側の一時パス表現を直接渡すと、
-    /// @note Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れるため、
-    /// @note Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
+    // `toml::parse_file(std::string_view)` に Editor 側の一時パス表現を直接渡すと、
+    // Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れるため、
+    // Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
     toml::parse_result parsed = toml::parse(text, pathString);
     if (!parsed) {
         FBZZ_LOG_WARN("MaterialAsset: parse failed [%s]", pathString.c_str());
@@ -550,7 +653,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& ou
     }
 
     MaterialAssetAuthoring asset;
-    /// @note guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
+    // guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
     DecodeGuidRefs(parsed.table());
     const toml::table& table = parsed.table();
     asset.shaderPath = table["shader"].value_or(std::string{});
@@ -567,18 +670,20 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& ou
 
     if (auto* keywords = table["keywords"].as_array()) {
         for (const auto& node : *keywords) {
-            if (const auto keyword = node.value<std::string>(); keyword && !keyword->empty())
+            if (const auto keyword = node.value<std::string>(); keyword && !keyword->empty()) {
                 asset.keywords.push_back(*keyword);
+            }
         }
     }
 
-    for (const char* slot : kTextureSlots)
+    for (const char* slot : kTextureSlots) {
         asset.textures[slot] = {};
+    }
 
     if (auto* textures = table["textures"].as_table()) {
-        /// @note Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名 (`layer0_diffuse`,
-        /// @note `normalMap1` など) を .mat に保存する。固定スロットだけを読むと、専用マテリアルを
-        /// @note Inspector で保存した時にテクスチャ参照が消えるため、textures テーブルの全キーを保持する。
+        // Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名 (`layer0_diffuse`,
+        // `normalMap1` など) を .mat に保存する。固定スロットだけを読むと、専用マテリアルを
+        // Inspector で保存した時にテクスチャ参照が消えるため、textures テーブルの全キーを保持する。
         for (const auto& [key, node] : *textures) {
             const std::string name = std::string(key);
             const auto texturePath = node.value<std::string>();
@@ -586,13 +691,15 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& ou
         }
     }
 
-    if (auto* params = table["params"].as_table())
+    if (auto* params = table["params"].as_table()) {
         ReadParamsTable(*params, asset);
+    }
     NormalizeFiberShading(asset);
 
-    /// @note 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
-    if (auto* particle = table["particle"].as_table())
+    // 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
+    if (auto* particle = table["particle"].as_table()) {
         ReadParticleTable(*particle, asset.particle);
+    }
 
     if (const auto* node = table.get("dielectric")) {
         const auto* dielectric = node->as_table();
@@ -622,28 +729,35 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring
     table.insert("double_sided", asset.doubleSided);
     table.insert("depth_write", asset.depthWrite);
     table.insert("depth_test",  DepthTestToString(asset.depthTest));
-    /// @note 既定値のときは書かない (既存 .mat を保存し直しても差分を出さない)。
-    if (asset.depthBias != 0)          table.insert("depth_bias", static_cast<int64_t>(asset.depthBias));
-    if (asset.depthBiasSlope != 0.0f)  table.insert("depth_bias_slope", static_cast<double>(asset.depthBiasSlope));
+    // 既定値のときは書かない (既存 .mat を保存し直しても差分を出さない)。
+    if (asset.depthBias != 0) {
+        table.insert("depth_bias", static_cast<int64_t>(asset.depthBias));
+    }
+    if (asset.depthBiasSlope != 0.0f) {
+        table.insert("depth_bias_slope", static_cast<double>(asset.depthBiasSlope));
+    }
     table.insert("render_queue", static_cast<int64_t>(asset.renderQueue));
     table.insert("render_path", RenderPathToString(asset.renderPath));
     table.insert("mesh_type",   MeshTypeToString(asset.meshType));
 
     if (!asset.keywords.empty()) {
         toml::array keywords;
-        for (const std::string& keyword : asset.keywords)
+        for (const std::string& keyword : asset.keywords) {
             keywords.push_back(keyword);
+        }
         table.insert("keywords", std::move(keywords));
     }
 
     toml::table textures;
-    /// @note ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
-    /// @note これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
-    for (const auto& [slot, texturePath] : asset.textures)
+    // ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
+    // これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
+    for (const auto& [slot, texturePath] : asset.textures) {
         textures.insert(slot, texturePath);
+    }
     for (const char* slot : kTextureSlots) {
-        if (!textures.contains(slot))
+        if (!textures.contains(slot)) {
             textures.insert(slot, std::string{});
+        }
     }
     table.insert("textures", std::move(textures));
 
@@ -651,34 +765,44 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring
     NormalizeFiberShading(canonical);
     toml::table params;
     for (const auto& [name, values] : canonical.params) {
-        if (values.size() == 1)
+        if (values.size() == 1) {
             params.insert(name, static_cast<double>(values[0]));
-        else
+        }
+        else {
             params.insert(name, FloatArrayToToml(values));
+        }
     }
     for (const auto& [name, values] : canonical.integerParams) {
-        if (values.size() == 1) params.insert_or_assign(name, values[0]);
+        if (values.size() == 1) {
+            params.insert_or_assign(name, values[0]);
+        }
         else {
             toml::array array;
-            for (const int64_t value : values) array.push_back(value);
+            for (const int64_t value : values) {
+                array.push_back(value);
+            }
             params.insert_or_assign(name, std::move(array));
         }
     }
     table.insert("params", std::move(params));
 
-    /// @note パーティクル用の .mat だけ [particle] を書く。既定のままの項目は省く。
+    // パーティクル用の .mat だけ [particle] を書く。既定のままの項目は省く。
     if (asset.renderPath == RenderPath::Particle) {
         toml::table particle;
         WriteParticleTable(asset.particle, particle);
-        if (!particle.empty()) table.insert("particle", std::move(particle));
+        if (!particle.empty()) {
+            table.insert("particle", std::move(particle));
+        }
     }
 
-    /// @note 光学設定だけの独立 table。旧 alpha 材質を透過材質へ自動変換しない。
+    // 光学設定だけの独立 table。旧 alpha 材質を透過材質へ自動変換しない。
     toml::table dielectric;
     WriteDielectricTable(asset.dielectric, dielectric);
-    if (!dielectric.empty()) table.insert("dielectric", std::move(dielectric));
+    if (!dielectric.empty()) {
+        table.insert("dielectric", std::move(dielectric));
+    }
 
-    /// @note ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
+    // ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
     EncodeGuidRefs(table);
 
     std::ostringstream out;
@@ -690,4 +814,4 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

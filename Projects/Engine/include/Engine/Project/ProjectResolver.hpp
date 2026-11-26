@@ -38,4 +38,4 @@ private:
     std::wstring  m_errorMessage;
 };
 
-} /// @note namespace fbzz
+} // namespace fbzz

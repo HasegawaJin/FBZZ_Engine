@@ -17,36 +17,56 @@ namespace fbzz::asset::detail {
 inline bool IsCacheableLoadedReference(const std::string& reference, std::string_view resolvedPath = {},
     std::string* cachedPath = nullptr)
 {
-    /// @note 起動時だけ選べるポーリングは、索引通知のないファイル駆動型ホストと同一バイナリでの計測に使う。
+    // 起動時だけ選べるポーリングは、索引通知のないファイル駆動型ホストと同一バイナリでの計測に使う。
     static const bool polling = [] {
         const auto* mode = std::getenv("FBZZ_LOADED_REFERENCE_MODE");
         return mode && std::string_view(mode) == "poll";
     }();
-    if (polling) return false;
+    if (polling) {
+        return false;
+    }
     if (AssetDatabase::IsGuidRef(reference)) {
-        if (cachedPath) *cachedPath = resolvedPath.empty() ? AssetManager::ResolveAssetPath(reference) : std::string(resolvedPath);
+        if (cachedPath) {
+            *cachedPath = resolvedPath.empty() ? AssetManager::ResolveAssetPath(reference) : std::string(resolvedPath);
+        }
         return true;
     }
     if (!reference.starts_with("Assets/") || reference.find("/../") != std::string::npos
-        || reference.find("/./") != std::string::npos || reference.find('\\') != std::string::npos) return false;
+        || reference.find("/./") != std::string::npos || reference.find('\\') != std::string::npos) {
+        return false;
+    }
     const auto root = AssetDatabase::AssetsRoot();
-    if (root.empty()) return false;
+    if (root.empty()) {
+        return false;
+    }
     const auto expected = root + reference.substr(7);
     const auto guid = AssetDatabase::TryGetGuidFromPath(expected);
-    if (guid.empty()) return false;
+    if (guid.empty()) {
+        return false;
+    }
     const auto same = [](std::string_view first, std::string_view second) {
-        if (first.size() != second.size()) return false;
+        if (first.size() != second.size()) {
+            return false;
+        }
         for (size_t i = 0; i < first.size(); ++i) {
             const auto fold = [](unsigned char c) { return c == '\\' ? '/' : std::tolower(c); };
-            if (fold(first[i]) != fold(second[i])) return false;
+            if (fold(first[i]) != fold(second[i])) {
+                return false;
+            }
         }
         return true;
     };
-    if (!same(AssetDatabase::PathFromGuid(guid), expected)) return false;
+    if (!same(AssetDatabase::PathFromGuid(guid), expected)) {
+        return false;
+    }
     const auto resolved = resolvedPath.empty() ? AssetManager::ResolveAssetPath(reference) : std::string{};
     const auto actual = resolvedPath.empty() ? std::string_view(resolved) : resolvedPath;
-    if (!same(actual, expected)) return false;
-    if (cachedPath) *cachedPath = actual;
+    if (!same(actual, expected)) {
+        return false;
+    }
+    if (cachedPath) {
+        *cachedPath = actual;
+    }
     return true;
 }
-} /// @note namespace fbzz::asset::detail
+} // namespace fbzz::asset::detail

@@ -98,7 +98,7 @@ std::unique_ptr<Skeleton> SkeletonImporter::Import(
         skel->boneMap[bone.name] = static_cast<int>(bi);
     }
 
-    /// @note 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
     BuildReferencePose(*skel);
     return skel;
 }

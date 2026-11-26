@@ -35,14 +35,18 @@ struct EnumName {
 int NameToEnum(std::string_view name, std::span<const EnumName> table, int fallback)
 {
     for (const auto& entry : table)
-        if (name == entry.name) return entry.value;
+        if (name == entry.name) {
+            return entry.value;
+        }
     return fallback;
 }
 
 const char* EnumToName(int value, std::span<const EnumName> table, const char* fallback)
 {
     for (const auto& entry : table)
-        if (entry.value == value) return entry.name;
+        if (entry.value == value) {
+            return entry.name;
+        }
     return fallback;
 }
 
@@ -110,7 +114,9 @@ float ReadFloat(const toml::table& table, std::string_view key, double fallback)
 toml::array WriteFloats(std::initializer_list<float> values)
 {
     toml::array array;
-    for (const float value : values) array.push_back(static_cast<double>(value));
+    for (const float value : values) {
+        array.push_back(static_cast<double>(value));
+    }
     return array;
 }
 
@@ -120,20 +126,28 @@ void ReadKeys(const toml::table& table, std::string_view name,
               std::vector<Key>& outKeys, ReadValue readValue)
 {
     const toml::array* array = table[name].as_array();
-    if (!array) return;
+    if (!array) {
+        return;
+    }
     outKeys.clear();
     outKeys.reserve(array->size());
     for (const auto& element : *array) {
         const toml::table* keyTable = element.as_table();
-        if (!keyTable) continue;
+        if (!keyTable) {
+            continue;
+        }
         Key key;
         key.time = ReadDouble(*keyTable, "time", 0.0);
         readValue(*keyTable, key);
-        /// @note 比較で順序を定められない時刻は stable_sort の前提を破る。不正なキーはサンプリングに渡さない。
-        if (!std::isfinite(key.time)) continue;
+        // 比較で順序を定められない時刻は stable_sort の前提を破る。不正なキーはサンプリングに渡さない。
+        if (!std::isfinite(key.time)) {
+            continue;
+        }
         if constexpr (std::is_same_v<Key, FloatKey>) {
             if (!std::isfinite(key.value) || !std::isfinite(key.inTangent)
-                || !std::isfinite(key.outTangent)) continue;
+                || !std::isfinite(key.outTangent)) {
+                continue;
+            }
         }
         outKeys.push_back(std::move(key));
     }
@@ -144,7 +158,9 @@ void ReadKeys(const toml::table& table, std::string_view name,
 math::Vector3 ReadVector3(const toml::table& table, std::string_view key)
 {
     const toml::array* array = table[key].as_array();
-    if (!array || array->size() < 3) return math::Vector3::ZERO;
+    if (!array || array->size() < 3) {
+        return math::Vector3::ZERO;
+    }
     return { static_cast<float>((*array)[0].value_or(0.0)),
              static_cast<float>((*array)[1].value_or(0.0)),
              static_cast<float>((*array)[2].value_or(0.0)) };
@@ -153,8 +169,9 @@ math::Vector3 ReadVector3(const toml::table& table, std::string_view key)
 math::Vector4 ReadVector4(const toml::table& table, std::string_view key, float defaultW)
 {
     const toml::array* array = table[key].as_array();
-    if (!array || array->size() < 4)
+    if (!array || array->size() < 4) {
         return { 0.0f, 0.0f, 0.0f, defaultW };
+    }
     return { static_cast<float>((*array)[0].value_or(0.0)),
              static_cast<float>((*array)[1].value_or(0.0)),
              static_cast<float>((*array)[2].value_or(0.0)),
@@ -164,7 +181,9 @@ math::Vector4 ReadVector4(const toml::table& table, std::string_view key, float 
 math::Vector2 ReadVector2(const toml::table& table, std::string_view key)
 {
     const toml::array* array = table[key].as_array();
-    if (!array || array->size() < 2) return math::Vector2::ZERO;
+    if (!array || array->size() < 2) {
+        return math::Vector2::ZERO;
+    }
     return { static_cast<float>((*array)[0].value_or(0.0)),
              static_cast<float>((*array)[1].value_or(0.0)) };
 }
@@ -222,7 +241,9 @@ void WritePropertyTrack(const PropertyAnimationTrack& track, toml::table& out)
     out.insert("meshIndex", static_cast<int64_t>(track.meshIndex));
 
     const auto writeKeys = [&out](const char* name, auto& keys, auto writeValue) {
-        if (keys.empty()) return;
+        if (keys.empty()) {
+            return;
+        }
         toml::array array;
         for (const auto& key : keys) {
             toml::table keyTable;
@@ -235,8 +256,12 @@ void WritePropertyTrack(const PropertyAnimationTrack& track, toml::table& out)
 
     writeKeys("floatKeys", track.floatKeys, [](toml::table& t, const FloatKey& key) {
         t.insert("value", static_cast<double>(key.value));
-        if (key.inTangent  != 0.0f) t.insert("inTangent",  static_cast<double>(key.inTangent));
-        if (key.outTangent != 0.0f) t.insert("outTangent", static_cast<double>(key.outTangent));
+        if (key.inTangent  != 0.0f) {
+            t.insert("inTangent",  static_cast<double>(key.inTangent));
+        }
+        if (key.outTangent != 0.0f) {
+            t.insert("outTangent", static_cast<double>(key.outTangent));
+        }
     });
     writeKeys("vector2Keys", track.vector2Keys, [](toml::table& t, const Vector2Key& key) {
         t.insert("value", WriteFloats({ key.value.x, key.value.y }));
@@ -274,7 +299,9 @@ SequenceTrack ReadTrack(const toml::table& table)
         if (const toml::array* clips = table["clips"].as_array()) {
             for (const auto& element : *clips) {
                 const toml::table* clipTable = element.as_table();
-                if (!clipTable) continue;
+                if (!clipTable) {
+                    continue;
+                }
                 SequenceAnimationClip clip;
                 clip.start      = ReadDouble(*clipTable, "start", 0.0);
                 clip.duration   = ReadDouble(*clipTable, "duration", 0.0);
@@ -321,7 +348,9 @@ SequenceTrack ReadTrack(const toml::table& table)
         if (const toml::array* ranges = table["ranges"].as_array()) {
             for (const auto& element : *ranges) {
                 const toml::table* rangeTable = element.as_table();
-                if (!rangeTable) continue;
+                if (!rangeTable) {
+                    continue;
+                }
                 track.ranges.push_back(SequenceRange{
                     ReadDouble(*rangeTable, "start", 0.0),
                     ReadDouble(*rangeTable, "end", 0.0) });
@@ -333,7 +362,9 @@ SequenceTrack ReadTrack(const toml::table& table)
         if (const toml::array* clips = table["clips"].as_array()) {
             for (const auto& element : *clips) {
                 const toml::table* clipTable = element.as_table();
-                if (!clipTable) continue;
+                if (!clipTable) {
+                    continue;
+                }
                 SequenceAudioClip clip;
                 clip.start    = ReadDouble(*clipTable, "start", 0.0);
                 clip.clipPath = (*clipTable)["clip"].value_or(std::string{});
@@ -350,7 +381,9 @@ SequenceTrack ReadTrack(const toml::table& table)
         if (const toml::array* clips = table["clips"].as_array()) {
             for (const auto& element : *clips) {
                 const toml::table* clipTable = element.as_table();
-                if (!clipTable) continue;
+                if (!clipTable) {
+                    continue;
+                }
                 SequenceVfxClip clip;
                 clip.start   = ReadDouble(*clipTable, "start", 0.0);
                 clip.end     = ReadDouble(*clipTable, "end", 0.0);
@@ -364,7 +397,9 @@ SequenceTrack ReadTrack(const toml::table& table)
         if (const toml::array* keys = table["keys"].as_array()) {
             for (const auto& element : *keys) {
                 const toml::table* keyTable = element.as_table();
-                if (!keyTable) continue;
+                if (!keyTable) {
+                    continue;
+                }
                 SequenceEventKey key;
                 key.time       = ReadDouble(*keyTable, "time", 0.0);
                 key.name       = (*keyTable)["name"].value_or(std::string{});
@@ -389,8 +424,12 @@ toml::table WriteTrack(const SequenceTrack& track)
     table.insert("type", EnumToName(static_cast<int>(track.type), kTrackTypes, "Event"));
     table.insert("name", track.name);
     table.insert("binding", track.binding);
-    if (track.muted) table.insert("muted", true);
-    if (!track.restoreOnStop) table.insert("restoreOnStop", false);
+    if (track.muted) {
+        table.insert("muted", true);
+    }
+    if (!track.restoreOnStop) {
+        table.insert("restoreOnStop", false);
+    }
 
     switch (track.type) {
     case SequenceTrackType::Animation: {
@@ -399,14 +438,26 @@ toml::table WriteTrack(const SequenceTrack& track)
         for (const auto& clip : track.animationClips) {
             toml::table clipTable;
             clipTable.insert("start", clip.start);
-            if (clip.duration > 0.0) clipTable.insert("duration", clip.duration);
+            if (clip.duration > 0.0) {
+                clipTable.insert("duration", clip.duration);
+            }
             clipTable.insert("source", clip.sourcePath);
             clipTable.insert("clip", clip.clipName);
-            if (clip.speed != 1.0f) clipTable.insert("speed", static_cast<double>(clip.speed));
-            if (clip.loop) clipTable.insert("loop", true);
-            if (clip.clipIn != 0.0) clipTable.insert("clipIn", clip.clipIn);
-            if (clip.blendIn  != 0.0f) clipTable.insert("blendIn",  static_cast<double>(clip.blendIn));
-            if (clip.blendOut != 0.0f) clipTable.insert("blendOut", static_cast<double>(clip.blendOut));
+            if (clip.speed != 1.0f) {
+                clipTable.insert("speed", static_cast<double>(clip.speed));
+            }
+            if (clip.loop) {
+                clipTable.insert("loop", true);
+            }
+            if (clip.clipIn != 0.0) {
+                clipTable.insert("clipIn", clip.clipIn);
+            }
+            if (clip.blendIn  != 0.0f) {
+                clipTable.insert("blendIn",  static_cast<double>(clip.blendIn));
+            }
+            if (clip.blendOut != 0.0f) {
+                clipTable.insert("blendOut", static_cast<double>(clip.blendOut));
+            }
             clips.push_back(std::move(clipTable));
         }
         table.insert("clips", std::move(clips));
@@ -416,7 +467,9 @@ toml::table WriteTrack(const SequenceTrack& track)
         table.insert("space", EnumToName(static_cast<int>(track.space), kSpaces, "Local"));
         table.insert("interp", EnumToName(static_cast<int>(track.interp), kInterps, "Cubic"));
         const auto writeKeys = [&table](const char* name, const auto& keys, auto writeValue) {
-            if (keys.empty()) return;
+            if (keys.empty()) {
+                return;
+            }
             toml::array array;
             for (const auto& key : keys) {
                 toml::table keyTable;
@@ -486,8 +539,12 @@ toml::table WriteTrack(const SequenceTrack& track)
             toml::table keyTable;
             keyTable.insert("time", key.time);
             keyTable.insert("name", key.name);
-            if (key.intParam   != 0)    keyTable.insert("int", static_cast<int64_t>(key.intParam));
-            if (key.floatParam != 0.0f) keyTable.insert("float", static_cast<double>(key.floatParam));
+            if (key.intParam   != 0) {
+                keyTable.insert("int", static_cast<int64_t>(key.intParam));
+            }
+            if (key.floatParam != 0.0f) {
+                keyTable.insert("float", static_cast<double>(key.floatParam));
+            }
             keys.push_back(std::move(keyTable));
         }
         table.insert("keys", std::move(keys));
@@ -500,18 +557,22 @@ toml::table WriteTrack(const SequenceTrack& track)
 template<typename Container, typename TimeOf>
 double MaxTime(const Container& items, TimeOf timeOf, double current)
 {
-    for (const auto& item : items) current = (std::max)(current, timeOf(item));
+    for (const auto& item : items) {
+        current = (std::max)(current, timeOf(item));
+    }
     return current;
 }
 
-} /// @note namespace
+} // namespace
 
 double SequenceAsset::GetDurationSeconds() const
 {
-    if (duration > 0.0) return duration;
+    if (duration > 0.0) {
+        return duration;
+    }
 
-    /// @note 尺を書き忘れた .sequence が「再生した瞬間に終わる」形で壊れると、原因が
-    /// @note       トラック側に見えて追いにくいため、最も遅いキーまでは必ず回して導出する。
+    // 尺を書き忘れた .sequence が「再生した瞬間に終わる」形で壊れると、原因が
+    // トラック側に見えて追いにくいため、最も遅いキーまでは必ず回して導出する。
     double derived = 0.0;
     for (const auto& track : tracks) {
         derived = MaxTime(track.animationClips,
@@ -552,14 +613,18 @@ SequenceTrackType SequenceTrackTypeFromName(std::string_view name)
 bool LoadSequenceAsset(const std::string& path, SequenceAsset& outAsset)
 {
     std::string text;
-    if (!util::FileSystem::ReadText(AssetManager::ResolveAssetPath(path), text)) return false;
+    if (!util::FileSystem::ReadText(AssetManager::ResolveAssetPath(path), text)) {
+        return false;
+    }
     return LoadSequenceAssetFromToml(text, outAsset);
 }
 
 bool LoadSequenceAssetFromToml(std::string_view text, SequenceAsset& outAsset)
 {
     toml::parse_result result = toml::parse(text);
-    if (!result) return false;
+    if (!result) {
+        return false;
+    }
 
     DecodeGuidRefs(result.table());
 
@@ -577,10 +642,13 @@ bool LoadSequenceAssetFromToml(std::string_view text, SequenceAsset& outAsset)
 
     if (const toml::array* tracks = result["tracks"].as_array())
         for (const auto& element : *tracks)
-            if (const toml::table* trackTable = element.as_table())
+            if (const toml::table* trackTable = element.as_table()) {
                 loaded.tracks.push_back(ReadTrack(*trackTable));
+            }
 
-    if (!std::isfinite(loaded.duration)) return false;
+    if (!std::isfinite(loaded.duration)) {
+        return false;
+    }
     outAsset = std::move(loaded);
     return true;
 }
@@ -594,12 +662,16 @@ bool SaveSequenceAsset(const std::string& path, const SequenceAsset& asset)
 
 bool SerializeSequenceAsset(const SequenceAsset& asset, std::string& text)
 {
-    /// @note 不正な浮動小数点の編集値は出力先を開く前に拒否し、最後に正常だった内容を保持する。
-    if (!std::isfinite(asset.duration)) return false;
+    // 不正な浮動小数点の編集値は出力先を開く前に拒否し、最後に正常だった内容を保持する。
+    if (!std::isfinite(asset.duration)) {
+        return false;
+    }
     for (const auto& track : asset.tracks)
         for (const auto& key : track.property.floatKeys)
             if (!std::isfinite(key.time) || !std::isfinite(key.value)
-                || !std::isfinite(key.inTangent) || !std::isfinite(key.outTangent)) return false;
+                || !std::isfinite(key.inTangent) || !std::isfinite(key.outTangent)) {
+                return false;
+            }
     toml::table root;
     root.insert("version", kSequenceFormatVersion);
 
@@ -613,11 +685,12 @@ bool SerializeSequenceAsset(const SequenceAsset& asset, std::string& text)
     root.insert("sequence", std::move(header));
 
     toml::array tracks;
-    for (const auto& track : asset.tracks)
+    for (const auto& track : asset.tracks) {
         tracks.push_back(WriteTrack(track));
+    }
     root.insert("tracks", std::move(tracks));
 
-    /// @note クリップ・音源の参照を guid: へ寄せる (リネーム・移動耐性)。
+    // クリップ・音源の参照を guid: へ寄せる (リネーム・移動耐性)。
     EncodeGuidRefs(root);
 
     std::ostringstream stream;
@@ -626,4 +699,4 @@ bool SerializeSequenceAsset(const SequenceAsset& asset, std::string& text)
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

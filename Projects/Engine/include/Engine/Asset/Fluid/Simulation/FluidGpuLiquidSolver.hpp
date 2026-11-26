@@ -28,11 +28,9 @@ namespace fbzz::asset {
 
 class FluidGpuLiquidSolver {
 public:
-    /// @note 1 Tick で進められるコマ数の上限 (FluidGpuSolver と同じ理由で、刻みごとに別の定数バッファを持つ)。
-    static constexpr int kMaxFramesPerTick = 4;
-    static constexpr int kMaxSubsteps = 8;
-    /// @note 粒子数の上限 (liquid.maxParticles をここで丸める)。
-    static constexpr int kMaxParticles = 32768;
+    static constexpr int kMaxFramesPerTick = 4; ///< 1 Tick で進められるコマ数の上限 (FluidGpuSolver と同じ理由で、刻みごとに別の定数バッファを持つ)。
+    static constexpr int kMaxSubsteps = 8; ///< 1 出力コマで許可する液体ソルバーの内部ステップ数の上限。
+    static constexpr int kMaxParticles = 32768; ///< 粒子数の上限 (liquid.maxParticles をここで丸める)。
 
     FBZZ_ENGINE_API FluidGpuLiquidSolver();
     FBZZ_ENGINE_API ~FluidGpuLiquidSolver();
@@ -63,7 +61,7 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    std::unique_ptr<Impl> m_impl; ///< この液体ソルバーが所有する粒子資源と計算状態。
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

@@ -80,7 +80,9 @@ protected:
     asset::WaterWavesAsset* Resolve()
     {
         asset::DataAsset* data = asset::DataAssetRegistry::Resolve(File());
-        if (!data || std::string(data->GetTypeName()) != asset::WaterWavesAsset::TYPE_NAME) return nullptr;
+        if (!data || std::string(data->GetTypeName()) != asset::WaterWavesAsset::TYPE_NAME) {
+            return nullptr;
+        }
         return static_cast<asset::WaterWavesAsset*>(data);
     }
 

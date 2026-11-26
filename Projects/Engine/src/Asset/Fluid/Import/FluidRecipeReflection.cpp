@@ -39,7 +39,9 @@ void FloatRangeIf(scene::IReflector& reflector, const char* name, float& value, 
     reflector.BeginField(name, name);
     reflector.SetFieldVisible(isVisible);
     reflector.FloatRange(name, value, minValue, maxValue);
-    if (isVisible && tooltip != nullptr) reflector.Tooltip(tooltip);
+    if (isVisible && tooltip != nullptr) {
+        reflector.Tooltip(tooltip);
+    }
     reflector.EndField();
 }
 
@@ -49,7 +51,9 @@ void IntRangeIf(scene::IReflector& reflector, const char* name, int& value, int 
     reflector.BeginField(name, name);
     reflector.SetFieldVisible(isVisible);
     reflector.IntRange(name, value, minValue, maxValue);
-    if (isVisible && tooltip != nullptr) reflector.Tooltip(tooltip);
+    if (isVisible && tooltip != nullptr) {
+        reflector.Tooltip(tooltip);
+    }
     reflector.EndField();
 }
 
@@ -161,7 +165,9 @@ void ReflectSource(FluidSource& source, bool isLiquid, scene::IReflector& reflec
     const bool isTextured = source.shape == FluidSourceShape::Texture;
     const bool isSegmentShape =
         source.shape == FluidSourceShape::Capsule || source.shape == FluidSourceShape::Cylinder;
-    if (isTextured) reflector.Tooltip("size.x / size.y = 板の半幅 / 半高さ、size.z = 板の厚みの半分");
+    if (isTextured) {
+        reflector.Tooltip("size.x / size.y = 板の半幅 / 半高さ、size.z = 板の厚みの半分");
+    }
     else if (isSegmentShape) reflector.Tooltip("size.x = 半径、size.y = 軸方向の長さの半分 (size.z は見ない)");
     const bool hasDirection = source.shape == FluidSourceShape::Cone || source.shape == FluidSourceShape::Ring
         || isTextured || isSegmentShape;
@@ -208,7 +214,7 @@ void ReflectForce(FluidForce& force, scene::IReflector& reflector)
     reflector.Tooltip("領域を各軸 [-1,1] に正規化した座標");
     const bool hasDirection = force.type == FluidForceType::Wind || force.type == FluidForceType::Vortex;
     reflector.FieldIf("direction", force.direction, hasDirection, "wind: 向き / vortex: 回転軸 (2D では常に画面の奥行き軸)");
-    /// @note 負を許すのは 2D の vortex の回り方を逆にする手段がこれしか無いため (軸は奥行きに固定)。
+    // 負を許すのは 2D の vortex の回り方を逆にする手段がこれしか無いため (軸は奥行きに固定)。
     reflector.FloatRange("strength", force.strength, -50.0f, 50.0f);
     reflector.Tooltip("加速度 [領域単位/秒²]。負で逆向き。drag は減衰係数 [1/秒] (0 以上)");
     reflector.FloatRange("radius", force.radius, 0.0f, 4.0f);
@@ -255,15 +261,15 @@ void ReflectRamp(const char* name, FluidColorRamp& ramp, bool isVisible, const c
 {
     reflector.BeginField(name, name);
     reflector.SetFieldVisible(isVisible);
-    /// @note 点の数は GPU / 3D の Ramp と同じ 4 で固定。足し引きさせない。
+    // 点の数は GPU / 3D の Ramp と同じ 4 で固定。足し引きさせない。
     reflector.SetFixedList(true);
     const std::size_t count = (std::min)(reflector.BeginObjectList(name, ramp.stops.size()), ramp.stops.size());
-    /// @note 保存キーは «次の BeginField まで» 残る。戻さないと要素の color / position が Ramp の名で記録される。
+    // 保存キーは «次の BeginField まで» 残る。戻さないと要素の color / position が Ramp の名で記録される。
     reflector.EndField();
     for (std::size_t index = 0; index < count; ++index) {
         FluidColorStop& stop = ramp.stops[index];
         reflector.BeginObjectElement(index);
-        /// @note ColorField にしないのは、カラーピッカーが 1 を超える値 (HDR の芯) を丸めてしまうため。
+        // ColorField にしないのは、カラーピッカーが 1 を超える値 (HDR の芯) を丸めてしまうため。
         reflector.Field("color", stop.color);
         reflector.Tooltip("リニア (HDR 可)");
         reflector.FloatRange("position", stop.position, 0.0f, 1.0f);
@@ -353,17 +359,19 @@ void ReflectBake(FluidBakeSettings& bake, scene::IReflector& reflector)
     reflector.FloatRange("half_extent", bake.halfExtent, 0.05f, 4.0f);
 }
 
-} /// @note namespace
+} // namespace
 
 void ReflectFluidRecipe(FluidRecipe& recipe, scene::IReflector& reflector)
 {
     reflector.Group("Recipe");
     ReflectEnum(reflector, "kind", recipe.kind, labels::KIND);
-    /// @note IReflector に符号なしの Field は無い。読むだけのリフレクタで値を壊さないよう、変わったときだけ書き戻す。
+    // IReflector に符号なしの Field は無い。読むだけのリフレクタで値を壊さないよう、変わったときだけ書き戻す。
     int seed = static_cast<int>(recipe.seed);
     reflector.Field("seed", seed);
-    if (seed != static_cast<int>(recipe.seed)) recipe.seed = static_cast<uint32_t>((std::max)(seed, 0));
-    /// @note kind の読み替えで意味の変わる項目 (気体の注入量 / 液体の撃ち出し数) だけを出し分ける。
+    if (seed != static_cast<int>(recipe.seed)) {
+        recipe.seed = static_cast<uint32_t>((std::max)(seed, 0));
+    }
+    // kind の読み替えで意味の変わる項目 (気体の注入量 / 液体の撃ち出し数) だけを出し分ける。
     const bool isLiquid = recipe.kind == FluidKind::Liquid;
 
     reflector.Group("Gas");
@@ -404,4 +412,4 @@ void ReflectFluidRecipe(FluidRecipe& recipe, scene::IReflector& reflector)
     reflector.EndObject();
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

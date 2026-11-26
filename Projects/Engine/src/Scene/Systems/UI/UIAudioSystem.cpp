@@ -25,37 +25,45 @@ audio::BusIndex ResolveUIBus(audio::AudioManager& audioManager)
 
 ComponentAccess UIAudioSystem::GetAccess() const
 {
-    /// @note 鳴らすだけで UIButton は書き換えない。フラグを消すのは次の UISystem。
+    // 鳴らすだけで UIButton は書き換えない。フラグを消すのは次の UISystem。
     return ComponentAccess{}.Reads<UIButton>();
 }
 
 OrderingHints UIAudioSystem::GetOrder() const
 {
-    /// @note AudioSystem より前に鳴らし始めれば、同じフレームのミキサー更新に乗る。
+    // AudioSystem より前に鳴らし始めれば、同じフレームのミキサー更新に乗る。
     return OrderingHints{}.Before<AudioSystem>();
 }
 
 void UIAudioSystem::Update(SystemContext& ctx)
 {
-    if (!ctx.audioManager) return;
+    if (!ctx.audioManager) {
+        return;
+    }
     audio::AudioManager& audioManager = *ctx.audioManager;
     const audio::BusIndex bus = ResolveUIBus(audioManager);
 
     for (EntityID id : ctx.scene.GetEntities<UIButton>()) {
         const auto* button = ctx.scene.GetComponent<UIButton>(id);
         const auto* go = ctx.scene.GetGameObject(id);
-        if (!button || !button->enabled || !go || !go->activeInHierarchy()) continue;
-        /// @note 押せないボタンは触れても押せても無音。鳴ると「押せた」と誤解させる。
-        if (!button->isInteractable) continue;
+        if (!button || !button->enabled || !go || !go->activeInHierarchy()) {
+            continue;
+        }
+        // 押せないボタンは触れても押せても無音。鳴ると「押せた」と誤解させる。
+        if (!button->isInteractable) {
+            continue;
+        }
 
-        /// @note 効果音の同時数が上限に当たったとき、UI の返事が消えると「押せていない」と
-        ///       受け取られる。爆発音 1 発より、押した音のほうが操作には要る。
+        // 効果音の同時数が上限に当たったとき、UI の返事が消えると「押せていない」と
+        //       受け取られる。爆発音 1 発より、押した音のほうが操作には要る。
         constexpr audio::AudioManager::PlayParams kUIParams{ /*priority*/ 8, 0.0f };
 
-        if (button->onEnter && !button->hoverSound.empty())
+        if (button->onEnter && !button->hoverSound.empty()) {
             (void)audioManager.PlayVoice(button->hoverSound, false, bus, kUIParams);
-        if (button->onClick && !button->clickSound.empty())
+        }
+        if (button->onClick && !button->clickSound.empty()) {
             (void)audioManager.PlayVoice(button->clickSound, false, bus, kUIParams);
+        }
     }
 }
 

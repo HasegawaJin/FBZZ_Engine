@@ -24,8 +24,7 @@ struct BusDesc {
     std::string name;
     std::string parent;
     float       volume        = 1.0f;
-    /// @note 0-1 正規化カットオフ。1 で無加工。水中・気絶などの一括加工に使う。
-    float       lowPassCutoff = 1.0f;
+    float       lowPassCutoff = 1.0f; ///< 0-1 正規化カットオフ。1 で無加工。水中・気絶などの一括加工に使う。
     /// @note AudioReverbZone の残響をこのバスへ掛けるか。
     /// @note 残響は submix ごとの実 DSP のため全バスに載せると CPU を食う。BGM や UI に環境残響が乗るのも音楽的に正しくない。
     bool        reverb        = false;
@@ -40,4 +39,4 @@ struct BusDesc {
 /// @return 並べ替え後の配列。名前が重複するバスは後勝ちで 1 本に畳む。
 [[nodiscard]] FBZZ_ENGINE_API std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs);
 
-} /// @note namespace fbzz::audio
+} // namespace fbzz::audio

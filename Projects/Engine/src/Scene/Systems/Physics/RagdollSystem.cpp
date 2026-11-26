@@ -47,12 +47,16 @@ struct SkinningCB {
 
 int FindNode(const asset::Skeleton& skeleton, const std::string& boneName)
 {
-    if (boneName.empty()) return skeleton.rootNodeIndex;
-    if (const auto exact = skeleton.nodeMap.find(boneName); exact != skeleton.nodeMap.end())
+    if (boneName.empty()) {
+        return skeleton.rootNodeIndex;
+    }
+    if (const auto exact = skeleton.nodeMap.find(boneName); exact != skeleton.nodeMap.end()) {
         return exact->second;
+    }
     for (std::size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (bone_pose_detail::CanonicalBoneName(skeleton.nodes[i].name) == boneName)
+        if (bone_pose_detail::CanonicalBoneName(skeleton.nodes[i].name) == boneName) {
             return static_cast<int>(i);
+        }
     }
     return -1;
 }
@@ -61,11 +65,13 @@ void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& 
 {
     FBZZ_PROFILE_SCOPE("RagdollSystem::UploadSkinning");
     SkinningCB cb{};
-    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
+    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i) {
         cb.boneMatrices[i] = math::Matrix4::Identity();
+    }
     for (std::size_t i = 0; i < std::min(animator.boneMatrices.size(),
-                                       static_cast<std::size_t>(asset::MAX_SKINNING_BONES)); ++i)
+                                       static_cast<std::size_t>(asset::MAX_SKINNING_BONES)); ++i) {
         cb.boneMatrices[i] = animator.boneMatrices[i];
+    }
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
@@ -82,14 +88,15 @@ void DecomposeAffine(const math::Matrix4& matrix,
         };
         const float length = basis.Length();
         const float inverse = length > math::EPSILON ? 1.0f / length : 0.0f;
-        for (int row = 0; row < 3; ++row)
+        for (int row = 0; row < 3; ++row) {
             rotation.m[row][column] = matrix.m[row][column] * inverse;
+        }
     }
     outRotation = math::Quaternion::FromMatrix4(rotation).Normalized();
 }
 
 /// @note RagdollRig が剛体を持たない骨を親から埋めるため、親が必ず子より先に来る順を保つ。
-/// @param claimed 複数の根で同じ骨へ二重に剛体を作り、競合する姿勢を書き戻すことを防ぐ。
+/// @param[in,out] claimed 複数の根で同じ骨へ二重に剛体を作り、競合する姿勢を書き戻すことを防ぐ。
 void AppendBoneTree(RagdollRuntime& runtime,
                     const asset::Skeleton& skeleton,
                     const RagdollProfile& profile,
@@ -98,8 +105,12 @@ void AppendBoneTree(RagdollRuntime& runtime,
                     const std::vector<bool>& excluded,
                     std::vector<bool>& claimed)
 {
-    if (rootNode < 0 || rootNode >= static_cast<int>(skeleton.nodes.size())) return;
-    if (claimed[static_cast<std::size_t>(rootNode)]) return;
+    if (rootNode < 0 || rootNode >= static_cast<int>(skeleton.nodes.size())) {
+        return;
+    }
+    if (claimed[static_cast<std::size_t>(rootNode)]) {
+        return;
+    }
 
     struct Pending { int node; int parent; int depth; };
     std::vector<Pending> queue;
@@ -107,9 +118,12 @@ void AppendBoneTree(RagdollRuntime& runtime,
 
     for (std::size_t head = 0; head < queue.size(); ++head) {
         const Pending current = queue[head];
-        if (current.node < 0 || current.node >= static_cast<int>(skeleton.nodes.size()))
+        if (current.node < 0 || current.node >= static_cast<int>(skeleton.nodes.size())) {
             continue;
-        if (claimed[static_cast<std::size_t>(current.node)] || excluded[static_cast<std::size_t>(current.node)]) continue;
+        }
+        if (claimed[static_cast<std::size_t>(current.node)] || excluded[static_cast<std::size_t>(current.node)]) {
+            continue;
+        }
         claimed[static_cast<std::size_t>(current.node)] = true;
 
         RagdollBonePose bone;
@@ -120,14 +134,19 @@ void AppendBoneTree(RagdollRuntime& runtime,
         runtime.boneNodes.push_back(current.node);
 
         const bool depthReached = maxDepth > 0 && current.depth + 1 >= maxDepth;
-        if (depthReached) continue;
+        if (depthReached) {
+            continue;
+        }
 
         for (int child : skeleton.nodes[static_cast<std::size_t>(current.node)].children) {
-            if (child < 0 || child >= static_cast<int>(skeleton.nodes.size())) continue;
-            /// @note 除外する枝は骨ごと切り、親のカプセルが指へ向かう短い節になることも防ぐ。
-            if (profile.IsExcluded(
-                    bone_pose_detail::CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(child)].name)))
+            if (child < 0 || child >= static_cast<int>(skeleton.nodes.size())) {
                 continue;
+            }
+            // 除外する枝は骨ごと切り、親のカプセルが指へ向かう短い節になることも防ぐ。
+            if (profile.IsExcluded(
+                    bone_pose_detail::CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(child)].name))) {
+                continue;
+            }
             queue.push_back({ child, index, current.depth + 1 });
         }
     }
@@ -146,7 +165,9 @@ void BuildBoneList(RagdollComponent& ragdoll,
     std::vector<bool> claimed(skeleton.nodes.size(), false);
     std::vector<bool> excluded(skeleton.nodes.size(), false);
     for (const auto& name : ragdoll.excludedRootBones) {
-        if (name.empty()) continue;
+        if (name.empty()) {
+            continue;
+        }
         const int node = FindNode(skeleton, name);
         if (node < 0 || node >= static_cast<int>(skeleton.nodes.size())) {
             FBZZ_LOG_WARN("RagdollSystem: 除外ボーン '%s' が見つかりません", name.c_str());
@@ -156,17 +177,25 @@ void BuildBoneList(RagdollComponent& ragdoll,
         while (!pending.empty()) {
             const int current = pending.back();
             pending.pop_back();
-            if (current < 0 || current >= static_cast<int>(skeleton.nodes.size())) continue;
+            if (current < 0 || current >= static_cast<int>(skeleton.nodes.size())) {
+                continue;
+            }
             const auto index = static_cast<std::size_t>(current);
-            if (excluded[index]) continue;
+            if (excluded[index]) {
+                continue;
+            }
             excluded[index] = true;
-            for (const int child : skeleton.nodes[index].children) pending.push_back(child);
+            for (const int child : skeleton.nodes[index].children) {
+                pending.push_back(child);
+            }
         }
     }
     AppendBoneTree(runtime, skeleton, profile,
                    FindNode(skeleton, ragdoll.rootBoneName), ragdoll.maxDepth, excluded, claimed);
     for (const std::string& extra : ragdoll.extraRootBones) {
-        if (extra.empty()) continue;
+        if (extra.empty()) {
+            continue;
+        }
         AppendBoneTree(runtime, skeleton, profile,
                        FindNode(skeleton, extra), ragdoll.maxDepth, excluded, claimed);
     }
@@ -178,13 +207,17 @@ void BuildBoneList(RagdollComponent& ragdoll,
 std::vector<math::Matrix4> BuildBindGlobals(const asset::Skeleton& skeleton)
 {
     std::vector<math::Matrix4> globals(skeleton.nodes.size(), math::Matrix4::Identity());
-    if (skeleton.rootNodeIndex < 0) return globals;
+    if (skeleton.rootNodeIndex < 0) {
+        return globals;
+    }
 
     std::vector<int> stack{ skeleton.rootNodeIndex };
     while (!stack.empty()) {
         const int node = stack.back();
         stack.pop_back();
-        if (node < 0 || node >= static_cast<int>(skeleton.nodes.size())) continue;
+        if (node < 0 || node >= static_cast<int>(skeleton.nodes.size())) {
+            continue;
+        }
 
         const asset::SkeletonNode& entry = skeleton.nodes[static_cast<std::size_t>(node)];
         globals[static_cast<std::size_t>(node)] =
@@ -192,7 +225,9 @@ std::vector<math::Matrix4> BuildBindGlobals(const asset::Skeleton& skeleton)
                 ? globals[static_cast<std::size_t>(entry.parentIndex)] * entry.localBindTransform
                 : entry.localBindTransform;
 
-        for (int child : entry.children) stack.push_back(child);
+        for (int child : entry.children) {
+            stack.push_back(child);
+        }
     }
     return globals;
 }
@@ -208,7 +243,9 @@ std::vector<RagdollBonePose> BuildBindPose(const RagdollRuntime&  runtime,
     std::vector<RagdollBonePose> pose = runtime.bones;
     for (std::size_t i = 0; i < pose.size(); ++i) {
         const int node = runtime.boneNodes[i];
-        if (node < 0 || node >= static_cast<int>(globals.size())) continue;
+        if (node < 0 || node >= static_cast<int>(globals.size())) {
+            continue;
+        }
         const auto matrix = toWorld * globals[static_cast<std::size_t>(node)];
         DecomposeAffine(matrix, pose[i].position, pose[i].rotation);
         pose[i].scale = {
@@ -224,7 +261,9 @@ bool SampleFkPose(RagdollRuntime& runtime, Scene& scene, const SkinnedMeshRender
 {
     for (std::size_t i = 0; i < runtime.bones.size(); ++i) {
         GameObject* bone = bone_pose_detail::BoneObject(scene, smr, runtime.boneNodes[i]);
-        if (!bone) return false;
+        if (!bone) {
+            return false;
+        }
         runtime.bones[i].position = bone->transform.worldPosition;
         runtime.bones[i].rotation = bone->transform.worldRotation;
         runtime.bones[i].scale = bone->transform.worldScale;
@@ -275,7 +314,9 @@ void AdvanceRecovery(RagdollComponent& ragdoll, float dt)
 void CollectOwnColliders(GameObject& object, std::vector<const physics::Collider*>& out)
 {
     const auto push = [&out](const ColliderComponent* component) {
-        if (component && component->collider) out.push_back(component->collider.get());
+        if (component && component->collider) {
+            out.push_back(component->collider.get());
+        }
     };
     push(object.GetComponent<AabbColliderComponent>());
     push(object.GetComponent<BoxColliderComponent>());
@@ -287,7 +328,9 @@ void CollectOwnColliders(GameObject& object, std::vector<const physics::Collider
     push(object.GetComponent<TerrainColliderComponent>());
 
     for (int i = 0, count = object.GetChildCount(); i < count; ++i)
-        if (GameObject* child = object.GetChild(i)) CollectOwnColliders(*child, out);
+        if (GameObject* child = object.GetChild(i)) {
+            CollectOwnColliders(*child, out);
+        }
 }
 
 /// @note 床とサーボが押し合う振動を防ぐため、オーナーの足元と目標姿勢の最下点の低い方を採る。
@@ -311,7 +354,7 @@ ComponentAccess RagdollSystem::GetAccess() const
 
 OrderingHints RagdollSystem::GetOrder() const
 {
-    /// @note 揺れものが確定させた姿勢がブレンド先になる。逆順だと戻り際に揺れが物理を打ち消す。
+    // 揺れものが確定させた姿勢がブレンド先になる。逆順だと戻り際に揺れが物理を打ち消す。
     return OrderingHints{}.After<SpringBoneSystem>();
 }
 
@@ -329,17 +372,25 @@ void RagdollSystem::Update(SystemContext& ctx)
 
     for (EntityID id : entities) {
         GameObject* go = scene.GetGameObject(id);
-        if (!go) continue;
+        if (!go) {
+            continue;
+        }
 
         auto* ragdoll = go->GetComponent<RagdollComponent>();
-        if (!ragdoll) continue;
+        if (!ragdoll) {
+            continue;
+        }
         if (!go->activeInHierarchy()) {
-            if (ragdoll->runtime.rig) ragdoll->runtime.rig->Controls().ReleaseAll();
+            if (ragdoll->runtime.rig) {
+                ragdoll->runtime.rig->Controls().ReleaseAll();
+            }
             continue;
         }
 
         if (!ragdoll->enabled || (!ctx.playing && !ragdoll->simulateInEditor)) {
-            if (ragdoll->runtime.rig) ragdoll->runtime.rig->Controls().ReleaseAll();
+            if (ragdoll->runtime.rig) {
+                ragdoll->runtime.rig->Controls().ReleaseAll();
+            }
             ragdoll->runtimeStatus = ragdoll->enabled
                 ? RagdollStatus::NotPlaying
                 : RagdollStatus::Disabled;
@@ -360,8 +411,10 @@ void RagdollSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        /// @note Pause は最終姿勢・駆動履歴・未処理命令を保持し、再開後の固定更新で消費する。
-        if (ctx.playing && !ctx.simulating) continue;
+        // Pause は最終姿勢・駆動履歴・未処理命令を保持し、再開後の固定更新で消費する。
+        if (ctx.playing && !ctx.simulating) {
+            continue;
+        }
 
         if (ragdoll->phase == RagdollPhase::Idle && ragdoll->activateOnStart &&
             !ragdoll->startTriggered && !ragdoll->beginRequested) {
@@ -372,9 +425,11 @@ void RagdollSystem::Update(SystemContext& ctx)
             ragdoll->activationGravity = 1.0f;
         }
 
-        /// @note 止まっているあいだは骨を 1 本も触らない。Animator が書いた姿勢がそのまま残る。
+        // 止まっているあいだは骨を 1 本も触らない。Animator が書いた姿勢がそのまま残る。
         if (ragdoll->phase == RagdollPhase::Idle && !ragdoll->beginRequested) {
-            if (ragdoll->runtime.rig) ragdoll->runtime.rig->Controls().ReleaseAll();
+            if (ragdoll->runtime.rig) {
+                ragdoll->runtime.rig->Controls().ReleaseAll();
+            }
             ragdoll->runtimeStatus    = RagdollStatus::Idle;
             ragdoll->runtimeDeviation = 0.0f;
             ragdoll->runtimeSaturated = 0;
@@ -408,7 +463,9 @@ void RagdollSystem::Update(SystemContext& ctx)
             runtime.loadedReference = ragdoll->physicsAssetPath;
             runtime.loadedAssetGeneration = assetGeneration;
             if (ragdoll->physicsAssetPath.empty()) {
-                if (runtime.definitionValid) ++runtime.definitionRevision;
+                if (runtime.definitionValid) {
+                    ++runtime.definitionRevision;
+                }
                 runtime.definitionValid = false;
             } else {
                 RagdollDefinition candidate;
@@ -426,21 +483,25 @@ void RagdollSystem::Update(SystemContext& ctx)
             ragdoll->runtimeStatus = RagdollStatus::InvalidPhysicsAsset;
             continue;
         }
-        /// @note 実行中の再構築後は現在姿勢を捕獲し、垂れた部分木がバインドポーズへ跳ね戻ることを防ぐ。
+        // 実行中の再構築後は現在姿勢を捕獲し、垂れた部分木がバインドポーズへ跳ね戻ることを防ぐ。
         const bool rebuilding = NeedsRebuild(*ragdoll, skeleton, go->transform.worldScale);
         if (rebuilding) {
             RagdollProfile profile = ragdoll->ResolveProfile();
-            if (runtime.definitionValid) ApplyRagdollDefinition(runtime.definition,profile);
+            if (runtime.definitionValid) {
+                ApplyRagdollDefinition(runtime.definition,profile);
+            }
             BuildBoneList(*ragdoll, skeleton, profile);
             runtime.rig = std::make_unique<RagdollRig>();
             if (!runtime.bones.empty()) {
                 runtime.rig->Build(
                     BuildBindPose(runtime, skeleton, go->transform.GetWorldMatrix()), profile);
             }
-            if (!runtime.driveProfile.empty())
+            if (!runtime.driveProfile.empty()) {
                 (void)runtime.rig->ApplyDriveProfile(runtime.driveProfile, 0.0f);
-            for (const auto& overrideDrive:runtime.driveOverrides)
+            }
+            for (const auto& overrideDrive:runtime.driveOverrides) {
                 (void)runtime.rig->SetBodyDrive(overrideDrive.bone,overrideDrive.settings);
+            }
             runtime.builtDefinitionRevision = runtime.definitionRevision;
             runtime.builtSkeleton   = &skeleton;
             runtime.builtNodeCount = skeleton.nodes.size();
@@ -451,13 +512,15 @@ void RagdollSystem::Update(SystemContext& ctx)
             runtime.builtProfile    = ragdoll->profile;
             runtime.builtExcludedRoots = ragdoll->excludedRootBones;
 
-            /// @note 可動域の fallback は見た目で判別しにくいため、再構築時だけ診断を出す。
+            // 可動域の fallback は見た目で判別しにくいため、再構築時だけ診断を出す。
             ragdoll->runtimeUnmatched =
                 static_cast<int>(runtime.rig->UnmatchedBones().size());
             if (ragdoll->runtimeUnmatched > 0) {
                 std::string names;
                 for (const std::string& bone : runtime.rig->UnmatchedBones()) {
-                    if (!names.empty()) names += ", ";
+                    if (!names.empty()) {
+                        names += ", ";
+                    }
                     names += bone;
                 }
                 FBZZ_LOG_WARN("RagdollSystem: '%s' のプロファイルが %d 本の骨に当たって"
@@ -482,7 +545,7 @@ void RagdollSystem::Update(SystemContext& ctx)
         const RagdollOwnerPose ownerPose{go->transform.worldPosition,go->transform.worldRotation};
         bool capturedTargets = false;
 
-        /// @note 再構築で全体が再ブレンドしないよう、現在姿勢を捕獲して phase と重みは保つ。
+        // 再構築で全体が再ブレンドしないよう、現在姿勢を捕獲して phase と重みは保つ。
         if (rebuilding && ragdoll->phase != RagdollPhase::Idle && !ragdoll->beginRequested) {
             rig.Capture(runtime.bones);
             capturedTargets = true;
@@ -490,8 +553,9 @@ void RagdollSystem::Update(SystemContext& ctx)
             std::vector<const physics::Collider*> ignored;
             CollectOwnColliders(*go, ignored);
             rig.SetIgnoredColliders(std::move(ignored));
-            if (auto* rigidBody = go->GetComponent<RigidBodyComponent>())
+            if (auto* rigidBody = go->GetComponent<RigidBodyComponent>()) {
                 rig.SetIgnoredBody(rigidBody->rigidBody.get());
+            }
         }
 
         if (ragdoll->beginRequested) {
@@ -517,19 +581,20 @@ void RagdollSystem::Update(SystemContext& ctx)
             rig.UpdateDriveTargets(runtime.bones,0.0f,&ownerPose);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
 
-            /// @note 実行中はコライダーが増減しないため、起動時だけ階層を辿って拾い直す。
+            // 実行中はコライダーが増減しないため、起動時だけ階層を辿って拾い直す。
             std::vector<const physics::Collider*> ignored;
             CollectOwnColliders(*go, ignored);
             rig.SetIgnoredColliders(std::move(ignored));
-            if (auto* rigidBody = go->GetComponent<RigidBodyComponent>())
+            if (auto* rigidBody = go->GetComponent<RigidBodyComponent>()) {
                 rig.SetIgnoredBody(rigidBody->rigidBody.get());
+            }
         }
 
-        /// @note Active の床は現在の目標に追従し、Passive では崩れる途中の跳ねを防ぐため起動時の床を保つ。
+        // Active の床は現在の目標に追従し、Passive では崩れる途中の跳ねを防ぐため起動時の床を保つ。
         rig.SetStandingGuard(ragdoll->standingGuard, ragdoll->standingMaxDistance,
                              ragdoll->standingMaxDegrees * math::PI / 180.0f);
         if (ragdoll->mode == RagdollMode::Active || ragdoll->standingGuard) {
-            /// @note 再捕獲で目標時計を作り直しても、未消費の固定刻みの端数は捨てない。
+            // 再捕獲で目標時計を作り直しても、未消費の固定刻みの端数は捨てない。
             const float sampleDt = ctx.dt + (capturedTargets ? static_cast<float>(runtime.remainingTime) : 0.0f);
             rig.UpdateDriveTargets(runtime.bones,sampleDt,&ownerPose);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
@@ -543,7 +608,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             ? ctx.dt : 0.0f;
         const int steps = elapsed > 0.0f ? AccumulateRagdollSteps(runtime.remainingTime, elapsed) : 0;
 
-        /// @note 即座に戻る硬い反応を避けるため、衝撃時だけ力みを抜き recoverySeconds で戻す。
+        // 即座に戻る硬い反応を避けるため、衝撃時だけ力みを抜き recoverySeconds で戻す。
         if (!ragdoll->pendingImpulses.empty() && ragdoll->mode == RagdollMode::Active) {
             ragdoll->muscleScale = std::min(ragdoll->muscleScale,
                                             1.0f - math::Clamp01(ragdoll->impactSlack));
@@ -552,15 +617,19 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         rig.SetSubsteps(ragdoll->substeps);
         rig.SetDrag(ragdoll->linearDrag, ragdoll->angularDrag);
-        if (ragdoll->groundPlane) rig.SetGround(ragdoll->runtimeGround, ragdoll->friction);
-        else                      rig.DisableGround();
+        if (ragdoll->groundPlane) {
+            rig.SetGround(ragdoll->runtimeGround, ragdoll->friction);
+        }
+        else {
+            rig.DisableGround();
+        }
         rig.SetGravity({ 0.0f,
                          -std::max(ragdoll->gravity, 0.0f) *
                              std::max(ragdoll->activationGravity, 0.0f),
                          0.0f });
         rig.SetLimitLearning(ragdoll->learnLimits,
                              std::max(ragdoll->limitMargin, 0.0f) * math::PI / 180.0f);
-        /// @note 繋ぎ止めも力みに追従させる。押された瞬間だけ胴が動くのはこの倍率が落ちるため。
+        // 繋ぎ止めも力みに追従させる。押された瞬間だけ胴が動くのはこの倍率が落ちるため。
         rig.SetRootAnchor(std::max(ragdoll->rootAnchor, 0.0f) *
                               math::Clamp01(ragdoll->muscleScale),
                           std::max(ragdoll->rootAnchorSag, 0.0f),
@@ -570,7 +639,7 @@ void RagdollSystem::Update(SystemContext& ctx)
                      math::Clamp01(ragdoll->driveFalloff),
                      std::max(ragdoll->driveDamping, 0.0f));
 
-        /// @note Active の環境接触は足の浮きを招くため設定に従い、クリップ近傍で新しい重なりがない自己衝突は保つ。
+        // Active の環境接触は足の浮きを招くため設定に従い、クリップ近傍で新しい重なりがない自己衝突は保つ。
         /// @see RagdollComponent::contactWhileActive
         const bool worldContacts =
             ragdoll->mode != RagdollMode::Active || ragdoll->contactWhileActive;
@@ -592,10 +661,11 @@ void RagdollSystem::Update(SystemContext& ctx)
         }
         ragdoll->pendingImpulses.clear();
 
-        /// @note 世界への参照を固定刻みごとに渡し、接触は Rig が各 substep の積分後に更新する。
+        // 世界への参照を固定刻みごとに渡し、接触は Rig が各 substep の積分後に更新する。
         for (int step = 0; step < steps; ++step) {
-            if (ragdoll->endRequested && ragdoll->phase != RagdollPhase::BlendOut)
+            if (ragdoll->endRequested && ragdoll->phase != RagdollPhase::BlendOut) {
                 BeginRagdollBlendOut(*ragdoll);
+            }
             AdvanceRecovery(*ragdoll, RAGDOLL_FIXED_STEP);
             rig.SetRootAnchor(std::max(ragdoll->rootAnchor, 0.0f) * math::Clamp01(ragdoll->muscleScale),
                               std::max(ragdoll->rootAnchorSag, 0.0f), std::max(ragdoll->rootAnchorTilt, 0.0f));
@@ -615,7 +685,7 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         ragdoll->runtimeDeviation = rig.MeasureDeviation(runtime.bones);
 
-        /// @note 支え切れないときは現在姿勢から崩し、再 Begin で衝撃を失わないようサーボだけを捨てる。
+        // 支え切れないときは現在姿勢から崩し、再 Begin で衝撃を失わないようサーボだけを捨てる。
         if (ragdoll->mode == RagdollMode::Active && ragdoll->collapseDistance > 0.0f &&
             ragdoll->runtimeDeviation > ragdoll->collapseDistance) {
             ragdoll->mode              = RagdollMode::Passive;
@@ -632,7 +702,9 @@ void RagdollSystem::Update(SystemContext& ctx)
         ragdoll->runtimeLimited    = rig.CountLimitedJoints();
         ragdoll->runtimeContacts   = rig.GetContactCount();
         ragdoll->runtimeStatus     = RagdollStatus::Running;
-        if (weight <= 0.0f) continue;
+        if (weight <= 0.0f) {
+            continue;
+        }
 
         FBZZ_PROFILE_SCOPE("RagdollSystem::CommitPose");
         const math::Matrix4 ownerInv =
@@ -641,8 +713,9 @@ void RagdollSystem::Update(SystemContext& ctx)
         std::vector<bool> selected(skeleton.nodes.size(), false);
         std::vector<math::Vector3> scales(skeleton.nodes.size(), math::Vector3::ONE);
         for (std::size_t i = 0; i < scales.size(); ++i)
-            if (const auto* bone = bone_pose_detail::BoneObject(scene, *smr, static_cast<int>(i)))
+            if (const auto* bone = bone_pose_detail::BoneObject(scene, *smr, static_cast<int>(i))) {
                 scales[i] = bone->transform.worldScale;
+            }
         BlendRagdollPose(runtime.bones, weight, ragdoll->standingGuard, solvedPositions, solvedRotations);
         const auto rootTransform = math::Matrix4::Inverse(skeleton.rootInverseTransform);
         for (std::size_t i = 0; i < runtime.bones.size(); ++i) {
@@ -655,26 +728,35 @@ void RagdollSystem::Update(SystemContext& ctx)
         const auto toWorld = go->transform.GetWorldMatrix() * skeleton.rootInverseTransform;
         std::vector<int> pending;
         for (std::size_t i = 0; i < skeleton.nodes.size(); ++i)
-            if (skeleton.nodes[i].parentIndex < 0) pending.push_back(static_cast<int>(i));
+            if (skeleton.nodes[i].parentIndex < 0) {
+                pending.push_back(static_cast<int>(i));
+            }
         std::vector<bool> visited(skeleton.nodes.size(), false);
         while (!pending.empty()) {
             const int node = pending.back();
             pending.pop_back();
-            if (node < 0 || node >= static_cast<int>(skeleton.nodes.size())) continue;
+            if (node < 0 || node >= static_cast<int>(skeleton.nodes.size())) {
+                continue;
+            }
             const auto n = static_cast<std::size_t>(node);
-            if (visited[n]) continue;
+            if (visited[n]) {
+                continue;
+            }
             visited[n] = true;
             math::Vector3 position;
             math::Quaternion rotation;
             DecomposeAffine(toWorld * animator->nodeGlobalTransforms[n], position, rotation);
             bone_pose_detail::CommitBoneWorldPose(scene, skeleton, *smr, *animator, ownerInv,
                                 node, position, rotation, scales[n]);
-            for (const int child : skeleton.nodes[n].children) pending.push_back(child);
+            for (const int child : skeleton.nodes[n].children) {
+                pending.push_back(child);
+            }
         }
         UpdateSkinnedPoseBounds(*animator, skeleton);
 
-        if (ctx.resources && animator->skinningBuffer.IsValid())
+        if (ctx.resources && animator->skinningBuffer.IsValid()) {
             UploadBoneMatrices(*animator, *ctx.resources);
+        }
     }
 }
 

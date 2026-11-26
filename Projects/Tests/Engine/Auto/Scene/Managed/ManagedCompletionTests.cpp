@@ -60,7 +60,9 @@ protected:
         if (!component) component = &object.AddComponent<scene::ScriptComponent>();
         auto& entry = component->scripts.emplace_back();
     entry.script = scene::ScriptFactory::Create(type, entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&m_scene, &object);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;

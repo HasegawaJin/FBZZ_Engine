@@ -34,13 +34,13 @@ std::unique_ptr<IblAsset> IblImporter::Import(
         return nullptr;
     }
 
-    /// @note マジック検証
+    // マジック検証
     if (std::strncmp(header.magic, "FZIBL", 5) != 0) {
         FBZZ_LOG_ERROR("IblImporter: 不正なマジック番号 [%s]", absPath.c_str());
         return nullptr;
     }
 
-    /// @note DDS パスは .ibl と同一ディレクトリからの相対パスで格納されている
+    // DDS パスは .ibl と同一ディレクトリからの相対パスで格納されている
     namespace fs = std::filesystem;
     const fs::path dir = util::FileSystem::PathFromUtf8(absPath).parent_path();
 
@@ -60,8 +60,9 @@ std::unique_ptr<IblAsset> IblImporter::Import(
     const auto load = [&](size_t index, const std::string& path) {
         auto& lease = asset->textureLeases[index];
         lease = streamer.Request<TextureAsset>(path);
-        if (!lease.IsHeld() || !streamer.CompleteNow(lease.Handle()))
+        if (!lease.IsHeld() || !streamer.CompleteNow(lease.Handle())) {
             return renderer::ResourceHandle<renderer::TextureTag>{};
+        }
         const auto* texture = streamer.TryGet(lease.Handle());
         return texture ? texture->gpuHandle : renderer::ResourceHandle<renderer::TextureTag>{};
     };
@@ -77,4 +78,4 @@ std::unique_ptr<IblAsset> IblImporter::Import(
     return asset;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

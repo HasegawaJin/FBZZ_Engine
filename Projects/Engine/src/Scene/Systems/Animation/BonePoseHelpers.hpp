@@ -36,7 +36,7 @@ FBZZ_ENGINE_API std::string CanonicalBoneName(std::string name);
 FBZZ_ENGINE_API GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& renderer, int nodeIndex);
 
 /// @brief スキニング行列とボーン Transform に同じワールド姿勢を確定する。
-/// @param ownerInv スケルトンを所有する GameObject のワールド行列の逆行列。
+/// @param[in] ownerInv スケルトンを所有する GameObject のワールド行列の逆行列。
 /// @pre 親のワールド姿勢は確定済みで、姿勢引数は書き戻す Transform のメンバーを参照しないこと。
 /// @note ボーンの world = ownerWorld * rootInverse * nodeGlobal。逆変換でも rootInverse を戻す。
 /// @note local も更新し、後続の SocketAttachment と FlushWorldTransforms に姿勢を維持する。

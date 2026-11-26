@@ -96,7 +96,9 @@ protected:
         if (!component) component = &object.AddComponent<scene::ScriptComponent>();
         auto& entry = component->scripts.emplace_back();
         entry.script = scene::ScriptFactory::Create(type, entry.savedScriptId);
-        if (!entry.script) return nullptr;
+        if (!entry.script) {
+            return nullptr;
+        }
         entry.script->SetContext(&m_scene, &object);
         auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
         return adapter && adapter->RefreshOwnerBinding() ? adapter : nullptr;
@@ -271,7 +273,7 @@ TEST_F(ManagedScriptRuntimeTest, RejectsInvalidSaveFieldsWithoutChangingEarlierS
     ASSERT_TRUE(util::FileSystem::ReadText(path, originalFile));
     ASSERT_TRUE(first->ApplySettingsJson("{\"speed\":4}"));
 
-    /// @note Mode 7 is malformed UTF-16, not a valid large string; total field length is no longer a save rejection criterion.
+    // Mode 7 is malformed UTF-16, not a valid large string; total field length is no longer a save rejection criterion.
     for (const int mode : {1, 2, 3, 5, 6, 7}) {
         SCOPED_TRACE(mode);
         ASSERT_TRUE(second->ApplySettingsJson("{\"failureMode\":" + std::to_string(mode)
@@ -394,9 +396,9 @@ TEST_F(ManagedScriptRuntimeTest, RunsSavesReloadsAndRejectsInvalidCodeWithoutRep
     EXPECT_DOUBLE_EQ((*settings["offset"].as_array())[1].value_or(0.0), 20.0);
     restored.reset();
 
-    /// @note factory が返す既知の native Adapter 型を使用し、managed 型への native pointer cast は行わない。
+    // factory が返す既知の native Adapter 型を使用し、managed 型への native pointer cast は行わない。
     auto& adapter = static_cast<scene::ManagedScriptAdapter&>(*moverEntry.script);
-    /// @note forged INVOKE は CLR/user callback へ入る前に拒否する。Host のみの fault や callback の部分的変更を残さない。
+    // forged INVOKE は CLR/user callback へ入る前に拒否する。Host のみの fault や callback の部分的変更を残さない。
     scene::ManagedBridgeRequest invalidInvoke;
     invalidInvoke.op = scene::ManagedBridgeOp::INVOKE;
     invalidInvoke.generation = adapter.Generation();
@@ -451,7 +453,7 @@ TEST_F(ManagedScriptRuntimeTest, RunsSavesReloadsAndRejectsInvalidCodeWithoutRep
     EXPECT_EQ(snapshot.samples.front().status, profiler::ProfileSampleStatus::FAULTED);
     scene::ScriptProfiler::RequestRecording(false);
 
-    /// @note 別 Scene と未適用 preview の両方が旧世代を保持しても、最後の個体の解放で catalog を退役させる。
+    // 別 Scene と未適用 preview の両方が旧世代を保持しても、最後の個体の解放で catalog を退役させる。
     const uint64_t oldGeneration = adapter.Generation();
     scene::Scene sharedScene;
     auto& sharedObject = sharedScene.CreateGameObject("Shared");
@@ -488,7 +490,7 @@ TEST_F(ManagedScriptRuntimeTest, RunsSavesReloadsAndRejectsInvalidCodeWithoutRep
     Tick();
     EXPECT_VEC3_NEAR(mover.transform.position, (math::Vector3{4.5f, 0, 0}), testkit::kTolerance);
 
-    /// @note catalog 解除後も preview 個体が残る場合、現行だった世代も最後の解放まで退役を遅らせる。
+    // catalog 解除後も preview 個体が残る場合、現行だった世代も最後の解放まで退役を遅らせる。
     scene::ScriptEntry pendingPreviewEntry;
     std::unique_ptr<scene::Script> pendingPreview = scene::ScriptFactory::Create(
         "cs-internal:ManagedFixtures.SettingsComponent", pendingPreviewEntry.savedScriptId);
@@ -521,7 +523,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     auto& target = m_scene.CreateGameObject("Target");
     const std::string targetGuid = target.instanceId;
     const scene::EntityID targetEntity = target.GetID();
-    /// @note inactive の対象は ScriptSystem の Awake より先でも取得でき、所有者接続の遅延を lookup 側で補完する。
+    // inactive の対象は ScriptSystem の Awake より先でも取得でき、所有者接続の遅延を lookup 側で補完する。
     target.SetActive(false);
     auto& healthEntry = target.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     healthEntry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.HealthComponent", healthEntry.savedScriptId);
@@ -567,7 +569,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     EXPECT_TRUE(Fields(*references)["cachedTransformAlive"].value_or(false));
     EXPECT_TRUE(Fields(*references)["cachedHealthAlive"].value_or(false));
 
-    /// @note Scene 復元は新しい wrapper を作る明示的な再解決。欠損 GUID と null の配列位置は保存のまま。
+    // Scene 復元は新しい wrapper を作る明示的な再解決。欠損 GUID と null の配列位置は保存のまま。
     const std::string saved = scene::SceneSerializer::SaveToText(m_scene);
     auto restored = scene::SceneSerializer::LoadDataFromText(saved, {});
     ASSERT_NE(restored, nullptr);
@@ -594,7 +596,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     EXPECT_FALSE(otherSceneReference.id.IsValid());
     restored.reset();
 
-    /// @note Prefab の source GUID は各個体の GUID へ置換され、null/欠損/重複の位置はそのまま。
+    // Prefab の source GUID は各個体の GUID へ置換され、null/欠損/重複の位置はそのまま。
     ASSERT_TRUE(target.SetParent(&owner));
     const auto prefabPath = m_temp.File("managed-reference.prefab").generic_string();
     ASSERT_TRUE(scene::SceneSerializer::Save(m_scene, prefabPath));
@@ -616,7 +618,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     EXPECT_EQ((*prefabFields["targets"].as_array())[2].value_or(std::string{}), missingGuid);
     EXPECT_EQ((*prefabFields["targets"].as_array())[3].value_or(std::string{}), prefabTarget->instanceId);
 
-    /// @note Component を外して同型を追加しても、保持された古い CLR 個体の寿命は復活しない。
+    // Component を外して同型を追加しても、保持された古い CLR 個体の寿命は復活しない。
     target.GetComponent<scene::ScriptComponent>()->scripts.clear();
     auto* replacementHealth = Attach(target, "cs-internal:ManagedFixtures.HealthComponent");
     ASSERT_NE(replacementHealth, nullptr);
@@ -625,7 +627,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     EXPECT_TRUE(Fields(*references)["cachedTargetAlive"].value_or(false));
     EXPECT_EQ(Fields(*replacementHealth)["health"].value_or(int64_t{}), 7);
 
-    /// @note Entity index と GUID を再利用しても既存 token は古い Entity generation を指し続ける。
+    // Entity index と GUID を再利用しても既存 token は古い Entity generation を指し続ける。
     ASSERT_TRUE(m_scene.DestroyGameObject(targetEntity));
     auto& reused = m_scene.CreateGameObject("ReusedTarget");
     reused.instanceId = targetGuid;
@@ -637,13 +639,13 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     EXPECT_VEC3_NEAR(reused.transform.position, math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_FALSE(references->IsRuntimeFaulted());
 
-    /// @note optional 参照は非 null の欠損 wrapper のまま。古い Transform を使うと native 操作は拒否される。
+    // optional 参照は非 null の欠損 wrapper のまま。古い Transform を使うと native 操作は拒否される。
     ASSERT_TRUE(references->ApplySettingsJson("{\"moveCached\":true}"));
     EXPECT_FALSE(references->ExecuteProfiledCallback(&scene::Script::OnUpdate, scene::ScriptCallbackKind::UPDATE, "OnUpdate"));
     EXPECT_TRUE(references->IsRuntimeFaulted());
     EXPECT_VEC3_NEAR(reused.transform.position, math::Vector3::ZERO, testkit::kTolerance);
 
-    /// @note 通常の string[] と反復走査で 128 を超える階層を取得できる。試験用に別世代を増やさない。
+    // 通常の string[] と反復走査で 128 を超える階層を取得できる。試験用に別世代を増やさない。
     auto& hierarchyRoot = m_scene.CreateGameObject("HierarchyRoot");
     scene::GameObject* leaf = &hierarchyRoot;
     std::string segments = "[";
@@ -702,7 +704,7 @@ TEST_F(ManagedScriptRuntimeTest, RebindsOnlySavedReferencesWhenSceneOwnershipMov
     EXPECT_VEC3_NEAR(movedTarget->transform.position, (math::Vector3{2, 0, 0}), testkit::kTolerance);
     EXPECT_FALSE(movedScript->IsRuntimeFaulted());
 
-    /// @note 生きた CLR 個体を move した場合も保存 field だけ再接続し、古い private wrapper は失効する。
+    // 生きた CLR 個体を move した場合も保存 field だけ再接続し、古い private wrapper は失効する。
     scene::Scene moved = std::move(m_scene);
     auto* movedAgainOwner = moved.Find("MovingOwner");
     auto* movedAgainTarget = moved.Find("MovingTarget");

@@ -18,4 +18,4 @@ void TargetPointComponent::Reflect(IReflector& reflector)
     screenSize = std::isfinite(screenSize) ? (std::clamp)(screenSize, 3.0f, 64.0f) : 9.0f;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

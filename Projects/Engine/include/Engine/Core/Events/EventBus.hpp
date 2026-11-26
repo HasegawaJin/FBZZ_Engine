@@ -47,4 +47,4 @@ private:
     FBZZ_ENGINE_API static void         PublishRaw(std::type_index type, const void* event);
 };
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

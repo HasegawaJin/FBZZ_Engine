@@ -75,8 +75,9 @@ void ReleaseSourceSkinningCache()
 {
     if (auto* resources = renderer::ResourceManager::FindOwner(g_cacheOwner);
         resources && resources->GetResetVersion() == g_cacheResetVersion) {
-        for (const auto& [key, entry] : g_srcVertexCache)
+        for (const auto& [key, entry] : g_srcVertexCache) {
             resources->Release(entry.handle);
+        }
         renderer::ReleaseSkinningRequestCaches(*resources);
     }
     g_bonePalettePool.ReleaseAll();
@@ -98,7 +99,9 @@ void BeginSkinningCacheFrame(renderer::ResourceManager& resources, uint64_t fram
         g_cacheOwner = resources.GetInstanceId();
         g_cacheResetVersion = resources.GetResetVersion();
     }
-    if (g_cacheUsageFrame == frameStamp) return;
+    if (g_cacheUsageFrame == frameStamp) {
+        return;
+    }
 
     if (g_cacheUsageFrame != (std::numeric_limits<uint64_t>::max)()) {
         for (auto it = g_srcVertexCache.begin(); it != g_srcVertexCache.end();) {
@@ -107,7 +110,9 @@ void BeginSkinningCacheFrame(renderer::ResourceManager& resources, uint64_t fram
                 continue;
             }
             if (it->second.handle.IsValid()) {
-                if(trace)++trace->sourceReleaseCalls;
+                if(trace) {
+                    ++trace->sourceReleaseCalls;
+                }
                 resources.Release(it->second.handle);
             }
             it = g_srcVertexCache.erase(it);
@@ -126,46 +131,65 @@ renderer::ResourceHandle<renderer::StructuredBufferTag> EnsureSourceVertexBuffer
     renderer::ResourceHandle<renderer::BufferTag> source, size_t boneCount, AnimationSkinningCpuRow* trace,
     renderer::buffer_state_detail::BufferStateReadScope* bufferReads, uint64_t* capturedVersion)
 {
-    /// @note cpuSkinnedVertices はインポート時に保持される。空なら GPU スキニングは行えない。
+    // cpuSkinnedVertices はインポート時に保持される。空なら GPU スキニングは行えない。
     const auto* sourceBuffer = bufferReads ? bufferReads->Get(source) : resources.Get(source);
     if (mesh.cpuSkinnedVertices.empty() || mesh.cpuSkinnedVertices.size() > UINT32_MAX
         || !sourceBuffer || sourceBuffer->GetContentVersion() == 0
         || sourceBuffer->GetStride() != sizeof(renderer::SkinnedVertex)
-        || sourceBuffer->GetSize() < mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex))
+        || sourceBuffer->GetSize() < mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex)) {
         return {};
+    }
 
     const SourceVertexCacheKey key{
         mesh.cpuSkinnedVertices.data(),
         static_cast<uint32_t>(mesh.cpuSkinnedVertices.size()),
         source, sourceBuffer->GetContentVersion()};
-    if (capturedVersion) *capturedVersion = key.contentVersion;
+    if (capturedVersion) {
+        *capturedVersion = key.contentVersion;
+    }
     g_usedSourceKeys.insert(key);
     const auto it = g_srcVertexCache.find(key);
     if (it != g_srcVertexCache.end()) {
         if (resources.Get(it->second.handle)) {
-            if(trace)++trace->sourceCacheHits;
+            if(trace) {
+                ++trace->sourceCacheHits;
+            }
             return it->second.maxBoneIndex < boneCount ? it->second.handle : renderer::ResourceHandle<renderer::StructuredBufferTag>{};
         }
         g_srcVertexCache.erase(it);
     }
 
-    if(trace)++trace->sourceCacheMisses;
-    /// @note 元 mesh と同じ handle でも内容更新を持つため、authoritative な版付き入力を読む。
+    if(trace) {
+        ++trace->sourceCacheMisses;
+    }
+    // 元 mesh と同じ handle でも内容更新を持つため、authoritative な版付き入力を読む。
     std::vector<renderer::SkinnedVertex> currentVertices(mesh.cpuSkinnedVertices.size());
-    if (!sourceBuffer->CopyData(0, currentVertices.size() * sizeof(renderer::SkinnedVertex), currentVertices.data())) return {};
-    if(trace)trace->sourceCopyBytes+=currentVertices.size()*sizeof(renderer::SkinnedVertex);
+    if (!sourceBuffer->CopyData(0, currentVertices.size() * sizeof(renderer::SkinnedVertex), currentVertices.data())) {
+        return {};
+    }
+    if(trace) {
+        trace->sourceCopyBytes+=currentVertices.size()*sizeof(renderer::SkinnedVertex);
+    }
     uint32_t maxBoneIndex = 0;
     for (const auto& vertex : currentVertices)
-        for (uint32_t index : vertex.boneIndices) maxBoneIndex = (std::max)(maxBoneIndex, index);
-    /// @note ウェイトがゼロの頂点も含め、パレットの参照が次のキャラクターの領域へはみ出さないようにする。
-    if (maxBoneIndex >= boneCount) return {};
-    if(trace)++trace->sourceCreateAttempts;
+        for (uint32_t index : vertex.boneIndices) {
+            maxBoneIndex = (std::max)(maxBoneIndex, index);
+        }
+    // ウェイトがゼロの頂点も含め、パレットの参照が次のキャラクターの領域へはみ出さないようにする。
+    if (maxBoneIndex >= boneCount) {
+        return {};
+    }
+    if(trace) {
+        ++trace->sourceCreateAttempts;
+    }
     const auto handle = resources.CreateGpuLocalStructuredBuffer(
         currentVertices.data(),
         static_cast<uint32_t>(mesh.cpuSkinnedVertices.size()),
         static_cast<uint32_t>(sizeof(renderer::SkinnedVertex)));
 
-    if(trace && handle.IsValid())++trace->sourceCreateSuccesses;
+    if(trace && handle.IsValid()) {
+        ++trace->sourceCreateSuccesses;
+    }
     g_srcVertexCache[key] = {handle, maxBoneIndex};
     return handle;
 }
@@ -176,9 +200,12 @@ renderer::ResourceHandle<renderer::StructuredBufferTag> AcquireBonePalette(
     EntityID animatorEntity,
     const std::vector<math::Matrix4>& matrices, AnimationSkinningCpuRow* trace)
 {
-    if (matrices.empty()) return {};
-    if (const auto it = g_framePalettes.find(animatorEntity); it != g_framePalettes.end())
+    if (matrices.empty()) {
+        return {};
+    }
+    if (const auto it = g_framePalettes.find(animatorEntity); it != g_framePalettes.end()) {
         return it->second;
+    }
 
     const size_t count  = matrices.size();
     const auto   handle = g_bonePalettePool.Acquire(
@@ -220,7 +247,7 @@ void AccumulateSkinningFrameStats(RenderPassContext& ctx)
     g_frameStats.vertices += ctx.statsSkinningVertexCount;
     g_frameStats.uploads += ctx.statsSkinningPaletteUploads;
     g_frameStats.bytes += ctx.statsSkinningPaletteUploadBytes;
-    /// @note ビューごとに、先行するビューで準備して再利用した分も含め、エンジンの同一フレーム内の実処理を報告する。
+    // ビューごとに、先行するビューで準備して再利用した分も含め、エンジンの同一フレーム内の実処理を報告する。
     ctx.statsSkinningDispatchCount = g_frameStats.dispatches;
     ctx.statsSkinningVertexCount = g_frameStats.vertices;
     ctx.statsSkinningPaletteUploads = g_frameStats.uploads;

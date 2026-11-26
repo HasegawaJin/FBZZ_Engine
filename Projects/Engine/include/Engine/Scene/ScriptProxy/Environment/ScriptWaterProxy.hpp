@@ -16,7 +16,7 @@ namespace fbzz::scene {
 class Script;
 
 struct ScriptWaterProxy {
-    Script* script = nullptr;
+    Script* script = nullptr; ///< 水面操作で実行スコープを照合する、非所有の Script 参照。
 
     /// @note ワールド XZ での水面の高さ (ワールド Y)。time は Application::GetTime() などを渡す。
     FBZZ_ENGINE_API float GetSurfaceHeightWorld(float worldX, float worldZ, float time) const;
@@ -41,4 +41,4 @@ struct ScriptWaterProxy {
     FBZZ_ENGINE_API bool IsEnabled() const;
 };
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

@@ -23,4 +23,4 @@ public:
         renderer::ResourceManager& resources);
 };
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

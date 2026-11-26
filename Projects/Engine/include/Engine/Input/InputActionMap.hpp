@@ -105,4 +105,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::input
+} // namespace fbzz::input

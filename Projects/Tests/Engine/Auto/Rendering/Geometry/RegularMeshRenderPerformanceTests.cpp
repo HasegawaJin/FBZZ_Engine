@@ -86,7 +86,9 @@ uint32_t FrameSetting(const char* name, uint32_t fallback)
 {
     char* value = nullptr;
     size_t length = 0;
-    if (_dupenv_s(&value, &length, name) != 0 || !value) return fallback;
+    if (_dupenv_s(&value, &length, name) != 0 || !value) {
+        return fallback;
+    }
     const long parsed = std::strtol(value, nullptr, 10);
     std::free(value);
     return parsed >= 1 && parsed <= 600 ? static_cast<uint32_t>(parsed) : fallback;
@@ -96,7 +98,9 @@ std::string SpatialModeSetting()
 {
     char value[16]{};
     const DWORD length = GetEnvironmentVariableA("FBZZ_MESH_SPATIAL_MODE", value, sizeof(value));
-    if (length == 0 || length >= sizeof(value)) return "linear";
+    if (length == 0 || length >= sizeof(value)) {
+        return "linear";
+    }
     const std::string_view mode(value, length);
     return mode == "bvh" || mode == "auto" || mode == "validate" ? std::string(mode) : "linear";
 }
@@ -218,7 +222,7 @@ protected:
         ASSERT_TRUE(m_material.IsValid());
         const auto* primitive = scene::ResolveMeshPath("primitive:cube", *m_resources);
         ASSERT_NE(primitive, nullptr);
-        /// @note PrimitiveMesh caches CPU geometry process-wide. Each fixture uploads buffers owned by its own renderer.
+        // PrimitiveMesh の CPU ジオメトリはプロセス全体で共有する。GPU バッファは各フィクスチャのレンダラーで確保する。
         m_ownedMesh.cpuVertices = primitive->cpuVertices;
         m_ownedMesh.cpuIndices = primitive->cpuIndices;
         ASSERT_FALSE(m_ownedMesh.cpuVertices.empty());
@@ -292,7 +296,7 @@ protected:
         ASSERT_TRUE(asset::LoadMaterialAssetFromFile((shaderRoot.parent_path() / "Materials/Examples/Fiber"
             / (std::string(family) + ".mat")).generic_string(), authored));
         authored.shaderPath = (shaderRoot / "Examples/Fiber" / (std::string(family) + ".hlsl")).generic_string();
-        /// @note Texture editing is covered by preview tests; this isolates runtime numeric binding and component overrides.
+        // テクスチャ編集はプレビュー側で検証済み。ここでは実行時の数値バインドとコンポーネントの上書きを確認する。
         authored.textures.clear();
         authored.params["fiberLength"] = {0.28f}; authored.params["fiberDensity"] = {0.8f};
         authored.params["windResponse"] = {0}; authored.params["maxBend"] = {0}; authored.params["gravityBend"] = {0};
@@ -418,7 +422,7 @@ protected:
             } else colorDifference += std::abs(red[index] - blue[index]);
         }
         EXPECT_GT(colorDifference, 1.0); EXPECT_LT(coverageDifference, 0.001); EXPECT_LT(builtinCoverageDifference, 0.001);
-        /// @note A non-Fiber shader is an invalid appearance family and must retain the compatible built-in path.
+        // Fiber 用途に適合しないシェーダーを指定した場合は、互換性のある組み込み描画経路を維持する。
         authored.shaderPath = (shaderRoot / "Material/Surface/Lit.hlsl").generic_string();
         const auto fallbackScene = extract(std::string(family) + "InvalidFamily", authored);
         ASSERT_EQ(fallbackScene->fibers.size(), 1u); EXPECT_EQ(fallbackScene->fibers.front().appearance, nullptr);
@@ -738,7 +742,7 @@ protected:
             sun.castShadows = true;
             sun.shadowDistance = 150;
             sun.intensity = 1;
-            /// @note Punctual views include the configured off-camera caster independently from the main camera frustum.
+            // 点光源などのローカルライトのビューには、メインカメラの視錐台の外にある指定済みの影キャスターも含める。
             auto& spotObject = m_scene.CreateGameObject("Measurement independent spot shadow");
             spotObject.transform.position = {outsideX, 0, -12};
             auto& spot = spotObject.AddComponent<scene::LightComponent>();
@@ -753,7 +757,7 @@ protected:
         scene::FlushWorldTransforms(m_scene);
         const uint32_t warmup = FrameSetting("FBZZ_REGULAR_MESH_WARMUP", 12);
         const uint32_t measured = FrameSetting("FBZZ_REGULAR_MESH_SAMPLES", 30);
-        /// @note Cold means the first production render after scene setup; renderer/device/material creation is excluded.
+        // コールド時の計測はシーン構築後の初回描画から始める。レンダラー、デバイス、材質の生成は計測前に済ませる。
         if (m_captureCold) {
             auto cold = RenderFrame(true);
             cold.cold = true;
@@ -769,9 +773,9 @@ protected:
         m_firstMeasured = m_resources->FrameStamp() + 1;
         m_lastMeasured = m_firstMeasured + measured - 1;
         for (uint32_t index = 0; index < measured; ++index) m_frames.push_back(RenderFrame(true));
-        /// @note Ordinary frames retire query lanes; no synchronous GPU readback is used to obtain timings.
+        // 通常フレームの進行に合わせてクエリを回収し、計時のための同期読み戻しを避ける。
         for (uint32_t index = 0; index < 8; ++index) RenderFrame(false);
-        /// @note This synchronous evidence check is outside every measured frame and never contributes a GPU timing.
+        // この同期確認は計測対象フレームの外で実行し、GPU 時間の集計から外す。
         std::vector<float> pixels;
         uint32_t captureWidth = 0, captureHeight = 0;
         ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(m_target, *m_resources,
@@ -820,7 +824,7 @@ protected:
                 EXPECT_EQ(frame.firstViewStats.drawCalls, static_cast<int>(visibleCount));
             }
         }
-        /// @note Availability is reported, never fabricated as a zero-time pass if the device has no timestamps.
+        // デバイスがタイムスタンプを提供しない場合は、計測できなかったことを結果に記録する。
         EXPECT_FALSE(m_gpuSamples.empty()) << "No completed source-tagged GPU timings were collected";
         if (m_twoViews) {
             const auto hasViewColorTiming = [&](const renderer::GpuProfilerViewMetadata& view) {
@@ -853,11 +857,15 @@ protected:
         for (size_t index = 0; index < m_entities.size() * m_churnPercent / 100; ++index) {
             const auto* previous = m_scene.GetGameObject(m_entities[index]);
             EXPECT_NE(previous, nullptr);
-            if (!previous) continue;
+            if (!previous) {
+                continue;
+            }
             const auto position = previous->transform.position;
             const bool deleted = m_scene.DestroyGameObject(m_entities[index]);
             EXPECT_TRUE(deleted);
-            if (!deleted) continue;
+            if (!deleted) {
+                continue;
+            }
             auto& replacement = m_scene.CreateGameObject("Regular mesh churn");
             replacement.AddComponent<scene::MeshRenderer>().mesh = m_mesh;
             replacement.AddComponent<scene::MaterialComponent>().SetMaterialAsset(m_material);
@@ -964,7 +972,7 @@ protected:
             m_lastGpuPhysical = gpu.physicalFrameSerial;
             renderer::GpuProfilerSnapshot accepted = gpu;
             std::erase_if(accepted.passes, [&](const auto& pass) {
-                /// @note Match asynchronous passes to their measured source view, including any scene-lifetime transitions.
+                // シーンの寿命をまたいだ場合も、非同期パスの結果を計測元のビューに対応付ける。
                 if (m_churnPercent != 0) {
                     const auto source = m_measuredViews.find(pass.metadata.applicationFrameSerial);
                     const bool matchingView = source != m_measuredViews.end()

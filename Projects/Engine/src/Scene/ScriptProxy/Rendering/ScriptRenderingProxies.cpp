@@ -33,7 +33,9 @@ namespace {
 
 ProceduralMeshComponent* EnsureProceduralMesh(GameObject& go)
 {
-    if (auto* existing = go.GetComponent<ProceduralMeshComponent>()) return existing;
+    if (auto* existing = go.GetComponent<ProceduralMeshComponent>()) {
+        return existing;
+    }
     return &go.AddComponent<ProceduralMeshComponent>();
 }
 
@@ -41,9 +43,11 @@ ProceduralMeshComponent* EnsureProceduralMesh(GameObject& go)
 void ApplyProceduralMesh(GameObject& go, const MeshBuilder& builder)
 {
     ProceduralMeshComponent* procedural = EnsureProceduralMesh(go);
-    if (!procedural) return;
-    /// @note 三角形の数が変われば当然、同数でも繋がり方は変わりうる。値で受けた以上、
-    /// @note 何が変わったかは判別できないので常に全更新として扱う。
+    if (!procedural) {
+        return;
+    }
+    // 三角形の数が変われば当然、同数でも繋がり方は変わりうる。値で受けた以上、
+    // 何が変わったかは判別できないので常に全更新として扱う。
     procedural->builder = builder;
     procedural->dirty   = MeshDirty::All;
     procedural->enabled = true;
@@ -78,12 +82,14 @@ const renderer::RenderSettings& RenderSettingsForRead()
 void SubmitObjectMaskRequest(GameObject* target, const math::Vector4& color,
                              float value, bool includeChildren, bool visibleOnly)
 {
-    if (!target || !target->IsValid()) return;
+    if (!target || !target->IsValid()) {
+        return;
+    }
     auto* settings = ActiveRenderSettings();
     if (!settings) {
-        /// @note 申告先が無い。Play 中は EditorApp が、配布ビルドは StandaloneProjectModule が
-        /// @note 差す。ここが null だと «Set は呼べているのに何も起きない» になり、
-        /// @note 呼んだ側からは成功と区別が付かない。
+        // 申告先が無い。Play 中は EditorApp が、配布ビルドは StandaloneProjectModule が
+        // 差す。ここが null だと «Set は呼べているのに何も起きない» になり、
+        // 呼んだ側からは成功と区別が付かない。
         static bool sWarned = false;
         if (!sWarned) {
             sWarned = true;
@@ -96,17 +102,21 @@ void SubmitObjectMaskRequest(GameObject* target, const math::Vector4& color,
 
     const EntityID id = target->GetID();
 
-    /// @note 同じ対象の行があれば上書きし、無ければ «前のフレームで途絶えた行» を再利用する。
-    /// @note 拾わずに追加し続けると、一度でも印された対象の数だけ配列が伸びたままになる。
+    // 同じ対象の行があれば上書きし、無ければ «前のフレームで途絶えた行» を再利用する。
+    // 拾わずに追加し続けると、一度でも印された対象の数だけ配列が伸びたままになる。
     renderer::RenderObjectMaskRequest* slot = nullptr;
     for (renderer::RenderObjectMaskRequest& request : settings->objectMaskRequests) {
         if (SameEntity(request.id, id)) {
             slot = &request;
             break;
         }
-        if (!slot && !renderer::IsObjectMaskRequestLive(request, Time::frameCount)) slot = &request;
+        if (!slot && !renderer::IsObjectMaskRequestLive(request, Time::frameCount)) {
+            slot = &request;
+        }
     }
-    if (!slot) slot = &settings->objectMaskRequests.emplace_back();
+    if (!slot) {
+        slot = &settings->objectMaskRequests.emplace_back();
+    }
 
     slot->id              = { id.index, id.generation };
     slot->color[0]        = color.x;
@@ -122,9 +132,13 @@ void SubmitObjectMaskRequest(GameObject* target, const math::Vector4& color,
 
 void WithdrawObjectMaskRequest(GameObject* target)
 {
-    if (!target) return;
+    if (!target) {
+        return;
+    }
     auto* settings = ActiveRenderSettings();
-    if (!settings) return;
+    if (!settings) {
+        return;
+    }
 
     const EntityID id = target->GetID();
     std::erase_if(settings->objectMaskRequests,
@@ -134,7 +148,7 @@ void WithdrawObjectMaskRequest(GameObject* target)
 }
 
 
-} /// @note namespace
+} // namespace
 renderer::PostProcessSettings& ScriptPostProcessProxy::Get() const
 {
     assert(script && "Script context is not set");
@@ -150,13 +164,17 @@ const renderer::PostProcessSettings* ScriptPostProcessProxy::TryGet() const
 
 void ScriptPostProcessProxy::Set(const renderer::PostProcessSettings& settings) const
 {
-    if (script) script->SetRuntimePostProcessSettings(settings);
+    if (script) {
+        script->SetRuntimePostProcessSettings(settings);
+    }
 }
 
 
 void ScriptPostProcessProxy::Clear() const
 {
-    if (script) script->ClearRuntimePostProcessSettings();
+    if (script) {
+        script->ClearRuntimePostProcessSettings();
+    }
 }
 
 
@@ -180,8 +198,9 @@ renderer::CustomPostProcessSettings& ScriptPostProcessProxy::EnsureCustom(
     bool enabled) const
 {
     if (auto* custom = FindCustom(name)) {
-        if (!shaderPath.empty())
+        if (!shaderPath.empty()) {
             custom->shaderPath = std::string(shaderPath);
+        }
         custom->enabled = enabled;
         return *custom;
     }
@@ -192,7 +211,9 @@ renderer::CustomPostProcessSettings& ScriptPostProcessProxy::EnsureCustom(
 
 renderer::CustomPostProcessSettings* ScriptPostProcessProxy::FindCustom(std::string_view name) const
 {
-    if (!script) return nullptr;
+    if (!script) {
+        return nullptr;
+    }
 
     auto& effects = script->GetRuntimePostProcessSettings().customEffects;
     auto it = std::find_if(effects.begin(), effects.end(), [name](const renderer::CustomPostProcessSettings& custom) {
@@ -204,7 +225,9 @@ renderer::CustomPostProcessSettings* ScriptPostProcessProxy::FindCustom(std::str
 
 bool ScriptPostProcessProxy::RemoveCustom(std::string_view name) const
 {
-    if (!script) return false;
+    if (!script) {
+        return false;
+    }
 
     auto& effects = script->GetRuntimePostProcessSettings().customEffects;
     const auto oldSize = effects.size();
@@ -220,7 +243,9 @@ bool ScriptPostProcessProxy::RemoveCustom(std::string_view name) const
 bool ScriptPostProcessProxy::SetCustomEnabled(std::string_view name, bool enabled) const
 {
     auto* custom = FindCustom(name);
-    if (!custom) return false;
+    if (!custom) {
+        return false;
+    }
     custom->enabled = enabled;
     return true;
 }
@@ -228,10 +253,14 @@ bool ScriptPostProcessProxy::SetCustomEnabled(std::string_view name, bool enable
 
 bool ScriptPostProcessProxy::SetCustomParameter(std::string_view name, uint32_t index, float value) const
 {
-    if (index >= 8) return false;
+    if (index >= 8) {
+        return false;
+    }
 
     auto* custom = FindCustom(name);
-    if (!custom) return false;
+    if (!custom) {
+        return false;
+    }
     custom->parameters[index] = value;
     return true;
 }
@@ -240,7 +269,9 @@ bool ScriptPostProcessProxy::SetCustomParameter(std::string_view name, uint32_t 
 bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x, float y, float z, float w) const
 {
     auto* custom = FindCustom(name);
-    if (!custom) return false;
+    if (!custom) {
+        return false;
+    }
 
     custom->parameters[0] = x;
     custom->parameters[1] = y;
@@ -252,16 +283,18 @@ bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x,
 
 bool ScriptPostProcessProxy::LoadProfile(std::string_view profilePath) const
 {
-    /// @note DataAssetRegistry 経由: 同じプロファイルを複数箇所から読んでも TOML の再パースが起きず、
-    /// @note エディタでの編集が即座に反映される。旧 .fzpp の直接パース経路より安く共有実体とも一致する。
+    // DataAssetRegistry 経由: 同じプロファイルを複数箇所から読んでも TOML の再パースが起きず、
+    // エディタでの編集が即座に反映される。旧 .fzpp の直接パース経路より安く共有実体とも一致する。
     const auto* profile = asset::TryAsExactDataAsset<asset::PostProcessProfile>(
         asset::DataAssetRegistry::Resolve(std::string(profilePath)));
-    if (!profile) return false;
+    if (!profile) {
+        return false;
+    }
 
-    /// @note プロファイルは «効果のリスト» なので、まず既定値へ重み 1 で解決してから渡す。渡すのは
-    /// @note ポストプロセス部分のみ: このプロキシが書くランタイム上書きの器は Scene の
-    /// @note PostProcessSettings で SSR/TAA 等の高度グラフィクスの置き場が無い。恒久的に効かせたい
-    /// @note 場合は PostProcessVolume からこのプロファイルを参照させる。
+    // プロファイルは «効果のリスト» なので、まず既定値へ重み 1 で解決してから渡す。渡すのは
+    // ポストプロセス部分のみ: このプロキシが書くランタイム上書きの器は Scene の
+    // PostProcessSettings で SSR/TAA 等の高度グラフィクスの置き場が無い。恒久的に効かせたい
+    // 場合は PostProcessVolume からこのプロファイルを参照させる。
     renderer::VolumeSettings resolved;
     profile->ApplyTo(resolved, 1.0f);
     Set(resolved.post);
@@ -272,60 +305,86 @@ bool ScriptPostProcessProxy::LoadProfile(std::string_view profilePath) const
 
 void ScriptMeshProxy::SetEnabled(bool enabled) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>()) {
         mr->enabled = enabled;
-    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+    }
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>()) {
         smr->enabled = enabled;
+    }
 }
 
 
 bool ScriptMeshProxy::IsEnabled() const
 {
-    if (!script || !script->m_gameObject) return false;
+    if (!script || !script->m_gameObject) {
+        return false;
+    }
     if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
-        if (mr->enabled) return true;
+        if (mr->enabled) {
+            return true;
+        }
     if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
-        if (smr->enabled) return true;
+        if (smr->enabled) {
+            return true;
+        }
     return false;
 }
 
 
 void ScriptMeshProxy::SetCastShadows(bool castShadows) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>()) {
         mr->castShadows = castShadows;
-    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+    }
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>()) {
         smr->castShadows = castShadows;
+    }
 }
 
 
 bool ScriptMeshProxy::GetCastShadows() const
 {
-    if (!script || !script->m_gameObject) return false;
+    if (!script || !script->m_gameObject) {
+        return false;
+    }
     if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
-        if (mr->castShadows) return true;
+        if (mr->castShadows) {
+            return true;
+        }
     if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
-        if (smr->castShadows) return true;
+        if (smr->castShadows) {
+            return true;
+        }
     return false;
 }
 
 
 void ScriptMeshProxy::SetMeshPath(std::string_view path) const
 {
-    if (!script || !script->m_gameObject) return;
+    if (!script || !script->m_gameObject) {
+        return;
+    }
     auto* mr = script->m_gameObject->GetComponent<MeshRenderer>();
-    if (!mr || mr->meshPath == path) return;
+    if (!mr || mr->meshPath == path) {
+        return;
+    }
     mr->meshPath      = std::string(path);
-    /// @note 引き直しには ResourceManager が要る。実際に差し替えるのは RuntimeMeshSystem。
+    // 引き直しには ResourceManager が要る。実際に差し替えるのは RuntimeMeshSystem。
     mr->meshPathDirty = true;
 }
 
 
 std::string ScriptMeshProxy::GetMeshPath() const
 {
-    if (!script || !script->m_gameObject) return {};
+    if (!script || !script->m_gameObject) {
+        return {};
+    }
     const auto* mr = script->m_gameObject->GetComponent<MeshRenderer>();
     return mr ? mr->meshPath : std::string{};
 }
@@ -333,15 +392,20 @@ std::string ScriptMeshProxy::GetMeshPath() const
 
 void ScriptMeshProxy::SetModelPath(std::string_view path) const
 {
-    if (!script || !script->m_gameObject) return;
-    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+    if (!script || !script->m_gameObject) {
+        return;
+    }
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>()) {
         smr->modelPath = std::string(path);
+    }
 }
 
 
 std::string ScriptMeshProxy::GetModelPath() const
 {
-    if (!script || !script->m_gameObject) return {};
+    if (!script || !script->m_gameObject) {
+        return {};
+    }
     const auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>();
     return smr ? smr->modelPath : std::string{};
 }
@@ -349,7 +413,9 @@ std::string ScriptMeshProxy::GetModelPath() const
 
 void ScriptMeshProxy::Apply(const MeshBuilder& builder) const
 {
-    if (!script || !script->m_gameObject) return;
+    if (!script || !script->m_gameObject) {
+        return;
+    }
     ApplyProceduralMesh(*script->m_gameObject, builder);
 }
 
@@ -362,41 +428,60 @@ void ScriptMeshProxy::Apply(GameObject& target, const MeshBuilder& builder) cons
 
 std::span<MeshVertex> ScriptMeshProxy::Vertices() const
 {
-    if (!script || !script->m_gameObject) return {};
+    if (!script || !script->m_gameObject) {
+        return {};
+    }
     auto* procedural = script->m_gameObject->GetComponent<ProceduralMeshComponent>();
-    if (!procedural) return {};
+    if (!procedural) {
+        return {};
+    }
     return { procedural->builder.Vertices().data(), procedural->builder.Vertices().size() };
 }
 
 
 void ScriptMeshProxy::Touch(MeshDirty dirty) const
 {
-    if (!script || !script->m_gameObject) return;
+    if (!script || !script->m_gameObject) {
+        return;
+    }
     auto* procedural = script->m_gameObject->GetComponent<ProceduralMeshComponent>();
-    if (!procedural || dirty == MeshDirty::None) return;
-    /// @note 既に全更新が積まれているフレームで «頂点だけ» を要求されても、弱い方へは下げない。
-    if (procedural->dirty != MeshDirty::All) procedural->dirty = dirty;
+    if (!procedural || dirty == MeshDirty::None) {
+        return;
+    }
+    // 既に全更新が積まれているフレームで «頂点だけ» を要求されても、弱い方へは下げない。
+    if (procedural->dirty != MeshDirty::All) {
+        procedural->dirty = dirty;
+    }
 }
 
 
 void ScriptMeshProxy::Clear() const
 {
-    if (!script || !script->m_gameObject) return;
+    if (!script || !script->m_gameObject) {
+        return;
+    }
     auto* procedural = script->m_gameObject->GetComponent<ProceduralMeshComponent>();
-    if (!procedural) return;
+    if (!procedural) {
+        return;
+    }
     procedural->builder.Clear();
     procedural->enabled = false;
     procedural->dirty   = MeshDirty::All;
-    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>()) {
         mr->enabled = false;
+    }
 }
 
 
 void ScriptMeshProxy::SetProceduralMaterial(std::string_view path) const
 {
-    if (!script || !script->m_gameObject) return;
+    if (!script || !script->m_gameObject) {
+        return;
+    }
     ProceduralMeshComponent* procedural = EnsureProceduralMesh(*script->m_gameObject);
-    if (!procedural) return;
+    if (!procedural) {
+        return;
+    }
     procedural->materialPath = std::string(path);
 }
 
@@ -404,8 +489,9 @@ void ScriptMeshProxy::SetProceduralMaterial(std::string_view path) const
 
 void ScriptGraphicsProxy::SetBrightness(float value) const
 {
-    if (auto* settings = ActiveRenderSettings())
+    if (auto* settings = ActiveRenderSettings()) {
         settings->userBrightness = std::clamp(value, 0.1f, 4.0f);
+    }
 }
 
 
@@ -417,8 +503,9 @@ float ScriptGraphicsProxy::GetBrightness() const
 
 void ScriptGraphicsProxy::SetBloomScale(float value) const
 {
-    if (auto* settings = ActiveRenderSettings())
+    if (auto* settings = ActiveRenderSettings()) {
         settings->userBloomScale = std::clamp(value, 0.0f, 2.0f);
+    }
 }
 
 
@@ -465,8 +552,9 @@ uint32_t ScriptGraphicsProxy::GetRenderHeight() const
 
 void ScriptGraphicsProxy::SetQualityPreset(renderer::QualityPreset preset) const
 {
-    if (auto* settings = ActiveRenderSettings())
+    if (auto* settings = ActiveRenderSettings()) {
         renderer::ApplyQualityPreset(*settings, preset);
+    }
 }
 
 
@@ -478,7 +566,9 @@ renderer::QualityPreset ScriptGraphicsProxy::GetQualityPreset() const
 
 void ScriptGraphicsProxy::SetShadowsEnabled(bool enabled) const
 {
-    if (auto* settings = ActiveRenderSettings()) settings->shadowEnabled = enabled;
+    if (auto* settings = ActiveRenderSettings()) {
+        settings->shadowEnabled = enabled;
+    }
 }
 
 
@@ -490,8 +580,9 @@ bool ScriptGraphicsProxy::GetShadowsEnabled() const
 
 void ScriptGraphicsProxy::SetShadowResolution(uint32_t resolution) const
 {
-    if (auto* settings = ActiveRenderSettings())
+    if (auto* settings = ActiveRenderSettings()) {
         settings->shadow.mapResolution = std::clamp(resolution, 512u, 8192u);
+    }
 }
 
 
@@ -503,8 +594,9 @@ uint32_t ScriptGraphicsProxy::GetShadowResolution() const
 
 void ScriptGraphicsProxy::SetShadowCascades(int count) const
 {
-    if (auto* settings = ActiveRenderSettings())
+    if (auto* settings = ActiveRenderSettings()) {
         settings->shadow.cascadeCount = std::clamp(count, 1, 4);
+    }
 }
 
 
@@ -516,7 +608,9 @@ int ScriptGraphicsProxy::GetShadowCascades() const
 
 void ScriptGraphicsProxy::SetSSR(bool enabled) const
 {
-    if (auto* settings = ActiveRenderSettings()) settings->ssr.enabled = enabled;
+    if (auto* settings = ActiveRenderSettings()) {
+        settings->ssr.enabled = enabled;
+    }
 }
 
 
@@ -526,10 +620,14 @@ bool ScriptGraphicsProxy::GetSSR() const { return RenderSettingsForRead().ssr.en
 void ScriptGraphicsProxy::SetGTAO(bool enabled) const
 {
     auto* settings = ActiveRenderSettings();
-    if (!settings) return;
+    if (!settings) {
+        return;
+    }
     settings->gtao.enabled = enabled;
-    /// @note GTAO と SSAO は同じスロット。立てた側を残すため、先に相手を落としてから正規化する。
-    if (enabled) settings->postProcess.ambientOcclusion.enabled = false;
+    // GTAO と SSAO は同じスロット。立てた側を残すため、先に相手を落としてから正規化する。
+    if (enabled) {
+        settings->postProcess.ambientOcclusion.enabled = false;
+    }
     (void)settings->NormalizeExclusivePipelineSlots();
 }
 
@@ -540,9 +638,13 @@ bool ScriptGraphicsProxy::GetGTAO() const { return RenderSettingsForRead().gtao.
 void ScriptGraphicsProxy::SetSSAO(bool enabled) const
 {
     auto* settings = ActiveRenderSettings();
-    if (!settings) return;
+    if (!settings) {
+        return;
+    }
     settings->postProcess.ambientOcclusion.enabled = enabled;
-    if (enabled) settings->gtao.enabled = false;
+    if (enabled) {
+        settings->gtao.enabled = false;
+    }
     (void)settings->NormalizeExclusivePipelineSlots();
 }
 
@@ -556,9 +658,13 @@ bool ScriptGraphicsProxy::GetSSAO() const
 void ScriptGraphicsProxy::SetTAA(bool enabled) const
 {
     auto* settings = ActiveRenderSettings();
-    if (!settings) return;
+    if (!settings) {
+        return;
+    }
     settings->taa.enabled = enabled;
-    if (enabled) settings->postProcess.fxaaEnabled = false;
+    if (enabled) {
+        settings->postProcess.fxaaEnabled = false;
+    }
     (void)settings->NormalizeExclusivePipelineSlots();
 }
 
@@ -569,9 +675,13 @@ bool ScriptGraphicsProxy::GetTAA() const { return RenderSettingsForRead().taa.en
 void ScriptGraphicsProxy::SetFXAA(bool enabled) const
 {
     auto* settings = ActiveRenderSettings();
-    if (!settings) return;
+    if (!settings) {
+        return;
+    }
     settings->postProcess.fxaaEnabled = enabled;
-    if (enabled) settings->taa.enabled = false;
+    if (enabled) {
+        settings->taa.enabled = false;
+    }
     (void)settings->NormalizeExclusivePipelineSlots();
 }
 
@@ -584,8 +694,9 @@ bool ScriptGraphicsProxy::GetFXAA() const
 
 void ScriptGraphicsProxy::SetBloom(bool enabled) const
 {
-    if (auto* settings = ActiveRenderSettings())
+    if (auto* settings = ActiveRenderSettings()) {
         settings->postProcess.bloom.enabled = enabled;
+    }
 }
 
 
@@ -597,7 +708,9 @@ bool ScriptGraphicsProxy::GetBloom() const
 
 void ScriptGraphicsProxy::SetMotionBlur(bool enabled) const
 {
-    if (auto* settings = ActiveRenderSettings()) settings->motionBlur.enabled = enabled;
+    if (auto* settings = ActiveRenderSettings()) {
+        settings->motionBlur.enabled = enabled;
+    }
 }
 
 
@@ -609,7 +722,9 @@ bool ScriptGraphicsProxy::GetMotionBlur() const
 
 void ScriptGraphicsProxy::SetVolumetricLight(bool enabled) const
 {
-    if (auto* settings = ActiveRenderSettings()) settings->volumetricLight.enabled = enabled;
+    if (auto* settings = ActiveRenderSettings()) {
+        settings->volumetricLight.enabled = enabled;
+    }
 }
 
 
@@ -621,7 +736,9 @@ bool ScriptGraphicsProxy::GetVolumetricLight() const
 
 void ScriptGraphicsProxy::SetContactShadow(bool enabled) const
 {
-    if (auto* settings = ActiveRenderSettings()) settings->contactShadow.enabled = enabled;
+    if (auto* settings = ActiveRenderSettings()) {
+        settings->contactShadow.enabled = enabled;
+    }
 }
 
 
@@ -636,7 +753,9 @@ bool ScriptGraphicsProxy::GetContactShadow() const
 
 void ScriptObjectMaskProxy::Set(const math::Vector4& color, float value) const
 {
-    if (script) SubmitObjectMaskRequest(script->m_gameObject, color, value, true, true);
+    if (script) {
+        SubmitObjectMaskRequest(script->m_gameObject, color, value, true, true);
+    }
 }
 
 
@@ -649,7 +768,9 @@ void ScriptObjectMaskProxy::Set(GameObject& target, const math::Vector4& color, 
 
 void ScriptObjectMaskProxy::Clear() const
 {
-    if (script) WithdrawObjectMaskRequest(script->m_gameObject);
+    if (script) {
+        WithdrawObjectMaskRequest(script->m_gameObject);
+    }
 }
 
 
@@ -660,4 +781,4 @@ void ScriptObjectMaskProxy::Clear(GameObject& target) const
 
 /// @brief ScriptSpringBoneProxy
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

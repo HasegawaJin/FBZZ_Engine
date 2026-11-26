@@ -43,27 +43,37 @@ bool ResolveRegisteredTypeName(std::string_view name, std::string& typeKey)
         const size_t separator = registration.displayName.find_last_of('.');
         const std::string_view shortName(registration.displayName.data() + (separator == std::string::npos ? 0 : separator + 1),
             registration.displayName.size() - (separator == std::string::npos ? 0 : separator + 1));
-        if (name != key && name != registration.displayName && name != shortName) continue;
-        if (!match.empty() && match != key) return false;
+        if (name != key && name != registration.displayName && name != shortName) {
+            continue;
+        }
+        if (!match.empty() && match != key) {
+            return false;
+        }
         match = key;
     }
     if (match.empty()) {
         const auto alias = Aliases().find(std::string(name));
         if (alias != Aliases().end()) {
             const auto target = Registry().find(alias->second.typeKey);
-            if (target != Registry().end()) match = alias->second.typeKey;
+            if (target != Registry().end()) {
+                match = alias->second.typeKey;
+            }
         }
     }
-    if (match.empty()) return false;
+    if (match.empty()) {
+        return false;
+    }
     typeKey = std::move(match);
     return true;
 }
 
-} /// @note namespace
+} // namespace
 
 bool ScriptFactory::RegisterManaged(const std::string& typeName, IdentityFactory factory)
 {
-    if (typeName.empty() || !factory) return false;
+    if (typeName.empty() || !factory) {
+        return false;
+    }
     auto& registry = Registry();
     registry.insert_or_assign(typeName, Registration{std::move(factory), typeName});
     DisplayNames().try_emplace(typeName, typeName);
@@ -72,14 +82,20 @@ bool ScriptFactory::RegisterManaged(const std::string& typeName, IdentityFactory
 
 std::unique_ptr<Script> ScriptFactory::Create(const std::string& typeName, const std::string& savedScriptId)
 {
-    if (!IsValidSavedScriptId(savedScriptId)) return nullptr;
+    if (!IsValidSavedScriptId(savedScriptId)) {
+        return nullptr;
+    }
     auto& registry = Registry();
     auto it = registry.find(typeName);
     if (it == registry.end()) {
         const auto alias = Aliases().find(typeName);
-        if (alias != Aliases().end()) it = registry.find(alias->second.typeKey);
+        if (alias != Aliases().end()) {
+            it = registry.find(alias->second.typeKey);
+        }
     }
-    if (it == registry.end()) return nullptr;
+    if (it == registry.end()) {
+        return nullptr;
+    }
     return it->second.factory(savedScriptId);
 }
 
@@ -87,21 +103,29 @@ bool ScriptFactory::CanCreate(std::string_view typeName)
 {
     const std::string key(typeName);
     const auto& registry = Registry();
-    if (registry.contains(key)) return true;
+    if (registry.contains(key)) {
+        return true;
+    }
     const auto alias = Aliases().find(key);
     return alias != Aliases().end() && registry.contains(alias->second.typeKey);
 }
 
 bool ScriptFactory::IsValidSavedScriptId(std::string_view savedScriptId)
 {
-    if (savedScriptId.size() != 36) return false;
+    if (savedScriptId.size() != 36) {
+        return false;
+    }
     bool nonzero = false;
     for (size_t index = 0; index < savedScriptId.size(); ++index) {
         const char value = savedScriptId[index];
         if (index == 8 || index == 13 || index == 18 || index == 23) {
-            if (value != '-') return false;
+            if (value != '-') {
+                return false;
+            }
         } else {
-            if (!((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f'))) return false;
+            if (!((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f'))) {
+                return false;
+            }
             nonzero = nonzero || value != '0';
         }
     }
@@ -116,10 +140,14 @@ void ScriptFactory::UnregisterManaged()
 
 bool ScriptFactory::SetDisplayName(const std::string& typeName, std::string displayName)
 {
-    if (typeName.empty() || displayName.empty()) return false;
+    if (typeName.empty() || displayName.empty()) {
+        return false;
+    }
     DisplayNames().insert_or_assign(typeName, displayName);
     const auto found = Registry().find(typeName);
-    if (found != Registry().end()) found->second.displayName = std::move(displayName);
+    if (found != Registry().end()) {
+        found->second.displayName = std::move(displayName);
+    }
     return true;
 }
 
@@ -137,11 +165,19 @@ bool ScriptFactory::ResolveTypeName(std::string_view name, std::string& typeKey)
 bool ScriptFactory::RegisterAlias(const std::string& alias, const std::string& typeKey)
 {
     const auto target = Registry().find(typeKey);
-    if (alias.empty() || target == Registry().end()) return false;
-    if (alias == typeKey) return true;
-    if (Registry().contains(alias)) return false;
+    if (alias.empty() || target == Registry().end()) {
+        return false;
+    }
+    if (alias == typeKey) {
+        return true;
+    }
+    if (Registry().contains(alias)) {
+        return false;
+    }
     const auto existing = Aliases().find(alias);
-    if (existing != Aliases().end()) return false;
+    if (existing != Aliases().end()) {
+        return false;
+    }
     Aliases().insert_or_assign(alias, Alias{typeKey});
     return true;
 }
@@ -152,11 +188,12 @@ std::vector<std::string> ScriptFactory::RegisteredTypeNames()
     auto& registry = Registry();
     names.reserve(registry.size());
     for (const auto& [typeName, registration] : registry) {
-        if (!typeName.empty() && registration.factory)
+        if (!typeName.empty() && registration.factory) {
             names.push_back(typeName);
+        }
     }
     std::sort(names.begin(), names.end());
     return names;
 }
 
-} /// @note namespace fbzz::scene
+} // namespace fbzz::scene

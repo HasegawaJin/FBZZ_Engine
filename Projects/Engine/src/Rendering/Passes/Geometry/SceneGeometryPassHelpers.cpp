@@ -97,15 +97,19 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
                          renderer::ResourceManager& resources,
                          std::vector<uint8_t>& paramData)
 {
-    if (albedoReference.empty()) return;
+    if (albedoReference.empty()) {
+        return;
+    }
 
     std::string texturePath;
     std::string spriteToken;
-    if (!asset::ParseSpriteReference(albedoReference, texturePath, spriteToken)) return;
+    if (!asset::ParseSpriteReference(albedoReference, texturePath, spriteToken)) {
+        return;
+    }
 
-    /// @note 矩形の取り出しは ResolveSpriteReference が持つ (ID / 名前 / 暗黙 Single と
-    /// @note .meta のキャッシュまで含めて 1 箇所)。ここは UV への合成だけを受け持つ。
-    /// @note 矩形はピクセル単位なので元画像の寸法で換算する。品質段で縮小して常駐していても GPU 実体の寸法は使わない。
+    // 矩形の取り出しは ResolveSpriteReference が持つ (ID / 名前 / 暗黙 Single と
+    // .meta のキャッシュまで含めて 1 箇所)。ここは UV への合成だけを受け持つ。
+    // 矩形はピクセル単位なので元画像の寸法で換算する。品質段で縮小して常駐していても GPU 実体の寸法は使わない。
     asset::StreamedTextureResolver& resolver = asset::StreamedTextureResolver::Engine();
     uint32_t sourceWidth = 0;
     uint32_t sourceHeight = 0;
@@ -123,16 +127,20 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
             sourceHeight = texture->GetHeight();
         }
     }
-    if (sourceWidth == 0 || sourceHeight == 0) return;
+    if (sourceWidth == 0 || sourceHeight == 0) {
+        return;
+    }
 
     const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
         albedoReference,
         static_cast<float>(sourceWidth),
         static_cast<float>(sourceHeight));
-    if (!resolved.resolved) return;
+    if (!resolved.resolved) {
+        return;
+    }
 
-    /// @note 矩形が画像からはみ出していても UV は画像内へ収める。
-    /// @note はみ出した分を素通しすると Clamp サンプリングで端の 1 列が伸びる。
+    // 矩形が画像からはみ出していても UV は画像内へ収める。
+    // はみ出した分を素通しすると Clamp サンプリングで端の 1 列が伸びる。
     struct { float scaleX, scaleY, offsetX, offsetY; } transform{
         std::clamp(resolved.uvMax.x - resolved.uvMin.x, 0.0f, 1.0f),
         std::clamp(resolved.uvMax.y - resolved.uvMin.y, 0.0f, 1.0f),
@@ -142,12 +150,20 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
 
     const auto* tilingVar = desc.FindVar("uvTiling");
     const auto* offsetVar = desc.FindVar("uvOffset");
-    if (tilingVar == nullptr || offsetVar == nullptr
-        || tilingVar->varType != renderer::ShaderVarType::Float || tilingVar->columns < 2
-        || offsetVar->varType != renderer::ShaderVarType::Float || offsetVar->columns < 2
-        || tilingVar->offset + 2u * sizeof(float) > paramData.size()
-        || offsetVar->offset + 2u * sizeof(float) > paramData.size())
+    if (!tilingVar || !offsetVar) {
         return;
+    }
+
+    // UV の X/Y 成分を読み書きできる型と定数バッファの範囲を確認する。
+    const bool hasUvComponents = tilingVar->varType == renderer::ShaderVarType::Float && tilingVar->columns >= 2
+        && offsetVar->varType == renderer::ShaderVarType::Float && offsetVar->columns >= 2;
+    if (!hasUvComponents) {
+        return;
+    }
+    if (tilingVar->offset + 2u * sizeof(float) > paramData.size()
+        || offsetVar->offset + 2u * sizeof(float) > paramData.size()) {
+        return;
+    }
 
     float tiling[2] = { 1.0f, 1.0f };
     float offset[2] = { 0.0f, 0.0f };
@@ -165,15 +181,22 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
 float TextureRequestPixels(float pixels, const renderer::ShaderDescriptor& descriptor,
                            const std::vector<uint8_t>& params)
 {
-    if (pixels <= 0.0f) return pixels;
+    if (pixels <= 0.0f) {
+        return pixels;
+    }
     const auto* tilingVar = descriptor.FindVar("uvTiling");
-    if (!tilingVar) return pixels;
+    if (!tilingVar) {
+        return pixels;
+    }
     if (tilingVar->varType != renderer::ShaderVarType::Float || tilingVar->columns != 2
-        || static_cast<size_t>(tilingVar->offset) + 2 * sizeof(float) > params.size())
+        || static_cast<size_t>(tilingVar->offset) + 2 * sizeof(float) > params.size()) {
         return 0.0f;
+    }
     float tiling[2];
     std::memcpy(tiling, params.data() + tilingVar->offset, sizeof(tiling));
-    if (!std::isfinite(tiling[0]) || !std::isfinite(tiling[1])) return 0.0f;
+    if (!std::isfinite(tiling[0]) || !std::isfinite(tiling[1])) {
+        return 0.0f;
+    }
     const float coverage = std::min({1.0f, std::abs(tiling[0]), std::abs(tiling[1])});
     return coverage > 0.0f ? pixels / coverage : 0.0f;
 }
@@ -182,10 +205,11 @@ float TextureRequestPixels(float pixels, const renderer::ShaderDescriptor& descr
 
 AnimatorComponent* FindAnimator(GameObject& go)
 {
-    /// @note Skinned submesh はモデル構造により複数階層下へ配置されるため、直親だけで打ち切らない。Animator を見失うと bind pose 用 CB へフォールバックし、Trail の初期位置もずれる。
+    // Skinned submesh はモデル構造により複数階層下へ配置されるため、直親だけで打ち切らない。Animator を見失うと bind pose 用 CB へフォールバックし、Trail の初期位置もずれる。
     for (GameObject* current = &go; current; current = current->GetParent())
-        if (auto* animator = current->GetComponent<AnimatorComponent>())
+        if (auto* animator = current->GetComponent<AnimatorComponent>()) {
             return animator;
+        }
     return nullptr;
 }
 
@@ -198,8 +222,12 @@ void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath)
 {
     static std::unordered_set<std::string> s_warnedSurfaceOnSkinned;
     std::string path(shaderPath);
-    if (path.empty()) path = "<empty>";
-    if (!s_warnedSurfaceOnSkinned.insert(path).second) return;
+    if (path.empty()) {
+        path = "<empty>";
+    }
+    if (!s_warnedSurfaceOnSkinned.insert(path).second) {
+        return;
+    }
     FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s -> using %s. Use shaders under Skinned/.",
                   path.c_str(),
                   GetFallbackMaterialPath(true));
@@ -238,35 +266,46 @@ public:
         std::shared_ptr<const EffectiveMaterialTemplate> value)
     {
         auto& current = slot.m_effectiveTemplates[skinned ? 1u : 0u];
-        if (current == expected && slot.ReadAuthoring() == value->slot && slot.GetMaterialAsset() == value->assetHandle)
+        if (current == expected && slot.ReadAuthoring() == value->slot && slot.GetMaterialAsset() == value->assetHandle) {
             current = std::move(value);
+        }
     }
 };
 
-} /// @note namespace material_detail
+} // namespace material_detail
 
 namespace {
 
 bool MaterialShaderLayoutEqual(const renderer::ShaderDescriptor& lhs, const renderer::ShaderDescriptor& rhs)
 {
-    if (&lhs == &rhs) return true;
+    if (&lhs == &rhs) {
+        return true;
+    }
     if (lhs.cbufferSize != rhs.cbufferSize || lhs.textureMaskOffset != rhs.textureMaskOffset
         || lhs.vars.size() != rhs.vars.size() || lhs.postProcessVars.size() != rhs.postProcessVars.size()
-        || lhs.textures.size() != rhs.textures.size()) return false;
+        || lhs.textures.size() != rhs.textures.size()) {
+        return false;
+    }
     const auto varsEqual = [](const auto& a, const auto& b) {
         for (size_t i = 0; i < a.size(); ++i) {
             const auto& x = a[i]; const auto& y = b[i];
             if (x.name != y.name || x.offset != y.offset || x.size != y.size || x.rows != y.rows
                 || x.columns != y.columns || x.varClass != y.varClass || x.varType != y.varType
                 || x.elements != y.elements || x.arrayStride != y.arrayStride || x.matrixStride != y.matrixStride
-                || x.rowMajor != y.rowMajor || x.unsupportedReason != y.unsupportedReason) return false;
+                || x.rowMajor != y.rowMajor || x.unsupportedReason != y.unsupportedReason) {
+                return false;
+            }
         }
         return true;
     };
-    if (!varsEqual(lhs.vars, rhs.vars) || !varsEqual(lhs.postProcessVars, rhs.postProcessVars)) return false;
+    if (!varsEqual(lhs.vars, rhs.vars) || !varsEqual(lhs.postProcessVars, rhs.postProcessVars)) {
+        return false;
+    }
     for (size_t i = 0; i < lhs.textures.size(); ++i) {
         const auto& a = lhs.textures[i]; const auto& b = rhs.textures[i];
-        if (a.name != b.name || a.slot != b.slot || a.constantOffset != b.constantOffset) return false;
+        if (a.name != b.name || a.slot != b.slot || a.constantOffset != b.constantOffset) {
+            return false;
+        }
     }
     return true;
 }
@@ -287,7 +326,7 @@ bool EffectiveMaterialInputsCurrent(const MaterialComponent& component, size_t s
 {
     const auto& currentSlot = component.SlotAt(slotIndex);
     const auto current = currentSlot.ReadAuthoring();
-    /// @note 同じ所有者が編集されても今回のスナップショットは変わらず、公開時にだけ現在の版との一致を求める。
+    // 同じ所有者が編集されても今回のスナップショットは変わらず、公開時にだけ現在の版との一致を求める。
     return current && current->OwnerToken() == value.slot->OwnerToken()
         && resources.GetInstanceId() == value.resourceOwner && resources.GetResetVersion() == value.resetVersion
         && resources.GetShaderVersion() == value.shaderVersion && resources.GetShaderCapabilities(value.shader).vertex == value.vertex;
@@ -302,7 +341,7 @@ bool EffectiveMaterialLayoutCurrent(const material_detail::EffectiveMaterialTemp
         && resources.GetShaderVersion() == value.shaderVersion;
 }
 
-} /// @note namespace
+} // namespace
 
 /// @pre 実行中はコンポーネントが生存すること。資源コールバック後にスロットを再取得し、その前の参照を使わない。
 static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, size_t slotIndex,
@@ -318,23 +357,36 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
                 GetFallbackMaterialPath(preferSkinnedFallback));
         return resources.GetErrorMaterial(preferSkinnedFallback);
     };
-    /// @note 再入による編集後は再計算し、再試行の上限まで編集が続けば公開を見送る。
+    // 再入による編集後は再計算し、再試行の上限まで編集が続けば公開を見送る。
     for (size_t attempt = 0; attempt < 2; ++attempt) {
-        if (!component.enabled || !component.SlotAt(slotIndex).visible) return nullptr;
+        if (!component.enabled || !component.SlotAt(slotIndex).visible) {
+            return nullptr;
+        }
         if (!component.EnsureMaterialAsset(slotIndex)) {
-            if (attempt + 1u < 2u) continue;
+            if (attempt + 1u < 2u) {
+                continue;
+            }
             return useErrorMaterial("material load failed or selected slot changed");
         }
-        if (!component.enabled || !component.SlotAt(slotIndex).visible) return nullptr;
+        if (!component.enabled || !component.SlotAt(slotIndex).visible) {
+            return nullptr;
+        }
         const auto slotSnapshot = component.SlotAt(slotIndex).ReadAuthoring();
         const auto handle = component.SlotAt(slotIndex).GetMaterialAsset();
         const auto assetSnapshot = asset::ReadMaterialAuthoring(handle);
-        if (!slotSnapshot || !assetSnapshot) return useErrorMaterial("material load failed");
+        if (!slotSnapshot || !assetSnapshot) {
+            return useErrorMaterial("material load failed");
+        }
         const auto& slotData = slotSnapshot->Data(); const auto& assetData = assetSnapshot->Data();
-        if (assetData.shaderPath.empty()) return useErrorMaterial("empty shader path");
-        if (assetData.renderPath != asset::RenderPath::Auto) return useErrorMaterial("material is not declared for mesh rendering");
-        if (!preferSkinnedFallback && assetData.meshType == asset::MeshType::Skinned)
+        if (assetData.shaderPath.empty()) {
+            return useErrorMaterial("empty shader path");
+        }
+        if (assetData.renderPath != asset::RenderPath::Auto) {
+            return useErrorMaterial("material is not declared for mesh rendering");
+        }
+        if (!preferSkinnedFallback && assetData.meshType == asset::MeshType::Skinned) {
             return useErrorMaterial("skinned material assigned to a static mesh");
+        }
         if (preferSkinnedFallback && assetData.meshType == asset::MeshType::Surface) {
             LogSkinnedSurfaceFallbackWarningOnce(assetData.shaderPath); return resources.GetErrorMaterial(true);
         }
@@ -353,31 +405,40 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
         const bool preparationMatches = preparationCandidate && preparationLayoutMatches && (preparedReady || preparedNative);
         const auto shaderHandle = preparationMatches ? prepared->shader : resources.LoadShader(assetData.shaderPath);
         const auto* shader = preparedReady ? nullptr : resources.Get(shaderHandle);
-        if (!preparedReady && !shader) return useErrorMaterial("shader load failed");
+        if (!preparedReady && !shader) {
+            return useErrorMaterial("shader load failed");
+        }
         const auto vertex = preparedReady ? preparedVertex : resources.GetShaderCapabilities(shaderHandle).vertex;
         if ((preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SURFACE)
-            || (!preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SKINNED))
+            || (!preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SKINNED)) {
             return useErrorMaterial("shader vertex contract does not match mesh");
-        /// @note 未知の記述子またはネイティブ独自の記述子の参照は、コールバック前に複製し永続的な再利用を行わない。
+        }
+        // 未知の記述子またはネイティブ独自の記述子の参照は、コールバック前に複製し永続的な再利用を行わない。
         auto descriptor = preparedReady ? prepared->descriptor
             : std::make_shared<const renderer::ShaderDescriptor>(shader->GetDescriptor());
         if (resources.GetInstanceId() != owner || resources.GetResetVersion() != reset || resources.GetShaderVersion() != shaderVersion
             || component.SlotAt(slotIndex).ReadAuthoring() != slotSnapshot || component.SlotAt(slotIndex).GetMaterialAsset() != handle
-            || asset::ReadMaterialAuthoring(handle) != assetSnapshot) continue;
+            || asset::ReadMaterialAuthoring(handle) != assetSnapshot) {
+            continue;
+        }
 
         const bool cacheable = vertex == renderer::ShaderVertexContract::STANDARD_SURFACE
             || vertex == renderer::ShaderVertexContract::STANDARD_SKINNED;
         const auto previous = material_detail::EffectiveMaterialCache::Read(component.SlotAt(slotIndex), preferSkinnedFallback);
         std::shared_ptr<const material_detail::EffectiveMaterialTemplate> effective;
         if (cacheable && previous && EffectiveMaterialWitnessMatches(*previous, slotSnapshot, assetSnapshot, handle,
-            resources, shaderHandle, *descriptor, preferSkinnedFallback)) effective = previous;
+            resources, shaderHandle, *descriptor, preferSkinnedFallback)) {
+            effective = previous;
+        }
         else {
             material_detail::EffectiveMaterialTemplate derived;
             derived.slot = slotSnapshot; derived.asset = assetSnapshot; derived.assetHandle = handle;
             derived.resourceOwner = owner; derived.resetVersion = reset; derived.shaderVersion = shaderVersion;
             derived.shader = shaderHandle; derived.descriptor = std::move(descriptor); derived.skinned = preferSkinnedFallback; derived.vertex = vertex;
             if (preparationMatches && MaterialShaderLayoutEqual(*prepared->descriptor, *derived.descriptor)
-                && prepared->bytes.size() == derived.descriptor->cbufferSize) derived.bytes = prepared->bytes;
+                && prepared->bytes.size() == derived.descriptor->cbufferSize) {
+                derived.bytes = prepared->bytes;
+            }
             else {
                 derived.bytes.assign(derived.descriptor->cbufferSize, 0u);
                 InitDefaultMaterialParams(*derived.descriptor, derived.bytes);
@@ -388,60 +449,92 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
             asset::ApplyMaterialIntegerOverrides(slotData.integerParamOverrides, *derived.descriptor, derived.bytes);
             for (size_t i = 0; i < derived.texturePaths.size(); ++i) {
                 const auto* key = kTextureSlotNames[i];
-                if (const auto found = assetData.textures.find(key); found != assetData.textures.end()) derived.texturePaths[i] = found->second;
-                if (const auto found = slotData.presentationTextureDefaults.find(key); found != slotData.presentationTextureDefaults.end()) derived.texturePaths[i] = found->second;
-                if (const auto found = slotData.textureOverrides.find(key); found != slotData.textureOverrides.end()) derived.texturePaths[i] = found->second;
+                if (const auto found = assetData.textures.find(key); found != assetData.textures.end()) {
+                    derived.texturePaths[i] = found->second;
+                }
+                if (const auto found = slotData.presentationTextureDefaults.find(key); found != slotData.presentationTextureDefaults.end()) {
+                    derived.texturePaths[i] = found->second;
+                }
+                if (const auto found = slotData.textureOverrides.find(key); found != slotData.textureOverrides.end()) {
+                    derived.texturePaths[i] = found->second;
+                }
             }
             effective = std::make_shared<const material_detail::EffectiveMaterialTemplate>(std::move(derived));
         }
         if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)
-            || !EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
+            || !EffectiveMaterialLayoutCurrent(*effective, resources)) {
+            continue;
+        }
 
-        /// @note Sprite やテクスチャのコールバックをまたいで Material を参照せず、各呼び出しの CPU 結果を所有する。
+        // Sprite やテクスチャのコールバックをまたいで Material を参照せず、各呼び出しの CPU 結果を所有する。
         OwnedMaterialParameterSnapshot viewParameterSnapshot(effective->bytes);
         auto& viewBytes = viewParameterSnapshot.Bytes();
         std::array<renderer::ResourceHandle<renderer::TextureTag>, asset::kMaterialTextureSlotNames.size()> viewTextures{};
         ApplyAlbedoSpriteUv(effective->texturePaths[0], *effective->descriptor, resources, viewBytes);
-        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) {
+            continue;
+        }
         auto& resolver = asset::StreamedTextureResolver::Engine();
         float texturePixels = 0.0f;
         bool hasTextureRequest = false;
         for (size_t i = 0; i < effective->texturePaths.size(); ++i) {
-            /// @note 空のパスでは解決器を呼ばないが、最終照合はテクスチャ処理全体を対象とする。
-            if (effective->texturePaths[i].empty()) continue;
+            // 空のパスでは解決器を呼ばないが、最終照合はテクスチャ処理全体を対象とする。
+            if (effective->texturePaths[i].empty()) {
+                continue;
+            }
             if (!hasTextureRequest) {
                 texturePixels = TextureRequestPixels(screenPixels, *effective->descriptor, viewBytes);
                 hasTextureRequest = true;
             }
             viewTextures[i] = resolver.ResolveGpu(resources, effective->texturePaths[i], texturePixels);
-            if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) break;
+            if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) {
+                break;
+            }
         }
-        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
-        /// @note コールバック後に解決し直し、再入した同期が公開した GPU 資源の単独所有権と Upload の寿命契約を守る。
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) {
+            continue;
+        }
+        // コールバック後に解決し直し、再入した同期が公開した GPU 資源の単独所有権と Upload の寿命契約を守る。
         const auto& runtimeTextures = component.SlotAt(slotIndex).runtimeTextureOverrides;
         for (size_t i = 0; i < viewTextures.size(); ++i) {
             const auto found = runtimeTextures.find(kTextureSlotNames[i]);
-            if (found == runtimeTextures.end()) continue;
+            if (found == runtimeTextures.end()) {
+                continue;
+            }
             const auto& binding = found->second;
             if (binding.resourceOwner == resources.GetInstanceId() && binding.resetVersion == resources.GetResetVersion()
-                && resources.Get(binding.texture)) viewTextures[i] = binding.texture;
+                && resources.Get(binding.texture)) {
+                viewTextures[i] = binding.texture;
+            }
         }
         auto& target = component.SlotAt(slotIndex).material;
-        if (!target) target = std::make_unique<renderer::Material>();
+        if (!target) {
+            target = std::make_unique<renderer::Material>();
+        }
         auto* material = target.get();
         material->shaderPath = assetData.shaderPath; material->dielectric = assetData.dielectric;
         material->shader = shaderHandle; material->paramData.assign(viewBytes.begin(), viewBytes.end());
         material->textures.assign(viewTextures.begin(), viewTextures.end());
-        if (!EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
+        if (!EffectiveMaterialLayoutCurrent(*effective, resources)) {
+            continue;
+        }
         material->Upload(resources, *effective->descriptor);
-        if (!EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
-        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
-        if (effective->descriptor->cbufferSize > 0 && !resources.Get(material->paramsBuffer))
+        if (!EffectiveMaterialLayoutCurrent(*effective, resources)) {
+            continue;
+        }
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) {
+            continue;
+        }
+        if (effective->descriptor->cbufferSize > 0 && !resources.Get(material->paramsBuffer)) {
             return useErrorMaterial("material constant buffer unavailable");
-        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
+        }
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) {
+            continue;
+        }
         if (cacheable && component.SlotAt(slotIndex).ReadAuthoring() == slotSnapshot
-            && component.SlotAt(slotIndex).GetMaterialAsset() == handle && asset::ReadMaterialAuthoring(handle) == assetSnapshot)
+            && component.SlotAt(slotIndex).GetMaterialAsset() == handle && asset::ReadMaterialAuthoring(handle) == assetSnapshot) {
             material_detail::EffectiveMaterialCache::Publish(component.SlotAt(slotIndex), preferSkinnedFallback, previous, effective);
+        }
         return component.SlotAt(slotIndex).material.get();
     }
     return useErrorMaterial("authoring or resource changed during synchronization");
@@ -468,12 +561,16 @@ renderer::Material* SyncMaterialSlotPrepared(MaterialComponent& mc, size_t slotI
 
 float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go, const renderer::Mesh& mesh)
 {
-    if (ctx.cullProjScaleY <= 0.0f || ctx.height == 0 || mesh.boundsRadius <= 0.0f) return 0.0f;
+    if (ctx.cullProjScaleY <= 0.0f || ctx.height == 0 || mesh.boundsRadius <= 0.0f) {
+        return 0.0f;
+    }
     const WorldBounds bounds = ComputeWorldBounds(go.transform, mesh);
-    /// @note 投影半径 (NDC) = r * P[1][1] / 距離。NDC の縦 [-1, 1] が height px なので直径は r*P11/d*height。
-    /// @note カメラが球の中へ入ったら画面いっぱいとして扱う。
+    // 投影半径 (NDC) = r * P[1][1] / 距離。NDC の縦 [-1, 1] が height px なので直径は r*P11/d*height。
+    // カメラが球の中へ入ったら画面いっぱいとして扱う。
     const float distance = (bounds.center - ctx.camera.m_position).Length();
-    if (!ctx.cullOrthographic && distance <= bounds.radius) return static_cast<float>(ctx.height);
+    if (!ctx.cullOrthographic && distance <= bounds.radius) {
+        return static_cast<float>(ctx.height);
+    }
     const float ndcRadius = ctx.cullOrthographic
         ? bounds.radius * ctx.cullProjScaleY
         : bounds.radius * ctx.cullProjScaleY / distance;
@@ -504,9 +601,15 @@ bool IsSurfaceMaterial(const MaterialSlot& mc)
     const auto snapshot = asset::ReadMaterialAuthoring(mc.GetMaterialAsset());
     const auto* a = snapshot ? &snapshot->Data() : nullptr;
     if (a) {
-        if (a->meshType == asset::MeshType::Surface) return true;
-        if (a->meshType == asset::MeshType::Skinned) return false;
-        if (a->shaderPath.empty()) return false;
+        if (a->meshType == asset::MeshType::Surface) {
+            return true;
+        }
+        if (a->meshType == asset::MeshType::Skinned) {
+            return false;
+        }
+        if (a->shaderPath.empty()) {
+            return false;
+        }
     }
     return false;
 }
@@ -515,10 +618,12 @@ bool IsSurfaceMaterial(const MaterialSlot& mc)
 
 bool IsReliableOccluder(const renderer::Mesh& mesh)
 {
-    if (mesh.boundsRadius <= 0.0f) return false;
+    if (mesh.boundsRadius <= 0.0f) {
+        return false;
+    }
 
-    /// @note 立方体で 0.577、球で 1.0。板・壁・棒はこれを大きく下回る。
-    /// @note 0.40 は「立方体は通し、厚み比 1:4 を超える扁平は落とす」あたりの線。
+    // 立方体で 0.577、球で 1.0。板・壁・棒はこれを大きく下回る。
+    // 0.40 は「立方体は通し、厚み比 1:4 を超える扁平は落とす」あたりの線。
     constexpr float kMinFillRatio = 0.40f;
     const float minExtent = std::min({ mesh.boundsExtents.x,
                                        mesh.boundsExtents.y,
@@ -534,7 +639,7 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, 
 
 float ComputeWorldBoundsScale(const math::Matrix4& world)
 {
-    /// @note 各軸の最大ノルムを使うと、非一様・負スケールでも境界球が小さくなり過ぎない。
+    // 各軸の最大ノルムを使うと、非一様・負スケールでも境界球が小さくなり過ぎない。
     const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
     const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
     const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
@@ -544,7 +649,9 @@ float ComputeWorldBoundsScale(const math::Matrix4& world)
 float ComputeLeafWindBoundsPadding(const GameObject& go, size_t slotCount)
 {
     const auto* component = const_cast<GameObject&>(go).GetComponent<MaterialComponent>();
-    if (!component) return 0.0f;
+    if (!component) {
+        return 0.0f;
+    }
     float maximumStrength = 0.0f;
     for (size_t index = 0; index < slotCount; ++index) {
         const auto& slot = component->SlotAt(index);
@@ -555,23 +662,33 @@ float ComputeLeafWindBoundsPadding(const GameObject& go, size_t slotCount)
         float strength = 0.0f;
         const auto apply = [&](const auto& parameters) {
             const auto found = parameters.find("leafWindStrength");
-            if (found == parameters.end() || found->second.size() != 1) return;
+            if (found == parameters.end() || found->second.size() != 1) {
+                return;
+            }
             const float value = static_cast<float>(found->second.front());
-            if (!std::isfinite(value)) return;
+            if (!std::isfinite(value)) {
+                return;
+            }
             strength = value; known = true;
         };
         if (source) {
             const auto& assetValues = source->Data();
-            if (assetValues.integerParams.contains("leafWindStrength")) apply(assetValues.integerParams);
-            else apply(assetValues.params);
+            if (assetValues.integerParams.contains("leafWindStrength")) {
+                apply(assetValues.integerParams);
+            }
+            else {
+                apply(assetValues.params);
+            }
         }
         apply(values.presentationParamDefaults);
         apply(values.paramOverrides);
         apply(values.integerParamOverrides);
-        if (!known) return -1.0f;
+        if (!known) {
+            return -1.0f;
+        }
         maximumStrength = (std::max)(maximumStrength, strength);
     }
-    /// @note |gust| ≤ 1、|flutter| ≤ 0.5 なので局所の葉の変位は 2 × strength 未満。シェーダーの変形後にワールドスケールを掛ける。
+    // |gust| ≤ 1、|flutter| ≤ 0.5 なので局所の葉の変位は 2 × strength 未満。シェーダーの変形後にワールドスケールを掛ける。
     /// @see Assets/Shaders/Rendering/LeafWind.hlsli の FbzzLeafWind の変位。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-sin HLSL の正弦関数の値域。
     const auto& scale = go.transform.worldScale;
@@ -583,9 +700,9 @@ WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
                                const renderer::Mesh& mesh, float padding)
 {
 
-    /// @note ローカル空間バウンディング球中心をワールド空間に変換する。
-    /// @note 行列は列ベクトル規則 (M * v) なので:
-    /// @note wx = m[0][0]*bx + m[0][1]*by + m[0][2]*bz + m[0][3]
+    // ローカル空間バウンディング球中心をワールド空間に変換する。
+    // 行列は列ベクトル規則 (M * v) なので:
+    // wx = m[0][0]*bx + m[0][1]*by + m[0][2]*bz + m[0][3]
     const float bx = mesh.boundsCenter.x;
     const float by = mesh.boundsCenter.y;
     const float bz = mesh.boundsCenter.z;
@@ -603,28 +720,37 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
                                WorldBounds& outBounds,
                                float padding)
 {
-    if (!smr.model) return false;
+    if (!smr.model) {
+        return false;
+    }
     const float windPadding = ComputeLeafWindBoundsPadding(go, smr.SubmeshCount());
-    if (windPadding < 0.0f) return false;
+    if (windPadding < 0.0f) {
+        return false;
+    }
     padding = (std::max)(padding, 0.0f) + windPadding;
 
     const Transform& tf = go.transform;
 
-    /// @note 骨から作った球があればそちらを使う。下のループはバインドポーズの submesh バウンズを Renderer の Transform で運ぶだけで骨の移動を見ないため、Script が骨を数十 m 動かす構成では球がバインドポーズの場所に取り残され部位ごとに明滅する。
-    /// @note Animator が持つのは骨の広がりだけで周囲のジオメトリは submesh のバインド半径ぶん外へ出るため、この Renderer が描く submesh の最大値を肉の厚みとして足す。
-    /// @note GetComponent に const 版が無いので剥がす。ここは読むだけ。
+    // 骨から作った球があればそちらを使う。下のループはバインドポーズの submesh バウンズを Renderer の Transform で運ぶだけで骨の移動を見ないため、Script が骨を数十 m 動かす構成では球がバインドポーズの場所に取り残され部位ごとに明滅する。
+    // Animator が持つのは骨の広がりだけで周囲のジオメトリは submesh のバインド半径ぶん外へ出るため、この Renderer が描く submesh の最大値を肉の厚みとして足す。
+    // GetComponent に const 版が無いので剥がす。ここは読むだけ。
     for (GameObject* current = const_cast<GameObject*>(&go); current;
          current = current->GetParent()) {
         const auto* animator = current->GetComponent<AnimatorComponent>();
-        if (!animator) continue;
-        if (animator->skinnedBoundsRadius <= 0.0f) break;
+        if (!animator) {
+            continue;
+        }
+        if (animator->skinnedBoundsRadius <= 0.0f) {
+            break;
+        }
 
         float flesh = 0.0f;
         for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot)
-            if (const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot))
+            if (const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot)) {
                 flesh = (std::max)(flesh, meshPtr->boundsRadius);
+            }
 
-        /// @note 球は Animator の owner のローカル空間にある。運ぶのもその Transform。
+        // 球は Animator の owner のローカル空間にある。運ぶのもその Transform。
         const math::Matrix4 world = current->transform.GetWorldMatrix();
         const math::Vector3& c = animator->skinnedBoundsCenter;
         outBounds.center = {
@@ -635,7 +761,9 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
         const float maxScale = ComputeWorldBoundsScale(world);
 
         outBounds.radius = (animator->skinnedBoundsRadius + flesh) * maxScale;
-        if (padding > 0.0f) outBounds.radius += padding;
+        if (padding > 0.0f) {
+            outBounds.radius += padding;
+        }
         return true;
     }
 
@@ -645,11 +773,13 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
     math::Matrix4 world;
     float maximumScale = 0.0f;
 
-    /// @note 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重いため、視錐台外の遠いキャラクターを安く除外できる保守的なバインドポーズ球を使う。
-    /// @note この Renderer が描く submesh だけを包む。ノードごとに子 GameObject へ分けた構成ではモデル全体の球はどの子にとっても過大になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
+    // 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重いため、視錐台外の遠いキャラクターを安く除外できる保守的なバインドポーズ球を使う。
+    // この Renderer が描く submesh だけを包む。ノードごとに子 GameObject へ分けた構成ではモデル全体の球はどの子にとっても過大になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
     for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
         const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
-        if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
+        if (!meshPtr || meshPtr->boundsRadius <= 0.0f) {
+            continue;
+        }
         if (!hasBounds) { world = tf.GetWorldMatrix(); maximumScale = ComputeWorldBoundsScale(world); }
         const WorldBounds bounds = ComputeWorldBounds(world, maximumScale, *meshPtr);
         const float weight = (std::max)(bounds.radius, 0.001f);
@@ -658,21 +788,27 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
         hasBounds = true;
     }
 
-    if (!hasBounds || totalWeight <= 0.0f) return false;
+    if (!hasBounds || totalWeight <= 0.0f) {
+        return false;
+    }
 
     outBounds.center = weightedCenter * (1.0f / totalWeight);
     outBounds.radius = 0.0f;
-    /// @note この Renderer が描く submesh だけを包む。モデル全体で取ると、ノードごとに子 GameObject へ分けた構成では過大な球になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
+    // この Renderer が描く submesh だけを包む。モデル全体で取ると、ノードごとに子 GameObject へ分けた構成では過大な球になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
     for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
         const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
-        if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
+        if (!meshPtr || meshPtr->boundsRadius <= 0.0f) {
+            continue;
+        }
         const WorldBounds bounds = ComputeWorldBounds(world, maximumScale, *meshPtr);
         const math::Vector3 delta = bounds.center - outBounds.center;
         outBounds.radius = (std::max)(outBounds.radius, delta.Length() + bounds.radius);
     }
 
-    /// @note 余白は submesh ごとではなく合成後の球へ 1 回だけ足す。ComputeWorldBounds へ渡して submesh 単位で足すと、合成時の「中心距離 + 半径」に padding が二重・三重で積み上がる。
-    if (padding > 0.0f) outBounds.radius += padding;
+    // 余白は submesh ごとではなく合成後の球へ 1 回だけ足す。ComputeWorldBounds へ渡して submesh 単位で足すと、合成時の「中心距離 + 半径」に padding が二重・三重で積み上がる。
+    if (padding > 0.0f) {
+        outBounds.radius += padding;
+    }
 
     return true;
 }
@@ -684,7 +820,9 @@ float ResolveCullDistance(const RenderPassContext& ctx, int layer)
 {
     if (ctx.hasLayerCullDistances) {
         const float perLayer = ctx.cullLayerDistances[layer & (kCullLayerCount - 1)];
-        if (perLayer > 0.0f) return perLayer;
+        if (perLayer > 0.0f) {
+            return perLayer;
+        }
     }
     return ctx.cullMaxDistance;
 }
@@ -729,9 +867,13 @@ bool IsMeshVisible(RenderPassContext& ctx,
                    const GameObject& go,
                    const renderer::Mesh& mesh)
 {
-    if (mesh.boundsRadius <= 0.0f) return true;
+    if (mesh.boundsRadius <= 0.0f) {
+        return true;
+    }
     const float windPadding = ComputeLeafWindBoundsPadding(go, 1);
-    if (windPadding < 0.0f) return true;
+    if (windPadding < 0.0f) {
+        return true;
+    }
     const WorldBounds bounds =
         ComputeWorldBounds(go.transform, mesh, (std::max)(ctx.cullingBoundsPadding, 0.0f) + windPadding);
     return TestBoundsVisible(ctx, go, bounds);
@@ -742,9 +884,10 @@ bool IsSkinnedVisible(RenderPassContext& ctx,
                       const SkinnedMeshRenderer& smr)
 {
     WorldBounds bounds{};
-    /// @note bounds を作れない (CPU 頂点未生成など) 場合は安全側に倒して描く。
-    if (!ComputeSkinnedWorldBounds(go, smr, bounds, ctx.cullingBoundsPadding))
+    // bounds を作れない (CPU 頂点未生成など) 場合は安全側に倒して描く。
+    if (!ComputeSkinnedWorldBounds(go, smr, bounds, ctx.cullingBoundsPadding)) {
         return true;
+    }
     return TestBoundsVisible(ctx, go, bounds);
 }
 
@@ -761,20 +904,26 @@ ActiveWeather FindActiveWeather(Scene& scene)
 {
     ActiveWeather result;
     const auto entities = scene.GetEntities<WeatherComponent>();
-    if (entities.empty()) return result;
-    /// @note コールバックなしの走査で容量のみ保持し、Scene の所有順で最初の天候を選ぶ。
+    if (entities.empty()) {
+        return result;
+    }
+    // コールバックなしの走査で容量のみ保持し、Scene の所有順で最初の天候を選ぶ。
     thread_local std::vector<EntityID> candidates;
     candidates.assign(entities.begin(), entities.end());
     scene.SortEntitiesBySceneOrder(candidates);
     for (const auto entity : candidates) {
         auto* go = scene.GetGameObject(entity);
-        if (!go || !go->activeInHierarchy()) continue;
+        if (!go || !go->activeInHierarchy()) {
+            continue;
+        }
         const auto* weather = go->GetComponent<WeatherComponent>();
-        if (!weather || !weather->enabled) continue;
+        if (!weather || !weather->enabled) {
+            continue;
+        }
         result.wetness      = std::clamp(weather->wetness, 0.0f, 1.0f);
         result.darkening    = std::clamp(weather->darkening, 0.0f, 1.0f);
         result.puddleAmount = std::clamp(weather->puddleAmount, 0.0f, 1.0f);
-        /// @note シーンに 1 つ想定。環境風と同じ扱い
+        // シーンに 1 つ想定。環境風と同じ扱い
         break;
     }
     candidates.clear();
@@ -783,11 +932,13 @@ ActiveWeather FindActiveWeather(Scene& scene)
 
 bool IsEffectTextureSrgb(const std::string& texturePath)
 {
-    /// @note 1x1 白フォールバックなど参照が無い場合。1.0 はどちらの空間でも 1.0 なので変換しない。
-    if (texturePath.empty()) return false;
+    // 1x1 白フォールバックなど参照が無い場合。1.0 はどちらの空間でも 1.0 なので変換しない。
+    if (texturePath.empty()) {
+        return false;
+    }
 
-    /// @note 毎フレーム呼ばれる経路 (Trail) があるため結果を持つ。.meta の更新時刻で無効化して、
-    /// @note エディターで再インポートしたときに古い判定が残らないようにする。
+    // 毎フレーム呼ばれる経路 (Trail) があるため結果を持つ。.meta の更新時刻で無効化して、
+    // エディターで再インポートしたときに古い判定が残らないようにする。
     struct CachedSrgb {
         std::filesystem::file_time_type metaWriteTime{};
         bool srgb = true;
@@ -797,13 +948,17 @@ bool IsEffectTextureSrgb(const std::string& texturePath)
 
     const std::string resolved = asset::AssetManager::ResolveAssetPath(texturePath);
     std::string sourcePath;
-    if (!asset::TexDescSerializer::ResolveSourcePath(resolved, sourcePath)) return true;
+    if (!asset::TexDescSerializer::ResolveSourcePath(resolved, sourcePath)) {
+        return true;
+    }
     const std::string metaPath = sourcePath + ".meta";
     std::error_code ec;
     const auto metaWriteTime = std::filesystem::last_write_time(metaPath, ec);
 
     CachedSrgb& cached = s_cache[texturePath];
-    if (cached.resolved && cached.metaWriteTime == metaWriteTime) return cached.srgb;
+    if (cached.resolved && cached.metaWriteTime == metaWriteTime) {
+        return cached.srgb;
+    }
     cached.resolved = true;
     cached.metaWriteTime = metaWriteTime;
 
@@ -813,7 +968,7 @@ bool IsEffectTextureSrgb(const std::string& texturePath)
         cached.srgb = described.settings.srgb;
         return cached.srgb;
     }
-    /// @note サイドカーが無い素材はインポーターと同じ推定に従う (色テクスチャ = sRGB)。
+    // サイドカーが無い素材はインポーターと同じ推定に従う (色テクスチャ = sRGB)。
     const auto slash = sourcePath.find_last_of("/\\");
     const std::string filename =
         slash == std::string::npos ? sourcePath : sourcePath.substr(slash + 1);

@@ -33,11 +33,13 @@ PhysicsMaterialCombine CombineFromString(const std::string& name,
                                          PhysicsMaterialCombine fallback)
 {
     for (size_t i = 0; i < std::size(kCombineNames); ++i)
-        if (name == kCombineNames[i]) return static_cast<PhysicsMaterialCombine>(i);
+        if (name == kCombineNames[i]) {
+            return static_cast<PhysicsMaterialCombine>(i);
+        }
     return fallback;
 }
 
-} /// @note namespace
+} // namespace
 
 bool LoadPhysicsMaterialAssetFromFile(std::string_view path, PhysicsMaterialAsset& outAsset)
 {
@@ -56,9 +58,9 @@ bool LoadPhysicsMaterialAssetFromFile(std::string_view path, PhysicsMaterialAsse
 
     const toml::table& table = parsed.table();
 
-    /// @note 既定値は PhysicsMaterial::Default。欠損キーはそのまま既定が残る。
-    /// @note 物理マテリアルは今後フィールドが増える可能性が高く、古い .physmat を読めなく
-    /// @note するより「書いていない項目は既定」の方が壊れにくい。
+    // 既定値は PhysicsMaterial::Default。欠損キーはそのまま既定が残る。
+    // 物理マテリアルは今後フィールドが増える可能性が高く、古い .physmat を読めなく
+    // するより「書いていない項目は既定」の方が壊れにくい。
     PhysicsMaterialAsset asset;
     auto& material = asset.material;
     material.restitution     = static_cast<float>(table["restitution"].value_or(static_cast<double>(material.restitution)));
@@ -89,8 +91,9 @@ bool SavePhysicsMaterialAssetToFile(std::string_view path, const PhysicsMaterial
     table.insert("density",          static_cast<double>(material.density));
     table.insert("restitution_combine", std::string(CombineToString(material.restitutionCombine)));
     table.insert("friction_combine",    std::string(CombineToString(material.frictionCombine)));
-    if (!asset.presetName.empty())
+    if (!asset.presetName.empty()) {
         table.insert("preset", asset.presetName);
+    }
 
     if (!util::FileSystem::EnsureParentDirectory(util::FileSystem::PathFromUtf8(pathString))) {
         FBZZ_LOG_ERROR("PhysicsMaterialAsset: cannot create directory for [%s]", pathString.c_str());
@@ -106,4 +109,4 @@ bool SavePhysicsMaterialAssetToFile(std::string_view path, const PhysicsMaterial
     return true;
 }
 
-} /// @note namespace fbzz::asset
+} // namespace fbzz::asset

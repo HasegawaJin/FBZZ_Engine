@@ -64,12 +64,17 @@ void CollectTrigger(RenderPassContext& ctx, GameObject& go, const math::Vector4&
                     const physics::ColliderDebugView& view, TriggerShape& shape)
 {
     T* col = go.GetComponent<T>();
-    if (col == nullptr || !col->enabled || !col->isTrigger) return;
-    if (!PrepareCollider(ctx.scene, go, *col)) return;
+    if (col == nullptr || !col->enabled || !col->isTrigger) {
+        return;
+    }
+    if (!PrepareCollider(ctx.scene, go, *col)) {
+        return;
+    }
 
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(*col->collider, view);
-    for (const physics::DebugLine& line : geometry.lines)
+    for (const physics::DebugLine& line : geometry.lines) {
         renderer::DebugDraw::Line(ctx.renderer, line.from, line.to, color);
+    }
 
     const physics::AABB aabb = col->collider->GetAABB();
     shape.bounds    = shape.found ? shape.bounds.Merge(aabb) : aabb;
@@ -109,7 +114,9 @@ void DrawArrow(renderer::IRenderer& r, const math::Vector3& from, const math::Ve
                const math::Vector4& color)
 {
     const float length = (to - from).Length();
-    if (length < 1.0e-4f) return;
+    if (length < 1.0e-4f) {
+        return;
+    }
     renderer::DebugDraw::Arrow(r, from, to, length * 0.25f, length * 0.08f, color);
 }
 
@@ -117,13 +124,17 @@ void DrawArrow(renderer::IRenderer& r, const math::Vector3& from, const math::Ve
 void DrawRemainingTime(renderer::IRenderer& r, const VolumeComponent& volume, const physics::AABB& bounds,
                        float ringRadius, const math::Vector4& color)
 {
-    if (volume.duration < 0.0f) return;
+    if (volume.duration < 0.0f) {
+        return;
+    }
     const math::Vector3 center = { (bounds.min.x + bounds.max.x) * 0.5f, bounds.max.y,
                                    (bounds.min.z + bounds.max.z) * 0.5f };
     DrawDebugCircle(r, center, math::Vector3::UP, ringRadius, WithAlpha(color, 0.3f));
     const float remaining = volume.duration > 0.0f
         ? std::clamp(1.0f - volume.elapsed / volume.duration, 0.0f, 1.0f) : 0.0f;
-    if (remaining <= 0.0f) return;
+    if (remaining <= 0.0f) {
+        return;
+    }
 
     constexpr int kSegments = 32;
     const int segments = (std::max)(1, static_cast<int>(std::ceil(kSegments * remaining)));
@@ -147,9 +158,11 @@ void DrawEffect(renderer::IRenderer& r, const VolumeComponent& volume, const phy
     switch (volume.type) {
     case physics::VolumeType::Gravity: {
         const float g = volume.gravity.Length();
-        if (g < 1.0e-4f) break;
+        if (g < 1.0e-4f) {
+            break;
+        }
         const math::Vector3 dir = volume.gravity * (1.0f / g);
-        /// @note 長さは標準重力を 1 とした比。0.25〜2 倍に丸めて箱の大きさへ掛ける。
+        // 長さは標準重力を 1 とした比。0.25〜2 倍に丸めて箱の大きさへ掛ける。
         const float length = glyph * 0.8f * std::clamp(g / 9.81f, 0.25f, 2.0f);
         static constexpr std::array<math::Vector3, 5> kOffsets = {
             math::Vector3{ 0, 0, 0 }, math::Vector3{ 0.5f, 0, 0.5f }, math::Vector3{ -0.5f, 0, 0.5f },
@@ -183,12 +196,13 @@ void DrawEffect(renderer::IRenderer& r, const VolumeComponent& volume, const phy
         static constexpr std::array<math::Vector3, 6> kDirs = {
             math::Vector3{ 1, 0, 0 }, math::Vector3{ -1, 0, 0 }, math::Vector3{ 0, 1, 0 },
             math::Vector3{ 0, -1, 0 }, math::Vector3{ 0, 0, 1 }, math::Vector3{ 0, 0, -1 } };
-        for (const math::Vector3& d : kDirs)
+        for (const math::Vector3& d : kDirs) {
             DrawArrow(r, center + d * (glyph * 0.2f), center + d * (glyph * 0.8f), color);
+        }
         break;
     }
     case physics::VolumeType::TimeDilation: {
-        /// @note 破線 = 等速 (1x)、実線 = この Volume の timeScale。内側なら遅く、外側なら速い。
+        // 破線 = 等速 (1x)、実線 = この Volume の timeScale。内側なら遅く、外側なら速い。
         const float reference = horizontal * 0.4f;
         DrawDebugCircle(r, center, math::Vector3::UP, reference, WithAlpha(color, 0.5f), true);
         DrawDebugCircle(r, center, math::Vector3::UP, reference * std::clamp(volume.timeScale, 0.02f, 2.0f), color);
@@ -196,7 +210,9 @@ void DrawEffect(renderer::IRenderer& r, const VolumeComponent& volume, const phy
     }
     case physics::VolumeType::Magnetic: {
         const float b = volume.magneticField.Length();
-        if (b < 1.0e-4f) break;
+        if (b < 1.0e-4f) {
+            break;
+        }
         const math::Vector3 dir = volume.magneticField * (1.0f / b);
         const math::Vector3 side = DebugPerpendicular(dir) * (glyph * 0.4f);
         const float length = glyph * 0.8f;
@@ -224,9 +240,11 @@ void PhysicsVolumeDebugPass::Execute(renderer::PassResources&, RenderPassContext
     for (EntityID id : ctx.scene.GetEntities<VolumeComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         const VolumeComponent* volume = ctx.scene.GetComponent<VolumeComponent>(id);
-        if (go == nullptr || volume == nullptr || !go->activeInHierarchy()) continue;
+        if (go == nullptr || volume == nullptr || !go->activeInHierarchy()) {
+            continue;
+        }
 
-        /// @note PhysicsSystem と同じ «効いているか» の判定。無効・期限切れは灰色で形だけ残す。
+        // PhysicsSystem と同じ «効いているか» の判定。無効・期限切れは灰色で形だけ残す。
         const bool expired = volume->duration >= 0.0f && volume->elapsed >= volume->duration;
         const bool active  = volume->enabled && !expired;
         const float alpha  = IsSelectedForDebug(*go, ctx) ? 1.0f : kUnselectedAlpha;
