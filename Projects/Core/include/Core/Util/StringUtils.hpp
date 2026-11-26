@@ -2,8 +2,7 @@
 /// @brief   文字列操作ユーティリティ。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-/// @note 検索・分割・trim・大文字小文字変換と Win32 向け wide/narrow 変換をまとめる。
-/// @note       文字コード境界をここに寄せ、呼び出し側の変換処理を減らす。
+/// @note 検索・分割・前後の空白除去・大文字小文字の変換と、Win32 用ワイド文字列との変換をまとめる。
 #pragma once
 #include <Core/Api.hpp>
 #include <filesystem>
@@ -16,14 +15,13 @@ namespace fbzz::util {
 class StringUtils {
 public:
     FBZZ_CORE_API static bool        Contains(const std::string& s, const std::string& sub);
-    FBZZ_CORE_API static bool        ContainsCI(const std::string& s, const std::string& sub);  ///< @note 大文字小文字無視
+    /// @brief 大文字小文字を区別せずに部分一致を調べる。
+    FBZZ_CORE_API static bool        ContainsCI(const std::string& s, const std::string& sub);
     /// @brief 大文字小文字を無視した完全一致。
-    /// @note 部分一致と別に要る理由: 名前で対象を 1 つ選ぶ用途 (パネル名・プリセット名) では
-    /// @note       部分一致だと "Console" が "Build Output Console" にも当たり、指したつもりの
-    /// @note       無い対象を操作してしまう。
+    /// @note 名前で対象を一つ選ぶ場合、部分一致だと「Console」が「Build Output Console」にも一致するため、完全一致を使う。
     FBZZ_CORE_API static bool        EqualsCI(const std::string& a, const std::string& b);
     /// @brief 所有しない文字列を大文字小文字を無視して比較する。
-    /// @note std::tolower に unsigned char を渡し、既存 EqualsCI と同じ現在の C locale で比較する。
+    /// @note std::tolower に unsigned char を渡し、EqualsCI と同じ C ロケールで比較する。
     FBZZ_CORE_API static bool        EqualsCIView(std::string_view a, std::string_view b);
     FBZZ_CORE_API static std::string ToLower(const std::string& s);
     /// @note 値で受けたバッファを再利用し、既存 ToLower のコピー契約を保ったまま一時文字列の追加コピーを避ける。
@@ -35,9 +33,8 @@ public:
     FBZZ_CORE_API static std::string Trim(const std::string& s);
 
     /// @brief UTF-8 の文字境界で maxBytes 以下へ切り詰める。切ったときだけ ellipsis を足す。
-    /// @param maxBytes ellipsis を含めた上限。これより短い結果しか返さない。
-    /// @note `s.substr(0, n)` はバイトで切るので、日本語の途中で切ると壊れた列が残り、
-    /// @note       UI では «□» になる。英語で試している限りは出ない不具合。
+    /// @param[in] maxBytes ellipsis を含む結果の最大バイト数。
+    /// @note 文字の途中で切ると不正な UTF-8 列になるため、コードポイントの境界まで戻す。
     FBZZ_CORE_API static std::string TruncateUtf8(const std::string& s, std::size_t maxBytes,
                                     const std::string& ellipsis = "...");
 
@@ -55,4 +52,4 @@ public:
     FBZZ_CORE_API static std::string  PathToUtf8(const std::filesystem::path& path);
 };
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

@@ -26,7 +26,7 @@ protected:
     void SetUp() override
     {
         EngineFixture::SetUp();
-        /// @note このテストだけは DEBUG まで通す。TearDown で既定へ戻る。
+        // このテストだけは DEBUG まで通す。TearDown で既定へ戻る。
         SetLogLevel(core::LogLevel::DEBUG);
     }
 
@@ -106,7 +106,7 @@ protected:
 /// @brief Does not call the sink for entries below the minimum level.
 TEST_F(LoggerCallTest, DoesNotCallTheSinkForEntriesBelowTheMinimumLevel)
 {
-    /// @note 配送しない契約は呼ばれた時点で検出する。
+    // 配送しない契約は呼ばれた時点で検出する。
     testkit::ScopedLogSink scoped(&mock);
     SetLogLevel(core::LogLevel::LOG_ERROR);
 
@@ -145,7 +145,7 @@ TEST_F(LoggerCallTest, DeliversEntriesInTheOrderTheyWereLogged)
 /// @brief Delivers the same entry to every registered sink.
 TEST_F(LoggerCallTest, DeliversTheSameEntryToEveryRegisteredSink)
 {
-    /// @note 配送以外の mock 呼び出しはこの契約の対象外。
+    // 配送以外の mock 呼び出しはこの契約の対象外。
     NiceMock<testkit::MockLogSink> second;
 
     testkit::ScopedLogSink scopedFirst(&mock);

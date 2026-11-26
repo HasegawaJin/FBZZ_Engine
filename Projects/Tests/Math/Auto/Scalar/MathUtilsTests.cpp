@@ -77,7 +77,7 @@ TEST_F(MathUtilsTest, LerpReturnsTheEndpointsAtZeroAndOne)
 /// @brief Lerp extrapolates beyond the unit interval.
 TEST_F(MathUtilsTest, LerpExtrapolatesBeyondTheUnitInterval)
 {
-    /// @note t をクランプしない契約。カメラやゲージ側が «行き過ぎ» を自前で扱えるようにするため。
+    // t をクランプしない契約。カメラやゲージ側が «行き過ぎ» を自前で扱えるようにするため。
     EXPECT_NEAR(math::Lerp(0.0f, 10.0f, 2.0f), 20.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Lerp(0.0f, 10.0f, -1.0f), -10.0f, testkit::kTolerance);
 }
@@ -96,7 +96,7 @@ TEST_F(MathUtilsTest, InverseLerpUndoesLerp)
 /// @brief Inverse lerp returns zero for a zero width range.
 TEST_F(MathUtilsTest, InverseLerpReturnsZeroForAZeroWidthRange)
 {
-    /// @note 0 除算を避けるための既定値。ヘッダーに明記された契約そのもの。
+    // 0 除算を避けるための既定値。ヘッダーに明記された契約そのもの。
     EXPECT_NEAR(math::InverseLerp(5.0f, 5.0f, 5.0f), 0.0f, testkit::kTolerance);
     EXPECT_NEAR(math::InverseLerp(5.0f, 5.0f, 100.0f), 0.0f, testkit::kTolerance);
 }
@@ -120,7 +120,7 @@ TEST_F(MathUtilsTest, RemapSupportsAnInvertedOutputRange)
 /// @brief Sign returns zero for zero.
 TEST_F(MathUtilsTest, SignReturnsZeroForZero)
 {
-    /// @note ±1 の 2 値ではない。方向の «無し» を呼び出し側で分岐できるようにするため。
+    // ±1 の 2 値ではない。方向の «無し» を呼び出し側で分岐できるようにするため。
     EXPECT_NEAR(math::Sign(0.0f), 0.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Sign(3.0f), 1.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Sign(-3.0f), -1.0f, testkit::kTolerance);
@@ -141,7 +141,7 @@ TEST_F(MathUtilsTest, RoundingHelpersFollowTheStandardDirections)
 {
     EXPECT_NEAR(math::Floor(-1.5f), -2.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Ceil(-1.5f), -1.0f, testkit::kTolerance);
-    /// @note 0 から遠い側へ
+    // 0 から遠い側へ
     EXPECT_NEAR(math::Round(-1.5f), -2.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Round(1.5f), 2.0f, testkit::kTolerance);
 }

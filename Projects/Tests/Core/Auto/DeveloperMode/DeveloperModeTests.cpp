@@ -40,7 +40,7 @@ protected:
             m_previousEnvironment.resize(length);
         }
 
-        /// @note 環境変数だけの効果を検証するため、テスト exe に --developer を付けない。
+        // 環境変数だけの効果を検証するため、テスト exe に --developer を付けない。
         ASSERT_FALSE(core::detail::HasDeveloperLaunchFlag(GetCommandLineW()));
         ASSERT_TRUE(SetEnvironmentVariableW(ENVIRONMENT_NAME, nullptr));
         m_changedState = true;
@@ -51,7 +51,7 @@ protected:
     void TearDown() override
     {
         if (m_changedState) {
-            /// @note 起動時の判定は snapshot なので、通常の初期化で戻してから元の環境変数を復元する。
+            // 起動時の判定は snapshot なので、通常の初期化で戻してから元の環境変数を復元する。
             EXPECT_TRUE(SetEnvironmentVariableW(ENVIRONMENT_NAME, m_previousForced ? L"1" : nullptr));
             core::DeveloperMode::InitFromCommandLine();
             core::DeveloperMode::SetPreference(m_previousPreference);
@@ -131,7 +131,7 @@ TEST_F(DeveloperModeTest, EnvironmentVariableForcesItAtStartup)
 /// @brief Environment variable is ignored unless it is exactly one.
 TEST_F(DeveloperModeTest, EnvironmentVariableIsIgnoredUnlessItIsExactlyOne)
 {
-    /// @note "0" も "11" も無効。うっかり «空でなければ有効» にすると配布物で開いてしまう。
+    // "0" も "11" も無効。うっかり «空でなければ有効» にすると配布物で開いてしまう。
     ASSERT_TRUE(SetEnvironmentVariableW(ENVIRONMENT_NAME, L"0"));
     core::DeveloperMode::InitFromCommandLine();
     EXPECT_FALSE(core::DeveloperMode::IsForcedByLaunch());

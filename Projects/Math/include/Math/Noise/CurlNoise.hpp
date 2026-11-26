@@ -45,7 +45,7 @@ inline float ValueNoise3D(const Vector3& p)
     float tx = p.x - fx;
     float ty = p.y - fy;
     float tz = p.z - fz;
-    /// @note smoothstep フェード: 格子境界で勾配を連続にする。
+    // smoothstep フェード: 格子境界で勾配を連続にする。
     tx = tx * tx * (3.0f - 2.0f * tx);
     ty = ty * ty * (3.0f - 2.0f * ty);
     tz = tz * tz * (3.0f - 2.0f * tz);

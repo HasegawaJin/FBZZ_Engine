@@ -9,10 +9,10 @@
 namespace fbzz::profiler {
 
 /// @note 関数やブロックの実行時間を自動計測する RAII オブジェクト。
-/// @note return が複数ある関数でも EndSample の呼び忘れを防ぎ、計測コードを安全に差し込める。
+/// @note 途中で関数を抜ける場合も、デストラクタで対応する計測区間を閉じる。
 class ProfileScope {
 public:
-    /// @note 名前は収集器が所有する。失効済み token は別 scope を閉じない。
+    /// @note 名前は収集器が所有する。失効したトークンで別の区間を閉じることはない。
     explicit ProfileScope(const ProfilerMarker& marker)
     {
         m_token = Profiler::BeginScope(marker);
@@ -27,10 +27,10 @@ public:
         Profiler::EndScope(m_token);
     }
 private:
-    ProfileToken m_token;
+    ProfileToken m_token; ///< スコープ終了時に閉じる CPU 計測区間のトークン。
 };
 
-} /// @note namespace fbzz::profiler
+} // namespace fbzz::profiler
 
 /// @note 同一スコープに複数マクロを置いても変数名が衝突しないよう __LINE__ を連結する。
 #define FBZZ_PROFILE_CONCAT_IMPL(a, b) a##b

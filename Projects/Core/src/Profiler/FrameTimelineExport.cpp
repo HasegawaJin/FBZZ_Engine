@@ -52,9 +52,13 @@ const char* EdgeName(Edge edge)
 
 bool IsCaptureComplete(const Capture& capture)
 {
-    bool complete = capture.closingAnchor && capture.sampleCount == capture.samples
-        && !capture.cancelled.load() && capture.droppedEvents.load() == 0
-        && capture.droppedCpu.load() == 0 && capture.invalidBoundaries.load() == 0;
+    // 指定回数のフレームと終端がそろい、イベントや時刻の記録に欠落がないことを確かめる。
+    const bool hasExpectedFrames = capture.closingAnchor && capture.sampleCount == capture.samples;
+    bool complete = hasExpectedFrames && !capture.cancelled.load();
+    complete = complete && capture.droppedEvents.load() == 0 && capture.droppedCpu.load() == 0;
+    complete = complete && capture.invalidBoundaries.load() == 0;
+
+    // 終端は直前フレームの区間を閉じるための行なので、自身の末尾時間は検査しない。
     for (size_t index = 0; index < capture.frameCount; ++index) {
         const auto& record = capture.frames[index];
         if (record.role != detail::FrameRole::CLOSING_ANCHOR) {
@@ -114,8 +118,12 @@ void WriteMetadata(std::ostream& output, const Capture& capture, uint64_t eventC
         << ",\"threadCpuScopesExempt\":true,\"countsAreOverlappingScopesNotWallTime\":true,\"events\":[";
     bool firstFine = true;
     for (size_t index = 0; index < static_cast<size_t>(Event::COUNT); ++index) {
-        if (!IsFineSpan(static_cast<Event>(index))) continue;
-        if (!firstFine) output << ',';
+        if (!IsFineSpan(static_cast<Event>(index))) {
+            continue;
+        }
+        if (!firstFine) {
+            output << ',';
+        }
         firstFine = false;
         output << "{\"event\":\"" << EventName(static_cast<Event>(index)) << "\",\"omittedScopes\":" << capture.filteredFineScopes[index].load()
             << ",\"omittedDurationTicks\":" << capture.filteredFineTicks[index].load() << '}';
@@ -129,7 +137,7 @@ void WriteMetadata(std::ostream& output, const Capture& capture, uint64_t eventC
            "  \"overlap\":\"wait/pump/worker/present overlap; never add inclusive spans blindly\"\n}\n";
 }
 
-} /// @note namespace
+} // namespace
 
 bool PublishCaptureFiles(const Capture& capture, const std::string& outputFile)
 {
@@ -140,34 +148,46 @@ bool PublishCaptureFiles(const Capture& capture, const std::string& outputFile)
     auto metadataPath = outputPath;
     metadataPath += ".meta.json";
 
+    // 保存先と一時ファイルのどれにも既存の収集結果がないことを確かめる。
     std::error_code error;
-    if (std::filesystem::exists(outputPath, error) || error
-        || std::filesystem::exists(metadataPath, error) || error
-        || std::filesystem::exists(pendingPath, error) || error) {
-        return false;
+    const std::filesystem::path* paths[] = {&outputPath, &metadataPath, &pendingPath};
+    for (const auto* path : paths) {
+        if (std::filesystem::exists(*path, error) || error) {
+            return false;
+        }
     }
 
+    // CSV は一時ファイルを閉じてから確定名へ移す。途中まで書いた内容を確定名で公開しない。
     std::ofstream csv(pendingPath, std::ios::binary | std::ios::trunc);
-    if (!csv) return false;
+    if (!csv) {
+        return false;
+    }
 
     const uint64_t eventCount = (std::min)(capture.eventCount.load(), static_cast<uint64_t>(capture.eventCapacity));
     WriteCsv(csv, capture, eventCount);
     csv.flush();
     const bool csvWritten = csv.good();
     csv.close();
-    if (!csvWritten || csv.fail()) return false;
+    if (!csvWritten || csv.fail()) {
+        return false;
+    }
 
     std::filesystem::rename(pendingPath, outputPath, error);
-    if (error) return false;
+    if (error) {
+        return false;
+    }
 
+    // CSV の公開後に、読み手が完全性を判定するためのメタデータを保存する。
     std::ofstream metadata(metadataPath, std::ios::binary | std::ios::trunc);
     WriteMetadata(metadata, capture, eventCount, complete);
     metadata.flush();
     const bool metadataWritten = metadata.good();
     metadata.close();
-    if (!metadataWritten || metadata.fail()) return false;
+    if (!metadataWritten || metadata.fail()) {
+        return false;
+    }
 
     return true;
 }
 
-} /// @note namespace fbzz::profiler::frame_timeline::detail
+} // namespace fbzz::profiler::frame_timeline::detail

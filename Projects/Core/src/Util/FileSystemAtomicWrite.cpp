@@ -30,6 +30,7 @@ HANDLE CreateSiblingTemporaryFile(const std::filesystem::path& targetPath, std::
     static std::atomic<uint64_t> nextNonce{1};
 
     for (unsigned attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
+        // スレッドごとに異なる連番を確保し、上限に達したら古い名前の再利用を避ける。
         uint64_t nonce = nextNonce.load(std::memory_order_relaxed);
         while (nonce != EXHAUSTED_NONCE
             && !nextNonce.compare_exchange_weak(nonce, nonce + 1, std::memory_order_relaxed)) {
@@ -40,7 +41,7 @@ HANDLE CreateSiblingTemporaryFile(const std::filesystem::path& targetPath, std::
 
         temporaryPath = targetPath.parent_path() / (L"." + targetPath.filename().wstring() + L"."
             + std::to_wstring(::GetCurrentProcessId()) + L"." + std::to_wstring(nonce) + L".tmp");
-        /// @note 同じディレクトリに排他的に作成し、名前が衝突した既存ファイルは保持する。
+        // 同じディレクトリに排他的に作成し、名前が衝突した既存ファイルは保持する。
         /// @see https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew CREATE_NEW の排他的作成。
         const HANDLE temporaryHandle = ::CreateFileW(temporaryPath.c_str(), GENERIC_WRITE, 0, nullptr,
             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -49,7 +50,8 @@ HANDLE CreateSiblingTemporaryFile(const std::filesystem::path& targetPath, std::
         }
 
         const DWORD error = ::GetLastError();
-        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
+        const bool nameAlreadyExists = error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS;
+        if (!nameAlreadyExists) {
             return INVALID_HANDLE_VALUE;
         }
     }
@@ -65,7 +67,8 @@ bool WriteAndCloseTemporaryFile(HANDLE temporaryHandle, const char* data, size_t
     while (byteOffset < byteCount) {
         const DWORD requestedBytes = static_cast<DWORD>(std::min(byteCount - byteOffset, WRITE_CHUNK_BYTES));
         DWORD writtenBytes = 0;
-        if (!::WriteFile(temporaryHandle, data + byteOffset, requestedBytes, &writtenBytes, nullptr) || writtenBytes == 0) {
+        const BOOL writeCallSucceeded = ::WriteFile(temporaryHandle, data + byteOffset, requestedBytes, &writtenBytes, nullptr);
+        if (!writeCallSucceeded || writtenBytes == 0) {
             writeSucceeded = false;
             break;
         }
@@ -77,33 +80,49 @@ bool WriteAndCloseTemporaryFile(HANDLE temporaryHandle, const char* data, size_t
     return flushed && closed;
 }
 
-} /// @note namespace
+} // namespace
 
 std::error_code ReplaceFileAtomic(const std::filesystem::path& temporaryPath, const std::filesystem::path& targetPath)
 {
     std::error_code error;
     const auto absoluteTarget = std::filesystem::absolute(targetPath, error);
-    if (error) return error;
+    if (error) {
+        return error;
+    }
+
+    // Windows の可変長の名前情報には、終端も含めて DWORD で渡せる大きさの領域だけを使う。
     const auto& absoluteTargetName = absoluteTarget.native();
-    if (absoluteTargetName.size() > (MAXDWORD - sizeof(FILE_RENAME_INFO) - sizeof(wchar_t)) / sizeof(wchar_t))
+    constexpr size_t MAX_TARGET_NAME_CHARS = (MAXDWORD - sizeof(FILE_RENAME_INFO) - sizeof(wchar_t)) / sizeof(wchar_t);
+    if (absoluteTargetName.size() > MAX_TARGET_NAME_CHARS) {
         return {ERROR_FILENAME_EXCED_RANGE, std::system_category()};
+    }
+
     FILE_RENAME_INFO renameInfo{};
     renameInfo.Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
     renameInfo.FileNameLength = static_cast<DWORD>(absoluteTargetName.size() * sizeof(wchar_t));
     std::vector<uint8_t> renamePayload(sizeof(renameInfo) + renameInfo.FileNameLength + sizeof(wchar_t), 0);
     std::memcpy(renamePayload.data(), &renameInfo, sizeof(renameInfo));
-    std::memcpy(renamePayload.data() + offsetof(FILE_RENAME_INFO, FileName), absoluteTargetName.data(), renameInfo.FileNameLength);
+    std::memcpy(renamePayload.data() + offsetof(FILE_RENAME_INFO, FileName),
+                absoluteTargetName.data(), renameInfo.FileNameLength);
+
     const HANDLE temporaryHandle = ::CreateFileW(temporaryPath.c_str(), DELETE,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (temporaryHandle == INVALID_HANDLE_VALUE)
+    if (temporaryHandle == INVALID_HANDLE_VALUE) {
         return {static_cast<int>(::GetLastError()), std::system_category()};
-    /// @note 削除共有された読み手を保持したまま、対象名を新しいファイルへ切り替える。
-    /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information FILE_RENAME_POSIX_SEMANTICS.
-    const BOOL replaced = ::SetFileInformationByHandle(temporaryHandle, FileRenameInfoEx, renamePayload.data(), static_cast<DWORD>(renamePayload.size()));
+    }
+
+    // 削除共有された読み手を保持したまま、対象名を新しいファイルへ切り替える。
+    /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information FILE_RENAME_POSIX_SEMANTICS による使用中のファイル名の置き換え。
+    const BOOL replaced = ::SetFileInformationByHandle(temporaryHandle, FileRenameInfoEx,
+        renamePayload.data(), static_cast<DWORD>(renamePayload.size()));
     const DWORD statusCode = replaced ? ERROR_SUCCESS : ::GetLastError();
     ::CloseHandle(temporaryHandle);
-    if (replaced) return {};
-    if (statusCode == ERROR_INVALID_PARAMETER || statusCode == ERROR_NOT_SUPPORTED || statusCode == ERROR_INVALID_FUNCTION) {
+    if (replaced) {
+        return {};
+    }
+    const bool extendedRenameUnavailable = statusCode == ERROR_INVALID_PARAMETER
+        || statusCode == ERROR_NOT_SUPPORTED || statusCode == ERROR_INVALID_FUNCTION;
+    if (extendedRenameUnavailable) {
         std::filesystem::rename(temporaryPath, targetPath, error);
         return error;
     }
@@ -117,18 +136,25 @@ bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& tex
 
 bool FileSystem::WriteBinaryAtomic(const std::filesystem::path& outputPath, const void* data, size_t byteCount)
 {
-    if (outputPath.empty() || (!data && byteCount > 0)) {
+    if (outputPath.empty()) {
+        return false;
+    }
+    if (!data && byteCount > 0) {
         return false;
     }
 
     std::error_code error;
     const auto targetPath = std::filesystem::absolute(outputPath, error).lexically_normal();
-    if (error || !EnsureParentDirectory(targetPath)) {
+    if (error) {
+        return false;
+    }
+    if (!EnsureParentDirectory(targetPath)) {
         return false;
     }
 
     const DWORD attributes = ::GetFileAttributesW(targetPath.c_str());
-    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+    const bool targetIsReparsePoint = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
+    if (targetIsReparsePoint) {
         return false;
     }
 
@@ -138,9 +164,9 @@ bool FileSystem::WriteBinaryAtomic(const std::filesystem::path& outputPath, cons
         return false;
     }
 
+    // 書き込みとハンドルの解放を終えてから、同一ディレクトリ内で対象名へ公開する。
     const bool written = WriteAndCloseTemporaryFile(temporaryHandle, static_cast<const char*>(data), byteCount);
-    /// @note MSVC の同一ディレクトリ内の rename は、原本を先に削除せずに置き換える。
-    /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp __std_fs_rename。
+    /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp MSVC 標準ライブラリのファイル名変更処理（__std_fs_rename）。
     if (written && Rename(temporaryPath, targetPath)) {
         return true;
     }

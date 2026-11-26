@@ -8,16 +8,17 @@
 
 namespace fbzz::profiler {
 
-/// @note 計測区間の名前・カテゴリ・表示色をまとめる値オブジェクト。
-/// @note 個別引数で渡すと呼び出し側の引数が増え、表示情報が散らばるため集約する。
+/// @brief 計測区間の名前・分類・表示色を束ねる。
 struct ProfilerMarker {
-    const char* name     = "Unnamed";
-    const char* category = "General";
-    uint32_t    color    = 0xFF4FA3FF;
+    const char* name     = "Unnamed";  ///< 区間の非所有の表示名。nullptr なら Unnamed を使う。
+    const char* category = "General";  ///< 絞り込みと表示に使う非所有の分類名。nullptr なら General を使う。
+    uint32_t    color    = 0xFF4FA3FF; ///< 区間の表示色（0xAARRGGBB）。
 
     constexpr ProfilerMarker() = default;
 
-    /// @note const char* を保持する。呼び出し側は文字列リテラルなど寿命が十分長い文字列を渡す前提。
+    /// @param[in] markerName 計測 API がこのマーカーを参照するまで有効な表示名。
+    /// @param[in] markerCategory 計測 API がこのマーカーを参照するまで有効な分類名。
+    /// @param[in] markerColor 区間の表示色（0xAARRGGBB）。
     constexpr ProfilerMarker(const char* markerName,
                              const char* markerCategory = "General",
                              uint32_t markerColor = 0xFF4FA3FF)
@@ -28,4 +29,4 @@ struct ProfilerMarker {
     }
 };
 
-} /// @note namespace fbzz::profiler
+} // namespace fbzz::profiler

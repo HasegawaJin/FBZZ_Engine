@@ -13,7 +13,10 @@ namespace fbzz::math {
 struct Matrix4;
 
 struct Quaternion {
-    float x = 0.0f, y = 0.0f, z = 0.0f, w = 1.0f;
+    float x = 0.0f; ///< クォータニオンのベクトル部の X 成分。
+    float y = 0.0f; ///< クォータニオンのベクトル部の Y 成分。
+    float z = 0.0f; ///< クォータニオンのベクトル部の Z 成分。
+    float w = 1.0f; ///< クォータニオンのスカラー部。
 
     constexpr Quaternion() = default;
     constexpr Quaternion(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
@@ -25,11 +28,18 @@ struct Quaternion {
     /// @note forward がほぼゼロなら単位回転。up が forward とほぼ平行なら RIGHT、次に FORWARD を代替軸に試す。
     FBZZ_MATH_API static Quaternion LookRotation(const Vector3& forward, const Vector3& up = Vector3::UP);
     /// @brief 回転行列からクォータニオンを抽出する。
+    /// @param[in] matrix 各列に回転後の基底を持つ行列。左上 3×3 を使う。
     /// @pre 左上 3x3 はスケールを含まない回転で、各列が回転後の基底ベクトル。
     FBZZ_MATH_API static Quaternion FromMatrix4(const Matrix4& matrix);
 
     Quaternion  operator*(const Quaternion& rhs) const;
+    /// @brief ベクトルにこのクォータニオンの回転を適用する。
+    /// @param[in] v 回転するベクトル。
+    /// @pre このクォータニオンは単位長であること。
     Vector3     operator*(const Vector3& v)      const;
+    /// @brief 右辺の回転を先に適用する合成回転で自身を置き換える。
+    /// @param[in] rhs 現在の回転に先立って適用する回転。
+    /// @return 合成後の自身への参照。
     Quaternion& operator*=(const Quaternion& rhs);
     bool        operator==(const Quaternion& rhs) const;
 
@@ -57,9 +67,8 @@ inline Quaternion Quaternion::operator*(const Quaternion& rhs) const {
     };
 }
 
-/// @brief ベクトルへクォータニオン回転を適用する (q*v*q^-1)。
-/// @note v + 2w(q×v) + 2(q×(q×v)) の展開形。フル四元数乗算より乗算回数が少ない。
 inline Vector3 Quaternion::operator*(const Vector3& v) const {
+    // q*v*q^-1 を v + 2w(q×v) + 2(q×(q×v)) に展開し、四元数をそのまま掛けるより乗算を減らす。
     Vector3 qv  = {x, y, z};
     Vector3 t   = Vector3::Cross(qv, v) * 2.0f;
     return v + t * w + Vector3::Cross(qv, t);

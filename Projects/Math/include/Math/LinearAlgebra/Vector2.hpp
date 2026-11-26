@@ -10,7 +10,8 @@
 namespace fbzz::math {
 
 struct Vector2 {
-    float x = 0.0f, y = 0.0f;
+    float x = 0.0f; ///< 座標または変位の X 成分。
+    float y = 0.0f; ///< 座標または変位の Y 成分。
 
     constexpr Vector2() = default;
     constexpr Vector2(float x, float y) : x(x), y(y) {}
@@ -30,10 +31,14 @@ struct Vector2 {
 
     /// @note 単位方向との内積は、その向きに沿った長さ。負なら反対側を向いている。
     static float   Dot(const Vector2& a, const Vector2& b);
+    /// @brief 2 点を結ぶ直線上の位置を求める。
+    /// @param[in] a t = 0 に対応する始点。
+    /// @param[in] b t = 1 に対応する終点。a と同じ座標系を使う。
+    /// @param[in] t a から b へ進む比率。0 未満または 1 超なら線分の外まで進む。
     static Vector2 Lerp(const Vector2& a, const Vector2& b, float t);
 
-    static const Vector2 ZERO;
-    static const Vector2 ONE;
+    static const Vector2 ZERO; ///< 全成分が 0 のベクトル。
+    static const Vector2 ONE; ///< 全成分が 1 のベクトル。
 };
 
 inline const Vector2 Vector2::ZERO = {0.0f, 0.0f};

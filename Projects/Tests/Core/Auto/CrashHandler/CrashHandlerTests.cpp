@@ -34,13 +34,13 @@ protected:
     void SetUp() override
     {
         EngineFixture::SetUp();
-        /// @note ログの末尾が残ることを見るので INFO を通す。TearDown で既定へ戻る。
+        // ログの末尾が残ることを見るので INFO を通す。TearDown で既定へ戻る。
         SetLogLevel(core::LogLevel::INFO);
     }
 
     void TearDown() override
     {
-        /// @note 例外フィルターと SIGABRT はプロセス全体の状態。次のテストへ持ち越さない。
+        // 例外フィルターと SIGABRT はプロセス全体の状態。次のテストへ持ち越さない。
         core::CrashHandler::Uninstall();
         core::DeveloperMode::SetPreference(false);
         EngineFixture::TearDown();
@@ -190,7 +190,7 @@ TEST_F(CrashHandlerTest, FindUnreportedIsEmptyWithoutCrashDirectory)
 TEST_F(CrashHandlerTest, FindUnreportedSkipsEntriesThatHoldNoReport)
 {
     PlaceReport("2026-09-19_10-00-00_200", "the only real one");
-    /// @note 書き出しの途中で落ちた残骸と、人が置いたメモ。どちらも 1 件として数えない。
+    // 書き出しの途中で落ちた残骸と、人が置いたメモ。どちらも 1 件として数えない。
     std::filesystem::create_directories(CrashesDir() / "2026-09-19_11-00-00_300");
     std::ofstream(CrashesDir() / "notes.txt") << "not a report";
 
@@ -203,7 +203,7 @@ TEST_F(CrashHandlerTest, FindUnreportedSkipsEntriesThatHoldNoReport)
 /// @brief Summary is empty when the report carries no reason.
 TEST_F(CrashHandlerTest, SummaryIsEmptyWhenTheReportCarriesNoReason)
 {
-    /// @note 書き出しの途中で切れたレポート。`what:` の後ろが空白だけでも CR を «何が起きたか» に混ぜない。
+    // 書き出しの途中で切れたレポート。`what:` の後ろが空白だけでも CR を «何が起きたか» に混ぜない。
     PlaceReport("2026-09-19_10-00-00_200", "");
 
     const std::vector<core::CrashRecord> records = core::CrashHandler::FindUnreported(temp.Path());

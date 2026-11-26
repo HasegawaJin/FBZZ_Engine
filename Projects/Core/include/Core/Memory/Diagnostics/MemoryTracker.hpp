@@ -17,7 +17,7 @@ namespace fbzz::core {
 /// @note 実メモリの確保は行わず、RecordAllocation/RecordFree で統計と未解放リストを更新する。
 class MemoryTracker {
 public:
-    static constexpr std::size_t MAX_TRACKED_ALLOCATIONS = 4096;
+    static constexpr std::size_t MAX_TRACKED_ALLOCATIONS = 4096; ///< 台帳に同時に保持できる個別確保の件数。
 
     MemoryTracker() = default;
 
@@ -38,17 +38,17 @@ public:
     [[nodiscard]] std::size_t GetMaxTrackedAllocationCount() const { return MAX_TRACKED_ALLOCATIONS; }
 
 private:
-    static constexpr std::size_t TAG_COUNT = static_cast<std::size_t>(MemoryTag::COUNT);
+    static constexpr std::size_t TAG_COUNT = static_cast<std::size_t>(MemoryTag::COUNT); ///< 用途別の統計配列に確保する要素数。
 
     [[nodiscard]] FBZZ_CORE_API std::size_t ToIndex(MemoryTag tag) const;
     [[nodiscard]] FBZZ_CORE_API AllocationInfo* FindAllocation(void* ptr);
     [[nodiscard]] FBZZ_CORE_API const AllocationInfo* FindAllocation(void* ptr) const;
 
-    MemoryStats m_stats[TAG_COUNT] = {};
-    AllocationInfo m_allocations[MAX_TRACKED_ALLOCATIONS] = {};
-    std::size_t m_activeAllocationCount = 0;
-    std::size_t m_droppedAllocationCount = 0;
-    std::uint64_t m_nextAllocationId = 1;
+    MemoryStats m_stats[TAG_COUNT] = {}; ///< MemoryTag の値で引く用途別の確保統計。
+    AllocationInfo m_allocations[MAX_TRACKED_ALLOCATIONS] = {}; ///< 未解放の個別確保と再利用可能な空き枠を持つ台帳。
+    std::size_t m_activeAllocationCount = 0; ///< 台帳に記録した未解放の確保件数。
+    std::size_t m_droppedAllocationCount = 0; ///< 容量不足で台帳に記録できなかった確保の累計件数。
+    std::uint64_t m_nextAllocationId = 1; ///< 次に台帳へ登録する確保に割り当てる ID。
 };
 
 /// @brief allocator から T を構築し、MemoryTracker に呼び出し元を記録する。
@@ -92,7 +92,7 @@ void DestroyTrackedObject(Allocator& allocator, MemoryTracker& tracker, T* ptr)
     DestroyObject(allocator, ptr);
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core
 
 #define FBZZ_CREATE_TRACKED(allocator, tracker, tag, allocatorName, type, ...) \
     ::fbzz::core::CreateTrackedObject<type>(allocator, tracker, tag, allocatorName, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)

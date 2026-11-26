@@ -38,17 +38,16 @@ public:
     [[nodiscard]] bool IsInitialized() const { return m_memory != nullptr; }
 
 private:
+    /// @brief 返却時にスタックを巻き戻すため、各確保領域の直前に置く情報。
     struct AllocationHeader {
-        std::size_t previousOffset = 0;
-        void*       previousAllocation = nullptr;
+        std::size_t previousOffset = 0;           ///< この確保を解放したときに戻す、領域先頭からのバイト数。
+        void*       previousAllocation = nullptr; ///< 解放後にスタックの頂上となる確保先。最初の確保では nullptr。
     };
 
-    std::uint8_t* m_memory = nullptr;
-    /// @note 領域の先頭からスタック頂上までのバイト数。最後の割り当てを返却すると巻き戻る。
-    std::size_t  m_offset = 0;
-    /// @note 最後に渡した領域。途中の割り当てを先に解放して後続の領域を壊すのを防ぐ。
-    void*        m_lastAllocation = nullptr;
-    MemoryStats  m_stats;
+    std::uint8_t* m_memory = nullptr; ///< このアロケータが所有する連続領域の先頭。
+    std::size_t m_offset = 0; ///< 連続領域の先頭からスタック頂上までのバイト数。
+    void* m_lastAllocation = nullptr; ///< 現在返却できる最後の確保先。スタックが空なら nullptr。
+    MemoryStats m_stats; ///< スタック領域の使用量と確保回数を記録する統計。
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

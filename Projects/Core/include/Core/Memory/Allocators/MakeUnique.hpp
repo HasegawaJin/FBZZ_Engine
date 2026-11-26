@@ -27,4 +27,4 @@ template <class T>
     return std::unique_ptr<T[]>(new (std::nothrow) T[count]());
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

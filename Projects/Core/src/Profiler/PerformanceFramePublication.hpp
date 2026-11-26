@@ -25,14 +25,14 @@ private:
     void PublishDescriptors(const PerformanceDescriptorTable& table);
     void UpdateDescriptorStorage(const std::vector<PerformanceDescriptor>& registeredDescriptors);
 
-    PerformanceSnapshot m_snapshot;
-    std::vector<PerformanceDescriptor> m_previousDescriptors;
-    std::vector<uint32_t> m_sampleDescriptorIndices;
-    std::vector<uint32_t> m_publishedIndexByDescriptor;
-    std::vector<ProfileRecord> m_legacyRecords;
-    std::vector<uint32_t> m_sampleIndicesByCompletion;
-    uint64_t m_lastFrameIndex = 0;
-    bool m_legacyRecordsDirty = false;
+    PerformanceSnapshot m_snapshot; ///< 現在公開しているフレームのサンプル・記述子・収集状態。
+    std::vector<PerformanceDescriptor> m_previousDescriptors; ///< 再公開時に前フレームの文字列を移すための一時領域。
+    std::vector<uint32_t> m_sampleDescriptorIndices; ///< サンプル配列の添字から引く公開記述子の添字。
+    std::vector<uint32_t> m_publishedIndexByDescriptor; ///< 登録表の添字から引く公開記述子の添字。未公開は無効値。
+    std::vector<ProfileRecord> m_legacyRecords; ///< 旧 API 向けに完了順で生成したレコード。文字列は m_snapshot を参照する。
+    std::vector<uint32_t> m_sampleIndicesByCompletion; ///< 完了順から引く m_snapshot.samples の添字。
+    uint64_t m_lastFrameIndex = 0; ///< 最後に確定した計測フレームの通し番号。
+    bool m_legacyRecordsDirty = false; ///< 次の旧 API の参照時にレコードを組み立てる場合に true。
 };
 
 }

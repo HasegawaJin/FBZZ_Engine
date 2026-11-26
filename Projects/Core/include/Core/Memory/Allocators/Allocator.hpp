@@ -18,12 +18,12 @@ namespace fbzz::core {
 /// @brief アロケータの使用量を外部へ公開するための共通統計。
 /// @note エディタやデバッグログから、断片化や一時メモリの過剰使用を早期に発見できるようにする。
 struct MemoryStats {
-    std::size_t capacity        = 0;
-    std::size_t used            = 0;
-    std::size_t peakUsed        = 0;
-    std::size_t allocationCount = 0;
-    std::size_t freeCount       = 0;
-    std::size_t activeCount     = 0;
+    std::size_t capacity        = 0; ///< 管理領域の総容量（バイト）。
+    std::size_t used            = 0; ///< 現在の使用量（バイト）。アロケータの占有量には位置合わせの余白も含む。
+    std::size_t peakUsed        = 0; ///< 記録した使用量の最大値（バイト）。タグを合算する場合は各タグの最大値の合計。
+    std::size_t allocationCount = 0; ///< 直近のリセット以降に成功した確保の回数。
+    std::size_t freeCount       = 0; ///< 直近のリセット以降に記録した個別解放の回数。
+    std::size_t activeCount     = 0; ///< 個別の確保と解放を追跡する場合の未解放件数。
 };
 
 /// @brief すべてのアロケータが満たす最小契約。
@@ -86,4 +86,4 @@ void DestroyObject(Allocator& allocator, T* ptr)
     allocator.Free(ptr);
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

@@ -38,8 +38,8 @@ protected:
 /// @brief Extracted planes are normalized.
 TEST_F(FrustumTest, ExtractedPlanesAreNormalized)
 {
-    /// @note 正規化されていないと SignedDistanceTo が «スケール込みの距離» になり、
-    ///       球や AABB の半径との比較が全部狂う。
+    // 正規化されていないと SignedDistanceTo が «スケール込みの距離» になり、
+    // 球や AABB の半径との比較が全部狂う。
     for (int i = 0; i < math::Frustum::PLANE_COUNT; ++i)
         EXPECT_NEAR(frustum.GetPlane(i).normal.Length(), 1.0f, testkit::kTolerance);
 }
@@ -47,7 +47,7 @@ TEST_F(FrustumTest, ExtractedPlanesAreNormalized)
 /// @brief Every plane normal points inward.
 TEST_F(FrustumTest, EveryPlaneNormalPointsInward)
 {
-    /// @note 視錐台の «内側» にある点は、6 枚すべてに対して正の側にいる。
+    // 視錐台の «内側» にある点は、6 枚すべてに対して正の側にいる。
     const math::Vector3 inside = eye + math::Vector3::FORWARD * 10.0f;
 
     for (int i = 0; i < math::Frustum::PLANE_COUNT; ++i)
@@ -98,7 +98,7 @@ TEST_F(FrustumTest, ReversedZKeepsWorldSpaceBoundsAccurateAtLongRange)
 /// @brief Rejects a point outside the side walls.
 TEST_F(FrustumTest, RejectsAPointOutsideTheSideWalls)
 {
-    /// @note カメラから 10 の距離で、半視野角 30 度の外側 (半幅は tan(30°)*10 ≒ 5.77)。
+    // カメラから 10 の距離で、半視野角 30 度の外側 (半幅は tan(30°)*10 ≒ 5.77)。
     EXPECT_TRUE(frustum.Contains({5.0f, 0.0f, 0.0f}));
     EXPECT_FALSE(frustum.Contains({7.0f, 0.0f, 0.0f}));
     EXPECT_FALSE(frustum.Contains({0.0f, 7.0f, 0.0f}));
@@ -115,8 +115,8 @@ TEST_F(FrustumTest, IntersectsASphereFullyInside)
 /// @brief Intersects a sphere whose center is outside but overlaps.
 TEST_F(FrustumTest, IntersectsASphereWhoseCenterIsOutsideButOverlaps)
 {
-    /// @note 中心は視野の外。半径で届くなら «交差している» としなければ、
-    ///       画面端の大きなオブジェクトが消える。
+    // 中心は視野の外。半径で届くなら «交差している» としなければ、
+    // 画面端の大きなオブジェクトが消える。
     EXPECT_TRUE(frustum.IntersectsSphere({7.0f, 0.0f, 0.0f}, 3.0f));
 }
 
@@ -157,8 +157,8 @@ TEST_F(FrustumTest, AcceptsALargeAABBThatEnclosesTheFrustum)
 /// @brief Projects half extents onto the slanted side walls.
 TEST_F(FrustumTest, ProjectsHalfExtentsOntoTheSlantedSideWalls)
 {
-    /// @note 側面の法線は斜め。half-extent をそのまま半径として使うと、
-    ///       画面の外に出た瞬間に細長い箱が消える。
+    // 側面の法線は斜め。half-extent をそのまま半径として使うと、
+    // 画面の外に出た瞬間に細長い箱が消える。
     const math::Vector3 center{9.0f, 0.0f, 0.0f};
 
     EXPECT_FALSE(frustum.IntersectsAABB(center, {1.0f, 1.0f, 1.0f}));
@@ -170,8 +170,8 @@ TEST_F(FrustumTest, ProjectsHalfExtentsOntoTheSlantedSideWalls)
 /// @brief Extracts a box from an orthographic projection.
 TEST_F(FrustumTest, ExtractsABoxFromAnOrthographicProjection)
 {
-    /// @note 影のカスケードは正投影で組む。深度 [0,1] の near 平面を取り違えると、
-    ///       カメラ手前のキャスターが影を落とさなくなる。
+    // 影のカスケードは正投影で組む。深度 [0,1] の near 平面を取り違えると、
+    // カメラ手前のキャスターが影を落とさなくなる。
     const math::Frustum ortho = math::Frustum::FromViewProjection(
         math::Matrix4::Orthographic(-1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 10.0f));
 

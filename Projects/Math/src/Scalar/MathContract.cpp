@@ -19,11 +19,14 @@ void SetContractHandler(ContractHandler handler)
 
 void ReportContract(const ContractViolation& violation, std::atomic<bool>& alreadyReported)
 {
-    /// @note exchange で最初の 1 本だけを通す。複数スレッドから同時に踏んでも二重に出さない。
-    if (alreadyReported.exchange(true, std::memory_order_relaxed)) return;
+    // exchange で最初の 1 本だけを通す。複数スレッドから同時に踏んでも二重に出さない。
+    if (alreadyReported.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
 
-    if (const ContractHandler handler = s_handler.load(std::memory_order_acquire))
+    if (const ContractHandler handler = s_handler.load(std::memory_order_acquire)) {
         handler(violation);
+    }
 }
 
 } // namespace fbzz::math

@@ -33,7 +33,7 @@ Matrix4 Matrix4::Rotate(const Quaternion& rotation) {
 }
 
 Matrix4 Matrix4::TRS(const Vector3& translation, const Quaternion& rotation, const Vector3& scale) {
-    /// @note T * R * S を展開し、回転の各列にスケールを掛けて第 4 列に平行移動を置く。
+    // T * R * S を展開し、回転の各列にスケールを掛けて第 4 列に平行移動を置く。
     Matrix4 result = Rotate(rotation);
     for (int row = 0; row < 3; ++row) {
         result.m[row][0] *= scale.x;
@@ -55,7 +55,7 @@ Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3
     result.m[0][0] = right.x;
     result.m[0][1] = right.y;
     result.m[0][2] = right.z;
-    /// @note 視点の位置を右軸へ投影した値を引くと、カメラ自身の横座標が 0 になる。上下・前後の軸でも同じ原理を使う。
+    // 視点の位置を右軸へ投影した値を引くと、カメラ自身の横座標が 0 になる。上下・前後の軸でも同じ原理を使う。
     result.m[0][3] = -Vector3::Dot(right, eye);
 
     result.m[1][0] = correctedUp.x;

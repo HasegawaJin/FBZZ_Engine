@@ -38,11 +38,9 @@ public:
     [[nodiscard]] bool IsInitialized() const { return m_memory != nullptr; }
 
 private:
-    /// @note 確保とリセットが共有する連続領域の先頭。割り当て済みの領域は以降の割り当てで移動しない。
-    std::uint8_t* m_memory = nullptr;
-    /// @note 次の割り当てを始める候補位置（先頭からのバイト数）。必要な位置合わせの余白も消費する。
-    std::size_t  m_offset = 0;
-    MemoryStats  m_stats;
+    std::uint8_t* m_memory = nullptr; ///< このアロケータが所有する連続領域の先頭。
+    std::size_t m_offset = 0; ///< 次の確保候補までの先頭からのバイト数。位置合わせの余白も含む。
+    MemoryStats m_stats; ///< 領域の使用量と確保回数を記録する統計。
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

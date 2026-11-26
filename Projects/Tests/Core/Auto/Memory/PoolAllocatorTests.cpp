@@ -56,7 +56,7 @@ TEST_F(PoolAllocatorTest, AcceptsAnyRequestThatFitsInTheBlock)
 
     EXPECT_NE(allocator.Allocate(31), nullptr);
     EXPECT_NE(allocator.Allocate(32), nullptr);
-    /// @note 使い切れば容量不足で nullptr
+    // 使い切れば容量不足で nullptr
     EXPECT_EQ(allocator.Allocate(32), nullptr);
 
     allocator.Shutdown();

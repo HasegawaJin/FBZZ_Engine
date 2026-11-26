@@ -43,26 +43,19 @@ public:
     [[nodiscard]] std::size_t BlockCount() const { return m_blockCount; }
 
 private:
+    /// @brief 未使用のプールブロックに重ねて置く空きリストの節。
     struct FreeNode {
-        FreeNode* next = nullptr;
+        FreeNode* next = nullptr; ///< 次に再利用できるブロック。末尾では nullptr。
     };
 
-    /// @note 確保時に返された先頭。位置合わせで先頭をずらしても、解放にはこのアドレスを使う。
-    void*         m_rawMemory = nullptr;
-    /// @note 位置合わせ後の最初のブロック。利用者に渡すアドレスはここから数える。
-    std::uint8_t* m_memory = nullptr;
-    /// @note 空きブロックをつないだ列の先頭。確保では一つ外し、返却ではここに戻す。
-    FreeNode*     m_freeList = nullptr;
-    /// @note 1 回の要求で利用者が書き込める最大バイト数。
-    std::size_t   m_blockSize = 0;
-    /// @note 同時に渡せる固定長ブロックの総数。
-    std::size_t   m_blockCount = 0;
-    /// @note 隣のブロック先頭までのバイト数。空きリストの管理領域と位置合わせの余白を含む。
-    std::size_t   m_stride = 0;
-    /// @note 各ブロックの先頭で保証する境界。空きブロックにポインターを置くための境界も満たす。
-    std::size_t   m_alignment = 0;
-    /// @note 実際に利用した容量と確保回数を記録し、プールの大きさを判断する材料にする。
-    MemoryStats   m_stats;
+    void* m_rawMemory = nullptr; ///< プールが所有する領域の原アドレス。解放時に使用する。
+    std::uint8_t* m_memory = nullptr; ///< 位置合わせ後の最初のブロック。
+    FreeNode* m_freeList = nullptr; ///< 次に確保する空きブロック。空きがなければ nullptr。
+    std::size_t m_blockSize = 0; ///< 1 ブロックに利用者が書き込める最大バイト数。
+    std::size_t m_blockCount = 0; ///< 同時に渡せる固定長ブロックの総数。
+    std::size_t m_stride = 0; ///< ブロック先頭間のバイト数。空きリストの管理領域と位置合わせの余白を含む。
+    std::size_t m_alignment = 0; ///< ブロック先頭の整列境界（バイト）。空きリストの節に必要な境界も満たす。
+    MemoryStats m_stats; ///< ブロックの利用量と確保回数を記録する統計。
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

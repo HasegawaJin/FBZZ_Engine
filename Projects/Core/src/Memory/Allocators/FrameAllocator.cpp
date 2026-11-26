@@ -25,7 +25,7 @@ void FrameAllocator::BeginFrame()
 
 void FrameAllocator::EndFrame()
 {
-    /// @note フレーム終端でメモリを一括解放し、次フレームの再利用に備える。
+    // フレーム終端でメモリを一括解放し、次フレームの再利用に備える。
     m_allocator.Reset();
 }
 
@@ -54,4 +54,4 @@ MemoryStats FrameAllocator::GetStats() const
     return m_allocator.GetStats();
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

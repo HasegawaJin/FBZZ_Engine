@@ -11,11 +11,13 @@ namespace fbzz::math {
 
 Vector3 Vector3::Normalized() const {
     float len = Length();
-    /// @note 契約違反でも実行は止めない。0 は NaN と違い、伝播しても検出できる値のため。
+    // 契約違反でも実行は止めない。0 は NaN と違い、伝播しても検出できる値のため。
     FBZZ_MATH_CONTRACT(!NearlyZero(len),
                        "zero-length vector normalized; returning (0,0,0). "
                        "use NormalizedOr(fallback) where degenerate input is normal");
-    if (NearlyZero(len)) return ZERO;
+    if (NearlyZero(len)) {
+        return ZERO;
+    }
     return *this / len;
 }
 

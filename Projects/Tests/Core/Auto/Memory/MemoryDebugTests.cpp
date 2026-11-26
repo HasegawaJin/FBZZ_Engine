@@ -41,7 +41,7 @@ TEST_F(MemoryDebugTest, TracksResourceUntilUntracked)
 
     EXPECT_TRUE(debug.Untrack(&resource));
     EXPECT_EQ(debug.GetLiveCount(), 0u);
-    /// @note 二度目は «載っていない» ので false。
+    // 二度目は «載っていない» ので false。
     EXPECT_FALSE(debug.Untrack(&resource));
 }
 

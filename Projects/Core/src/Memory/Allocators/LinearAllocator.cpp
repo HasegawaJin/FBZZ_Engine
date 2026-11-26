@@ -72,10 +72,14 @@ void* LinearAllocator::Allocate(std::size_t size, std::size_t alignment)
     assert(size > 0);
     assert(IsPowerOfTwo(alignment));
 
-    if (m_memory == nullptr || size == 0 || !IsPowerOfTwo(alignment)) {
+    if (m_memory == nullptr) {
+        return nullptr;
+    }
+    if (size == 0 || !IsPowerOfTwo(alignment)) {
         return nullptr;
     }
 
+    // 未使用の範囲内で、位置合わせの余白を含めて要求サイズを確保できる場所を探す。
     void* allocationStart = m_memory + m_offset;
     std::size_t availableBytes = m_stats.capacity - m_offset;
     auto* alignedStart = static_cast<std::uint8_t*>(std::align(alignment, size, allocationStart, availableBytes));
@@ -83,6 +87,7 @@ void* LinearAllocator::Allocate(std::size_t size, std::size_t alignment)
         return nullptr;
     }
 
+    // 次の要求がこの領域と重ならないよう、確保した範囲の終端まで位置を進める。
     const std::size_t allocationOffset = static_cast<std::size_t>(alignedStart - m_memory);
     m_offset = allocationOffset + size;
     m_stats.used = m_offset;
@@ -94,7 +99,7 @@ void* LinearAllocator::Allocate(std::size_t size, std::size_t alignment)
 
 void LinearAllocator::Free(void* ptr)
 {
-    /// @note LinearAllocator は個別 Free を持たない。所有確認だけ行い、実際の再利用は Reset に集約する。
+    // 実際の再利用は Reset がまとめて行うので、ここでは所有だけを確認する。
     assert(ptr == nullptr || Owns(ptr));
     (void)ptr;
 }
@@ -117,4 +122,4 @@ bool LinearAllocator::Owns(const void* ptr) const
     return bytePtr >= m_memory && bytePtr < (m_memory + m_stats.capacity);
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

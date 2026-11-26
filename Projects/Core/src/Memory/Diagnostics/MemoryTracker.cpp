@@ -19,7 +19,7 @@ constexpr const char* TAG_NAMES[] = {
     "Editor",
 };
 
-} /// @note namespace
+} // namespace
 
 void MemoryTracker::Reset()
 {
@@ -69,26 +69,28 @@ bool MemoryTracker::RecordAllocation(const AllocationInfo& info)
         return false;
     }
 
-    AllocationInfo* slot = nullptr;
+    // 解放済みの枠を再利用する。空きが尽きた場合もタグ別の合計には反映する。
+    AllocationInfo* availableSlot = nullptr;
     for (AllocationInfo& allocation : m_allocations) {
         if (!allocation.isActive) {
-            slot = &allocation;
+            availableSlot = &allocation;
             break;
         }
     }
 
-    if (slot == nullptr) {
+    if (availableSlot == nullptr) {
         ++m_droppedAllocationCount;
         RecordAllocation(info.tag, info.size);
         return false;
     }
 
-    *slot = info;
-    slot->allocationId = m_nextAllocationId++;
-    slot->isActive = true;
+    // 再利用した枠でも新しい ID を払い出し、以前の確保と区別する。
+    *availableSlot = info;
+    availableSlot->allocationId = m_nextAllocationId++;
+    availableSlot->isActive = true;
 
     ++m_activeAllocationCount;
-    RecordAllocation(slot->tag, slot->size);
+    RecordAllocation(availableSlot->tag, availableSlot->size);
     return true;
 }
 
@@ -189,4 +191,4 @@ const AllocationInfo* MemoryTracker::FindAllocation(void* ptr) const
     return nullptr;
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

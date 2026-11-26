@@ -32,9 +32,12 @@ public:
     /// @note const char* は std::string と std::filesystem::path の両方に暗黙変換できて曖昧になるため、string 版へ明示転送する。
     static bool        Exists(const char* path) { return Exists(std::string(path)); }
     FBZZ_CORE_API static bool        IsDirectory(const std::string& path);
-    FBZZ_CORE_API static std::string GetExtension(const std::string& path);  /// @note 例: ".scene"
-    FBZZ_CORE_API static std::string GetFilename(const std::string& path);   /// @note 例: "main.scene"
-    FBZZ_CORE_API static std::string GetDirectory(const std::string& path);  /// @note 例: "Assets/Scenes/"
+    /// @return 拡張子をドット付きで返す（例 `.scene`）。
+    FBZZ_CORE_API static std::string GetExtension(const std::string& path);
+    /// @return パスの末尾のファイル名を返す（例 `main.scene`）。
+    FBZZ_CORE_API static std::string GetFilename(const std::string& path);
+    /// @return パスから親ディレクトリを取り出す（例 `Assets/Scenes/`）。
+    FBZZ_CORE_API static std::string GetDirectory(const std::string& path);
     /// @note NormalizePathSeparators — Windows / POSIX の区切り文字を '/' に統一する。
     /// @note Editor / AssetBrowser / Serializer が同じ文字列表現で比較できるよう Engine 側に集約する。
     FBZZ_CORE_API static std::string NormalizePathSeparators(std::string path, bool trimTrailingSlash = true);
@@ -74,6 +77,8 @@ public:
     FBZZ_CORE_API static bool RemoveAll(const std::filesystem::path& path);
     FBZZ_CORE_API static bool Rename(const std::filesystem::path& src, const std::filesystem::path& dst);
 
+    /// @param[in] path 読み込むファイルの UTF-8 パス。
+    /// @param[out] out テキストモードで読み込んだ文字列。開けなければ未変更。
     FBZZ_CORE_API static bool ReadText(const std::string& path, std::string& out);
     static bool ReadText(const char* path, std::string& out) { return ReadText(std::string(path), out); }
     FBZZ_CORE_API static bool WriteText(const std::string& path, const std::string& text);
@@ -82,17 +87,19 @@ public:
 
     /// @note 同一フォルダのテンポラリへ書いてから置き換える。失敗時は「無傷の旧版」が残り、途中まで書けたファイルは残らない。
     /// @note ofstream は開いた瞬間に切り詰めるため、高頻度上書き (オートセーブ等) での原本破損を防ぐのに使う。
-    /// @note テンポラリ名はドット始まり + .tmp。AssetBrowser の非表示規則と AssetDatabase の .meta 除外規則に乗るため、
-    /// @note       監視下の Assets/ に置いても GUID は動かない。
+    /// @note ドット始まりで拡張子 .tmp の一時名は、AssetBrowser の非表示規則と AssetDatabase の監視除外規則に従う。
     FBZZ_CORE_API static bool WriteTextAtomic(const std::string& path, const std::string& text);
-    /// @note 同一フォルダの排他的な一時ファイルへ書き、flush と close 成功後だけ置換する。失敗時は旧版を保持する。
-    /// @note size が 0 なら data は nullptr でもよい。空でない入力は呼出し終了まで有効であること。
+    /// @brief 同じディレクトリ内で、一時ファイルから対象ファイルを置換する。
+    /// @param[in] path 置換先のファイルパス。
+    /// @param[in] data 呼び出し終了まで有効な書き込み元。size が 0 の場合は nullptr を許す。
+    /// @param[in] size data から書き込むバイト数。
+    /// @return 書き込み、フラッシュ、クローズ、置換がすべて成功した場合に true。失敗時は旧版を保持する。
     FBZZ_CORE_API static bool WriteBinaryAtomic(const std::filesystem::path& path, const void* data, size_t size);
     /// @note 逐次バイナリ書き込み用の ofstream を開く。
     /// @note メッシュ等は構造体を順に write するため、所有する stream を呼び出し側へ返す。
     FBZZ_CORE_API static std::ofstream OpenBinaryWriter(const std::filesystem::path& path);
-    /// @note テクスチャやメッシュなどバイナリアセットの読み書きに使う。
-    /// @note テキストでない出力も FileSystem に集約する。
+    /// @param[in] path 読み込むバイナリファイルのパス。
+    /// @param[out] out ファイルの内容。開けない場合、空のファイル、読み取り失敗時は空になる。
     FBZZ_CORE_API static bool ReadBinary(const std::filesystem::path& path, std::vector<uint8_t>& out);
     FBZZ_CORE_API static bool WriteBinary(const std::filesystem::path& path, const void* data, size_t size);
 
@@ -101,6 +108,8 @@ public:
     /// @note UTF-8 変換を呼び出し側に意識させないため path を直接受け取る版を用意する。Windows では
     /// @note       filesystem::path が wchar_t ベースなので変換コストもかからない。
     FBZZ_CORE_API static bool                   Exists(const std::filesystem::path& path);
+    /// @param[in] path 読み込むファイルのパス。
+    /// @param[out] out 改行を変換せず読み込んだ文字列。開けなければ未変更。
     FBZZ_CORE_API static bool                   ReadText(const std::filesystem::path& path, std::string& out);
     FBZZ_CORE_API static bool                   WriteText(const std::filesystem::path& path, const std::string& text);
     FBZZ_CORE_API static std::filesystem::path  PathFromUtf8(const std::string& path);
@@ -123,4 +132,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

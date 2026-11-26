@@ -53,7 +53,7 @@ TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
                                        core::CursorLockMode::Locked }) {
         EXPECT_EQ(core::CursorLockModeFromString(core::ToString(mode)), mode);
     }
-    /// @note 設定ファイルに未知の綴りがあっても、起動時はカーソルを拘束しない。
+    // 設定ファイルに未知の綴りがあっても、起動時はカーソルを拘束しない。
     EXPECT_EQ(core::CursorLockModeFromString("bogus"), core::CursorLockMode::None);
 }
 
@@ -70,7 +70,7 @@ TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
 /// @brief 入力の抑制中もゲームの要求を保持する。
 TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
 {
-    /// @note Game View に戻ったときに復元できるよう、OS への反映を抑制している間もゲームの要求を保持する。
+    // Game View に戻ったときに復元できるよう、OS への反映を抑制している間もゲームの要求を保持する。
     core::Cursor::SetSuppressed(true);
     core::Cursor::SetLockMode(core::CursorLockMode::Locked);
     core::Cursor::SetVisible(false);
@@ -95,7 +95,7 @@ TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
 /// @brief 強い要求の解除後に弱い要求を復元する。
 TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
 {
-    /// @note メニューを閉じると、視点操作が要求した拘束と表示がスタックから復元される。
+    // メニューを閉じると、視点操作が要求した拘束と表示がスタックから復元される。
     const auto camera = core::Cursor::Push({ core::CursorLockMode::Locked, false },
                                            core::CursorPriority::Camera, 1, "Camera");
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::Locked);
@@ -166,7 +166,7 @@ TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
 /// @brief 要求の一括解除で基底の設定も復元する。
 TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
 {
-    /// @note シーン遷移時に基底もリセットし、前のシーンが直接指定した拘束を解除する。
+    // シーン遷移時に基底もリセットし、前のシーンが直接指定した拘束を解除する。
     core::Cursor::SetLockMode(core::CursorLockMode::Locked);
     std::ignore = core::Cursor::Push({ core::CursorLockMode::Confined, false },
                                     core::CursorPriority::UI, 1, "Screen");
@@ -185,7 +185,7 @@ TEST_F(CursorManualTest, UpdatingARequestKeepsItsPlaceInTheStack)
     std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
                                     core::CursorPriority::Camera, 2, "Camera");
 
-    /// @note マウスとパッドで表示だけを切り替えるときも、同じ優先度での登録順を保持する。
+    // マウスとパッドで表示だけを切り替えるときも、同じ優先度での登録順を保持する。
     core::Cursor::UpdateRequest(ui, { core::CursorLockMode::Confined, true });
     EXPECT_TRUE(core::Cursor::IsVisible());
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::Confined);
@@ -225,7 +225,7 @@ TEST_F(CursorManualTest, CustomShapePreservesWindowClassAndFallbackCursor)
     testkit::TempDir temp("cursor-shape");
     ASSERT_TRUE(temp.IsValid());
     const auto path = temp.File("cursor.tga");
-    /// @note 2 × 2 の非圧縮 BGRA 画像。先頭画素のアルファは 128。
+    // 2 × 2 の非圧縮 BGRA 画像。先頭画素のアルファは 128。
     const std::array<unsigned char, 34> tga{
         0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 32, 0x28,
         16, 32, 64, 128, 32, 64, 128, 255, 0, 0, 0, 0, 0, 0, 0, 255
@@ -273,7 +273,9 @@ TEST_F(CursorManualTest, CustomShapePreservesWindowClassAndFallbackCursor)
 
     const HCURSOR textCursor = LoadCursor(nullptr, IDC_IBEAM);
     application.GetWindow().SetWndProcHook([textCursor](HWND, UINT msg, WPARAM, LPARAM lp) {
-        if (msg != WM_SETCURSOR || LOWORD(lp) != HTCLIENT) return false;
+        if (msg != WM_SETCURSOR || LOWORD(lp) != HTCLIENT) {
+            return false;
+        }
         SetCursor(textCursor);
         return true;
     });

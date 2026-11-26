@@ -40,10 +40,14 @@ std::vector<std::string> FileSystem::ListFiles(const std::string& directory, con
 
     WIN32_FIND_DATAW entry;
     const HANDLE search = FindFirstFileW(searchPattern.c_str(), &entry);
-    if (search == INVALID_HANDLE_VALUE) return result;
+    if (search == INVALID_HANDLE_VALUE) {
+        return result;
+    }
 
     do {
-        if (entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if (entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            continue;
+        }
         const std::string name = StringUtils::ToNarrow(entry.cFileName);
         if (extension.empty() || GetExtension(name) == extension)
             result.push_back(directory + "\\" + name);
@@ -101,11 +105,15 @@ std::vector<std::string> FileSystem::ListAll(const std::string& directory)
 
     WIN32_FIND_DATAW entry;
     const HANDLE search = FindFirstFileW(searchPattern.c_str(), &entry);
-    if (search == INVALID_HANDLE_VALUE) return result;
+    if (search == INVALID_HANDLE_VALUE) {
+        return result;
+    }
 
     do {
         const std::string name = StringUtils::ToNarrow(entry.cFileName);
-        if (name == "." || name == "..") continue;
+        if (name == "." || name == "..") {
+            continue;
+        }
         result.push_back(directory + "\\" + name);
     } while (FindNextFileW(search, &entry));
 
@@ -120,9 +128,13 @@ bool FileSystem::EnsureDirectory(const std::string& path)
 
 bool FileSystem::EnsureDirectory(const std::filesystem::path& path)
 {
-    if (path.empty()) return true;
+    if (path.empty()) {
+        return true;
+    }
     std::error_code error;
-    if (std::filesystem::is_directory(path, error)) return true;
+    if (std::filesystem::is_directory(path, error)) {
+        return true;
+    }
     error.clear();
     return std::filesystem::create_directories(path, error) || !error;
 }
@@ -135,7 +147,9 @@ bool FileSystem::EnsureParentDirectory(const std::filesystem::path& path)
 
 bool FileSystem::CopyFile(const std::filesystem::path& sourcePath, const std::filesystem::path& destinationPath, bool overwrite)
 {
-    if (!EnsureParentDirectory(destinationPath)) return false;
+    if (!EnsureParentDirectory(destinationPath)) {
+        return false;
+    }
     std::error_code error;
     const auto options = overwrite
         ? std::filesystem::copy_options::overwrite_existing
@@ -156,7 +170,9 @@ bool FileSystem::CopyFileW(const std::filesystem::path& sourcePath, const std::f
 
 bool FileSystem::CopyDirectoryRecursive(const std::filesystem::path& sourcePath, const std::filesystem::path& destinationPath, bool overwrite)
 {
-    if (!EnsureDirectory(destinationPath)) return false;
+    if (!EnsureDirectory(destinationPath)) {
+        return false;
+    }
     std::error_code error;
     const auto options = std::filesystem::copy_options::recursive |
         (overwrite ? std::filesystem::copy_options::overwrite_existing
@@ -168,7 +184,9 @@ bool FileSystem::CopyDirectoryRecursive(const std::filesystem::path& sourcePath,
 bool FileSystem::RemoveAll(const std::filesystem::path& path)
 {
     std::error_code error;
-    if (!std::filesystem::exists(path, error)) return true;
+    if (!std::filesystem::exists(path, error)) {
+        return true;
+    }
     error.clear();
     std::filesystem::remove_all(path, error);
     return !error;
@@ -176,7 +194,9 @@ bool FileSystem::RemoveAll(const std::filesystem::path& path)
 
 bool FileSystem::Rename(const std::filesystem::path& sourcePath, const std::filesystem::path& destinationPath)
 {
-    if (!EnsureParentDirectory(destinationPath)) return false;
+    if (!EnsureParentDirectory(destinationPath)) {
+        return false;
+    }
     std::error_code error;
     std::filesystem::rename(sourcePath, destinationPath, error);
     return !error;
@@ -184,8 +204,8 @@ bool FileSystem::Rename(const std::filesystem::path& sourcePath, const std::file
 
 bool FileSystem::Exists(const std::filesystem::path& path)
 {
-    /// @note filesystem::path::c_str() は Windows で const wchar_t* を返すため、
-    /// @note       GetFileAttributesW に直接渡せて UTF-8 変換が不要。
+    // filesystem::path::c_str() は Windows で const wchar_t* を返すため、
+    // GetFileAttributesW に直接渡せて UTF-8 変換が不要。
     DWORD attributes = GetFileAttributesW(path.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES;
 }
@@ -216,8 +236,8 @@ std::filesystem::file_time_type FileSystem::LastWriteTime(const std::filesystem:
 
 std::filesystem::path FileSystem::GetExecutableDirectory()
 {
-    /// @note GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
-    /// @note       parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
+    // GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
+    // parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
     return std::filesystem::path(buffer).parent_path();

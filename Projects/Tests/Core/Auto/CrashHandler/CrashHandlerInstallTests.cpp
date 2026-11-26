@@ -34,7 +34,7 @@ protected:
     void SetUp() override
     {
         EngineFixture::SetUp();
-        /// @note ログの末尾が Install を跨いで残ることを見るので INFO を通す。TearDown で既定へ戻る。
+        // ログの末尾が Install を跨いで残ることを見るので INFO を通す。TearDown で既定へ戻る。
         SetLogLevel(core::LogLevel::INFO);
         ASSERT_TRUE(first.IsValid());
         ASSERT_TRUE(second.IsValid());
@@ -42,7 +42,7 @@ protected:
 
     void TearDown() override
     {
-        /// @note 例外フィルターと開発者モードはプロセス全体の状態。次のテストへ持ち越さない。
+        // 例外フィルターと開発者モードはプロセス全体の状態。次のテストへ持ち越さない。
         core::CrashHandler::Uninstall();
         core::DeveloperMode::SetPreference(false);
         EngineFixture::TearDown();
@@ -67,7 +67,7 @@ TEST_F(CrashHandlerInstallTest, IsInstalledFollowsInstallAndUninstall)
 /// @brief Refuses a root whose path does not fit the writer buffer.
 TEST_F(CrashHandlerInstallTest, RefusesARootWhosePathDoesNotFitTheWriterBuffer)
 {
-    /// @note 書き出しはヒープを使えないので固定長で持つ。入らない根は Install の時点で断る。
+    // 書き出しはヒープを使えないので固定長で持つ。入らない根は Install の時点で断る。
     const std::filesystem::path tooLong(std::wstring(980, L'a'));
 
     EXPECT_FALSE(core::CrashHandler::Install(tooLong, "InstallTest"));
@@ -88,7 +88,7 @@ TEST_F(CrashHandlerInstallTest, SecondInstallMovesTheReportsWithoutLosingTheLogT
     EXPECT_FALSE(std::filesystem::exists(first.Path() / "Saved" / "Crashes"));
     const std::string report = ReadAll(dir / "report.txt");
     EXPECT_NE(report.find("app:     SecondApp"), std::string::npos);
-    /// @note 受け口は差し替えないので、輪も空にならない。
+    // 受け口は差し替えないので、輪も空にならない。
     EXPECT_NE(report.find("logged-before-the-second-install"), std::string::npos);
 }
 

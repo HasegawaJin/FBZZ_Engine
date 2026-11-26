@@ -25,57 +25,66 @@ namespace fbzz::math {
 /// @see Docs/design/math-simd.md §4 段 3a
 /// @see https://fgiesen.wordpress.com/2010/10/17/view-frustum-culling/ Fabian Giesen «View frustum culling»
 struct Frustum {
-    static constexpr int PLANE_COUNT = 6;
+    static constexpr int PLANE_COUNT = 6; ///< 視錐台を囲む平面の数。
 
     /// @brief 6 平面とも既定の Plane (法線 +Y・距離 0) で埋める。
     Frustum();
 
-    /// @brief i 番目の平面 (left/right/bottom/top/clip.z=0/clip.z=clip.w の順)。
+    /// @brief 視錐台を構成する平面を返す。
+    /// @param[in] i 平面の添字。左、右、下、上、clip.z = 0、clip.z = clip.w の順。
     /// @note 深度の 2 平面は通常 Z で near/far、Reversed-Z で far/near。
     /// @pre 0 <= i < PLANE_COUNT。
     Plane GetPlane(int i) const;
 
     /// @brief 点が視錐台内にあるかを判定する。
+    /// @param[in] point 視錐台と同じ座標系での点。FromViewProjection で生成した場合はワールド座標。
     bool Contains(const Vector3& point) const;
 
     /// @brief 球が視錐台と交差するかを判定する。
+    /// @param[in] center 視錐台と同じ座標系での球の中心。
+    /// @param[in] radius 球の半径。中心座標と同じ単位。
     /// @return 完全に外側なら false。
     bool IntersectsSphere(const Vector3& center, float radius) const;
 
     /// @brief AABB が視錐台と交差するかを判定する。
+    /// @param[in] center 視錐台と同じ座標系での AABB の中心。
+    /// @param[in] halfExtents 中心から箱の面までの各軸方向の距離。中心座標と同じ単位。
     /// @return 完全に外側なら false。
     bool IntersectsAABB(const Vector3& center, const Vector3& halfExtents) const;
 
     /// @brief 多数の球をまとめて判定する。結果は IntersectsSphere を 1 個ずつ呼んだ場合と一致する。
-    /// @param spheres xyz = 中心、w = 半径。
-    /// @param visible 球ごとに交差なら 1、完全に外側なら 0 を書く。
+    /// @param[in] spheres xyz に視錐台と同じ座標系での中心、w に同じ単位の半径を格納した球の列。
+    /// @param[out] visible 球と同じ順で、交差なら 1、完全に外側なら 0 を書く。対応する球がない要素は未変更。
     /// @pre visible.size() >= spheres.size()。足りなければ契約違反を報告し、入る数だけ判定する。
     /// @note 4 球ずつ転置して 6 平面と比べる。物体ごとに IntersectsSphere を呼ぶより 1 球あたりが安い。
     FBZZ_MATH_API void IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const;
 
     /// @brief ビュープロジェクション行列から 6 平面を抽出する (Gribb-Hartmann 法)。
+    /// @param[in] viewProjection ワールド座標からクリップ座標への変換行列。
     /// @pre DirectX 左手系、深度 [0,1] (Reversed-Z 可)、列ベクトル規則 (M * v)。
     FBZZ_MATH_API static Frustum FromViewProjection(const Matrix4& viewProjection);
 
 private:
     /// @brief 4 レーン × 2 本。レーン 6, 7 は使わず、判定のビットマスクで捨てる。
-    static constexpr int LANE_COUNT = 8;
-    static constexpr int PLANE_MASK = (1 << PLANE_COUNT) - 1;
+    static constexpr int LANE_COUNT = 8; ///< 6 平面の係数とパディングを含む SIMD 配列の要素数。
+    static constexpr int PLANE_MASK = (1 << PLANE_COUNT) - 1; ///< 各ビットが実在する平面を示すマスク。
 
     void SetPlane(int i, const Plane& plane);
 
     /// @brief 4 平面ぶんの符号付き距離 dot(n, p) + d。加算の順序は Plane::SignedDistanceTo と同じ。
     simd::Vec SignedDistances(int lane, simd::Vec x, simd::Vec y, simd::Vec z) const;
 
-    alignas(16) float m_normalX[LANE_COUNT]  = {};
-    alignas(16) float m_normalY[LANE_COUNT]  = {};
-    alignas(16) float m_normalZ[LANE_COUNT]  = {};
-    alignas(16) float m_distance[LANE_COUNT] = {};
+    alignas(16) float m_normalX[LANE_COUNT]  = {}; ///< 視錐台各平面の内向き単位法線の X 成分。
+    alignas(16) float m_normalY[LANE_COUNT]  = {}; ///< 視錐台各平面の内向き単位法線の Y 成分。
+    alignas(16) float m_normalZ[LANE_COUNT]  = {}; ///< 視錐台各平面の内向き単位法線の Z 成分。
+    alignas(16) float m_distance[LANE_COUNT] = {}; ///< 各平面の符号付き距離 dot(n, p) + d の定数項 d。
 };
 
 inline Frustum::Frustum()
 {
-    for (int i = 0; i < PLANE_COUNT; ++i) SetPlane(i, Plane{});
+    for (int i = 0; i < PLANE_COUNT; ++i) {
+        SetPlane(i, Plane{});
+    }
 }
 
 inline Plane Frustum::GetPlane(int i) const
@@ -106,7 +115,7 @@ inline bool Frustum::Contains(const Vector3& point) const
     const simd::Vec y = _mm_set1_ps(point.y);
     const simd::Vec z = _mm_set1_ps(point.z);
     const simd::Vec zero = _mm_setzero_ps();
-    /// @note «>= 0 でない» で外側とする。NaN は外側に倒れ、スカラー版の !IsOnPositiveSide と同じになる。
+    // «>= 0 でない» で外側とする。NaN は外側に倒れ、スカラー版の !IsOnPositiveSide と同じになる。
     const int outside = _mm_movemask_ps(_mm_cmpnge_ps(SignedDistances(0, x, y, z), zero))
                       | _mm_movemask_ps(_mm_cmpnge_ps(SignedDistances(4, x, y, z), zero)) << 4;
     return (outside & PLANE_MASK) == 0;
@@ -134,7 +143,7 @@ inline bool Frustum::IntersectsAABB(const Vector3& center, const Vector3& halfEx
     const simd::Vec signBit = _mm_set1_ps(-0.0f);
     int outside = 0;
     for (int lane = 0; lane < LANE_COUNT; lane += 4) {
-        /// @note 各軸の half-extent を法線方向に投影した最大値 (法線の絶対値との内積)。
+        // 各軸の half-extent を法線方向に投影した最大値 (法線の絶対値との内積)。
         simd::Vec reach = _mm_mul_ps(hx, _mm_andnot_ps(signBit, _mm_load_ps(m_normalX + lane)));
         reach = simd::MulAdd(hy, _mm_andnot_ps(signBit, _mm_load_ps(m_normalY + lane)), reach);
         reach = simd::MulAdd(hz, _mm_andnot_ps(signBit, _mm_load_ps(m_normalZ + lane)), reach);

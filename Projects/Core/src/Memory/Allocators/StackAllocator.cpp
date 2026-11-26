@@ -76,7 +76,10 @@ void* StackAllocator::Allocate(std::size_t size, std::size_t alignment)
     assert(size > 0);
     assert(IsPowerOfTwo(alignment));
 
-    if (m_memory == nullptr || size == 0 || !IsPowerOfTwo(alignment)) {
+    if (m_memory == nullptr) {
+        return nullptr;
+    }
+    if (size == 0 || !IsPowerOfTwo(alignment)) {
         return nullptr;
     }
 
@@ -85,7 +88,7 @@ void* StackAllocator::Allocate(std::size_t size, std::size_t alignment)
         return nullptr;
     }
 
-    /// @note ペイロードの直前に置くヘッダーにもアラインメントが必要。
+    // ペイロードとその直前のヘッダーの両方を整列させる。
     const std::size_t payloadAlignment = std::max(alignment, alignof(AllocationHeader));
     void* payloadStart = m_memory + m_offset + sizeof(AllocationHeader);
     std::size_t payloadSpace = availableBytes - sizeof(AllocationHeader);
@@ -94,11 +97,13 @@ void* StackAllocator::Allocate(std::size_t size, std::size_t alignment)
         return nullptr;
     }
 
+    // 返却時にスタックを戻せるよう、確保前の位置と直前の確保先を保存する。
     auto* headerAddress = payload - sizeof(AllocationHeader);
     auto* header = static_cast<AllocationHeader*>(static_cast<void*>(headerAddress));
     header->previousOffset = m_offset;
     header->previousAllocation = m_lastAllocation;
 
+    // 位置合わせで消費した余白を含め、新しい頂上と使用量を更新する。
     const std::size_t payloadOffset = static_cast<std::size_t>(payload - m_memory);
     m_offset = payloadOffset + size;
     m_lastAllocation = payload;
@@ -119,10 +124,14 @@ void StackAllocator::Free(void* ptr)
     assert(Owns(ptr));
     assert(ptr == m_lastAllocation);
 
-    if (!Owns(ptr) || ptr != m_lastAllocation) {
+    if (!Owns(ptr)) {
+        return;
+    }
+    if (ptr != m_lastAllocation) {
         return;
     }
 
+    // 頂上の確保だけを返却し、ヘッダーに保存した位置へ戻す。
     auto* headerAddress = static_cast<std::uint8_t*>(ptr) - sizeof(AllocationHeader);
     const auto* header = static_cast<const AllocationHeader*>(static_cast<const void*>(headerAddress));
     m_offset = header->previousOffset;
@@ -152,4 +161,4 @@ bool StackAllocator::Owns(const void* ptr) const
     return bytePtr >= m_memory && bytePtr < (m_memory + m_stats.capacity);
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

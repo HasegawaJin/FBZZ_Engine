@@ -12,7 +12,7 @@ namespace fbzz::math {
 struct Matrix4;
 
 struct Matrix3 {
-    float m[3][3] = {};
+    float m[3][3] = {}; ///< 行、列の順で参照する 3×3 の行列要素。
 
     constexpr Matrix3() = default;
 

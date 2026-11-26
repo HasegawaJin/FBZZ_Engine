@@ -39,9 +39,9 @@ public:
     [[nodiscard]] bool IsInitialized() const { return m_isInitialized; }
 
 private:
-    FrameAllocator m_frameAllocator;
-    MemoryTracker  m_tracker;
-    bool           m_isInitialized = false;
+    FrameAllocator m_frameAllocator; ///< このシステムが所有するフレーム一時領域。
+    MemoryTracker m_tracker; ///< 用途別の集計と未解放の確保を記録する台帳。
+    bool m_isInitialized = false; ///< フレーム一時領域の初期化が完了した場合に true。
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

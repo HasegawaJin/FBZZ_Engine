@@ -46,14 +46,13 @@ Plane NormalizeDepthPlane(const Plane& plane)
 
 }
 
-/// @note 4 球を転置して «球がレーン・平面がループ» にする。単体版は «平面がレーン» なので、判定の式と加算の順序は同じで結果も一致する。
 void Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const
 {
     FBZZ_MATH_CONTRACT(visible.size() >= spheres.size(),
                        "visible is shorter than spheres; judging only what fits");
     const size_t count = std::min(spheres.size(), visible.size());
 
-    /// @note 平面の係数を 4 レーンへ複製して置く。24 本をレジスタ (16 本) に抱えたままにはできないので、ループ内は L1 から読む。
+    // 平面の係数を 4 レーンへ複製して置く。24 本をレジスタ (16 本) に抱えたままにはできないので、ループ内は L1 から読む。
     simd::Vec planeNormalX[PLANE_COUNT];
     simd::Vec planeNormalY[PLANE_COUNT];
     simd::Vec planeNormalZ[PLANE_COUNT];
@@ -67,13 +66,14 @@ void Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint
 
     const simd::Vec signBit = _mm_set1_ps(-0.0f);
     size_t sphere = 0;
+    // まとめて判定するときは各レーンに球を置く。平面との距離は単体版と同じ順序で加算する。
     for (; sphere + 4 <= count; sphere += 4) {
         simd::Vec centerX = simd::Load4(&spheres[sphere].x);
         simd::Vec centerY = simd::Load4(&spheres[sphere + 1].x);
         simd::Vec centerZ = simd::Load4(&spheres[sphere + 2].x);
         simd::Vec radius = simd::Load4(&spheres[sphere + 3].x);
         simd::Transpose4x4(centerX, centerY, centerZ, radius);
-        /// @note 内向きの平面から球中心までの符号付き距離が −半径より小さければ、最も近い表面まで含めて視野の外にある。
+        // 内向きの平面から球中心までの符号付き距離が −半径より小さければ、最も近い表面まで含めて視野の外にある。
         const simd::Vec negativeRadius = _mm_xor_ps(radius, signBit);
 
         simd::Vec outside = _mm_setzero_ps();
@@ -87,15 +87,16 @@ void Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint
         const uint32_t bytes = VISIBLE_BYTES_BY_OUTSIDE_MASK[_mm_movemask_ps(outside)];
         std::memcpy(&visible[sphere], &bytes, sizeof(bytes));
     }
+
+    // 4 球に満たない端数は、入力と出力の範囲を越えないよう単体版で処理する。
     for (; sphere < count; ++sphere) {
         visible[sphere] = IntersectsSphere(spheres[sphere].XYZ(), spheres[sphere].w) ? 1 : 0;
     }
 }
 
-/// @note Gribb-Hartmann 法。M * v (列ベクトル規則) では clip.i = dot(row_i, world)。
-/// @note DirectX の深度は [0,1] なので、z = 0 側は clip.z の行だけで求める。
 Frustum Frustum::FromViewProjection(const Matrix4& viewProjection)
 {
+    // 列ベクトル規則では行列の各行とワールド座標との内積が、対応するクリップ座標の成分になる。
     const auto clipRow = [&viewProjection](int index) {
         const auto& row = viewProjection.m[index];
         return Vector4{row[0], row[1], row[2], row[3]};
@@ -105,6 +106,7 @@ Frustum Frustum::FromViewProjection(const Matrix4& viewProjection)
     const Vector4 clipZ = clipRow(2);
     const Vector4 clipW = clipRow(3);
 
+    // 左右と上下の条件は ±clip.x、±clip.y が clip.w 以下。残りの 2 平面は 0 <= clip.z <= clip.w から求める。
     Frustum result;
     result.SetPlane(0, PlaneFromCoefficients(clipW + clipX).Normalized());
     result.SetPlane(1, PlaneFromCoefficients(clipW - clipX).Normalized());

@@ -10,7 +10,10 @@
 namespace fbzz::math {
 
 struct Vector4 {
-    float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
+    float x = 0.0f; ///< 同次座標の X 成分、または色の赤成分。
+    float y = 0.0f; ///< 同次座標の Y 成分、または色の緑成分。
+    float z = 0.0f; ///< 同次座標の Z 成分、または色の青成分。
+    float w = 0.0f; ///< 同次座標の尺度成分、または色の不透明度。
 
     constexpr Vector4() = default;
     constexpr Vector4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
@@ -29,13 +32,13 @@ struct Vector4 {
     /// @note t を制限せず外挿を許す。各成分の減算・乗算・加算順序を維持する。
     static Vector4 Lerp(const Vector4& a, const Vector4& b, float t);
 
-    static const Vector4 ZERO;
-    static const Vector4 ONE;
-    static const Vector4 WHITE;
-    static const Vector4 BLACK;
-    static const Vector4 RED;
-    static const Vector4 GREEN;
-    static const Vector4 BLUE;
+    static const Vector4 ZERO; ///< 全成分が 0 のベクトル。
+    static const Vector4 ONE; ///< 全成分が 1 のベクトル。
+    static const Vector4 WHITE; ///< RGBA として解釈した不透明な白。
+    static const Vector4 BLACK; ///< RGBA として解釈した不透明な黒。
+    static const Vector4 RED; ///< RGBA として解釈した不透明な赤。
+    static const Vector4 GREEN; ///< RGBA として解釈した不透明な緑。
+    static const Vector4 BLUE; ///< RGBA として解釈した不透明な青。
 };
 
 inline const Vector4 Vector4::ZERO  = {0.0f, 0.0f, 0.0f, 0.0f};

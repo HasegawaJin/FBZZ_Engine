@@ -30,7 +30,9 @@ TEST_F(Vector2Test, NormalizedProducesUnitLength)
 {
     for (int i = 0; i < 64; ++i) {
         const math::Vector2 v = Rng().NextVector2(-100.0f, 100.0f);
-        if (v.LengthSq() < math::EPSILON) continue;
+        if (v.LengthSq() < math::EPSILON) {
+            continue;
+        }
 
         EXPECT_NEAR(v.Normalized().Length(), 1.0f, testkit::kTolerance);
     }
@@ -121,7 +123,7 @@ TEST_F(Vector2Test, DivisionIsTheInverseOfScaling)
 /// @brief Equality accepts a component difference below epsilon.
 TEST_F(Vector2Test, EqualityToleratesDifferencesBelowEpsilon)
 {
-    /// @note operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
+    // operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
     const math::Vector2 a(0.0f, 0.0f);
     const math::Vector2 b(math::EPSILON * 0.5f, 0.0f);
 

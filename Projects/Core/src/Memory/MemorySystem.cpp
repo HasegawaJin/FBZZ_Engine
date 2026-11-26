@@ -52,7 +52,7 @@ bool MemorySystem::Initialize(std::size_t frameAllocatorCapacity)
 
 void MemorySystem::Shutdown()
 {
-    /// @note Shutdown で台帳を消す前に未解放を検出する。assert で止まった場合は GetLeak() から発生位置を追える。
+    // Shutdown で台帳を消す前に未解放を検出する。assert で止まった場合は GetLeak() から発生位置を追える。
     assert(!HasLeaks());
 
     m_frameAllocator.Shutdown();
@@ -92,4 +92,4 @@ std::size_t MemorySystem::GetLeakCount() const
     return m_tracker.GetLeakCount();
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

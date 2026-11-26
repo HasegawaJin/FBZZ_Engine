@@ -20,7 +20,7 @@ Matrix4 Matrix4::Perspective(float fovY, float aspect, float nearZ, float farZ) 
         farZ = nearZ + 1.0f;
     }
 
-    /// @note 視野の半角の tan は、奥行き 1 における画面の半分の高さ。その逆数を掛けると上端が投影後の座標 1 に写る。
+    // 視野の半角の tan は、奥行き 1 における画面の半分の高さ。その逆数を掛けると上端が投影後の座標 1 に写る。
     const float yScale = 1.0f / std::tan(fovY * 0.5f);
     const float xScale = yScale / aspect;
     const float depthRange = farZ - nearZ;
@@ -53,7 +53,7 @@ Matrix4 Matrix4::Orthographic(float left, float right,
 }
 
 Matrix4 Matrix4::PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ) {
-    /// @note Perspective の z 行を (w - z) に置き換えた形。z_ndc = n (f - z) / (z (f - n))。
+    // Perspective の z 行を (w - z) に置き換えた形。z_ndc = n (f - z) / (z (f - n))。
     /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
     Matrix4 result = Perspective(fovY, aspect, nearZ, farZ);
     if (!(farZ > nearZ)) {

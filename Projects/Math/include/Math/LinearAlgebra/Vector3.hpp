@@ -10,7 +10,9 @@
 namespace fbzz::math {
 
 struct Vector3 {
-    float x = 0.0f, y = 0.0f, z = 0.0f;
+    float x = 0.0f; ///< 座標または変位の X 成分。
+    float y = 0.0f; ///< 座標または変位の Y 成分。
+    float z = 0.0f; ///< 座標または変位の Z 成分。
 
     constexpr Vector3() = default;
     constexpr Vector3(float x, float y, float z) : x(x), y(y), z(z) {}
@@ -32,7 +34,8 @@ struct Vector3 {
     /// @pre 長さが 0 でないこと。
     /// @note 契約違反時は ZERO を返し、MathContract.hpp が発生位置つきで 1 度だけ報告する。
     FBZZ_MATH_API Vector3 Normalized() const;
-    /// @brief 正規化を試み、長さ 0 なら fallback を返す。
+    /// @brief 正規化を試み、長さがほぼ 0 なら代わりの値を返す。
+    /// @param[in] fallback 長さがほぼ 0 のときに使う値。この値は正規化せずそのまま返す。
     /// @note 接触法線・進行方向・視線ベクトルなど退化入力が正常系に含まれる箇所で使う。契約違反として報告しない。
     Vector3 NormalizedOr(const Vector3& fallback) const;
 
@@ -40,13 +43,16 @@ struct Vector3 {
     FBZZ_MATH_API static float   Dot(const Vector3& a, const Vector3& b);
     /// @brief 外積。両方に垂直なベクトルを返す。二つの辺を渡すと、その長さが三角形の面積の 2 倍になる。
     FBZZ_MATH_API static Vector3 Cross(const Vector3& a, const Vector3& b);
-    /// @note t は a から b への進み具合。0.5 なら中点、1 を超えると b の先まで進む。
+    /// @brief 2 点を結ぶ直線上の位置を求める。
+    /// @param[in] a t = 0 に対応する始点。
+    /// @param[in] b t = 1 に対応する終点。a と同じ座標系を使う。
+    /// @param[in] t a から b へ進む比率。0 未満または 1 超なら線分の外まで進む。
     static Vector3 Lerp(const Vector3& a, const Vector3& b, float t);
 
-    static const Vector3 ZERO;
-    static const Vector3 ONE;
-    static const Vector3 UP;
-    static const Vector3 RIGHT;
+    static const Vector3 ZERO; ///< 全成分が 0 のベクトル。
+    static const Vector3 ONE; ///< 全成分が 1 のベクトル。
+    static const Vector3 UP; ///< 正の Y 軸を向く単位ベクトル。
+    static const Vector3 RIGHT; ///< 正の X 軸を向く単位ベクトル。
     static const Vector3 FORWARD; ///< @note DirectX 左手系: +Z が画面奥方向 (OpenGL は -Z)。
 };
 
@@ -87,7 +93,9 @@ inline float Vector3::Length()   const { return std::sqrt(LengthSq()); }
 
 inline Vector3 Vector3::NormalizedOr(const Vector3& fallback) const {
     float len = Length();
-    if (NearlyZero(len)) return fallback;
+    if (NearlyZero(len)) {
+        return fallback;
+    }
     return *this / len;
 }
 

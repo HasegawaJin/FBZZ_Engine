@@ -14,8 +14,7 @@
 namespace fbzz::math {
 
 struct Matrix4 {
-    /// @brief 要素配列。m[row][col]、行優先。
-    float m[4][4] = {};
+    float m[4][4] = {}; ///< 要素配列。m[row][col]、行優先。
 
     constexpr Matrix4() = default;
 

@@ -2,7 +2,7 @@
 /// @brief   1 フレーム内の一時メモリを管理する専用アロケータ。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-/// @note BeginFrame/EndFrame のタイミングで Reset し、短命データをまとめて再利用する。
+/// @note EndFrame で領域をリセットし、フレーム内の一時メモリをまとめて再利用する。
 #pragma once
 #include <Core/Api.hpp>
 
@@ -41,10 +41,8 @@ public:
     [[nodiscard]] bool IsInitialized() const { return m_allocator.IsInitialized(); }
 
 private:
-    /// @note 同じフレームで使う領域をまとめて所有し、フレーム境界で再利用する。
-    LinearAllocator m_allocator;
-    /// @note 領域をリセットして次のフレームに進んだ回数。
-    std::uint64_t   m_frameIndex = 0;
+    LinearAllocator m_allocator; ///< フレーム内の確保領域を所有し、境界で一括再利用する。
+    std::uint64_t m_frameIndex = 0; ///< BeginFrame で進むフレーム番号。Shutdown で 0 へ戻る。
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

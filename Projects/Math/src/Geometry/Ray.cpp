@@ -15,54 +15,76 @@ Vector3 Ray::At(float t) const
 
 bool Ray::IntersectPlane(const Plane& plane, float& outT) const
 {
-    /// @note 内積はレイが 1 進む間に平面の法線方向へ進む量。ほぼ 0 なら平行で、交点を一つに決められない。
-    float denom = Vector3::Dot(plane.normal, direction);
-    if (NearlyZero(denom)) return false;
-    outT = -(Vector3::Dot(plane.normal, origin) + plane.distance) / denom;
+    // 内積はレイが 1 進む間に平面の法線方向へ進む量。ほぼ 0 なら平行で、交点を一つに決められない。
+    const float normalDirection = Vector3::Dot(plane.normal, direction);
+    if (NearlyZero(normalDirection)) {
+        return false;
+    }
+
+    // 平行でなければ、後方であっても平面に達するパラメータを返す。
+    outT = -(Vector3::Dot(plane.normal, origin) + plane.distance) / normalDirection;
     return outT >= 0.0f;
 }
 
 bool Ray::IntersectSphere(const Vector3& center, float radius, float& outT) const
 {
-    /// @note direction は正規化済みのため二次方程式の a = 1、半 b 形式で計算する。
-    Vector3 oc   = origin - center;
-    float   b    = Vector3::Dot(oc, direction);
-    float   c    = Vector3::Dot(oc, oc) - radius * radius;
-    /// @note レイ上の点が球面にある条件は t² + 2bt + c = 0。判別式が負ならレイは球面に届かない。
-    float   disc = b * b - c;
-    if (disc < 0.0f) return false;
-    float s  = std::sqrt(disc);
-    /// @note 小さい解は球への入口、大きい解は出口。始点が球内なら入口は後方なので、前方の出口を採る。
-    float t0 = -b - s;
-    float t1 = -b + s;
-    float t  = (t0 > EPSILON) ? t0 : ((t1 > EPSILON) ? t1 : -1.0f);
-    if (t < EPSILON) return false;
-    outT = t;
-    return true;
+    // direction は正規化済みのため二次方程式の a = 1、半 b 形式で計算する。
+    const Vector3 originFromCenter = origin - center;
+    const float halfLinearCoefficient = Vector3::Dot(originFromCenter, direction);
+    const float constantCoefficient = Vector3::Dot(originFromCenter, originFromCenter) - radius * radius;
+
+    // 半 b 形式の判別式が負なら球面に届かない。
+    const float discriminant = halfLinearCoefficient * halfLinearCoefficient - constantCoefficient;
+    if (discriminant < 0.0f) {
+        return false;
+    }
+
+    // 入口が前方なら最近点になる。レイが球内から始まる場合は前方にある出口を採る。
+    const float root = std::sqrt(discriminant);
+    const float entry = -halfLinearCoefficient - root;
+    const float exit = -halfLinearCoefficient + root;
+    if (entry > EPSILON) {
+        outT = entry;
+        return true;
+    }
+    if (exit > EPSILON) {
+        outT = exit;
+        return true;
+    }
+    return false;
 }
 
-bool Ray::IntersectTriangle(const Vector3& v0, const Vector3& v1, const Vector3& v2,
+bool Ray::IntersectTriangle(const Vector3& vertexA, const Vector3& vertexB, const Vector3& vertexC,
                             float& outT) const
 {
-    /// @note Möller-Trumbore アルゴリズム。
-    Vector3 e1  = v1 - v0;
-    Vector3 e2  = v2 - v0;
-    Vector3 p   = Vector3::Cross(direction, e2);
-    float   det = Vector3::Dot(e1, p);
-    if (det > -EPSILON && det < EPSILON) return false;
-    float invDet = 1.0f / det;
+    // Möller–Trumbore 法で、レイが三角形の面と平行な場合を除く。
+    const Vector3 edgeAB = vertexB - vertexA;
+    const Vector3 edgeAC = vertexC - vertexA;
+    const Vector3 crossDirectionWithAC = Vector3::Cross(direction, edgeAC);
+    const float determinant = Vector3::Dot(edgeAB, crossDirectionWithAC);
+    const bool parallelToFace = determinant > -EPSILON && determinant < EPSILON;
+    if (parallelToFace) {
+        return false;
+    }
+    const float inverseDeterminant = 1.0f / determinant;
 
-    Vector3 tvec = origin - v0;
-    /// @note u と v は三角形の 2 辺に沿う割合。残りの頂点の割合は 1 − u − v で、三つとも 0 以上なら三角形の内側にある。
-    float   u    = Vector3::Dot(tvec, p) * invDet;
-    if (u < 0.0f || u > 1.0f) return false;
+    // B と C の重みを順に求める。残りの A の重みも 0 以上なら三角形の内側にある。
+    const Vector3 originFromA = origin - vertexA;
+    const float weightB = Vector3::Dot(originFromA, crossDirectionWithAC) * inverseDeterminant;
+    if (weightB < 0.0f || weightB > 1.0f) {
+        return false;
+    }
+    const Vector3 crossOriginWithAB = Vector3::Cross(originFromA, edgeAB);
+    const float weightC = Vector3::Dot(direction, crossOriginWithAB) * inverseDeterminant;
+    if (weightC < 0.0f || (weightB + weightC) > 1.0f) {
+        return false;
+    }
 
-    Vector3 qvec = Vector3::Cross(tvec, e1);
-    float   v    = Vector3::Dot(direction, qvec) * invDet;
-    if (v < 0.0f || (u + v) > 1.0f) return false;
-
-    float t = Vector3::Dot(e2, qvec) * invDet;
-    if (t < EPSILON) return false;
+    // 三角形の内側でも、レイの後方や始点に近すぎる交点は採らない。
+    const float t = Vector3::Dot(edgeAC, crossOriginWithAB) * inverseDeterminant;
+    if (t < EPSILON) {
+        return false;
+    }
     outT = t;
     return true;
 }
@@ -73,15 +95,19 @@ Ray Ray::FromNDC(float ndcX, float ndcY,
     Vector4 nearClip = { ndcX, ndcY, 0.0f, 1.0f };
     Vector4 farClip  = { ndcX, ndcY, 1.0f, 1.0f };
 
-    /// @note 画面上の同じ点を手前と奥の 2 点に戻す。それぞれ w で割ってから差を取ると、世界空間の視線の向きが得られる。
+    // 画面上の同じ点を手前と奥の 2 点に戻す。それぞれ w で割ってから差を取ると、世界空間の視線の向きが得られる。
     Vector4 nearWorld = invViewProj * nearClip;
     Vector4 farWorld  = invViewProj * farClip;
-    if (!NearlyZero(nearWorld.w)) nearWorld = nearWorld * (1.0f / nearWorld.w);
-    if (!NearlyZero(farWorld.w))  farWorld  = farWorld  * (1.0f / farWorld.w);
+    if (!NearlyZero(nearWorld.w)) {
+        nearWorld = nearWorld * (1.0f / nearWorld.w);
+    }
+    if (!NearlyZero(farWorld.w)) {
+        farWorld  = farWorld  * (1.0f / farWorld.w);
+    }
 
-    Vector3 nearW = { nearWorld.x, nearWorld.y, nearWorld.z };
-    Vector3 farW  = { farWorld.x,  farWorld.y,  farWorld.z  };
-    return { cameraPos, (farW - nearW).Normalized() };
+    const Vector3 nearPoint = {nearWorld.x, nearWorld.y, nearWorld.z};
+    const Vector3 farPoint = {farWorld.x, farWorld.y, farWorld.z};
+    return {cameraPos, (farPoint - nearPoint).Normalized()};
 }
 
-} /// @note namespace fbzz::math
+} // namespace fbzz::math

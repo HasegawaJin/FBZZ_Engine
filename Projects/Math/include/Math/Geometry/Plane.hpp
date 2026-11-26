@@ -16,7 +16,7 @@
 namespace fbzz::math {
 
 struct Plane {
-    Vector3 normal   = { 0.0f, 1.0f, 0.0f };
+    Vector3 normal   = { 0.0f, 1.0f, 0.0f }; ///< 平面方程式の法線。符号付き距離の計算には単位法線を使う。
     float   distance = 0.0f; ///< @note dot(normal, p) + distance = 0 を満たす値。
 
     constexpr Plane() = default;

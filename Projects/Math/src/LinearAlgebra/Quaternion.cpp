@@ -34,7 +34,7 @@ Quaternion FromDominantDiagonal(const Vector3& right, const Vector3& up, const V
 }
 
 Quaternion Quaternion::FromAxisAngle(const Vector3& axis, float angleRad) {
-    /// @note 回転は q とその逆で向きを両側から変換する。角度 θ の回転は、軸に sin(θ/2) を掛けた 3 成分と cos(θ/2) で表す。
+    // 回転は q とその逆で向きを両側から変換する。角度 θ の回転は、軸に sin(θ/2) を掛けた 3 成分と cos(θ/2) で表す。
     const float halfAngle = angleRad * 0.5f;
     const float sinHalfAngle = std::sin(halfAngle);
     const float cosHalfAngle = std::cos(halfAngle);
@@ -75,7 +75,7 @@ Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
 
     const float trace = unitRight.x + correctedUp.y + unitForward.z;
     if (trace > 0.0f) {
-        /// @note FromMatrix4 と式は等価だが、既存の丸め順序を保つため逆数を先に求める。
+        // FromMatrix4 と式は等価だが、既存の丸め順序を保つため逆数を先に求める。
         const float inverseFourW = 0.5f / std::sqrt(trace + 1.0f);
         return {(correctedUp.z - unitForward.y) * inverseFourW,
                 (unitForward.x - unitRight.z) * inverseFourW,
@@ -134,21 +134,21 @@ Quaternion Quaternion::Lerp(const Quaternion& a, const Quaternion& b, float t) {
 Quaternion Quaternion::Slerp(const Quaternion& a, const Quaternion& b, float t) {
     float dot = Dot(a, b);
 
-    /// @note 遠回りを防ぐため dot が負なら b を反転する。
+    // 遠回りを防ぐため dot が負なら b を反転する。
     Quaternion end = b;
     if (dot < 0.0f) {
         end = {-b.x, -b.y, -b.z, -b.w};
         dot = -dot;
     }
 
-    /// @note dot が 1 に近ければ線形補間で近似する (acos が不安定になるため)。
+    // dot が 1 に近ければ線形補間で近似する (acos が不安定になるため)。
     if (dot > 1.0f - EPSILON) {
         return Lerp(a, end, t);
     }
 
     const float theta = std::acos(dot);
     const float sinTheta = std::sin(theta);
-    /// @note 二つの姿勢を結ぶ円弧上で、進んだ角度が t × θ になる重み。t が同じだけ増えるたびに同じ角度だけ回る。
+    // 二つの姿勢を結ぶ円弧上で、進んだ角度が t × θ になる重み。t が同じだけ増えるたびに同じ角度だけ回る。
     const float startWeight = std::sin((1.0f - t) * theta) / sinTheta;
     const float endWeight = std::sin(t * theta) / sinTheta;
 

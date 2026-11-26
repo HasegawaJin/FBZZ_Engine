@@ -83,7 +83,7 @@ protected:
         const std::string testName = std::string(test->test_suite_name()) + "." + test->name();
         std::wstring childCommand = L"\"" + std::wstring(executable) + L"\" --gtest_filter=";
         childCommand.append(testName.begin(), testName.end());
-        /// @note レポート指定で TestKit の自動実行モードを明示し、親の起動方法にかかわらず CRT ダイアログと入力待ちを抑止する。
+        // レポート指定で TestKit の自動実行モードを明示し、親の起動方法にかかわらず CRT ダイアログと入力待ちを抑止する。
         childCommand += L" --gtest_output=xml:\"" + (temp.Path() / L"child.xml").native() + L"\"";
         childCommand += CHILD_ROOT_ARGUMENT + temp.Path().native() + L"\"";
         STARTUPINFOW startup{};
@@ -96,7 +96,7 @@ protected:
 
         const DWORD wait = WaitForSingleObject(processHandle.get(), CHILD_TIMEOUT_MS);
         if (wait != WAIT_OBJECT_0) {
-            /// @note 自分が生成した子だけを回収し、タイムアウトを成功扱いしない。
+            // 自分が生成した子だけを回収し、タイムアウトを成功扱いしない。
             TerminateProcess(processHandle.get(), 99);
             WaitForSingleObject(processHandle.get(), CHILD_TIMEOUT_MS);
         }
@@ -200,7 +200,7 @@ TEST_P(CrashExceptionRecordTest, PreservesExceptionCodeNameAndAddressInTheReport
         RtlCaptureContext(&context);
         EXCEPTION_RECORD record{};
         record.ExceptionCode = scenario.code;
-        /// @note 有効なモジュール先頭ならオフセットは常に 0。未知コードだけ未所属アドレスの表記を検証する。
+        // 有効なモジュール先頭ならオフセットは常に 0。未知コードだけ未所属アドレスの表記を検証する。
         record.ExceptionAddress = scenario.code == 0xE0123456u ? nullptr : GetModuleHandleW(nullptr);
         record.NumberParameters = scenario.code == EXCEPTION_ACCESS_VIOLATION ? 2 : 0;
         record.ExceptionInformation[0] = scenario.access;

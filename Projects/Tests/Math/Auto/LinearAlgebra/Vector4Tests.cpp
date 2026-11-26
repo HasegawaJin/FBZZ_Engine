@@ -48,7 +48,7 @@ TEST_F(Vector4Test, XYZRoundTripsThroughTheVector3Constructor)
 /// @brief Length includes the W component.
 TEST_F(Vector4Test, LengthIncludesTheWComponent)
 {
-    /// @note w を落として計算していたら 1.0 になる。4 成分を見ていることを固定する。
+    // w を落として計算していたら 1.0 になる。4 成分を見ていることを固定する。
     const math::Vector4 v(1.0f, 0.0f, 0.0f, 1.0f);
 
     EXPECT_NEAR(v.Length(), math::Sqrt(2.0f), testkit::kTolerance);
@@ -125,7 +125,7 @@ TEST_F(Vector4Test, EqualityRejectsDifferencesAboveEpsilon)
 /// @brief Color constants are opaque.
 TEST_F(Vector4Test, ColorConstantsAreOpaque)
 {
-    /// @note 色として使う定数は alpha = 1。ZERO / ONE は «数» なので対象外。
+    // 色として使う定数は alpha = 1。ZERO / ONE は «数» なので対象外。
     EXPECT_NEAR(math::Vector4::WHITE.w, 1.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Vector4::BLACK.w, 1.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Vector4::RED.w, 1.0f, testkit::kTolerance);

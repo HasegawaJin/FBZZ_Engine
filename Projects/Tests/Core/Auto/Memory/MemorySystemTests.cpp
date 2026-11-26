@@ -36,8 +36,8 @@ TEST_F(MemorySystemTest, ReportsNoLeakWhileNothingIsTracked)
     core::MemorySystem memory;
     ASSERT_TRUE(memory.Initialize(256));
 
-    /// @note Shutdown は «未解放が無いこと» を assert で確かめてから台帳を捨てる。
-    ///       何も追跡していない状態を漏れ扱いにすると、正常な終了で毎回止まる。
+    // Shutdown は «未解放が無いこと» を assert で確かめてから台帳を捨てる。
+    // 何も追跡していない状態を漏れ扱いにすると、正常な終了で毎回止まる。
     EXPECT_EQ(memory.GetLeakCount(), 0u);
     EXPECT_FALSE(memory.HasLeaks());
 }
@@ -52,7 +52,7 @@ TEST_F(MemorySystemTest, MoveConstructionTakesOverTheFrameAllocator)
 
     EXPECT_TRUE(moved.IsInitialized());
     EXPECT_EQ(moved.GetFrameAllocator().GetStats().capacity, 256u);
-    /// @note 移動元が初期化済みのままだと、両方の Shutdown が同じ領域を解放しにいく。
+    // 移動元が初期化済みのままだと、両方の Shutdown が同じ領域を解放しにいく。
     EXPECT_FALSE(source.IsInitialized());   // NOLINT(bugprone-use-after-move)
 }
 

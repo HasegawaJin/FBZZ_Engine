@@ -50,11 +50,12 @@ bool PoolAllocator::Initialize(std::size_t blockSize, std::size_t blockCount, st
 
     Shutdown();
 
-    if (blockSize == 0 || blockCount == 0 || !IsPowerOfTwo(alignment)) {
+    const bool hasBlocksToAllocate = blockSize != 0 && blockCount != 0;
+    if (!hasBlocksToAllocate || !IsPowerOfTwo(alignment)) {
         return false;
     }
 
-    /// @note 空きブロックには次の空きブロックへのポインタを格納する。
+    // 利用者の指定に加え、空きブロックに次のブロックを指すポインターを置けるサイズと境界を確保する。
     const std::size_t blockAlignment = std::max(alignment, alignof(FreeNode));
     const std::size_t minimumBlockBytes = std::max(blockSize, sizeof(FreeNode));
     const std::size_t maxAlignmentPadding = blockAlignment - 1;
@@ -63,6 +64,7 @@ bool PoolAllocator::Initialize(std::size_t blockSize, std::size_t blockCount, st
         return false;
     }
 
+    // ブロック数との積と先頭の位置合わせで、確保サイズが size_t を超えないことを確認する。
     const std::size_t blockStride = AlignSize(minimumBlockBytes, blockAlignment);
     if (blockStride > MAX_SIZE / blockCount) {
         return false;
@@ -86,6 +88,7 @@ bool PoolAllocator::Initialize(std::size_t blockSize, std::size_t blockCount, st
         return false;
     }
 
+    // 位置合わせ済みの領域を確定してから、各ブロックを空きリストに載せる。
     m_memory = static_cast<std::uint8_t*>(alignedMemory);
     m_blockSize = blockSize;
     m_blockCount = blockCount;
@@ -173,8 +176,8 @@ void PoolAllocator::Reset()
     }
 
     m_freeList = nullptr;
-    for (std::size_t i = 0; i < m_blockCount; ++i) {
-        auto* node = static_cast<FreeNode*>(static_cast<void*>(m_memory + i * m_stride));
+    for (std::size_t blockIndex = 0; blockIndex < m_blockCount; ++blockIndex) {
+        auto* node = static_cast<FreeNode*>(static_cast<void*>(m_memory + blockIndex * m_stride));
         node->next = m_freeList;
         m_freeList = node;
     }
@@ -201,4 +204,4 @@ bool PoolAllocator::Owns(const void* ptr) const
     return (offset % m_stride) == 0;
 }
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core

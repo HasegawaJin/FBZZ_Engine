@@ -76,7 +76,7 @@ TYPED_TEST(AllocatorMoveTest, MoveConstructionLeavesTheSourceEmpty)
 
     TypeParam moved(std::move(source));
 
-    /// @note ムーブ元が領域を指したままだと、先に死んだ方が解放してもう一方が二重解放する。
+    // ムーブ元が領域を指したままだと、先に死んだ方が解放してもう一方が二重解放する。
     EXPECT_FALSE(source.IsInitialized());   // NOLINT(bugprone-use-after-move) — ムーブ後の状態こそが検証対象
     EXPECT_EQ(source.GetStats().capacity, 0u);
 }
@@ -93,7 +93,7 @@ TYPED_TEST(AllocatorMoveTest, MoveAssignmentReleasesTheRegionItAlreadyHeld)
 
     target = std::move(source);
 
-    /// @note 代入前に持っていた領域を捨てずに上書きすると、そのぶんが誰にも解放されず残る。
+    // 代入前に持っていた領域を捨てずに上書きすると、そのぶんが誰にも解放されず残る。
     EXPECT_TRUE(target.Owns(fromSource));
     EXPECT_FALSE(source.IsInitialized());   // NOLINT(bugprone-use-after-move)
 }
@@ -109,7 +109,7 @@ TYPED_TEST(AllocatorMoveTest, SelfMoveAssignmentKeepsTheRegionUsable)
     TypeParam& alias = allocator;
     allocator = std::move(alias);
 
-    /// @note 自己代入で Shutdown してしまうと、この時点で領域が消えて以降の Owns が false になる。
+    // 自己代入で Shutdown してしまうと、この時点で領域が消えて以降の Owns が false になる。
     EXPECT_TRUE(allocator.IsInitialized());
     EXPECT_TRUE(allocator.Owns(block));
 }
@@ -142,7 +142,7 @@ TEST_F(AllocatorGuardTest, FreeingNullIsANoOpForEveryAllocator)
     ASSERT_TRUE(stack.Initialize(64));
     ASSERT_TRUE(pool.Initialize(32, 4, 8));
 
-    /// @note 解放済みポインタを nullptr にしてから返す、という呼び出し側の書き方を許す。
+    // 解放済みポインタを nullptr にしてから返す、という呼び出し側の書き方を許す。
     linear.Free(nullptr);
     stack.Free(nullptr);
     pool.Free(nullptr);
@@ -167,8 +167,8 @@ TEST_F(AllocatorGuardTest, PoolRejectsARequestWhoseTotalSizeOverflows)
 {
     core::PoolAllocator pool;
 
-    /// @note stride * blockCount が size_t を溢れる要求。掛け算をそのまま malloc へ渡すと、
-    ///       折り返した小さな領域が «確保成功» として返り、あとで境界外へ書き込む。
+    // stride * blockCount が size_t を溢れる要求。掛け算をそのまま malloc へ渡すと、
+    // 折り返した小さな領域が «確保成功» として返り、あとで境界外へ書き込む。
     EXPECT_FALSE(pool.Initialize(64, static_cast<std::size_t>(-1), 8));
     EXPECT_FALSE(pool.IsInitialized());
 }
@@ -179,8 +179,8 @@ TEST_F(AllocatorGuardTest, StackRejectsAnAllocationThatCannotEvenHoldItsHeader)
     core::StackAllocator stack;
     ASSERT_TRUE(stack.Initialize(4));
 
-    /// @note StackAllocator は各割り当ての手前にヘッダーを置く。ヘッダーぶんも無い容量で
-    ///       引き算すると符号なしで巨大な «残り容量» になり、確保できたことにされてしまう。
+    // StackAllocator は各割り当ての手前にヘッダーを置く。ヘッダーぶんも無い容量で
+    // 引き算すると符号なしで巨大な «残り容量» になり、確保できたことにされてしまう。
     EXPECT_EQ(stack.Allocate(1, 8), nullptr);
 }
 

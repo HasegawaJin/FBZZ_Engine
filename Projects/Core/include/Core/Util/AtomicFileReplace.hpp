@@ -14,4 +14,4 @@ namespace fbzz::util {
 [[nodiscard]] FBZZ_CORE_API std::error_code ReplaceFileAtomic(const std::filesystem::path& temporary,
                                                                const std::filesystem::path& target);
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

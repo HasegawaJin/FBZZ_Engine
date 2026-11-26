@@ -36,12 +36,12 @@ public:
     FBZZ_CORE_API static void RemoveSink(ILogSink* sink);
 
 private:
-    FBZZ_CORE_API static LogLevel s_minLevel;
-    static std::vector<ILogSink*> s_sinks;
+    FBZZ_CORE_API static LogLevel s_minLevel; ///< 出力する最も低いログレベル。
+    static std::vector<ILogSink*> s_sinks; ///< 登録順に通知する非所有の出力先。
     FBZZ_CORE_API static void Log(LogLevel level, const char* fmt, va_list args);
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core
 
 #define FBZZ_FILENAME (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
 

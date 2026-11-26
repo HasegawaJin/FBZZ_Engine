@@ -71,7 +71,7 @@ protected:
         std::vector<math::Matrix4> result;
         for (int i = 0; i < kCaseCount; ++i) {
             if (i % 2 == 0) {
-                /// @note 引数の評価順は未規定なので、乱数は必ず別の文で取り出す。
+                // 引数の評価順は未規定なので、乱数は必ず別の文で取り出す。
                 const math::Vector3    t = Rng().NextVector3(-10.0f, 10.0f);
                 const math::Quaternion r = Rng().NextRotation();
                 const math::Vector3    s = Rng().NextVector3(0.25f, 4.0f);
@@ -116,7 +116,7 @@ TEST_F(ScalarParityTest, MatrixVectorProductMatchesTheScalarReference)
 /// @brief Transpose matches the scalar reference.
 TEST_F(ScalarParityTest, TransposeMatchesTheScalarReference)
 {
-    /// @note 転置は値を動かすだけなので誤差 0 で一致する。
+    // 転置は値を動かすだけなので誤差 0 で一致する。
     for (const math::Matrix4& m : MakeMatrices())
         EXPECT_MAT4_NEAR(math::Matrix4::Transpose(m), reference::Transpose(m), 0.0f);
 }
@@ -135,7 +135,7 @@ TEST_F(ScalarParityTest, InverseMatchesTheScalarReference)
 /// @brief Inverse of a singular matrix is identity.
 TEST_F(ScalarParityTest, InverseOfASingularMatrixIsIdentity)
 {
-    /// @note scale に 0 が入った Transform は Inspector の操作で普通に起きる。契約は «単位行列を返す»。
+    // scale に 0 が入った Transform は Inspector の操作で普通に起きる。契約は «単位行列を返す»。
     const math::Matrix4 flat = math::Matrix4::TRS({ 1.0f, 2.0f, 3.0f }, math::Quaternion::Identity(),
                                                   { 1.0f, 0.0f, 1.0f });
     EXPECT_MAT4_NEAR(math::Matrix4::Inverse(flat), math::Matrix4::Identity(), 0.0f);
@@ -147,7 +147,7 @@ TEST_F(ScalarParityTest, TrsMatchesTheProductOfTranslateRotateScale)
     for (int i = 0; i < kCaseCount; ++i) {
         const math::Vector3    t = Rng().NextVector3(-50.0f, 50.0f);
         const math::Quaternion r = Rng().NextRotation();
-        /// @note 負のスケール (鏡映) も Transform では普通に使う。
+        // 負のスケール (鏡映) も Transform では普通に使う。
         const math::Vector3    s = Rng().NextVector3(-4.0f, 4.0f);
         const math::Matrix4 expected = reference::Trs(t, r, s);
         EXPECT_MAT4_NEAR(math::Matrix4::TRS(t, r, s), expected,
@@ -167,7 +167,9 @@ TEST_F(ScalarParityTest, PointContainmentMatchesTheScalarReference)
         for (int i = 0; i < kCaseCount * 4; ++i) {
             const math::Vector3 point = Rng().NextVector3(-40.0f, 40.0f);
             const float margin = reference::SphereMargin(planes, point, 0.0f);
-            if (std::fabs(margin) < kBoundaryMargin) continue;
+            if (std::fabs(margin) < kBoundaryMargin) {
+                continue;
+            }
             const bool expected = margin >= 0.0f;
             EXPECT_EQ(frustum.Contains(point), expected) << "case " << i;
             ++(expected ? inside : outside);
@@ -188,12 +190,14 @@ TEST_F(ScalarParityTest, SphereCullingMatchesTheScalarReference)
             const math::Vector3 center = Rng().NextVector3(-40.0f, 40.0f);
             const float radius = Rng().NextFloat(0.0f, 5.0f);
             const float margin = reference::SphereMargin(planes, center, radius);
-            if (std::fabs(margin) < kBoundaryMargin) continue;
+            if (std::fabs(margin) < kBoundaryMargin) {
+                continue;
+            }
             const bool expected = margin >= 0.0f;
             EXPECT_EQ(frustum.IntersectsSphere(center, radius), expected) << "case " << i;
             ++(expected ? inside : outside);
         }
-        /// @note 内外の両方を十分に踏んでいること。入力の範囲が錐台から外れると片側しか検査しない。
+        // 内外の両方を十分に踏んでいること。入力の範囲が錐台から外れると片側しか検査しない。
         EXPECT_GT(inside, kCaseCount / 8);
         EXPECT_GT(outside, kCaseCount / 8);
     }
@@ -202,8 +206,8 @@ TEST_F(ScalarParityTest, SphereCullingMatchesTheScalarReference)
 /// @brief Batched sphere culling matches one by one.
 TEST_F(ScalarParityTest, BatchedSphereCullingMatchesOneByOne)
 {
-    /// @note 一括版は単体版と式も加算の順序も同じなので、境界ぎりぎりも含めて全件が一致する。
-    /// @note 4 の倍数でない個数にして、端数を単体版で処理する経路も通す。
+    // 一括版は単体版と式も加算の順序も同じなので、境界ぎりぎりも含めて全件が一致する。
+    // 4 の倍数でない個数にして、端数を単体版で処理する経路も通す。
     constexpr int kSphereCount = 1023;
     for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {
         std::vector<math::Vector4> spheres;
@@ -223,7 +227,7 @@ TEST_F(ScalarParityTest, BatchedSphereCullingMatchesOneByOne)
 /// @brief Batched sphere culling writes only what fits.
 TEST_F(ScalarParityTest, BatchedSphereCullingWritesOnlyWhatFits)
 {
-    /// @note 出力が短いのは呼び出し側の誤り。報告して入る数だけ判定し、範囲外へは書かない。
+    // 出力が短いのは呼び出し側の誤り。報告して入る数だけ判定し、範囲外へは書かない。
     const math::Frustum frustum = PerspectiveFrustum();
     const std::vector<math::Vector4> spheres(9, math::Vector4{ 0.0f, 0.0f, 10.0f, 1.0f });
     std::vector<uint8_t> visible(10, 2);
@@ -243,7 +247,9 @@ TEST_F(ScalarParityTest, AabbCullingMatchesTheScalarReference)
             const math::Vector3 center = Rng().NextVector3(-40.0f, 40.0f);
             const math::Vector3 half = Rng().NextVector3(0.0f, 5.0f);
             const float margin = reference::AabbMargin(planes, center, half);
-            if (std::fabs(margin) < kBoundaryMargin) continue;
+            if (std::fabs(margin) < kBoundaryMargin) {
+                continue;
+            }
             const bool expected = margin >= 0.0f;
             EXPECT_EQ(frustum.IntersectsAABB(center, half), expected) << "case " << i;
             ++(expected ? inside : outside);

@@ -32,7 +32,9 @@ TEST_F(Vector3Test, NormalizedProducesUnitLength)
 {
     for (int i = 0; i < 64; ++i) {
         const math::Vector3 v = Rng().NextVector3(-100.0f, 100.0f);
-        if (v.LengthSq() < math::EPSILON) continue;
+        if (v.LengthSq() < math::EPSILON) {
+            continue;
+        }
 
         EXPECT_UNIT_LENGTH(v.Normalized(), testkit::kTolerance);
     }
@@ -98,7 +100,7 @@ TEST_F(Vector3Test, DotIsCommutative)
 /// @brief 右 × 上、上 × 前、前 × 右の外積がそれぞれ前、右、上の基底と一致する。
 TEST_F(Vector3Test, CrossOfRightAndUpIsForward)
 {
-    /// @note 基底の向きの定義そのもの。ここが反転すると法線・接空間・カメラ基底が全部裏返る。
+    // 基底の向きの定義そのもの。ここが反転すると法線・接空間・カメラ基底が全部裏返る。
     EXPECT_VEC3_NEAR(math::Vector3::Cross(math::Vector3::RIGHT, math::Vector3::UP),
                      math::Vector3::FORWARD, testkit::kTolerance);
     EXPECT_VEC3_NEAR(math::Vector3::Cross(math::Vector3::UP, math::Vector3::FORWARD),
@@ -126,8 +128,10 @@ TEST_F(Vector3Test, CrossIsPerpendicularToBothOperands)
         const math::Vector3 a = Rng().NextUnitVector3();
         const math::Vector3 b = Rng().NextUnitVector3();
         const math::Vector3 c = math::Vector3::Cross(a, b);
-        /// @note 平行な組は直交性を語れない
-        if (c.LengthSq() < math::EPSILON) continue;
+        // 平行な組は直交性を語れない
+        if (c.LengthSq() < math::EPSILON) {
+            continue;
+        }
 
         EXPECT_NEAR(math::Vector3::Dot(c, a), 0.0f, testkit::kTolerance);
         EXPECT_NEAR(math::Vector3::Dot(c, b), 0.0f, testkit::kTolerance);
@@ -192,7 +196,7 @@ TEST_F(Vector3Test, NegationEqualsScalingByMinusOne)
 /// @brief 一成分の差が EPSILON の半分なら等値と判定し、不等値は偽を返す。
 TEST_F(Vector3Test, EqualityToleratesDifferencesBelowEpsilon)
 {
-    /// @note operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
+    // operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
     const math::Vector3 a(0.0f, 0.0f, 0.0f);
     const math::Vector3 b(math::EPSILON * 0.5f, 0.0f, 0.0f);
 

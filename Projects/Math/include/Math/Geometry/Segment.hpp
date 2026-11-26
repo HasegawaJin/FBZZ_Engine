@@ -16,13 +16,15 @@ namespace fbzz::math {
 {
     const Vector3 segment = to - from;
     const float lengthSq = segment.LengthSq();
-    if (lengthSq <= EPSILON * EPSILON) return from;
-    /// @note 内積を線分の長さの二乗で割ると、始点を 0、終点を 1 とした位置になる。範囲外では近い方の端点を選ぶ。
+    if (lengthSq <= EPSILON * EPSILON) {
+        return from;
+    }
+    // 内積を線分の長さの二乗で割ると、始点を 0、終点を 1 とした位置になる。範囲外では近い方の端点を選ぶ。
     return from + segment * Clamp01(Vector3::Dot(point - from, segment) / lengthSq);
 }
 
 /// @brief 点と線分の距離を求める。
-/// @param outAlong from から最近接点までの線分上の距離。単位は入力座標と同じ。
+/// @param[out] outAlong from から最近接点までの線分上の距離。単位は入力座標と同じ。
 /// @return 点と最近接点の距離。
 [[nodiscard]] inline float DistanceToSegment(const Vector3& point,
     const Vector3& from, const Vector3& to, float& outAlong)

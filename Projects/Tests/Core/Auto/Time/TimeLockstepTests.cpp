@@ -18,7 +18,7 @@ protected:
         fbzz::Time::SetTimeScale(1.0f);
         fbzz::Time::SetLockstepDelta(0.0f);
         fbzz::Time::Reset();
-        /// @note 最初の Tick は基準時刻を取るだけで dt を作らない。
+        // 最初の Tick は基準時刻を取るだけで dt を作らない。
         fbzz::Time::Tick();
     }
 
@@ -27,7 +27,7 @@ protected:
         fbzz::Time::SetLockstepDelta(0.0f);
         fbzz::Time::SetTimeScale(1.0f);
         fbzz::Time::Reset();
-        /// @note Reset() は dt を消さない。固定 dt を残すと後続の TimeTickTest が «Reset 後は 0» を観測できない。
+        // Reset() は dt を消さない。固定 dt を残すと後続の TimeTickTest が «Reset 後は 0» を観測できない。
         fbzz::Time::deltaTime = 0.0f;
         fbzz::Time::unscaledDeltaTime = 0.0f;
         EngineFixture::TearDown();

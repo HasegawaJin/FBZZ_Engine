@@ -13,7 +13,9 @@ Vector2 Vector2::Normalized() const {
     float len = Length();
     FBZZ_MATH_CONTRACT(!NearlyZero(len),
                        "zero-length vector normalized; returning (0,0)");
-    if (NearlyZero(len)) return ZERO;
+    if (NearlyZero(len)) {
+        return ZERO;
+    }
     return *this / len;
 }
 

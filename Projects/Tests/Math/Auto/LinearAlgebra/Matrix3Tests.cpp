@@ -52,7 +52,7 @@ TEST_F(Matrix3Test, IdentityLeavesAVectorUnchanged)
 /// @brief Multiplication applies the right hand operand first.
 TEST_F(Matrix3Test, MultiplicationAppliesTheRightHandOperandFirst)
 {
-    /// @note (A * B) * v == A * (B * v)。ここが逆だと変換の適用順が全部裏返る。
+    // (A * B) * v == A * (B * v)。ここが逆だと変換の適用順が全部裏返る。
     const math::Matrix3 a = math::Matrix3::FromMatrix4(
         math::Matrix4::Rotate(math::Quaternion::FromAxisAngle(math::Vector3::UP,
                                                              math::ToRad(90.0f))));
@@ -136,7 +136,7 @@ TEST_F(Matrix3Test, FromMatrix4TakesTheUpperLeftBlock)
 /// @brief From matrix 4 discards translation.
 TEST_F(Matrix3Test, FromMatrix4DiscardsTranslation)
 {
-    /// @note 法線変換に使う型なので、平行移動を拾ってはならない。
+    // 法線変換に使う型なので、平行移動を拾ってはならない。
     const math::Matrix4 translation = math::Matrix4::Translate({10.0f, -20.0f, 30.0f});
 
     EXPECT_MAT3_NEAR(math::Matrix3::FromMatrix4(translation), math::Matrix3::Identity(),

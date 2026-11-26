@@ -44,7 +44,7 @@ protected:
 
     void TearDown() override
     {
-        /// @note 例外フィルターはプロセス全体の状態。次のテストへ持ち越さない。
+        // 例外フィルターはプロセス全体の状態。次のテストへ持ち越さない。
         core::CrashHandler::Uninstall();
         EngineFixture::TearDown();
     }
@@ -66,7 +66,7 @@ TEST_F(CrashReportContentTest, RecordsTheThreadThatAskedForTheReport)
 /// @brief Records the worker thread when the report is asked for there.
 TEST_F(CrashReportContentTest, RecordsTheWorkerThreadWhenTheReportIsAskedForThere)
 {
-    /// @note ダンプは «落ちたスレッド» を軸に開く。呼んだスレッドが載らないと突き合わせられない。
+    // ダンプは «落ちたスレッド» を軸に開く。呼んだスレッドが載らないと突き合わせられない。
     std::filesystem::path dir;
     DWORD                 workerId = 0;
     std::thread worker([&dir, &workerId] {
@@ -102,7 +102,7 @@ TEST_F(CrashReportContentTest, RecordsTheEngineVersionAndTheCommandLine)
     const std::string report = ReadAll(dir / "report.txt");
     EXPECT_EQ(report.rfind("FBZZ crash report", 0), 0u);
     EXPECT_NE(report.find("engine:  "), std::string::npos);
-    /// @note 起動コマンドはテスト exe 自身のもの。空行だと «どの起動で落ちたか» が残らない。
+    // 起動コマンドはテスト exe 自身のもの。空行だと «どの起動で落ちたか» が残らない。
     const size_t command = report.find("command: ");
     ASSERT_NE(command, std::string::npos);
     EXPECT_GT(report.find("\r\n", command), command + std::string("command: ").size());

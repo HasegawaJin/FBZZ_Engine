@@ -49,7 +49,7 @@ Matrix4 Matrix4::Inverse(const Matrix4& matrix) {
     const simd::Vec lowerLeftBlock = _mm_movelh_ps(row2, row3);
     const simd::Vec lowerRightBlock = _mm_movehl_ps(row3, row2);
 
-    /// @note A, B, C, D の順に各ブロックの対角と反対角の成分を集め、全ブロックの行列式を同時に求める。
+    // A, B, C, D の順に各ブロックの対角と反対角の成分を集め、全ブロックの行列式を同時に求める。
     const simd::Vec topLeft = _mm_shuffle_ps(row0, row2, _MM_SHUFFLE(2, 0, 2, 0));
     const simd::Vec topRight = _mm_shuffle_ps(row0, row2, _MM_SHUFFLE(3, 1, 3, 1));
     const simd::Vec bottomLeft = _mm_shuffle_ps(row1, row3, _MM_SHUFFLE(2, 0, 2, 0));
@@ -63,7 +63,7 @@ Matrix4 Matrix4::Inverse(const Matrix4& matrix) {
 
     const simd::Vec lowerLeftProduct = MultiplyLeftAdjugate(lowerRightBlock, lowerLeftBlock);
     const simd::Vec upperRightProduct = MultiplyLeftAdjugate(upperLeftBlock, upperRightBlock);
-    /// @note 逆行列を |M|^-1 [X Y; Z W] と置いたときの各ブロックの余因子。
+    // 逆行列を |M|^-1 [X Y; Z W] と置いたときの各ブロックの余因子。
     const simd::Vec adjX = _mm_sub_ps(_mm_mul_ps(detD, upperLeftBlock), MultiplyBlocks(upperRightBlock, lowerLeftProduct));
     const simd::Vec adjW = _mm_sub_ps(_mm_mul_ps(detA, lowerRightBlock), MultiplyBlocks(lowerLeftBlock, upperRightProduct));
     const simd::Vec adjY = _mm_sub_ps(_mm_mul_ps(detB, lowerLeftBlock), MultiplyRightAdjugate(lowerRightBlock, upperRightProduct));
@@ -83,14 +83,14 @@ Matrix4 Matrix4::Inverse(const Matrix4& matrix) {
         return Identity();
     }
 
-    /// @note 余因子から元のブロックへ戻す adj の符号 (+ - - +) を 1/|M| に畳む。
+    // 余因子から元のブロックへ戻す adj の符号 (+ - - +) を 1/|M| に畳む。
     const simd::Vec signedInverseDeterminant = _mm_div_ps(_mm_setr_ps(1.0f, -1.0f, -1.0f, 1.0f), determinant);
     const simd::Vec blockX = _mm_mul_ps(adjX, signedInverseDeterminant);
     const simd::Vec blockY = _mm_mul_ps(adjY, signedInverseDeterminant);
     const simd::Vec blockZ = _mm_mul_ps(adjZ, signedInverseDeterminant);
     const simd::Vec blockW = _mm_mul_ps(adjW, signedInverseDeterminant);
 
-    /// @note adj の並べ替え (成分 0 と 3 の交換) と、ブロックを行へ戻す並べ替えを 1 回のシャッフルで兼ねる。
+    // adj の並べ替え (成分 0 と 3 の交換) と、ブロックを行へ戻す並べ替えを 1 回のシャッフルで兼ねる。
     Matrix4 result;
     simd::Store4(result.m[0], _mm_shuffle_ps(blockX, blockY, _MM_SHUFFLE(1, 3, 1, 3)));
     simd::Store4(result.m[1], _mm_shuffle_ps(blockX, blockY, _MM_SHUFFLE(0, 2, 0, 2)));
@@ -100,7 +100,7 @@ Matrix4 Matrix4::Inverse(const Matrix4& matrix) {
 }
 
 Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& matrix) {
-    /// @note 列ベクトル規約の M=[A t; 0 1] では、逆転置の左上 3x3 は cofactor(A) / det(A)。
+    // 列ベクトル規約の M=[A t; 0 1] では、逆転置の左上 3x3 は cofactor(A) / det(A)。
     const auto& linearTransform = matrix.m;
 
     const float c00 = linearTransform[1][1] * linearTransform[2][2] - linearTransform[1][2] * linearTransform[2][1];

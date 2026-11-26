@@ -53,7 +53,7 @@ TEST_F(TempDirTest, SameLabelInAnotherProcessPreservesTheParentFiles)
     ASSERT_LT(length, std::size(executable));
     std::wstring childCommand = L"\"" + std::wstring(executable)
         + L"\" --gtest_filter=TempDirTest.SameLabelInAnotherProcessPreservesTheParentFiles";
-    /// @note 自動実行を明示して子の終了時の入力待ちを抑止する。
+    // 自動実行を明示して子の終了時の入力待ちを抑止する。
     childCommand += L" --gtest_output=xml:\"" + parent.File("child.xml").native() + L"\"";
     childCommand += PARENT_ARGUMENT + parent.Path().native() + L"\"";
     STARTUPINFOW startup{};
@@ -66,7 +66,7 @@ TEST_F(TempDirTest, SameLabelInAnotherProcessPreservesTheParentFiles)
     UniqueHandle threadHandle(process.hThread);
     const DWORD wait = WaitForSingleObject(processHandle.get(), CHILD_TIMEOUT_MS);
     if (wait != WAIT_OBJECT_0) {
-        /// @note このテストが生成した子だけを回収する。
+        // このテストが生成した子だけを回収する。
         TerminateProcess(processHandle.get(), 99);
         WaitForSingleObject(processHandle.get(), CHILD_TIMEOUT_MS);
     }

@@ -31,7 +31,9 @@ bool StringUtils::EqualsCI(const std::string& a, const std::string& b)
 
 bool StringUtils::EqualsCIView(std::string_view a, std::string_view b)
 {
-    if (a.size() != b.size()) return false;
+    if (a.size() != b.size()) {
+        return false;
+    }
     for (std::size_t i = 0; i < a.size(); ++i) {
         if (std::tolower(static_cast<unsigned char>(a[i]))
             != std::tolower(static_cast<unsigned char>(b[i]))) return false;
@@ -91,7 +93,9 @@ std::vector<std::string> StringUtils::Split(const std::string& text, char delimi
 std::string StringUtils::Trim(const std::string& s)
 {
     size_t start = s.find_first_not_of(" \t\r\n");
-    if (start == std::string::npos) return "";
+    if (start == std::string::npos) {
+        return "";
+    }
     size_t end = s.find_last_not_of(" \t\r\n");
     return s.substr(start, end - start + 1);
 }
@@ -99,11 +103,13 @@ std::string StringUtils::Trim(const std::string& s)
 std::string StringUtils::TruncateUtf8(const std::string& s, std::size_t maxBytes,
                                       const std::string& ellipsis)
 {
-    if (s.size() <= maxBytes) return s;
-    /// @note ellipsis すら入らない指定は «切れるだけ切る» に倒す。
+    if (s.size() <= maxBytes) {
+        return s;
+    }
+    // ellipsis すら入らない指定は «切れるだけ切る» に倒す。
     const std::size_t budget = maxBytes > ellipsis.size() ? maxBytes - ellipsis.size() : 0;
 
-    /// @note 継続バイト (0b10xxxxxx) は文字の途中。境界まで戻してから切る。
+    // 継続バイト (0b10xxxxxx) は文字の途中。境界まで戻してから切る。
     std::size_t cut = budget;
     while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
     return s.substr(0, cut) + ellipsis;
@@ -112,47 +118,65 @@ std::string StringUtils::TruncateUtf8(const std::string& s, std::size_t maxBytes
 /// @note Win32 に入力長 -1 を渡す変換は、終端 NUL を含めて確保してから結果を縮める。
 std::wstring StringUtils::ToWide(const std::string& utf8)
 {
-    if (utf8.empty()) return {};
+    if (utf8.empty()) {
+        return {};
+    }
     const int requiredChars = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
-    if (requiredChars <= 0) return {};
+    if (requiredChars <= 0) {
+        return {};
+    }
     std::wstring wide(static_cast<size_t>(requiredChars), L'\0');
     const int writtenChars = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), requiredChars);
-    if (writtenChars <= 0) return {};
+    if (writtenChars <= 0) {
+        return {};
+    }
     wide.resize(static_cast<size_t>(writtenChars - 1));
     return wide;
 }
 
 std::string StringUtils::ToNarrow(const std::wstring& wide)
 {
-    if (wide.empty()) return {};
+    if (wide.empty()) {
+        return {};
+    }
     const int requiredBytes = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (requiredBytes <= 0) return {};
+    if (requiredBytes <= 0) {
+        return {};
+    }
     std::string utf8(static_cast<size_t>(requiredBytes), '\0');
     const int writtenBytes = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, utf8.data(), requiredBytes, nullptr, nullptr);
-    if (writtenBytes <= 0) return {};
+    if (writtenBytes <= 0) {
+        return {};
+    }
     utf8.resize(static_cast<size_t>(writtenBytes - 1));
     return utf8;
 }
 
 std::string StringUtils::ToNarrow(const wchar_t* wide, int charCount)
 {
-    if (!wide || charCount <= 0) return {};
+    if (!wide || charCount <= 0) {
+        return {};
+    }
     const int requiredBytes = WideCharToMultiByte(CP_UTF8, 0, wide, charCount, nullptr, 0, nullptr, nullptr);
-    if (requiredBytes <= 0) return {};
+    if (requiredBytes <= 0) {
+        return {};
+    }
     std::string utf8(static_cast<size_t>(requiredBytes), '\0');
     const int writtenBytes = WideCharToMultiByte(CP_UTF8, 0, wide, charCount, utf8.data(), requiredBytes, nullptr, nullptr);
-    if (writtenBytes <= 0) return {};
+    if (writtenBytes <= 0) {
+        return {};
+    }
     utf8.resize(static_cast<size_t>(writtenBytes));
     return utf8;
 }
 
 std::string StringUtils::PathToUtf8(const std::filesystem::path& path)
 {
-    /// @note Windows の filesystem::path は '\' 区切りを返すため '/' に正規化する。
-    /// @note       FileSystem::PathToUtf8 と挙動を統一し、アセット管理の文字列比較を一致させる。
+    // Windows の filesystem::path は '\' 区切りを返すため '/' に正規化する。
+    // FileSystem::PathToUtf8 と挙動を統一し、アセット管理の文字列比較を一致させる。
     std::string s = ToNarrow(path.wstring());
     std::replace(s.begin(), s.end(), '\\', '/');
     return s;
 }
 
-} /// @note namespace fbzz::util
+} // namespace fbzz::util

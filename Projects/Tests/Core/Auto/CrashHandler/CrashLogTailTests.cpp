@@ -21,9 +21,13 @@ bool IsValidUtf8(std::string_view text)
                             : (lead & 0xE0u) == 0xC0u ? 2
                             : (lead & 0xF0u) == 0xE0u ? 3
                             : (lead & 0xF8u) == 0xF0u ? 4 : 0;
-        if (length == 0 || at + length > text.size()) return false;
+        if (length == 0 || at + length > text.size()) {
+            return false;
+        }
         for (size_t k = 1; k < length; ++k)
-            if ((static_cast<unsigned char>(text[at + k]) & 0xC0u) != 0x80u) return false;
+            if ((static_cast<unsigned char>(text[at + k]) & 0xC0u) != 0x80u) {
+                return false;
+            }
         at += length;
     }
     return true;
@@ -77,7 +81,7 @@ TEST_F(CrashLogTailTest, WritesTheRetainedLinesOldestFirst)
 /// @brief Truncates a long line on a character boundary.
 TEST_F(CrashLogTailTest, TruncatesALongLineOnACharacterBoundary)
 {
-    /// @note 実行文字セットに依存せず、3 バイト文字 U+3042 で上限を超える。
+    // 実行文字セットに依存せず、3 バイト文字 U+3042 で上限を超える。
     std::string message = "utf8-tail-";
     for (size_t i = 0; i < core::CrashLogTail::LINE_BYTES; ++i)
         message += "\xE3\x81\x82";

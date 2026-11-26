@@ -69,7 +69,9 @@ inline math::Matrix4 Inverse(const math::Matrix4& mat)
     const float b11 = a[10]*a[15] - a[11]*a[14];
 
     const float det = b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06;
-    if (math::NearlyZero(det)) return math::Matrix4::Identity();
+    if (math::NearlyZero(det)) {
+        return math::Matrix4::Identity();
+    }
 
     const float inv = 1.0f / det;
     math::Matrix4 result;

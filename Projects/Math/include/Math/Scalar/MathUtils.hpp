@@ -18,8 +18,16 @@ constexpr float EPSILON = 1e-6f;
 inline float ToRad(float deg) { return deg * DEG2RAD; }
 inline float ToDeg(float rad) { return rad * RAD2DEG; }
 
-inline float Clamp(float v, float minVal, float maxVal) {
-    return v < minVal ? minVal : (v > maxVal ? maxVal : v);
+/// @brief 値を範囲に収める。下限の比較、上限の比較の順に行い、どちらも通らなければ入力値を返す。
+inline float Clamp(float value, float minimum, float maximum)
+{
+    if (value < minimum) {
+        return minimum;
+    }
+    if (value > maximum) {
+        return maximum;
+    }
+    return value;
 }
 inline float Clamp01(float v)                { return Clamp(v, 0.0f, 1.0f); }
 /// @note t は移動の割合。0 なら a、1 なら b、範囲外なら同じ直線上で区間の外を指す。
@@ -34,7 +42,17 @@ inline float Remap(float v, float inMin, float inMax, float outMin, float outMax
     return Lerp(outMin, outMax, InverseLerp(inMin, inMax, v));
 }
 inline float Abs(float v)          { return v < 0.0f ? -v : v; }
-inline float Sign(float v)         { return v > 0.0f ? 1.0f : (v < 0.0f ? -1.0f : 0.0f); }
+/// @brief 正なら 1、負なら -1 を返す。0 と非数では 0 を返す。
+inline float Sign(float value)
+{
+    if (value > 0.0f) {
+        return 1.0f;
+    }
+    if (value < 0.0f) {
+        return -1.0f;
+    }
+    return 0.0f;
+}
 inline float Pow(float base, float exp) { return std::pow(base, exp); }
 inline float Sqrt(float v)         { return std::sqrt(v); }
 inline float Floor(float v)        { return std::floor(v); }
@@ -46,4 +64,4 @@ inline float Max(float a, float b) { return a > b ? a : b; }
 inline bool NearlyEqual(float a, float b, float eps = EPSILON) { return Abs(a - b) < eps; }
 inline bool NearlyZero(float v,           float eps = EPSILON) { return Abs(v) < eps; }
 
-} /// @note namespace fbzz::math
+} // namespace fbzz::math

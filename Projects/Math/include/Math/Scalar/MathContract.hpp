@@ -12,9 +12,9 @@ namespace fbzz::math {
 struct ContractViolation {
     const char* expr     = nullptr;  ///< @note 破られた条件式。
     const char* message  = nullptr;  ///< @note 何が起きたか / 代わりに返した値。
-    const char* function = nullptr;
-    const char* file     = nullptr;
-    int         line     = 0;
+    const char* function = nullptr; ///< 数学契約の違反を報告した関数名。
+    const char* file     = nullptr; ///< 数学契約の違反を報告したソースファイル名。
+    int         line     = 0; ///< 数学契約が違反したソースファイル内の行番号。
 };
 
 using ContractHandler = void (*)(const ContractViolation&);

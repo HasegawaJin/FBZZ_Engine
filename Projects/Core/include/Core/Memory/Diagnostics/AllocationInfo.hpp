@@ -25,17 +25,16 @@ enum class MemoryTag : std::size_t {
 };
 
 /// @brief 1 回の Allocate に対応する追跡情報。
-/// @note pointer が nullptr なら空スロット。file/line は呼び出し元を特定するための非所有文字列参照。
 struct AllocationInfo {
-    void*       pointer = nullptr;
-    std::size_t size = 0;
-    std::size_t alignment = 0;
-    MemoryTag   tag = MemoryTag::UNKNOWN;
-    const char* allocatorName = "Unknown";
-    const char* file = "Unknown";
-    int         line = 0;
-    std::uint64_t allocationId = 0;
-    bool        isActive = false;
+    void*       pointer = nullptr;         ///< 確保した領域の先頭アドレス。台帳は領域を所有しない。
+    std::size_t size = 0;                  ///< 要求した領域の大きさ（バイト）。
+    std::size_t alignment = 0;             ///< 確保先の先頭に要求したアラインメント（バイト）。
+    MemoryTag   tag = MemoryTag::UNKNOWN;  ///< 使用量を集計する用途区分。
+    const char* allocatorName = "Unknown"; ///< 確保元の表示名。文字列は呼び出し側が保持する。
+    const char* file = "Unknown";          ///< 確保を要求したソースファイル名。文字列は呼び出し側が保持する。
+    int         line = 0;                  ///< 確保を要求したソース行番号。
+    std::uint64_t allocationId = 0;        ///< 台帳への登録時に割り当てる連番。リセット後は 1 から始まる。
+    bool        isActive = false;          ///< 台帳が未解放の確保として追跡している間は true。
 };
 
-} /// @note namespace fbzz::core
+} // namespace fbzz::core
